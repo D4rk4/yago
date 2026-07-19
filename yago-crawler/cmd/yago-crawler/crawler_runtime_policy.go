@@ -4,23 +4,24 @@ import "github.com/D4rk4/yago/yagocrawlcontract"
 
 func (config ServiceConfig) runtimePolicy() yagocrawlcontract.CrawlerRuntimePolicy {
 	return yagocrawlcontract.CrawlerRuntimePolicy{
-		AllowPrivateNetworks:    config.EgressAllowLAN,
-		AllowedPrivateCIDRs:     config.EgressAllowedCIDRs,
-		BrowserFailureThreshold: config.Crawl.BrowserFailureThreshold,
-		BrowserPath:             config.Crawl.BrowserPath,
-		BrowserSandbox:          config.Crawl.BrowserSandbox,
-		ConnectTimeout:          config.Crawl.ConnectTimeout,
-		CrawlDelay:              config.Crawl.CrawlDelay,
-		HeaderTimeout:           config.Crawl.HeaderTimeout,
-		MaximumDepth:            config.Crawl.MaxDepth,
-		MaximumHostConcurrency:  config.Crawl.MaxHostConcurrency,
-		MetricsAddress:          config.MetricsAddr,
-		RequestTimeout:          config.Crawl.RequestTimeout,
-		RunPagesPerMinute:       config.Crawl.RunPagesPerMinute,
-		SitemapURLLimit:         config.Crawl.SitemapURLLimit,
-		TLSTimeout:              config.Crawl.TLSTimeout,
-		ShutdownGrace:           config.ShutdownGrace,
-		UserAgent:               config.Crawl.UserAgent,
+		AllowPrivateNetworks:      config.EgressAllowLAN,
+		AllowedPrivateCIDRs:       config.EgressAllowedCIDRs,
+		BrowserFailureThreshold:   config.Crawl.BrowserFailureThreshold,
+		BrowserPath:               config.Crawl.BrowserPath,
+		BrowserSandbox:            config.Crawl.BrowserSandbox,
+		ConnectTimeout:            config.Crawl.ConnectTimeout,
+		CrawlDelay:                config.Crawl.CrawlDelay,
+		FrontierStateMaximumBytes: config.FrontierStateMaximumBytes,
+		HeaderTimeout:             config.Crawl.HeaderTimeout,
+		MaximumDepth:              config.Crawl.MaxDepth,
+		MaximumHostConcurrency:    config.Crawl.MaxHostConcurrency,
+		MetricsAddress:            config.MetricsAddr,
+		RequestTimeout:            config.Crawl.RequestTimeout,
+		RunPagesPerMinute:         config.Crawl.RunPagesPerMinute,
+		SitemapURLLimit:           config.Crawl.SitemapURLLimit,
+		TLSTimeout:                config.Crawl.TLSTimeout,
+		ShutdownGrace:             config.ShutdownGrace,
+		UserAgent:                 config.Crawl.UserAgent,
 	}
 }
 
@@ -34,6 +35,7 @@ func (config ServiceConfig) withRuntimePolicy(
 	config.Crawl.BrowserSandbox = policy.BrowserSandbox
 	config.Crawl.ConnectTimeout = policy.ConnectTimeout
 	config.Crawl.CrawlDelay = policy.CrawlDelay
+	config.FrontierStateMaximumBytes = policy.FrontierStateMaximumBytes
 	config.Crawl.HeaderTimeout = policy.HeaderTimeout
 	config.Crawl.MaxDepth = policy.MaximumDepth
 	config.Crawl.MaxHostConcurrency = policy.MaximumHostConcurrency

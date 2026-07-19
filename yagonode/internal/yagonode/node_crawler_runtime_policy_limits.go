@@ -11,6 +11,15 @@ func applyCrawlerLimitBootstrap(
 	getenv func(string) string,
 	policy *yagocrawlcontract.CrawlerRuntimePolicy,
 ) error {
+	frontierStateMaximumBytes, err := parseCrawlerFrontierStateMaximumBytes(envWithDefault(
+		getenv,
+		envCrawlerFrontierStateMaximumBytes,
+		formatCrawlerFrontierStateMaximumBytes(policy.FrontierStateMaximumBytes),
+	))
+	if err != nil {
+		return fmt.Errorf("%s: %w", envCrawlerFrontierStateMaximumBytes, err)
+	}
+	policy.FrontierStateMaximumBytes = frontierStateMaximumBytes
 	fields := []struct {
 		key      string
 		fallback int

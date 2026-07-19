@@ -9,6 +9,10 @@ import (
 
 const bleveRebuildBatchDocuments = 16
 
+type bleveRebuildBatchObserver interface {
+	BleveRebuildBatchIndexed(int)
+}
+
 var indexBleveRebuildBatch = func(
 	index *BleveDiskIndex,
 	ctx context.Context,
@@ -35,6 +39,9 @@ func (b *BleveDiskIndex) rebuild(
 		}
 		if err := indexBleveRebuildBatch(b, ctx, documents); err != nil {
 			return err
+		}
+		if observer, ok := admission.(bleveRebuildBatchObserver); ok {
+			observer.BleveRebuildBatchIndexed(len(documents))
 		}
 		clear(documents)
 		documents = documents[:0]

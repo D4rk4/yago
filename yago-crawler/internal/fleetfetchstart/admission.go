@@ -17,7 +17,6 @@ import (
 
 const (
 	defaultMaximumLeasePermits = yagocrawlcontract.DefaultFetchWorkerConcurrency
-	leaseRequestTimeout        = time.Second
 	leaseRetryWait             = 100 * time.Millisecond
 )
 
@@ -30,22 +29,25 @@ type LeaseClient interface {
 }
 
 type Admission struct {
-	operation              chan struct{}
-	waiting                atomic.Int64
-	client                 LeaseClient
-	workerID               string
-	workerSessionID        string
-	session                *SessionGate
-	pagesPerSecond         func() uint32
-	permitCapacity         func() int
-	upstreamDemand         func() int
-	now                    func() time.Time
-	wait                   func(context.Context, time.Duration, <-chan struct{}) error
-	sessionGeneration      uint64
-	sequence               uint64
-	sequenceMaximumPermits uint32
-	completedSequence      *uint64
-	lease                  localFetchStartLease
+	operation                       chan struct{}
+	waiting                         atomic.Int64
+	client                          LeaseClient
+	workerID                        string
+	workerSessionID                 string
+	session                         *SessionGate
+	pagesPerSecond                  func() uint32
+	permitCapacity                  func() int
+	upstreamDemand                  func() int
+	now                             func() time.Time
+	wait                            func(context.Context, time.Duration, <-chan struct{}) error
+	sessionGeneration               uint64
+	sequence                        uint64
+	sequenceMaximumPermits          uint32
+	permitDeliveryAllowance         time.Duration
+	sequencePermitDeliveryAllowance time.Duration
+	lastPermitUsedAt                time.Time
+	completedSequence               *uint64
+	lease                           localFetchStartLease
 }
 
 type localFetchStartLease struct {
@@ -153,8 +155,13 @@ func (admission *Admission) usePermit(
 		permitOffset := time.Duration(admission.lease.used) * admission.lease.permitInterval
 		opensAt := admission.lease.firstOpensAt.Add(permitOffset)
 		closesAt := admission.lease.firstClosesAt.Add(permitOffset)
+		opensAt = nextLocalPermitOpening(
+			opensAt,
+			admission.lastPermitUsedAt,
+			admission.lease.permitInterval,
+		)
 		now := admission.now()
-		if !now.Before(closesAt) {
+		if !opensAt.Before(closesAt) || !now.Before(closesAt) {
 			admission.lease.used++
 
 			continue
@@ -167,6 +174,7 @@ func (admission *Admission) usePermit(
 			return false, nil
 		}
 		admission.lease.used++
+		admission.lastPermitUsedAt = now
 
 		return true, nil
 	}
@@ -182,6 +190,7 @@ func (admission *Admission) acquireLease(
 ) error {
 	if admission.sequenceMaximumPermits == 0 {
 		admission.sequenceMaximumPermits = admission.currentMaximumPermits()
+		admission.sequencePermitDeliveryAllowance = admission.permitDeliveryAllowance
 	}
 	maximumPermits := admission.sequenceMaximumPermits
 	request := &crawlrpc.FetchStartLeaseRequest{
@@ -190,12 +199,22 @@ func (admission *Admission) acquireLease(
 		Sequence:          admission.sequence,
 		MaximumPermits:    maximumPermits,
 		CompletedSequence: admission.completedSequence,
+		PermitDeliveryAllowanceNanoseconds: permitDeliveryAllowanceNanoseconds(
+			admission.sequencePermitDeliveryAllowance,
+		),
 	}
 	requestStartedAt := admission.now()
-	requestContext, cancelRequest := context.WithTimeout(ctx, leaseRequestTimeout)
+	requestContext, cancelRequest := context.WithTimeout(
+		ctx,
+		yagocrawlcontract.MaximumFetchStartPermitDeliveryAllowance,
+	)
 	response, err := admission.client.LeaseFetchStarts(requestContext, request)
 	cancelRequest()
 	responseReceivedAt := admission.now()
+	admission.permitDeliveryAllowance = measuredPermitDeliveryAllowance(
+		requestStartedAt,
+		responseReceivedAt,
+	)
 	connected, currentGeneration, _ := admission.session.Snapshot()
 	if !connected || currentGeneration != generation {
 		return errSessionChanged
@@ -236,6 +255,17 @@ func (admission *Admission) acquireLease(
 	}
 
 	return admission.wait(ctx, retryAfter, changed)
+}
+
+func permitDeliveryAllowanceNanoseconds(allowance time.Duration) uint64 {
+	if allowance <= 0 {
+		return 0
+	}
+	if allowance >= yagocrawlcontract.MaximumFetchStartPermitDeliveryAllowance {
+		return uint64(yagocrawlcontract.MaximumFetchStartPermitDeliveryAllowance)
+	}
+
+	return uint64(allowance)
 }
 
 func (admission *Admission) applyDecision(
@@ -296,6 +326,7 @@ func (admission *Admission) finishLease() {
 	admission.completedSequence = &completed
 	admission.sequence++
 	admission.sequenceMaximumPermits = 0
+	admission.sequencePermitDeliveryAllowance = 0
 	admission.lease = localFetchStartLease{}
 }
 
@@ -303,6 +334,8 @@ func (admission *Admission) resetForSession(generation uint64) {
 	admission.sessionGeneration = generation
 	admission.sequence = 1
 	admission.sequenceMaximumPermits = 0
+	admission.permitDeliveryAllowance = 0
+	admission.sequencePermitDeliveryAllowance = 0
 	admission.completedSequence = nil
 	admission.lease = localFetchStartLease{}
 }

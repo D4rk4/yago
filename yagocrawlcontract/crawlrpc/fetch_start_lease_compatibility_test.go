@@ -3,6 +3,7 @@ package crawlrpc_test
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
@@ -10,6 +11,7 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
@@ -50,6 +52,7 @@ func TestFetchStartLeaseRequestWireRoundTripAndLegacyDefaults(t *testing.T) {
 	want := &crawlrpc.FetchStartLeaseRequest{
 		WorkerId: "worker", WorkerSessionId: "session", Sequence: 7,
 		MaximumPermits: 256, CompletedSequence: &completed,
+		PermitDeliveryAllowanceNanoseconds: 375_000_000,
 	}
 	wire, err := proto.Marshal(want)
 	if err != nil {
@@ -72,7 +75,8 @@ func TestFetchStartLeaseRequestWireRoundTripAndLegacyDefaults(t *testing.T) {
 	if err := proto.Unmarshal(legacyWire, got); err != nil {
 		t.Fatalf("current decoder rejected legacy lease request: %v", err)
 	}
-	if !proto.Equal(got, &crawlrpc.FetchStartLeaseRequest{}) || got.CompletedSequence != nil {
+	if !proto.Equal(got, &crawlrpc.FetchStartLeaseRequest{}) || got.CompletedSequence != nil ||
+		got.GetPermitDeliveryAllowanceNanoseconds() != 0 {
 		t.Fatalf("legacy lease request invented values: %+v", got)
 	}
 	if err := proto.Unmarshal(wire, legacy); err != nil {
@@ -127,6 +131,10 @@ func TestFetchStartLeaseWireShapeAndRPC(t *testing.T) {
 		{name: "sequence", number: 3, kind: protoreflect.Uint64Kind},
 		{name: "maximum_permits", number: 4, kind: protoreflect.Uint32Kind},
 		{name: "completed_sequence", number: 5, kind: protoreflect.Uint64Kind, presence: true},
+		{
+			name: "permit_delivery_allowance_nanoseconds", number: 6,
+			kind: protoreflect.Uint64Kind,
+		},
 	}; !reflect.DeepEqual(requestFields, want) {
 		t.Fatalf("request wire shape = %+v, want %+v", requestFields, want)
 	}
@@ -151,6 +159,13 @@ func TestFetchStartLeaseWireShapeAndRPC(t *testing.T) {
 		method.Output().FullName() != "yacycrawl.v1.FetchStartLeaseDecision" ||
 		method.IsStreamingClient() || method.IsStreamingServer() {
 		t.Fatalf("fetch-start lease method = %+v", method)
+	}
+}
+
+func TestFetchStartPermitDeliveryAllowanceBound(t *testing.T) {
+	if yagocrawlcontract.MaximumFetchStartPermitDeliveryAllowance != time.Second {
+		t.Fatalf("permit delivery allowance = %s, want 1s",
+			yagocrawlcontract.MaximumFetchStartPermitDeliveryAllowance)
 	}
 }
 

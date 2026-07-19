@@ -23,14 +23,20 @@ func (e crawlEndpoint) writeCrawlSuccess(
 		_ = json.NewEncoder(w).Encode(MapResponse{
 			BaseURL: response.baseURL, Results: pageURLs(response.pages),
 			ResponseTime: response.elapsed,
-			Usage:        responseUsageEnabled(response.request.IncludeUsage),
+			Usage:        mapResponseUsage(response.request, len(response.pages)),
 			RequestID:    response.requestID,
 		})
 
 		return
 	}
 	_ = json.NewEncoder(w).Encode(CrawlResponse{
-		BaseURL: response.baseURL, Results: response.pages, ResponseTime: response.elapsed,
-		Usage: responseUsageEnabled(response.request.IncludeUsage), RequestID: response.requestID,
+		BaseURL:      response.baseURL,
+		Results:      response.pages,
+		ResponseTime: response.elapsed,
+		Usage: crawlResponseUsage(
+			response.request,
+			len(response.pages),
+		),
+		RequestID: response.requestID,
 	})
 }

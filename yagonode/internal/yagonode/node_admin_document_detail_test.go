@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
@@ -66,6 +67,7 @@ func TestDocumentDetailLoadsAndProjectsStoredEvidence(t *testing.T) {
 			},
 		},
 	}
+	directory.document.ExtractionGeneration = yagocrawlcontract.CurrentExtractionGeneration
 
 	detail, found, err := newDocumentDetailSource(directory).DocumentDetail(
 		t.Context(),
@@ -83,6 +85,11 @@ func TestDocumentDetailLoadsAndProjectsStoredEvidence(t *testing.T) {
 		len(detail.OutboundAnchors) != 1 || len(detail.Images) != 1 ||
 		!detail.Quality.Known || detail.Safety.Rating != "general" {
 		t.Fatalf("detail = %+v", detail)
+	}
+	if detail.Extraction.Generation != yagocrawlcontract.CurrentExtractionGeneration ||
+		detail.Extraction.Current != yagocrawlcontract.CurrentExtractionGeneration {
+		t.Fatalf("extraction generations = %d/%d",
+			detail.Extraction.Generation, detail.Extraction.Current)
 	}
 }
 

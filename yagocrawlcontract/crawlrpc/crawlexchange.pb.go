@@ -212,14 +212,15 @@ func (x *WorkerRegistration) GetFetchStartLeases() bool {
 }
 
 type FetchStartLeaseRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	WorkerId          string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	WorkerSessionId   string                 `protobuf:"bytes,2,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
-	Sequence          uint64                 `protobuf:"varint,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	MaximumPermits    uint32                 `protobuf:"varint,4,opt,name=maximum_permits,json=maximumPermits,proto3" json:"maximum_permits,omitempty"`
-	CompletedSequence *uint64                `protobuf:"varint,5,opt,name=completed_sequence,json=completedSequence,proto3,oneof" json:"completed_sequence,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                              protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId                           string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerSessionId                    string                 `protobuf:"bytes,2,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
+	Sequence                           uint64                 `protobuf:"varint,3,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	MaximumPermits                     uint32                 `protobuf:"varint,4,opt,name=maximum_permits,json=maximumPermits,proto3" json:"maximum_permits,omitempty"`
+	CompletedSequence                  *uint64                `protobuf:"varint,5,opt,name=completed_sequence,json=completedSequence,proto3,oneof" json:"completed_sequence,omitempty"`
+	PermitDeliveryAllowanceNanoseconds uint64                 `protobuf:"varint,6,opt,name=permit_delivery_allowance_nanoseconds,json=permitDeliveryAllowanceNanoseconds,proto3" json:"permit_delivery_allowance_nanoseconds,omitempty"`
+	unknownFields                      protoimpl.UnknownFields
+	sizeCache                          protoimpl.SizeCache
 }
 
 func (x *FetchStartLeaseRequest) Reset() {
@@ -283,6 +284,13 @@ func (x *FetchStartLeaseRequest) GetMaximumPermits() uint32 {
 func (x *FetchStartLeaseRequest) GetCompletedSequence() uint64 {
 	if x != nil && x.CompletedSequence != nil {
 		return *x.CompletedSequence
+	}
+	return 0
+}
+
+func (x *FetchStartLeaseRequest) GetPermitDeliveryAllowanceNanoseconds() uint64 {
+	if x != nil {
+		return x.PermitDeliveryAllowanceNanoseconds
 	}
 	return 0
 }
@@ -1011,26 +1019,29 @@ func (x *CrawlerRuntimePolicyRequest) GetWorkerId() string {
 }
 
 type CrawlerRuntimePolicy struct {
-	state                      protoimpl.MessageState `protogen:"open.v1"`
-	AllowPrivateNetworks       bool                   `protobuf:"varint,1,opt,name=allow_private_networks,json=allowPrivateNetworks,proto3" json:"allow_private_networks,omitempty"`
-	AllowedPrivateCidrs        []string               `protobuf:"bytes,2,rep,name=allowed_private_cidrs,json=allowedPrivateCidrs,proto3" json:"allowed_private_cidrs,omitempty"`
-	BrowserFailureThreshold    uint32                 `protobuf:"varint,3,opt,name=browser_failure_threshold,json=browserFailureThreshold,proto3" json:"browser_failure_threshold,omitempty"`
-	ConnectTimeoutMilliseconds uint64                 `protobuf:"varint,4,opt,name=connect_timeout_milliseconds,json=connectTimeoutMilliseconds,proto3" json:"connect_timeout_milliseconds,omitempty"`
-	CrawlDelayMilliseconds     uint64                 `protobuf:"varint,5,opt,name=crawl_delay_milliseconds,json=crawlDelayMilliseconds,proto3" json:"crawl_delay_milliseconds,omitempty"`
-	HeaderTimeoutMilliseconds  uint64                 `protobuf:"varint,6,opt,name=header_timeout_milliseconds,json=headerTimeoutMilliseconds,proto3" json:"header_timeout_milliseconds,omitempty"`
-	MaximumDepth               uint32                 `protobuf:"varint,7,opt,name=maximum_depth,json=maximumDepth,proto3" json:"maximum_depth,omitempty"`
-	MaximumHostConcurrency     uint32                 `protobuf:"varint,8,opt,name=maximum_host_concurrency,json=maximumHostConcurrency,proto3" json:"maximum_host_concurrency,omitempty"`
-	RequestTimeoutMilliseconds uint64                 `protobuf:"varint,9,opt,name=request_timeout_milliseconds,json=requestTimeoutMilliseconds,proto3" json:"request_timeout_milliseconds,omitempty"`
-	RunPagesPerMinute          uint32                 `protobuf:"varint,10,opt,name=run_pages_per_minute,json=runPagesPerMinute,proto3" json:"run_pages_per_minute,omitempty"`
-	SitemapUrlLimit            uint32                 `protobuf:"varint,11,opt,name=sitemap_url_limit,json=sitemapUrlLimit,proto3" json:"sitemap_url_limit,omitempty"`
-	TlsTimeoutMilliseconds     uint64                 `protobuf:"varint,12,opt,name=tls_timeout_milliseconds,json=tlsTimeoutMilliseconds,proto3" json:"tls_timeout_milliseconds,omitempty"`
-	ShutdownGraceMilliseconds  uint64                 `protobuf:"varint,13,opt,name=shutdown_grace_milliseconds,json=shutdownGraceMilliseconds,proto3" json:"shutdown_grace_milliseconds,omitempty"`
-	UserAgent                  string                 `protobuf:"bytes,14,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
-	BrowserSandbox             *bool                  `protobuf:"varint,15,opt,name=browser_sandbox,json=browserSandbox,proto3,oneof" json:"browser_sandbox,omitempty"`
-	BrowserPath                *string                `protobuf:"bytes,16,opt,name=browser_path,json=browserPath,proto3,oneof" json:"browser_path,omitempty"`
-	MetricsAddress             *string                `protobuf:"bytes,17,opt,name=metrics_address,json=metricsAddress,proto3,oneof" json:"metrics_address,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	state                          protoimpl.MessageState `protogen:"open.v1"`
+	AllowPrivateNetworks           bool                   `protobuf:"varint,1,opt,name=allow_private_networks,json=allowPrivateNetworks,proto3" json:"allow_private_networks,omitempty"`
+	AllowedPrivateCidrs            []string               `protobuf:"bytes,2,rep,name=allowed_private_cidrs,json=allowedPrivateCidrs,proto3" json:"allowed_private_cidrs,omitempty"`
+	BrowserFailureThreshold        uint32                 `protobuf:"varint,3,opt,name=browser_failure_threshold,json=browserFailureThreshold,proto3" json:"browser_failure_threshold,omitempty"`
+	ConnectTimeoutMilliseconds     uint64                 `protobuf:"varint,4,opt,name=connect_timeout_milliseconds,json=connectTimeoutMilliseconds,proto3" json:"connect_timeout_milliseconds,omitempty"`
+	CrawlDelayMilliseconds         uint64                 `protobuf:"varint,5,opt,name=crawl_delay_milliseconds,json=crawlDelayMilliseconds,proto3" json:"crawl_delay_milliseconds,omitempty"`
+	HeaderTimeoutMilliseconds      uint64                 `protobuf:"varint,6,opt,name=header_timeout_milliseconds,json=headerTimeoutMilliseconds,proto3" json:"header_timeout_milliseconds,omitempty"`
+	MaximumDepth                   uint32                 `protobuf:"varint,7,opt,name=maximum_depth,json=maximumDepth,proto3" json:"maximum_depth,omitempty"`
+	MaximumHostConcurrency         uint32                 `protobuf:"varint,8,opt,name=maximum_host_concurrency,json=maximumHostConcurrency,proto3" json:"maximum_host_concurrency,omitempty"`
+	RequestTimeoutMilliseconds     uint64                 `protobuf:"varint,9,opt,name=request_timeout_milliseconds,json=requestTimeoutMilliseconds,proto3" json:"request_timeout_milliseconds,omitempty"`
+	RunPagesPerMinute              uint32                 `protobuf:"varint,10,opt,name=run_pages_per_minute,json=runPagesPerMinute,proto3" json:"run_pages_per_minute,omitempty"`
+	SitemapUrlLimit                uint32                 `protobuf:"varint,11,opt,name=sitemap_url_limit,json=sitemapUrlLimit,proto3" json:"sitemap_url_limit,omitempty"`
+	TlsTimeoutMilliseconds         uint64                 `protobuf:"varint,12,opt,name=tls_timeout_milliseconds,json=tlsTimeoutMilliseconds,proto3" json:"tls_timeout_milliseconds,omitempty"`
+	ShutdownGraceMilliseconds      uint64                 `protobuf:"varint,13,opt,name=shutdown_grace_milliseconds,json=shutdownGraceMilliseconds,proto3" json:"shutdown_grace_milliseconds,omitempty"`
+	UserAgent                      string                 `protobuf:"bytes,14,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
+	BrowserSandbox                 *bool                  `protobuf:"varint,15,opt,name=browser_sandbox,json=browserSandbox,proto3,oneof" json:"browser_sandbox,omitempty"`
+	BrowserPath                    *string                `protobuf:"bytes,16,opt,name=browser_path,json=browserPath,proto3,oneof" json:"browser_path,omitempty"`
+	MetricsAddress                 *string                `protobuf:"bytes,17,opt,name=metrics_address,json=metricsAddress,proto3,oneof" json:"metrics_address,omitempty"`
+	FrontierStateMaxBytes          *uint64                `protobuf:"varint,18,opt,name=frontier_state_max_bytes,json=frontierStateMaxBytes,proto3,oneof" json:"frontier_state_max_bytes,omitempty"`
+	StorageReservedFreeBytes       *uint64                `protobuf:"varint,19,opt,name=storage_reserved_free_bytes,json=storageReservedFreeBytes,proto3,oneof" json:"storage_reserved_free_bytes,omitempty"`
+	StoragePressureHysteresisBytes *uint64                `protobuf:"varint,20,opt,name=storage_pressure_hysteresis_bytes,json=storagePressureHysteresisBytes,proto3,oneof" json:"storage_pressure_hysteresis_bytes,omitempty"`
+	unknownFields                  protoimpl.UnknownFields
+	sizeCache                      protoimpl.SizeCache
 }
 
 func (x *CrawlerRuntimePolicy) Reset() {
@@ -1180,6 +1191,27 @@ func (x *CrawlerRuntimePolicy) GetMetricsAddress() string {
 		return *x.MetricsAddress
 	}
 	return ""
+}
+
+func (x *CrawlerRuntimePolicy) GetFrontierStateMaxBytes() uint64 {
+	if x != nil && x.FrontierStateMaxBytes != nil {
+		return *x.FrontierStateMaxBytes
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetStorageReservedFreeBytes() uint64 {
+	if x != nil && x.StorageReservedFreeBytes != nil {
+		return *x.StorageReservedFreeBytes
+	}
+	return 0
+}
+
+func (x *CrawlerRuntimePolicy) GetStoragePressureHysteresisBytes() uint64 {
+	if x != nil && x.StoragePressureHysteresisBytes != nil {
+		return *x.StoragePressureHysteresisBytes
+	}
+	return 0
 }
 
 type CrawlURLDenylist struct {
@@ -1690,13 +1722,14 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x12WorkerRegistration\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
 	"\x11worker_session_id\x18\x02 \x01(\tR\x0fworkerSessionId\x12,\n" +
-	"\x12fetch_start_leases\x18\x03 \x01(\bR\x10fetchStartLeases\"\xf1\x01\n" +
+	"\x12fetch_start_leases\x18\x03 \x01(\bR\x10fetchStartLeases\"\xc4\x02\n" +
 	"\x16FetchStartLeaseRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
 	"\x11worker_session_id\x18\x02 \x01(\tR\x0fworkerSessionId\x12\x1a\n" +
 	"\bsequence\x18\x03 \x01(\x04R\bsequence\x12'\n" +
 	"\x0fmaximum_permits\x18\x04 \x01(\rR\x0emaximumPermits\x122\n" +
-	"\x12completed_sequence\x18\x05 \x01(\x04H\x00R\x11completedSequence\x88\x01\x01B\x15\n" +
+	"\x12completed_sequence\x18\x05 \x01(\x04H\x00R\x11completedSequence\x88\x01\x01\x12Q\n" +
+	"%permit_delivery_allowance_nanoseconds\x18\x06 \x01(\x04R\"permitDeliveryAllowanceNanosecondsB\x15\n" +
 	"\x13_completed_sequence\"\xce\x03\n" +
 	"\x17FetchStartLeaseDecision\x12\x18\n" +
 	"\agranted\x18\x01 \x01(\bR\agranted\x12\x1a\n" +
@@ -1772,7 +1805,8 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x1c_storage_reserved_free_bytesB$\n" +
 	"\"_storage_pressure_hysteresis_bytes\":\n" +
 	"\x1bCrawlerRuntimePolicyRequest\x12\x1b\n" +
-	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"\xcc\a\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"\x81\n" +
+	"\n" +
 	"\x14CrawlerRuntimePolicy\x124\n" +
 	"\x16allow_private_networks\x18\x01 \x01(\bR\x14allowPrivateNetworks\x122\n" +
 	"\x15allowed_private_cidrs\x18\x02 \x03(\tR\x13allowedPrivateCidrs\x12:\n" +
@@ -1792,10 +1826,16 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"user_agent\x18\x0e \x01(\tR\tuserAgent\x12,\n" +
 	"\x0fbrowser_sandbox\x18\x0f \x01(\bH\x00R\x0ebrowserSandbox\x88\x01\x01\x12&\n" +
 	"\fbrowser_path\x18\x10 \x01(\tH\x01R\vbrowserPath\x88\x01\x01\x12,\n" +
-	"\x0fmetrics_address\x18\x11 \x01(\tH\x02R\x0emetricsAddress\x88\x01\x01B\x12\n" +
+	"\x0fmetrics_address\x18\x11 \x01(\tH\x02R\x0emetricsAddress\x88\x01\x01\x12<\n" +
+	"\x18frontier_state_max_bytes\x18\x12 \x01(\x04H\x03R\x15frontierStateMaxBytes\x88\x01\x01\x12B\n" +
+	"\x1bstorage_reserved_free_bytes\x18\x13 \x01(\x04H\x04R\x18storageReservedFreeBytes\x88\x01\x01\x12N\n" +
+	"!storage_pressure_hysteresis_bytes\x18\x14 \x01(\x04H\x05R\x1estoragePressureHysteresisBytes\x88\x01\x01B\x12\n" +
 	"\x10_browser_sandboxB\x0f\n" +
 	"\r_browser_pathB\x12\n" +
-	"\x10_metrics_address\"g\n" +
+	"\x10_metrics_addressB\x1b\n" +
+	"\x19_frontier_state_max_bytesB\x1e\n" +
+	"\x1c_storage_reserved_free_bytesB$\n" +
+	"\"_storage_pressure_hysteresis_bytes\"g\n" +
 	"\x10CrawlURLDenylist\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\fR\brevision\x12\x1d\n" +
 	"\n" +

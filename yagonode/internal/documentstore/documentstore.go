@@ -8,6 +8,7 @@ import (
 )
 
 type Document struct {
+	ExtractionGeneration        uint64 `json:",omitempty"`
 	CanonicalURL                string
 	NormalizedURL               string
 	Title                       string

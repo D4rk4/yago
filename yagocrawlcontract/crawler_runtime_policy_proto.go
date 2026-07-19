@@ -23,6 +23,7 @@ func CrawlerRuntimePolicyToProto(
 	browserSandbox := policy.BrowserSandbox
 	browserPath := policy.BrowserPath
 	metricsAddress := policy.MetricsAddress
+	frontierStateMaximumBytes := policy.FrontierStateMaximumBytes
 
 	return &crawlrpc.CrawlerRuntimePolicy{
 		AllowPrivateNetworks:       policy.AllowPrivateNetworks,
@@ -36,6 +37,7 @@ func CrawlerRuntimePolicyToProto(
 		MaximumDepth:               crawlerRuntimePolicyUint32(policy.MaximumDepth),
 		MaximumHostConcurrency:     crawlerRuntimePolicyUint32(policy.MaximumHostConcurrency),
 		MetricsAddress:             &metricsAddress,
+		FrontierStateMaxBytes:      &frontierStateMaximumBytes,
 		RequestTimeoutMilliseconds: crawlerRuntimePolicyMilliseconds(policy.RequestTimeout),
 		RunPagesPerMinute:          policy.RunPagesPerMinute,
 		SitemapUrlLimit:            crawlerRuntimePolicyUint32(policy.SitemapURLLimit),
@@ -81,24 +83,29 @@ func CrawlerRuntimePolicyFromProtoWithFallback(
 	if message.MetricsAddress != nil {
 		metricsAddress = message.GetMetricsAddress()
 	}
+	frontierStateMaximumBytes := fallback.FrontierStateMaximumBytes
+	if message.FrontierStateMaxBytes != nil {
+		frontierStateMaximumBytes = message.GetFrontierStateMaxBytes()
+	}
 	policy := CrawlerRuntimePolicy{
-		AllowPrivateNetworks:    message.GetAllowPrivateNetworks(),
-		AllowedPrivateCIDRs:     prefixes,
-		BrowserFailureThreshold: int(message.GetBrowserFailureThreshold()),
-		BrowserPath:             browserPath,
-		BrowserSandbox:          browserSandbox,
-		ConnectTimeout:          durations.connectTimeout,
-		CrawlDelay:              durations.crawlDelay,
-		HeaderTimeout:           durations.headerTimeout,
-		MaximumDepth:            int(message.GetMaximumDepth()),
-		MaximumHostConcurrency:  int(message.GetMaximumHostConcurrency()),
-		MetricsAddress:          metricsAddress,
-		RequestTimeout:          durations.requestTimeout,
-		RunPagesPerMinute:       message.GetRunPagesPerMinute(),
-		SitemapURLLimit:         int(message.GetSitemapUrlLimit()),
-		TLSTimeout:              durations.tlsTimeout,
-		ShutdownGrace:           durations.shutdownGrace,
-		UserAgent:               message.GetUserAgent(),
+		AllowPrivateNetworks:      message.GetAllowPrivateNetworks(),
+		AllowedPrivateCIDRs:       prefixes,
+		BrowserFailureThreshold:   int(message.GetBrowserFailureThreshold()),
+		BrowserPath:               browserPath,
+		BrowserSandbox:            browserSandbox,
+		ConnectTimeout:            durations.connectTimeout,
+		CrawlDelay:                durations.crawlDelay,
+		FrontierStateMaximumBytes: frontierStateMaximumBytes,
+		HeaderTimeout:             durations.headerTimeout,
+		MaximumDepth:              int(message.GetMaximumDepth()),
+		MaximumHostConcurrency:    int(message.GetMaximumHostConcurrency()),
+		MetricsAddress:            metricsAddress,
+		RequestTimeout:            durations.requestTimeout,
+		RunPagesPerMinute:         message.GetRunPagesPerMinute(),
+		SitemapURLLimit:           int(message.GetSitemapUrlLimit()),
+		TLSTimeout:                durations.tlsTimeout,
+		ShutdownGrace:             durations.shutdownGrace,
+		UserAgent:                 message.GetUserAgent(),
 	}
 	if err := policy.Validate(); err != nil {
 		return CrawlerRuntimePolicy{}, err

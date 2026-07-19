@@ -16,8 +16,9 @@ var (
 )
 
 type bleveRebuildRequirement struct {
-	root    string
-	pending bool
+	root      string
+	pending   bool
+	preflight func() error
 }
 
 func bleveRebuildStatePath(root string) string {
@@ -39,23 +40,37 @@ func bleveRebuildPending(root string) (bool, error) {
 func prepareBleveRebuildRequirement(
 	root string,
 	canRebuild bool,
+	preflights ...func() error,
 ) (*bleveRebuildRequirement, error) {
 	pending, err := bleveRebuildPending(root)
 	if err != nil {
 		return nil, err
 	}
-	requirement := &bleveRebuildRequirement{root: root, pending: pending}
+	var preflight func() error
+	if len(preflights) > 0 {
+		preflight = preflights[0]
+	}
+	requirement := &bleveRebuildRequirement{
+		root: root, pending: pending, preflight: preflight,
+	}
 	if !pending {
 		return requirement, nil
 	}
 	if !canRebuild {
 		return nil, fmt.Errorf("bleve index rebuild requires documents")
 	}
-	if err := removeBleveDisk(root); err != nil {
-		return nil, fmt.Errorf("restart bleve index rebuild: %w", err)
-	}
 
 	return requirement, nil
+}
+
+func (r *bleveRebuildRequirement) prepare() error {
+	if r.preflight != nil {
+		if err := r.preflight(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *bleveRebuildRequirement) require() error {
@@ -67,7 +82,7 @@ func (r *bleveRebuildRequirement) require() error {
 	}
 	r.pending = true
 
-	return nil
+	return r.prepare()
 }
 
 func requireBleveRebuild(root string) error {

@@ -20,6 +20,8 @@ components:
     in: internal/boundedqueue/**
   pagefetch:
     in: internal/pagefetch/**
+  browserpool:
+    in: internal/browserpool/**
   httpfetch:
     in: internal/httpfetch/**
   firefoxfetch:
@@ -157,6 +159,7 @@ deps:
       - pagefetch
   firefoxfetch:
     mayDependOn:
+      - browserpool
       - pagefetch
     canUse:
       - yagocrawlcontract
@@ -328,6 +331,7 @@ deps:
       - yagocrawlcontract
   crawlermetrics:
     mayDependOn:
+      - browserpool
       - crawlermetrics
     canUse:
       - yagocrawlcontract

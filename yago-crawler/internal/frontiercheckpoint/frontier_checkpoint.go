@@ -169,6 +169,7 @@ type AdmissionBatchState struct {
 type FrontierCheckpoint struct {
 	mutex                                  sync.RWMutex
 	database                               *bolt.DB
+	stateGrowth                            *frontierStateGrowthGate
 	terminalSettlementReconciliationMutex  sync.Mutex
 	terminalSettlementReconciliationCursor []byte
 }

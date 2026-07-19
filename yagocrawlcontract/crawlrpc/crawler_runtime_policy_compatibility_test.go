@@ -67,3 +67,53 @@ func TestCrawlerRuntimePolicyProcessFacilitiesAreAdditiveAndPresent(t *testing.T
 		t.Fatalf("legacy policy invented process facility presence: %+v", decoded)
 	}
 }
+
+func TestCrawlerRuntimePolicyStateBoundariesAreAdditiveAndPresent(t *testing.T) {
+	descriptor := crawlrpc.File_crawlexchange_proto.Messages().ByName(
+		"CrawlerRuntimePolicy",
+	)
+	frontierMaximum := descriptor.Fields().ByName("frontier_state_max_bytes")
+	reservedFree := descriptor.Fields().ByName("storage_reserved_free_bytes")
+	hysteresis := descriptor.Fields().ByName("storage_pressure_hysteresis_bytes")
+	if frontierMaximum == nil || frontierMaximum.Number() != 18 ||
+		!frontierMaximum.HasPresence() {
+		t.Fatalf("frontier maximum descriptor = %+v, want optional field 18", frontierMaximum)
+	}
+	if reservedFree == nil || reservedFree.Number() != 19 || !reservedFree.HasPresence() {
+		t.Fatalf("storage reserve descriptor = %+v, want optional field 19", reservedFree)
+	}
+	if hysteresis == nil || hysteresis.Number() != 20 || !hysteresis.HasPresence() {
+		t.Fatalf("storage hysteresis descriptor = %+v, want optional field 20", hysteresis)
+	}
+	zero := uint64(0)
+	wire, err := proto.Marshal(&crawlrpc.CrawlerRuntimePolicy{
+		FrontierStateMaxBytes:          &zero,
+		StorageReservedFreeBytes:       &zero,
+		StoragePressureHysteresisBytes: &zero,
+	})
+	if err != nil {
+		t.Fatalf("marshal current startup storage policy: %v", err)
+	}
+	decoded := &crawlrpc.CrawlerRuntimePolicy{}
+	if err := proto.Unmarshal(wire, decoded); err != nil {
+		t.Fatalf("unmarshal current startup storage policy: %v", err)
+	}
+	if decoded.FrontierStateMaxBytes == nil ||
+		decoded.StorageReservedFreeBytes == nil ||
+		decoded.StoragePressureHysteresisBytes == nil {
+		t.Fatalf("explicit zero state boundary lost presence: %+v", decoded)
+	}
+	legacy := emptyLegacyMessageDescriptor(t, "CrawlerRuntimePolicy")
+	if err := proto.Unmarshal(wire, dynamicpb.NewMessage(legacy)); err != nil {
+		t.Fatalf("legacy decoder rejected startup storage fields: %v", err)
+	}
+	legacyDecoded := &crawlrpc.CrawlerRuntimePolicy{}
+	if err := proto.Unmarshal(nil, legacyDecoded); err != nil {
+		t.Fatalf("decode legacy startup storage policy: %v", err)
+	}
+	if legacyDecoded.FrontierStateMaxBytes != nil ||
+		legacyDecoded.StorageReservedFreeBytes != nil ||
+		legacyDecoded.StoragePressureHysteresisBytes != nil {
+		t.Fatalf("legacy policy invented state boundary presence: %+v", legacyDecoded)
+	}
+}

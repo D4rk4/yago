@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,9 +17,12 @@ import (
 )
 
 const (
-	databaseLockTimeout  = 250 * time.Millisecond
-	checkpointBatchDelay = 2 * time.Millisecond
-	checkpointBatchSize  = 256
+	databaseLockTimeout   = 250 * time.Millisecond
+	checkpointBatchDelay  = 2 * time.Millisecond
+	checkpointBatchSize   = 256
+	msgStateCompacted     = "crawler frontier state compacted"
+	msgStateCompactFailed = "crawler frontier state compaction skipped"
+	msgStateCompactWarned = "crawler frontier state installed with durability warning"
 )
 
 func privateDirectoryMode() os.FileMode {
@@ -26,6 +30,14 @@ func privateDirectoryMode() os.FileMode {
 }
 
 func Open(path string) (*FrontierCheckpoint, error) {
+	return OpenWithStateMaximum(path, 0, nil)
+}
+
+func OpenWithStateMaximum(
+	path string,
+	maximumBytes uint64,
+	maintenance StateMaintenanceAdmission,
+) (*FrontierCheckpoint, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("open frontier checkpoint: %w", ErrInvalidPath)
 	}
@@ -36,14 +48,20 @@ func Open(path string) (*FrontierCheckpoint, error) {
 	if err := os.Chmod(directory, privateDirectoryMode()); err != nil {
 		return nil, fmt.Errorf("secure frontier checkpoint directory: %w", err)
 	}
-	database, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: databaseLockTimeout})
+	database, err := openFrontierStateDatabase(path, maximumBytes, maintenance)
 	if err != nil {
-		return nil, fmt.Errorf("open frontier checkpoint database: %w", err)
+		return nil, err
 	}
 	database.NoSync = false
 	database.MaxBatchDelay = checkpointBatchDelay
 	database.MaxBatchSize = checkpointBatchSize
-	checkpoint := &FrontierCheckpoint{database: database}
+	checkpoint := &FrontierCheckpoint{
+		database: database,
+		stateGrowth: newFrontierStateGrowthGate(
+			path,
+			maximumBytes,
+		),
+	}
 	if err := checkpoint.initialize(path); err != nil {
 		return nil, errors.Join(err, database.Close())
 	}
@@ -60,6 +78,48 @@ func Open(path string) (*FrontierCheckpoint, error) {
 		return nil, errors.Join(err, database.Close())
 	}
 	return checkpoint, nil
+}
+
+func reportFrontierStateCompaction(
+	path string,
+	maximumBytes uint64,
+	compaction frontierStateCompaction,
+	compactionErr error,
+) {
+	if compactionErr != nil {
+		if compaction.installed {
+			slog.WarnContext(
+				context.Background(),
+				msgStateCompactWarned,
+				slog.String("path", path),
+				slog.Uint64("maximumBytes", maximumBytes),
+				slog.Bool("installed", true),
+				slog.Any("error", compactionErr),
+			)
+
+			return
+		}
+		slog.WarnContext(
+			context.Background(),
+			msgStateCompactFailed,
+			slog.String("path", path),
+			slog.Uint64("maximumBytes", maximumBytes),
+			slog.Bool("installed", false),
+			slog.Any("error", compactionErr),
+		)
+
+		return
+	}
+	if compaction.installed {
+		slog.InfoContext(
+			context.Background(),
+			msgStateCompacted,
+			slog.String("path", path),
+			slog.Int64("beforeBytes", compaction.beforeBytes),
+			slog.Int64("afterBytes", compaction.afterBytes),
+			slog.Int64("reclaimedBytes", max(compaction.beforeBytes-compaction.afterBytes, 0)),
+		)
+	}
 }
 
 func (checkpoint *FrontierCheckpoint) initialize(path string) error {

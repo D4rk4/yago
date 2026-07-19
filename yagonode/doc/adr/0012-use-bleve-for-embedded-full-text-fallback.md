@@ -36,6 +36,14 @@ acknowledged. Local public search uses this `SearchIndex` path, while
 `/yacy/search.html`, `/yacy/transferRWI.html`, and `/yacy/transferURL.html` keep
 using the YaCy RWI and URL metadata compatibility stores.
 
+When a mapping change requires a rebuild, startup first counts the document
+corpus and measures the current index footprint when it exists. It applies the
+normal storage-growth admission with that footprint as additional required
+headroom before it removes the old index. A rejected preflight preserves both
+the old index and the durable rebuild marker. An admitted rebuild reports one
+structured start record, at most the nine 10% milestones before completion, and
+one completion record while continuing to write 16-document batches.
+
 ## Considered alternatives
 
 Tantivy was considered because it is the preferred production-quality backend in
@@ -61,6 +69,10 @@ Bleve v2 becomes a runtime dependency of `yagonode` and is pinned in
 index next to the node vault. Backup and restore must include both
 `yago-node.db` and `search.bleve` when this backend is in use. The document store
 remains the source of truth for repair rebuilds and future backend migrations.
+Rebuild headroom is advisory rather than an exact future peak: allocation and
+segment merging can use more space than the measured current footprint. An
+interrupted rebuild remains restart-from-beginning, and its progress records are
+operational evidence rather than a resumable checkpoint.
 
 Memory usage now depends on the number and size of stored document fields that
 are indexed. Disk usage now includes the Bleve index in addition to the document

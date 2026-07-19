@@ -31,10 +31,27 @@ work together with the node's broker queue and indexes.
 The node creates `crawlbroker.db` only when its crawl runtime is enabled. It is
 a dedicated bbolt database, not part of the sharded main vault:
 `YAGO_STORAGE_QUOTA`, main-vault eviction, and main-vault compaction do not
-limit or shrink it. It currently has no separate byte cap. Monitor
+limit or shrink it. `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` sets a node-only soft
+physical admission boundary, and `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` sets
+the crawler checkpoint boundary bootstrapped by both services and delivered in
+the live crawler policy. Both default to 4 GiB; `0` disables either boundary.
+At or above the node boundary, fresh order enqueue is rejected while migration,
+ingest, lifecycle, recovery, and settlement continue. At or above the crawler
+boundary, fresh orders wait before expansion and newly discovered links are
+refused, while an already admitted seed manifest, existing dispatch, recovery,
+lifecycle, and terminal settlement continue. Raising or disabling the crawler
+boundary wakes waiting orders. Monitor
 `crawl_broker_state_used_bytes` for live database use and
 `crawl_broker_state_file_bytes` for the allocated file size; bbolt can retain
 free pages, so the latter is the disk-capacity signal.
+
+On startup, a state file whose physical size is at least its enabled boundary
+is copied into a private sibling bbolt file and atomically replaced after the
+copy is synced. This can require temporary free space. A failure before
+replacement leaves the original authoritative; startup logs a warning and
+continues with it. A failure while syncing the containing directory after
+replacement is logged as an installed durability warning. These are soft
+admission boundaries, not filesystem quotas.
 
 `YAGO_STORAGE_RESERVED_FREE` and `YAGO_STORAGE_PRESSURE_HYSTERESIS` control the
 node's filesystem-pressure admission gate. The corresponding
@@ -284,15 +301,19 @@ environment files and must be kept equal. It defaults to 10 and accepts
 `crawler.max_pages_per_second` value from Configuration → Crawler becomes
 authoritative after heartbeat and changes live. The node leases strict relative
 start windows from one non-bursting fleet schedule shared by every connected
-crawler process and active task. Each window spans the smaller of one rate
-interval and 250 milliseconds. A crawler conservatively intersects it with the
-request send and response receive times; a round trip that consumes the complete
-window retries without a catch-up burst. Each crawler retains the same value as
-a local process smoother; per-run pace, per-host concurrency, robots crawl delay,
-and the per-process worker limit remain additional bounds. Zero disables both
-rate limits. A finite rate requires node and crawler binaries that support
-fetch-start leases; an older peer fails closed instead of bypassing the fleet
-ceiling.
+crawler process and active task. A crawler measures each completed lease RPC,
+caps its delivery observation at one second, and reports that allowance on the
+next sequence. The node widens that demand-backed batch by the reported prior
+delivery time while reserving its complete final window before another batch.
+The crawler intersects relative openings with response receipt and closings with
+request send, then preserves the configured interval between permits it actually
+uses. A latency spike beyond the preceding allowance can discard a permit but
+cannot produce a catch-up burst; the new measurement applies to the next
+sequence. Each crawler retains the same value as a local process smoother;
+per-run pace, per-host concurrency, robots crawl delay, and the per-process
+worker limit remain additional bounds. Zero disables both rate limits. A finite
+rate requires node and crawler binaries that support fetch-start leases; an older
+peer fails closed instead of bypassing the fleet ceiling.
 
 `YAGO_CRAWLER_MAX_REDIRECTS` is a bootstrap value in both service environment
 files and must be kept equal. It defaults to 10 and accepts 0–1,000, where zero
@@ -319,15 +340,17 @@ concurrency, per-run default rate, sitemap limit, shutdown grace, and HTTP
 User-Agent are also bootstrapped in both service environments. The node's
 persisted Configuration → Crawler values are authoritative. Each crawler reads
 the typed policy before assembling its fetch stack. A sandbox-only change
-relaunches pooled browsers lazily before their next render; another changed
+relaunches pooled browsers lazily before their next render, and a frontier-state
+boundary change updates admission and wakes waiters live; another changed
 policy received on a later heartbeat triggers a graceful automatic crawler
-restart. The sandbox, browser-path, and metrics-address fields are optional on
-the wire; their absence preserves the crawler's current values when an
-immediately older policy-capable node omits them. A current node sends all three
-fields explicitly and is authoritative. An older node without the additive
-policy RPC leaves the crawler environment values in effect. Private CIDR
-exceptions accept only RFC 1918 and IPv6 ULA subnets and never admit loopback,
-link-local, metadata, carrier-grade NAT, multicast, or reserved ranges.
+restart. The sandbox, browser-path, metrics-address, and frontier-state maximum
+fields are optional on the wire; their absence preserves the crawler's current
+values when an immediately older policy-capable node omits them. A current node
+sends all four fields explicitly and is authoritative. An older node without
+the additive policy RPC leaves the crawler environment values in effect.
+Private CIDR exceptions accept only RFC 1918 and IPv6 ULA subnets and never
+admit loopback, link-local, metadata, carrier-grade NAT, multicast, or reserved
+ranges.
 
 Both service environment files bootstrap
 `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY=true` and must be kept equal.
@@ -375,6 +398,16 @@ systemctl edit yago-crawler
 A small single-purpose box can raise the shares; a box that co-hosts other
 services can lower them or switch to absolute sizes as above.
 
+When the loopback crawler metrics listener is enabled, use
+`yacy_crawler_browser_slot_acquisition_seconds` to measure pool queueing,
+`yacy_crawler_browser_sessions{state="ready|busy|cooling"}` to see the fixed pool
+state, and
+`yacy_crawler_browser_failures_total{reason="slot_deadline|cooldown|launch|render"}`
+to classify bounded failure causes. The labels are fixed and never contain a URL
+or raw error text. The existing
+`yacy_crawler_browser_slot_acquisition_deadlines_total` remains available for
+dashboards that predate the reason-labeled counter.
+
 ## Node resource limits
 
 `yago-node.service` applies `MemoryHigh=75%`, `MemoryMax=90%`, and
@@ -406,9 +439,23 @@ structure.
 An upgrade that changes the embedded Bleve mapping rebuilds all eight search
 shards from the document vault before the public and peer listeners start. The
 node records the rebuild as in progress and repeats it from the beginning after
-an interrupted attempt, so a partial index is never served. Rebuild writes use
+an interrupted attempt, so a partial index is never served. Before removing the
+old index, startup counts the stored documents, measures the current index
+footprint when available, and applies the normal storage-growth admission with
+that measured footprint as additional headroom. A failed preflight keeps the old
+index and durable rebuild marker intact and stops startup with an actionable
+error. The footprint is an estimate of rebuild demand, not an exact upper bound:
+segment allocation and merging can still raise the transient peak after the
+check.
+
+An admitted rebuild writes one structured INFO start record with the document
+total, footprint estimate, and storage observation, then at most one INFO record
+at each 10% milestone from 10% through 90%, and one completion record with the
+indexed total, batch total, and elapsed milliseconds. Rebuild writes use
 16-document batches to limit transient segment memory, but startup downtime,
-merge I/O, and temporary disk use still scale with the stored corpus.
+merge I/O, and temporary disk use still scale with the stored corpus. An
+interrupted rebuild still restarts from the beginning; the progress records are
+operational evidence, not a resumable checkpoint or Admin progress control.
 
 For a bare-metal package upgrade, use the stopped two-service backup so the
 crawler frontier and node broker queue share one recovery point, install the

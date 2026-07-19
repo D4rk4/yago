@@ -99,8 +99,40 @@ gate-managed node growth. Their Admin keys are `storage.reserved_free` and
 `storage.pressure_hysteresis`. `YAGO_CRAWLER_STORAGE_RESERVED_FREE` and
 `YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` bootstrap each crawler's policy; the
 matching Admin keys are `crawler.storage_reserved_free` and
-`crawler.storage_pressure_hysteresis`. The node sends live crawler-policy
-changes on worker heartbeats.
+`crawler.storage_pressure_hysteresis`. Before the crawler opens its checkpoint,
+the node returns both current Admin values in the startup runtime-policy
+envelope, including explicit zero. Omission by an older node preserves the
+environment bootstrap. The node sends later live crawler-policy changes on
+worker heartbeats.
+
+Two independent soft physical state-file boundaries complement filesystem
+pressure. `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` and Admin key
+`crawler.node_state_max_bytes` control `crawlbroker.db` on the node.
+`YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` and Admin key
+`crawler.frontier_state_max_bytes` control `crawler/frontier-v1.db`; keep its
+bootstrap equal in both services, after which the node distributes the
+authoritative value through typed crawler policy. Both default to 4 GiB, apply
+live, and accept `0` to disable the boundary.
+
+At or above the node boundary, fresh order enqueue is rejected while migration,
+ingest, lifecycle, recovery, and settlement writes continue. At or above the
+crawler boundary, fresh orders wait before expansion and discovered-link batches
+are refused. An order whose committed seed manifest crosses the boundary remains
+existing durable work and completes; queued dispatch, recovery, lifecycle, and
+terminal settlement also continue. Raising or disabling the crawler boundary
+wakes waiting orders.
+
+On startup, either state file is compacted when its physical size is equal to or
+greater than its enabled boundary. Each process holds a persistent path-stable
+sidecar lease through stale-copy cleanup, compaction, atomic replacement,
+directory sync, inspection, and authoritative database open. Inside the shared
+serialized storage-maintenance gate, it remeasures the actual source size,
+reserves that temporary headroom, and copies live bbolt rows into a synced
+private sibling file. Still under the sidecar lease, it atomically replaces the
+original and syncs the directory. A failure before replacement is a recoverable
+warning and startup opens the unchanged original; a later directory-sync or
+inspection failure is reported as an installed durability warning. The
+boundaries are admission controls, not filesystem quotas.
 
 Each process measures the filesystem containing its own `YAGO_DATA_DIR`.
 Measurement failure pauses admission. At or below the reserve, gate-managed node
@@ -166,6 +198,7 @@ required.
 | `YAGO_STORAGE_QUOTA` | `1GB` | Soft admission and eviction target for logical live main-vault rows, as a human-readable size. It excludes Bleve, crawl state, allocated free pages, and temporary copies. Admin key: `storage.quota`. |
 | `YAGO_STORAGE_RESERVED_FREE` | `1GB` | Filesystem free-space reserve for gate-managed node growth. Admin key: `storage.reserved_free`; applies live. |
 | `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | Additional free space above the node reserve required before gate-managed growth resumes. Admin key: `storage.pressure_hysteresis`; applies live. |
+| `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` | `4GB` | Soft physical admission boundary for `crawlbroker.db`; `0` disables it. Admin key: `crawler.node_state_max_bytes`; applies live. |
 | `YAGO_STORAGE_COMPACTION_INTERVAL` | `1d` | Cadence for rewriting storage shards so deleted space returns to the operating system; `off` disables compaction. Admin key: `storage.compaction.interval`; applies live. |
 | `YAGO_STORAGE_AUTOSPLIT` | `true` | Allow the storage engine to grow its linear-hashing shard pool as data accumulates. Admin key: `storage.autosplit`; applies live. Turning it off freezes the current shard geometry. |
 | `YAGO_STORAGE_DEFER_FSYNC` | `false` | Skip the per-commit storage flush and use bounded periodic flushing. Admin key: `storage.defer_fsync`; takes effect after restart. Leave it off unless the host has reliable power and a bounded crash-loss window is acceptable. |
@@ -277,6 +310,18 @@ requests before parsing. Blacklist input and output share 16 MiB; profile input,
 owned properties, and output are capped at 1 MiB, 1 MiB, and 2 MiB. These are
 process safety invariants rather than operator tuning knobs.
 
+When a Tavily-compatible request sets `include_usage`, the success envelope adds
+request-local compatible units derived from completed work. Executed basic,
+fast, and ultra-fast searches use one unit; an executed advanced search uses
+two. Extract counts each complete group of five successful results, doubled for
+advanced depth. Map counts each complete group of ten successful pages, doubled
+when instructions are present. Crawl adds those mapping units to extraction
+units from complete groups of five successful pages. Failed items do not count,
+and a `max_results:0` search that does not execute retrieval reports zero. These
+units are compatibility accounting, not billing, an account balance,
+external-provider spend, or proof of an upstream Tavily call. No Admin setting
+or environment variable controls the formulas.
+
 ## Admin authentication
 
 Every operations endpoint except `/health` and `/ready` requires a valid admin
@@ -385,6 +430,29 @@ P2P. Terminate TLS at that proxy so the session cookie is marked `Secure`.
 
 The node can drive a crawl fleet over gRPC: it serves a `CrawlExchange` endpoint that crawlers dial. Operators start a crawl by posting seed URLs to `/crawl` on the ops address; the node enqueues orders in a durable, store-backed queue and streams them to connected crawlers, and crawled pages flow back in as bounded ingest batches. Local identity and encoded-size validation stops an invalid payload before RPC. A node-returned `Unavailable` or legacy `ResourceExhausted` saturation status retries with jittered exponential delay capped at five seconds until the crawl context ends. The endpoint defaults to loopback at `127.0.0.1:9091` for a co-located crawler; set `YAGO_CRAWL_RPC_ADDR=off` for a pure peer or an explicit bind such as `:9091` for remote workers.
 
+### Extraction-generation refresh
+
+Newly parsed documents carry extraction generation `1`; stored payloads that
+predate the field read as generation `0`. When a material parser or extractor
+change advances the current generation, Admin → Index offers an explicit action
+that examines an operator-selected 1–100 raw storage records per submission
+(default 20) and queues only documents whose generation is missing or older.
+Current or newer documents are skipped. The action is available only when the
+document reader and crawler dispatch are configured.
+
+One pass captures the high key of the legacy and admission-ordered document
+partitions, then carries those ends and its current position in a bounded
+continuation token. This prevents continuous ingest from extending the pass, but
+it is not a transactional snapshot: later submissions may observe intervening
+replacement or deletion, and admissions beyond the captured ends wait for a new
+pass. Each stale batch enters the existing durable crawl-dispatch queue with an
+idempotency identity for that action and continuation. A delivery failure keeps
+the same position available for retry.
+
+This is an operator action, not a runtime setting. It has no environment variable
+and never starts automatically after an upgrade, so changing an extraction
+generation cannot create an unbounded recrawl storm.
+
 Automatic swarm crawls are enabled by default at depth 5 and 250 pages per
 task. Web-discovery crawling remains disabled until the operator enables it;
 its ready profile uses the same depth and whole-run page cap. Both automatic paths crawl
@@ -474,9 +542,10 @@ a poison retry loop.
 | `YAGO_CRAWLER_METRICS_ADDR` | _(empty)_ | Optional loopback IP-literal crawler Prometheus listener, for example `127.0.0.1:9101` or `[::1]:9101`; empty starts no crawler HTTP listener. Wildcard and non-loopback listeners are rejected; expose a remote scrape only through a trusted tunnel or proxy. Admin key: `crawler.metrics_address`. Keep the same bootstrap in both services; the node delivers the persisted value before crawler assembly and a change gracefully restarts connected crawlers. |
 | `YAGO_CRAWLER_BROWSER_PATH` | _(PATH discovery)_ | Optional absolute clean path whose basename is exactly `firefox` or `firefox-esr`. Empty discovers either launcher through `PATH`; no installed Firefox leaves the HTTP fast path available and fails only a requested browser fallback. A configured or discovered launcher must resolve through a root-owned path chain that is not group- or other-writable to a regular, non-set-ID executable available to the crawler identity; this is checked before browser assembly and again before each spawn. Admin key: `crawler.browser_path`. Keep the same bootstrap in both services; the node delivers the persisted value before crawler assembly and a change gracefully restarts connected crawlers. |
 | `YAGO_CRAWLER_WORKERS` | `4` | Bootstrap page-fetch concurrency for each connected crawler process (1–256). Keep the same bootstrap value in the crawler environment. The persisted Configuration → Crawler value is sent over heartbeat and becomes authoritative after connection; it limits neither crawl runs nor queued tasks. |
-| `YAGO_CRAWLER_MAX_PAGES_PER_SECOND` | `10` | Bootstrap fleet-wide page-fetch start rate (0–1,000,000; `0` is unlimited). Admin key: `crawler.max_pages_per_second`, shown as “Maximum fleet-wide fetch-start rate”. The node leases non-bursting relative start windows across all connected crawler processes and active runs. Each window spans the smaller of one rate interval and 250 milliseconds; the crawler intersects it with request-send and response-receive bounds, so a round trip that consumes the complete window retries without a catch-up burst. Each crawler also uses the value as a local process smoother; page-fetch workers, per-run pace, and per-host politeness remain additional limits. A live change is authoritative after heartbeat. Enabling or reducing a finite ceiling fences existing order streams before new-rate permits are issued; increasing it retains capable sessions. A finite rate fails closed against a node or crawler without fetch-start lease support. |
+| `YAGO_CRAWLER_MAX_PAGES_PER_SECOND` | `10` | Bootstrap fleet-wide page-fetch start rate (0–1,000,000; `0` is unlimited). Admin key: `crawler.max_pages_per_second`, shown as “Maximum fleet-wide fetch-start rate”. The node leases non-bursting relative start windows across all connected crawler processes and active runs. The crawler measures the previous completed lease RPC, caps its delivery allowance at one second, and reports it on the next sequence. The node widens that demand-backed batch and reserves its complete final window before another batch. The crawler intersects openings with response receipt and closings with request send, then enforces one configured interval between permits actually used. A latency spike beyond the preceding allowance can discard a permit but cannot produce a catch-up burst. Each crawler also uses the value as a local process smoother; page-fetch workers, per-run pace, and per-host politeness remain additional limits. A live change is authoritative after heartbeat. Enabling or reducing a finite ceiling fences existing order streams before new-rate permits are issued; increasing it retains capable sessions. A finite rate fails closed against a node or crawler without fetch-start lease support. |
 | `YAGO_CRAWLER_MAX_REDIRECTS` | `10` | Bootstrap redirect-hop maximum for guarded HTTP and browser fetches (0–1,000; `0` rejects the first redirect). Admin key: `crawler.max_redirects`. It applies live after heartbeat; HTTP clients read it immediately and Firefox sessions lazily relaunch before the next render. Keep the same bootstrap value in the crawler environment. |
 | `YAGO_CRAWLER_MAX_ACTIVE_RUNS` | `32` | Bootstrap active crawl-task limit for each connected crawler process (1–256). Admin key: `crawler.max_active_runs`; it applies live after heartbeat and is independent of page-fetch workers. Excess ordinary and recovered tasks wait without activating frontier or progress work. |
+| `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` | `4GB` | Bootstrap in both services for the soft physical boundary on `crawler/frontier-v1.db`; `0` disables it. Admin key: `crawler.frontier_state_max_bytes`; it applies live after heartbeat and wakes fresh orders waiting at the previous boundary. |
 | `YAGO_CRAWLER_MAX_PAGES_PER_RUN` | `50000` | Bootstrap whole-run page budget in both node and crawler environments. The node stamps the current Configuration → Crawler value into each new manual and scheduled profile. For swarm and web discovery, a positive value can only reduce the dedicated automatic-task cap; `0` leaves that dedicated cap intact. Existing manual and recrawl profiles retain their recorded value. Recovered legacy automatic profiles that omit the whole-run field derive it from their stored positive per-host cap. |
 | `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY` | `true` | Bootstrap in both node and crawler environments. Gives explicit swarm and web-discovery work bounded three-order and three-page priority. `false` preserves exact global FIFO order leasing and disables class preference in crawler page dispatch. The one-second startup heartbeat is authoritative when successful; later heartbeat changes apply live. |
 | `YAGO_CRAWLER_ALLOW_PRIVATE_NETWORKS` | `false` | Bootstrap opt-in for crawler access to RFC 1918 and IPv6 ULA targets. Admin key: `crawler.allow_private_networks`. Loopback, link-local, metadata, carrier-grade NAT, multicast, and reserved ranges remain blocked. |
@@ -495,16 +564,18 @@ a poison retry loop.
 | `YAGO_CRAWLER_SHUTDOWN_GRACE` | `10s` | Drain deadline from 1 millisecond through 5 minutes for fetch workers and final progress delivery during stop or policy restart. Admin key: `crawler.shutdown_grace`. |
 | `YAGO_CRAWLER_USER_AGENT` | `yago-crawler/<version> (+https://github.com/D4rk4/yago/)` | One-line HTTP identity of at most 256 bytes for page, robots, sitemap, and browser fetches. Admin key: `crawler.http.user_agent`; an empty environment value selects the versioned default. |
 
-The node and crawler environments bootstrap the same values for these seventeen
+The node and crawler environments bootstrap the same values for these eighteen
 runtime-policy controls. The node's persisted Configuration → Crawler values
 are authoritative: a crawler reads the typed policy before constructing its
 fetch stack. A sandbox-only heartbeat change applies to the browser pool without
-restarting the crawler; every other policy change triggers a graceful automatic
-crawler restart. The optional sandbox, browser-path, and metrics-address wire
-fields preserve the crawler's current values when an immediately older
-policy-capable node omits them. A current node always sends all three fields and
-is authoritative. A crawler talking to an older node that does not implement
-policy delivery retains its own environment bootstrap.
+restarting the crawler, and a frontier-state boundary change updates admission
+and wakes waiters live; every other policy change triggers a graceful automatic
+crawler restart. Optional fields 15–18 carry sandbox, browser path, metrics
+address, and `frontier_state_max_bytes`; startup-envelope fields 19 and 20 carry
+the crawler storage reserve and hysteresis. Omission preserves the crawler's
+current or environment-bootstrap value, while a current node sends all six
+explicitly, including zero, and is authoritative. A crawler talking to an older
+node that does not implement policy delivery retains its environment bootstrap.
 
 A worker-count change pauses new page intake in each connected crawler, lets its
 active page fetches finish, and starts the latest requested worker group without

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlermetrics"
 	"github.com/D4rk4/yago/yago-crawler/internal/firefoxfetch"
@@ -125,7 +126,7 @@ func TestRunClosesBrowserOnSuccess(t *testing.T) {
 	configuredRedirects := -1
 	newCrawlerBrowserFetcher = func(
 		launch firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
-		_ ...func(),
+		_ firefoxfetch.BrowserPoolObserver,
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		configuredRedirects = launch.MaxRedirects
 		return &firefoxfetch.BrowserPageFetcher{}, func() { closed = true }, nil
@@ -163,7 +164,7 @@ func TestRunReturnsRuntimePolicySynchronizationError(t *testing.T) {
 	newCrawlerBrowserFetcher = func(
 		firefoxfetch.BrowserLaunch,
 		yagoegress.Guard,
-		...func(),
+		firefoxfetch.BrowserPoolObserver,
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		browserStarted = true
 
@@ -179,18 +180,18 @@ func TestRunReturnsRuntimePolicySynchronizationError(t *testing.T) {
 	}
 }
 
-func TestRunWiresBrowserSlotAcquisitionDeadlineToServiceMetrics(t *testing.T) {
+func TestRunWiresBrowserPoolObservationToServiceMetrics(t *testing.T) {
 	restoreMainSeams(t)
-	var observeBrowserSlotAcquisitionDeadline func()
+	var observer firefoxfetch.BrowserPoolObserver
 	newCrawlerBrowserFetcher = func(
 		_ firefoxfetch.BrowserLaunch,
 		_ yagoegress.Guard,
-		observers ...func(),
+		configuredObserver firefoxfetch.BrowserPoolObserver,
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
-		if len(observers) != 1 || observers[0] == nil {
-			t.Fatalf("browser slot acquisition observers = %d, want one", len(observers))
+		if configuredObserver == nil {
+			t.Fatal("browser pool observer is nil")
 		}
-		observeBrowserSlotAcquisitionDeadline = observers[0]
+		observer = configuredObserver
 
 		return &firefoxfetch.BrowserPageFetcher{}, func() {}, nil
 	}
@@ -200,7 +201,13 @@ func TestRunWiresBrowserSlotAcquisitionDeadlineToServiceMetrics(t *testing.T) {
 		_ pagefetch.PageSource,
 		metrics *crawlermetrics.Metrics,
 	) error {
-		observeBrowserSlotAcquisitionDeadline()
+		observer.ObserveBrowserFailure(firefoxfetch.BrowserFailureSlotDeadline)
+		observer.ObserveBrowserSlotWait(250 * time.Millisecond)
+		observer.ObserveBrowserPoolState(firefoxfetch.BrowserPoolState{
+			Ready:   1,
+			Busy:    2,
+			Cooling: 3,
+		})
 		request := httptest.NewRequestWithContext(
 			context.Background(),
 			http.MethodGet,
@@ -216,6 +223,17 @@ func TestRunWiresBrowserSlotAcquisitionDeadlineToServiceMetrics(t *testing.T) {
 		) {
 			t.Fatalf("browser slot acquisition deadline metric missing:\n%s", body)
 		}
+		for _, sample := range []string{
+			`yacy_crawler_browser_failures_total{reason="slot_deadline"} 1`,
+			`yacy_crawler_browser_sessions{state="ready"} 1`,
+			`yacy_crawler_browser_sessions{state="busy"} 2`,
+			`yacy_crawler_browser_sessions{state="cooling"} 3`,
+			"yacy_crawler_browser_slot_acquisition_seconds_count 1",
+		} {
+			if !strings.Contains(body, sample) {
+				t.Fatalf("browser pool metric %q missing:\n%s", sample, body)
+			}
+		}
 
 		return nil
 	}
@@ -229,7 +247,7 @@ func TestRunPreservesConfiguredWorkerIdentityForServiceAssembly(t *testing.T) {
 	restoreMainSeams(t)
 	newCrawlerBrowserFetcher = func(
 		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
-		_ ...func(),
+		_ firefoxfetch.BrowserPoolObserver,
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		return &firefoxfetch.BrowserPageFetcher{}, func() {}, nil
 	}
@@ -265,7 +283,7 @@ func TestRunClosesBrowserOnServiceError(t *testing.T) {
 	closed := false
 	newCrawlerBrowserFetcher = func(
 		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
-		_ ...func(),
+		_ firefoxfetch.BrowserPoolObserver,
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		return &firefoxfetch.BrowserPageFetcher{}, func() { closed = true }, nil
 	}
@@ -292,7 +310,7 @@ func TestRunReturnsBrowserStartError(t *testing.T) {
 	sentinel := errors.New("browser start failed")
 	newCrawlerBrowserFetcher = func(
 		_ firefoxfetch.BrowserLaunch, _ yagoegress.Guard,
-		_ ...func(),
+		_ firefoxfetch.BrowserPoolObserver,
 	) (*firefoxfetch.BrowserPageFetcher, func(), error) {
 		return nil, nil, sentinel
 	}

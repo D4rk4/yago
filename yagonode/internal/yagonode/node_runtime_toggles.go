@@ -41,6 +41,7 @@ type runtimeToggles struct {
 	crawlerStorageReservedFree   atomic.Int64
 	crawlerStorageRecovery       atomic.Int64
 	crawlerStoragePolicy         atomic.Value
+	crawlerNodeStateMaximum      atomic.Value
 	crawlerRuntimePolicyMu       sync.Mutex
 	crawlerRuntimePolicy         yagocrawlcontract.CrawlerRuntimePolicy
 	crawlerRuntimePolicySink     atomic.Value

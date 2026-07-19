@@ -182,7 +182,7 @@ func bootNodeWithEventDrain(
 	storageVault.SetDeferredFsync(config.StorageDeferFsync)
 	storageVault.SetReadDeferBudget(config.StorageReadDefer)
 	storagePressure := newNodeStoragePressure(config, toggles, obs.endpoints)
-	config.Crawl.GrowthAdmission = storagePressure
+	configureCrawlStateGrowthAdmission(&config, toggles, storagePressure)
 	if err := validateNodeBinds(config); err != nil {
 		return eventDrain, fmt.Errorf("validate listen addresses: %w", err)
 	}
@@ -197,7 +197,8 @@ func bootNodeWithEventDrain(
 	ctx, restart := newRestartController(ctx)
 	configureSetupWizard(authService, sources.settings, config, restart.Trigger)
 	sources.restart = restart.Trigger
-	defer attachPerformanceHistory(ctx, obs.endpoints, &sources)()
+	history := newNodePerformanceHistory(obs.endpoints)
+	sources.perfHistory = newPerformanceHistorySource(history)
 
 	assembled, err := assembleRuntimeNode(
 		ctx,
@@ -228,20 +229,33 @@ func bootNodeWithEventDrain(
 	defer assembled.clicks.StopImpressionPreparations()
 
 	opsMux := buildOpsMux(obs.endpoints, config, assembled, obs.recorder, sources)
+	defer startPerformanceHistorySampler(ctx, history)()
 	opsHandler := wrapAdminCORS(
 		config.CrossOrigin.AdminOrigins,
 		guardAdminSurface(authService, opsMux),
 	)
 
+	servers := buildRuntimeServers(config, obs.endpoints, assembled, toggles, opsHandler)
+
+	return eventDrain, restart.Wrap(serveRuntimeNode(ctx, assembled, obs.eviction, servers...))
+}
+
+func buildRuntimeServers(
+	config nodeConfig,
+	endpoints *metrics.HTTPEndpointMetrics,
+	assembled node,
+	toggles *runtimeToggles,
+	opsHandler http.Handler,
+) []namedServer {
 	servers := []namedServer{
-		buildPeerServer(config, obs.endpoints, assembled, toggles),
+		buildPeerServer(config, endpoints, assembled, toggles),
 		{"ops", buildServer(config.OpsAddr, redirectHTTPS(toggles, opsHandler))},
 	}
 	if config.PublicAddr != "" {
-		servers = append(servers, buildPublicServer(config, obs.endpoints, assembled, toggles))
+		servers = append(servers, buildPublicServer(config, endpoints, assembled, toggles))
 	}
 
-	return eventDrain, restart.Wrap(serveRuntimeNode(ctx, assembled, obs.eviction, servers...))
+	return servers
 }
 
 // buildPublicServer builds the dedicated public search listener: the portal,

@@ -2,6 +2,7 @@ package yagocrawlcontract
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -50,6 +51,9 @@ func validateCrawlerRuntimeAccess(policy CrawlerRuntimePolicy) error {
 }
 
 func validateCrawlerRuntimeLimits(policy CrawlerRuntimePolicy) error {
+	if policy.FrontierStateMaximumBytes > math.MaxInt64 {
+		return fmt.Errorf("frontier state maximum bytes exceed the supported range")
+	}
 	if policy.BrowserFailureThreshold < 0 ||
 		policy.BrowserFailureThreshold > MaximumCrawlerBrowserFailureThreshold {
 		return fmt.Errorf(

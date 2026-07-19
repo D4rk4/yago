@@ -128,6 +128,7 @@ type Options struct {
 	DocumentDetail       DocumentDetailSource
 	IndexAdmin           IndexAdminSource
 	IndexRebuild         IndexRebuildScheduler
+	ExtractionRecrawl    ExtractionRecrawlSource
 	Blacklist            BlacklistSource
 	IndexExport          IndexExporter
 	Compactor            Compactor
@@ -354,6 +355,7 @@ type indexPageData struct {
 	RebuildStatusError    string
 	RebuildNotice         string
 	RebuildError          string
+	ExtractionRecrawl     ExtractionRecrawlView
 	StorageStatus         indexStorageStatus
 	BlacklistEnabled      bool
 	Blacklist             []BlacklistEntry
@@ -455,6 +457,7 @@ type Console struct {
 	documentDetail       DocumentDetailSource
 	indexAdmin           IndexAdminSource
 	indexRebuild         IndexRebuildScheduler
+	extractionRecrawl    ExtractionRecrawlSource
 	blacklist            BlacklistSource
 	indexExport          IndexExporter
 	compactor            Compactor
@@ -514,6 +517,7 @@ func New(opts Options) *Console {
 		documentDetail:       opts.DocumentDetail,
 		indexAdmin:           opts.IndexAdmin,
 		indexRebuild:         opts.IndexRebuild,
+		extractionRecrawl:    opts.ExtractionRecrawl,
 		blacklist:            opts.Blacklist,
 		indexExport:          opts.IndexExport,
 		compactor:            opts.Compactor,
@@ -742,9 +746,11 @@ func (c *Console) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // indexNotes carries one-shot messages the Index page shows after an action.
 type indexNotes struct {
-	BlacklistProbe string
-	RebuildNotice  string
-	RebuildError   string
+	BlacklistProbe         string
+	RebuildNotice          string
+	RebuildError           string
+	ExtractionRecrawl      *ExtractionRecrawlResult
+	ExtractionRecrawlError string
 }
 
 func (c *Console) renderIndexPage(w http.ResponseWriter, r *http.Request, notes indexNotes) {
@@ -764,6 +770,11 @@ func (c *Console) renderIndexPage(w http.ResponseWriter, r *http.Request, notes 
 		RebuildEnabled:        c.indexRebuild != nil,
 		RebuildNotice:         notes.RebuildNotice,
 		RebuildError:          notes.RebuildError,
+		ExtractionRecrawl: newExtractionRecrawlView(
+			c.extractionRecrawl != nil,
+			notes.ExtractionRecrawl,
+			notes.ExtractionRecrawlError,
+		),
 		StorageStatus: buildIndexStorageStatus(
 			c.crawlerFetchActivity,
 			c.storagePressure,

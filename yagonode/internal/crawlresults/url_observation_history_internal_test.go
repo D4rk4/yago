@@ -266,6 +266,30 @@ func TestURLObservationHistoryCompleteOrdering(t *testing.T) {
 		dispositions[1] != observationSuperseded {
 		t.Fatalf("dispositions = %v", dispositions)
 	}
+
+	tieCurrent := historyBatch("middle", base.Add(2*time.Hour))
+	tieCurrent.SourceURL = "https://example.org/tie"
+	if err := history.Complete(
+		t.Context(),
+		[]yagocrawlcontract.IngestBatch{tieCurrent},
+	); err != nil {
+		t.Fatal(err)
+	}
+	tieSuperseded := historyBatch("earlier", tieCurrent.ObservedAt)
+	tieSuperseded.SourceURL = tieCurrent.SourceURL
+	if err := history.Complete(
+		t.Context(),
+		[]yagocrawlcontract.IngestBatch{tieSuperseded},
+	); err == nil {
+		t.Fatal("lower observation identity replaced equal-time observation")
+	}
+	dispositions, err = history.Begin(t.Context(), []yagocrawlcontract.IngestBatch{tieSuperseded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dispositions) != 1 || dispositions[0] != observationSuperseded {
+		t.Fatalf("equal-time disposition = %v, want superseded", dispositions)
+	}
 }
 
 func TestURLObservationHistoryCompleteErrors(t *testing.T) {

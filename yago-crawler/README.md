@@ -128,6 +128,14 @@ metadata and bounded image URL/alt metadata when available. Links marked
 `rel=nofollow` are not submitted for frontier expansion or local outlink
 evidence unless the crawl profile opts in.
 
+Every newly parsed live document is stamped with
+`CurrentExtractionGeneration`, currently `1`, before it crosses the ingest
+boundary. Generation `0` is reserved for older unstamped payloads. A material
+parser or extractor change that requires stored content to be fetched again
+advances the shared constant. This does not start a background migration: an
+operator uses the bounded Admin → Index action to queue older stored documents
+through the node's existing durable crawl dispatcher.
+
 Discovered links whose URL path has an unambiguous suffix for a disabled parser
 family, or for the unsupported AppImage, DEB, DMG, EXE, ISO, MPKG, MSI, PKG,
 RPM, TXZ, or XZ container formats, are rejected before frontier admission.
@@ -210,9 +218,10 @@ TeX ligature bytes merely because its mapping is unavailable.
 CMap, font-encoding, and page/Form decoding share one 32 MiB document budget, and
 extracted UTF-8 text stops at 1 MiB. Repository tests use bounded synthetic PDFs,
 including the custom-encoding shape of Cisco's live ENCS document; external PDFs
-remain verification-only downloads. A normal recrawl is required to replace text
-that an older extractor already stored for either reported PDF. Extraction remains
-embedded-text only and performs no OCR.
+remain verification-only downloads. The bounded extraction-generation action on
+Admin → Index can queue a normal recrawl to replace text that an older extractor
+already stored for either reported PDF. Extraction remains embedded-text only and
+performs no OCR.
 
 Crawl requests can start from normal URLs, XML sitemaps, sitemap indexes, plain
 text sitelists, or a host's `robots.txt`. Sitemap and sitelist starts are fetched
@@ -236,16 +245,20 @@ Configuration comes from the environment (`YAGO_CRAWLER_NODE_RPC_ADDR` is requir
 bytes for the stable identity stored in that checkpoint; the crawler appends a
 hyphen and UUID within the 256-byte wire limit;
 `YAGO_CRAWLER_STORAGE_RESERVED_FREE` defaults to 1 GiB and
-`YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` defaults to 256 MiB. The crawler
+`YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` defaults to 256 MiB;
+`YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` defaults to 4 GiB and sets a soft
+physical boundary for `crawler/frontier-v1.db`, while `0` disables it. The crawler
 measures the filesystem containing its data directory, fails closed when that
 measurement is unavailable, and waits before new fetch or frontier-growth
 admission when free space reaches the reserve. It resumes only after free space
-reaches the reserve plus hysteresis. A successful node heartbeat applies the
-live `crawler.storage_reserved_free` and
-`crawler.storage_pressure_hysteresis` Admin values; the environment values are
-the bootstrap policy until then. An existing checkpoint opens for recovery, and
-deletion, settlement, and completed-work cleanup remain available. Bounded
-schema and stable-identity bootstrap writes are outside this advisory gate;
+reaches the reserve plus hysteresis. Before opening the checkpoint, a successful
+runtime-policy read applies the live `crawler.storage_reserved_free` and
+`crawler.storage_pressure_hysteresis` Admin values, including explicit zero; an
+older node that omits either additive startup field leaves the matching
+environment bootstrap in effect. Later live changes continue through worker
+heartbeats. An existing checkpoint opens for recovery, and deletion, settlement,
+and completed-work cleanup remain available. Bounded schema and stable-identity
+bootstrap writes are outside this advisory gate;
 `YAGO_CRAWLER_WORKERS` starts 4 page-fetch workers by default and accepts 1–256;
 the same bootstrap value belongs in the node environment, whose persisted Admin
 setting becomes authoritative for every connected process after heartbeat;
@@ -254,13 +267,17 @@ for the complete connected crawler fleet and accepts 0–1,000,000, where zero i
 unlimited; the same bootstrap value belongs in the node environment, and the
 live `crawler.max_pages_per_second` Admin setting becomes authoritative after
 heartbeat. The node grants strict relative start windows from one non-bursting
-schedule. Each window spans the smaller of one rate interval and the
-250-millisecond reservation horizon. The crawler intersects it with the request
-send and response receive times: round-trip time below that span remains usable,
-while an equal or greater round-trip leaves no permit and retries slowly without
-bursting. The crawler keeps the same value as a local process smoother and
-requests only demand-backed permit batches bounded by its live worker
-concurrency. Per-run and per-host limits continue to apply independently;
+schedule. The crawler measures each completed lease RPC from request start to
+response receipt, caps the observation at one second, and reports it on the next
+sequence. The node adds that prior delivery allowance to the next demand-backed
+batch and reserves the complete enlarged final window before another batch. The
+crawler intersects relative openings with response receipt and closings with
+request send, then enforces one configured interval between permits it actually
+consumes. A delivery spike beyond the previous allowance may discard a window,
+but cannot cause a catch-up burst; its measurement applies to the next sequence.
+The crawler keeps the same value as a local process smoother and requests only
+demand-backed permit batches bounded by its live worker concurrency. Per-run and
+per-host limits continue to apply independently;
 `YAGO_CRAWLER_MAX_ACTIVE_RUNS` defaults to 32 and accepts 1–256; it bounds the
 distinct crawl tasks whose prepared orders, frontiers, and progress reporters
 may remain active in each process, independently of page-fetch concurrency. The
@@ -286,11 +303,13 @@ concurrency, per-run default rate, sitemap limit, shutdown grace, and HTTP
 User-Agent belong in both service environments. Before assembling its fetch
 stack, the crawler reads the node's typed authoritative policy. A sandbox-only
 heartbeat change lets an active render finish and retires the affected Firefox
-session before that slot's next render; every other policy change requests a
-graceful automatic restart. The optional sandbox, browser-path, and
-metrics-address fields keep their current bootstrap values when the immediately
-previous policy-capable node omits them. An older node without that additive RPC
-leaves the environment bootstrap in use.
+session before that slot's next render. A frontier-state boundary change applies
+live and wakes fresh orders waiting at the old boundary; every other policy
+change requests a graceful automatic restart. The optional sandbox,
+browser-path, metrics-address, frontier-state, storage-reserve, and storage-
+hysteresis fields keep their current bootstrap or effective values when an older
+policy-capable node omits them. An older node without that additive RPC leaves
+the environment bootstrap in use.
 
 The Index URL/domain denylist is also authoritative crawler policy. Before the
 order stream opens, the crawler obtains one bounded revisioned snapshot from the
@@ -326,6 +345,23 @@ policy is early backpressure, not an aggregate hard quota: ordinary allocation,
 bbolt growth granularity, and files outside the gate can still consume space.
 Use a filesystem or project quota, or a quota-capable volume, for an enforced
 maximum.
+
+The frontier-state boundary inspects the checkpoint file once per fresh-order
+admission attempt and once for each discovered-link mutation batch, never for
+each URL.
+At or above the boundary, a fresh order waits before seed expansion and resumes
+after a live increase or disable; an order whose already committed seed manifest
+crosses the boundary remains durable existing work and completes normally. New
+discovered links are refused rather than retained for later admission. Existing
+queued pages, recovery, lifecycle changes, and terminal settlement continue.
+On startup at or above the boundary, the crawler takes a persistent path-stable
+sidecar lease and holds it through stale-copy cleanup, private sibling-copy
+compaction, atomic replacement, directory sync, inspection, and authoritative
+database open. It measures the actual source size and reserves that temporary
+headroom inside the shared serialized storage-maintenance gate before copying.
+A failure before replacement is logged and leaves the original authoritative;
+an installed replacement with a later directory-sync warning is reported as
+installed, not skipped.
 
 A live worker-count update stops new frontier intake and waits for the current
 page fetches to complete before replacing the worker group with the latest
@@ -467,15 +503,20 @@ Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,
 `yacy_crawler_browser_slot_acquisition_deadlines_total`, plus filesystem
 availability, reserve, hysteresis, pressure, measurement availability, rejected
 growth, and measurement-failure storage series under
-`yacy_crawler_storage_*`. The browser-slot counter
-isolates browser-pool saturation: it advances only when a Firefox slot wait
-reaches its request deadline, not when an ordinary cancellation or crawler
-shutdown ends the wait. The parse-failure counter advances when a fetched body
-cannot produce an indexable document through any enabled parser; it is separate
-from transport fetch failures. When the value is empty the crawler starts no
-metrics server and opens no port. Wildcard and non-loopback listeners are
-rejected; a trusted tunnel or proxy must mediate a remote scrape. The environment
-value bootstraps both services;
+`yacy_crawler_storage_*`. Browser-pool diagnostics add
+`yacy_crawler_browser_slot_acquisition_seconds`,
+`yacy_crawler_browser_sessions{state="ready|busy|cooling"}`, and
+`yacy_crawler_browser_failures_total{reason="slot_deadline|cooldown|launch|render"}`.
+Every state and reason series is initialized even before the first browser
+session, and the fixed labels never contain a URL or raw error text. The legacy
+browser-slot deadline counter remains available and advances with the
+`slot_deadline` failure reason; ordinary request cancellation and crawler
+shutdown do not classify as slot-deadline failures. The parse-failure counter
+advances when a fetched body cannot produce an indexable document through any
+enabled parser; it is separate from transport fetch failures. When the value is
+empty the crawler starts no metrics server and opens no port. Wildcard and
+non-loopback listeners are rejected; a trusted tunnel or proxy must mediate a
+remote scrape. The environment value bootstraps both services;
 Configuration → Crawler persists the authoritative value, delivers it before
 assembly, and gracefully restarts connected crawlers after a change.
 

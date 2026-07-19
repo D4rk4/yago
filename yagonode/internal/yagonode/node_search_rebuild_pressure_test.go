@@ -28,7 +28,18 @@ func TestOpenNodeStoragePassesSearchRebuildAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open node storage: %v", err)
 	}
-	if observed != admission || storage.searchIndex == nil {
+	if observed == nil || storage.searchIndex == nil {
 		t.Fatalf("rebuild admission = %T, search index = %T", observed, storage.searchIndex)
+	}
+	if err := observed.CheckGrowth(); err != nil || admission.calls != 1 {
+		t.Fatalf("rebuild growth check = %v, calls = %d", err, admission.calls)
+	}
+	headroom, ok := observed.(interface{ CheckGrowthWithHeadroom(uint64) error })
+	if !ok {
+		t.Fatalf("rebuild admission lacks headroom check: %T", observed)
+	}
+	if err := headroom.CheckGrowthWithHeadroom(17); err != nil ||
+		admission.requiredHeadroom != 17 {
+		t.Fatalf("rebuild headroom check = %v, required = %d", err, admission.requiredHeadroom)
 	}
 }

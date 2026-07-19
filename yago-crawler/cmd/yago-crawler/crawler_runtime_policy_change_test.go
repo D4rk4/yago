@@ -12,7 +12,15 @@ type browserSandboxPolicyRecorder struct {
 	values []bool
 }
 
+type frontierStateMaximumPolicyRecorder struct {
+	values []uint64
+}
+
 func (recorder *browserSandboxPolicyRecorder) SetSandbox(value bool) {
+	recorder.values = append(recorder.values, value)
+}
+
+func (recorder *frontierStateMaximumPolicyRecorder) SetStateMaximumBytes(value uint64) {
 	recorder.values = append(recorder.values, value)
 }
 
@@ -21,7 +29,7 @@ func TestCrawlerRuntimePolicyChangeAppliesSandboxWithoutRestart(t *testing.T) {
 	effective.AllowedPrivateCIDRs = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
 	browser := &browserSandboxPolicyRecorder{}
 	restarts := 0
-	change := newCrawlerRuntimePolicyChange(effective, browser, func() { restarts++ })
+	change := newCrawlerRuntimePolicyChange(effective, browser, nil, func() { restarts++ })
 
 	change.Apply(effective)
 	updated := effective
@@ -48,7 +56,7 @@ func TestCrawlerRuntimePolicyChangeRestartsForNonSandboxChange(t *testing.T) {
 	effective := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
 	browser := &browserSandboxPolicyRecorder{}
 	restarts := 0
-	change := newCrawlerRuntimePolicyChange(effective, browser, func() { restarts++ })
+	change := newCrawlerRuntimePolicyChange(effective, browser, nil, func() { restarts++ })
 	updated := effective
 	updated.BrowserSandbox = true
 	updated.CrawlDelay = 2 * time.Second
@@ -65,10 +73,34 @@ func TestCrawlerRuntimePolicyChangeRestartsForNonSandboxChange(t *testing.T) {
 	}
 }
 
+func TestCrawlerRuntimePolicyChangeAppliesFrontierMaximumWithoutRestart(t *testing.T) {
+	effective := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
+	frontier := &frontierStateMaximumPolicyRecorder{}
+	restarts := 0
+	change := newCrawlerRuntimePolicyChange(
+		effective,
+		nil,
+		frontier,
+		func() { restarts++ },
+	)
+	updated := effective
+	updated.FrontierStateMaximumBytes = 8 << 30
+
+	change.Apply(updated)
+	change.Apply(updated)
+
+	if restarts != 0 || len(frontier.values) != 1 || frontier.values[0] != 8<<30 {
+		t.Fatalf("frontier applications = %v, restarts = %d", frontier.values, restarts)
+	}
+	if !change.Current().Equal(updated) {
+		t.Fatalf("effective policy = %+v, want %+v", change.Current(), updated)
+	}
+}
+
 func TestCrawlerRuntimePolicyChangeRestartsWhenBrowserCannotApplySandbox(t *testing.T) {
 	effective := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
 	restarts := 0
-	change := newCrawlerRuntimePolicyChange(effective, nil, func() { restarts++ })
+	change := newCrawlerRuntimePolicyChange(effective, nil, nil, func() { restarts++ })
 	updated := effective
 	updated.BrowserSandbox = true
 

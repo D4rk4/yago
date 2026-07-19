@@ -44,7 +44,7 @@ type CrawlOrderConsumer struct {
 }
 
 type GrowthAdmission interface {
-	WaitForGrowth(context.Context) bool
+	WaitForGrowth(context.Context) (bool, error)
 }
 
 func (c *CrawlOrderConsumer) WithGrowthAdmission(
@@ -151,11 +151,22 @@ func (c *CrawlOrderConsumer) accept(ctx context.Context, delivery CrawlOrderDeli
 
 		return
 	}
-	if !recovery.Checkpointed && c.growthAdmission != nil &&
-		!c.growthAdmission.WaitForGrowth(ctx) {
-		c.retainOrder(ctx, order, delivery)
+	if !recovery.Checkpointed && c.growthAdmission != nil {
+		allowed, err := c.growthAdmission.WaitForGrowth(ctx)
+		if err != nil {
+			c.retainOrder(ctx, order, delivery)
+			c.frontier.RecordCheckpointFailure(fmt.Errorf(
+				"admit crawl order growth: %w",
+				err,
+			))
 
-		return
+			return
+		}
+		if !allowed {
+			c.retainOrder(ctx, order, delivery)
+
+			return
+		}
 	}
 	profile, requests, prepared := c.prepareCrawlOrderForRecovery(
 		ctx,

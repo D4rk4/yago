@@ -53,6 +53,7 @@ func TestConsoleDocumentInspectionEscapesStoredContent(t *testing.T) {
 		found: true,
 		detail: DocumentDetail{
 			URL:                     key,
+			Extraction:              DocumentExtractionDetail{Generation: 1, Current: 1},
 			Title:                   `<script>alert("title")</script>`,
 			ContentPreview:          `<img src=x onerror="alert(1)">`,
 			ContentBytes:            999,
@@ -72,6 +73,7 @@ func TestConsoleDocumentInspectionEscapesStoredContent(t *testing.T) {
 	for _, want := range []string{
 		"Document detail", "Stored content preview", "999 stored byte(s)",
 		"The preview is truncated", "&lt;script&gt;", "&lt;img", "&lt;svg",
+		"Extraction generation", "1 (current)",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("document detail missing %q in %s", want, body)

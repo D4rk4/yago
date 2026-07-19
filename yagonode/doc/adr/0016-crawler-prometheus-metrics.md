@@ -34,6 +34,12 @@ the same version the node uses, rather than inventing a second metrics format.
 - Fetch, byte, failure, ingest, and active-job counts are observed from the
   pipeline through a small observer seam, and robots denials from the robots
   admission fetcher, so those packages do not import the metrics collector.
+- Firefox diagnostics use one fixed-bucket slot-acquisition histogram, one pool
+  gauge with only `ready`, `busy`, and `cooling` states, and one failure counter
+  with only `slot_deadline`, `cooldown`, `launch`, and `render` reasons. The
+  allowed state and reason series are initialized at zero. Unknown reasons are
+  ignored, and URLs or raw error text never become labels. The original
+  slot-acquisition deadline counter remains available for existing dashboards.
 
 ## Consequences
 
@@ -43,3 +49,7 @@ the same version the node uses, rather than inventing a second metrics format.
   share the `yacy_` naming convention already used by node series.
 - The crawler gains an optional HTTP listener; it stays closed unless
   `YAGO_CRAWLER_METRICS_ADDR` is set, keeping the worker headless by default.
+- Browser-pool metrics remain fixed-cardinality regardless of crawl volume,
+  target URL diversity, or browser error diversity. Operators can distinguish
+  pool queueing, session occupancy/cooldown, and bounded failure classes without
+  adding per-target series.

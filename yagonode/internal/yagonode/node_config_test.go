@@ -645,6 +645,7 @@ func TestPublicSelfTestURLHelpers(t *testing.T) {
 
 func TestParseByteSizeUnits(t *testing.T) {
 	cases := map[string]int64{
+		"0":   0,
 		"1B":  1,
 		"2KB": 2 << 10,
 		"3MB": 3 << 20,
@@ -663,7 +664,7 @@ func TestParseByteSizeUnits(t *testing.T) {
 }
 
 func TestParseByteSizeRejects(t *testing.T) {
-	for _, raw := range []string{"100", "xxKB", "-1GB"} {
+	for _, raw := range []string{"00", "100", "xxKB", "-1GB"} {
 		if _, err := parseByteSize(raw); err == nil {
 			t.Errorf("%q: expected error", raw)
 		}

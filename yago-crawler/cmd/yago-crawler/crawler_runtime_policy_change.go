@@ -11,23 +11,30 @@ type browserSandboxPolicyTarget interface {
 	SetSandbox(bool)
 }
 
+type frontierStateMaximumPolicyTarget interface {
+	SetStateMaximumBytes(uint64)
+}
+
 type crawlerRuntimePolicyChange struct {
 	mu        sync.Mutex
 	effective yagocrawlcontract.CrawlerRuntimePolicy
 	browser   browserSandboxPolicyTarget
+	frontier  frontierStateMaximumPolicyTarget
 	restart   func()
 }
 
 func newCrawlerRuntimePolicyChange(
 	effective yagocrawlcontract.CrawlerRuntimePolicy,
-	source any,
+	browserSource any,
+	frontierSource any,
 	restart func(),
 ) *crawlerRuntimePolicyChange {
 	change := &crawlerRuntimePolicyChange{
 		effective: cloneCrawlerRuntimePolicy(effective),
 		restart:   restart,
 	}
-	change.browser, _ = source.(browserSandboxPolicyTarget)
+	change.browser, _ = browserSource.(browserSandboxPolicyTarget)
+	change.frontier, _ = frontierSource.(frontierStateMaximumPolicyTarget)
 
 	return change
 }
@@ -48,11 +55,21 @@ func (change *crawlerRuntimePolicyChange) Apply(
 
 		return
 	}
-	sandboxOnly := change.effective
-	sandboxOnly.BrowserSandbox = policy.BrowserSandbox
-	if sandboxOnly.Equal(policy) && change.browser != nil {
-		change.browser.SetSandbox(policy.BrowserSandbox)
-		change.effective.BrowserSandbox = policy.BrowserSandbox
+	livePolicy := change.effective
+	livePolicy.BrowserSandbox = policy.BrowserSandbox
+	livePolicy.FrontierStateMaximumBytes = policy.FrontierStateMaximumBytes
+	browserChanged := change.effective.BrowserSandbox != policy.BrowserSandbox
+	frontierChanged := change.effective.FrontierStateMaximumBytes != policy.FrontierStateMaximumBytes
+	canApply := (!browserChanged || change.browser != nil) &&
+		(!frontierChanged || change.frontier != nil)
+	if livePolicy.Equal(policy) && canApply {
+		if browserChanged {
+			change.browser.SetSandbox(policy.BrowserSandbox)
+		}
+		if frontierChanged {
+			change.frontier.SetStateMaximumBytes(policy.FrontierStateMaximumBytes)
+		}
+		change.effective = livePolicy
 		change.mu.Unlock()
 
 		return

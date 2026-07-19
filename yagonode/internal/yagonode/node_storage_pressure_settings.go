@@ -94,7 +94,7 @@ func storagePressureDefinitions() []settingDefinition {
 func normalizeStoragePressureSize(raw string) (string, error) {
 	bytes, err := parseByteSize(strings.TrimSpace(raw))
 	if err != nil {
-		return "", fmt.Errorf("value must be a non-negative byte size with a unit")
+		return "", fmt.Errorf("value must be zero or a non-negative byte size with a unit")
 	}
 
 	return formatByteSize(bytes), nil

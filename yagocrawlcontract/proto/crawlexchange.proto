@@ -44,6 +44,7 @@ message FetchStartLeaseRequest {
   uint64 sequence = 3;
   uint32 maximum_permits = 4;
   optional uint64 completed_sequence = 5;
+  uint64 permit_delivery_allowance_nanoseconds = 6;
 }
 
 message FetchStartLeaseDecision {
@@ -164,6 +165,9 @@ message CrawlerRuntimePolicy {
   optional bool browser_sandbox = 15;
   optional string browser_path = 16;
   optional string metrics_address = 17;
+  optional uint64 frontier_state_max_bytes = 18;
+  optional uint64 storage_reserved_free_bytes = 19;
+  optional uint64 storage_pressure_hysteresis_bytes = 20;
 }
 
 message CrawlURLDenylist {

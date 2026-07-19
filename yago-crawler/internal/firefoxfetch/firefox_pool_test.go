@@ -59,6 +59,30 @@ func TestFirefoxPoolRendersOnTwoSessionsConcurrently(t *testing.T) {
 	pool.close()
 }
 
+func TestFirefoxPoolPassesProxyToSessionStart(t *testing.T) {
+	proxyURL := "http://another-proxy.example"
+	var observedProxy string
+	pool := newFirefoxPool(
+		BrowserLaunch{Sessions: 1},
+		proxyURL,
+		func(_ context.Context, _ BrowserLaunch, candidate string) (browserSession, error) {
+			observedProxy = candidate
+
+			return &fakeSession{
+				aliveVal:   true,
+				renderFunc: staticRender("https://example.org/"),
+			}, nil
+		},
+	)
+	defer pool.close()
+	if _, err := pool.render(t.Context(), "https://example.org/"); err != nil {
+		t.Fatalf("render through proxy: %v", err)
+	}
+	if observedProxy != proxyURL {
+		t.Fatalf("browser proxy = %q, want %q", observedProxy, proxyURL)
+	}
+}
+
 func TestFirefoxPoolRelaunchesSessionsAfterRedirectLimitChange(t *testing.T) {
 	var launches []int
 	var sessions []*fakeSession

@@ -237,7 +237,7 @@ func assertRichSearchResponse(
 		got.FollowUpQuestions != nil ||
 		len(searchResultImageDetails(t, got.Results[0].Images)) != 1 ||
 		got.Usage == nil ||
-		got.Usage.Credits != 0 ||
+		got.Usage.Credits != 2 ||
 		got.AutoParameters["topic"] != "general" ||
 		got.AutoParameters["search_depth"] != "advanced" ||
 		len(got.AutoParameters) != 2 {
@@ -861,7 +861,7 @@ func TestSnippetAndModeHelpers(t *testing.T) {
 
 func TestResponseOptionHelpers(t *testing.T) {
 	if responseAnswer(SearchRequest{}, nil) != nil ||
-		responseUsage(SearchRequest{}) != nil ||
+		searchResponseUsage(SearchRequest{}, false) != nil ||
 		responseAutoParameters(SearchRequest{}) != nil {
 		t.Fatal("disabled response option mismatch")
 	}

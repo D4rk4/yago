@@ -27,8 +27,10 @@
 </div>
 {{end}}
 {{if .Index.Available}}
-{{if .RebuildEnabled}}
+{{if or .RebuildEnabled .ExtractionRecrawl.Enabled}}
 <h2 class="cds-h2">Index maintenance</h2>
+{{end}}
+{{if .RebuildEnabled}}
 <p class="cds-muted">Schedule a full rebuild from the document store. The active index remains untouched until the next node restart.</p>
 {{if .RebuildNotice}}<div class="cds-inline-notification" role="status">{{.RebuildNotice}}</div>{{end}}
 {{if .RebuildError}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.RebuildError}}</div>{{end}}
@@ -42,6 +44,27 @@
   <button class="cds-btn" type="submit">Schedule full rebuild</button>
 </form>
 {{end}}
+{{end}}
+{{if .ExtractionRecrawl.Enabled}}
+<h3 class="cds-h3">Refresh outdated extraction</h3>
+<p class="cds-muted">Queue stored documents whose extraction generation is missing or older than generation {{if .ExtractionRecrawl.Result}}{{.ExtractionRecrawl.Result.CurrentGeneration}}{{else}}{{.ExtractionRecrawl.CurrentGeneration}}{{end}}. Each action examines only the explicit bounded number of storage records.</p>
+{{if .ExtractionRecrawl.Result}}
+<div class="cds-inline-notification" role="status">
+  Examined {{.ExtractionRecrawl.Result.Examined}} storage record(s), evaluated {{.ExtractionRecrawl.Result.Visible}} visible document(s), found {{.ExtractionRecrawl.Result.Outdated}} outdated document(s), skipped {{.ExtractionRecrawl.Result.CurrentOrNewer}} current or newer document(s), queued {{.ExtractionRecrawl.Result.Queued}} URL(s), and found {{.ExtractionRecrawl.Result.AlreadyQueued}} URL(s) already accepted for this action.
+	  {{if .ExtractionRecrawl.Result.Retry}}Queue acceptance was not confirmed; retry safely replays from the same continuation.{{else if .ExtractionRecrawl.Result.Partial}}More records before the bounded scan's captured end position remain; continue with the saved position.{{else}}The bounded scan reached its captured end position.{{end}}
+</div>
+{{end}}
+{{if .ExtractionRecrawl.Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.ExtractionRecrawl.Error}}</div>{{end}}
+<form class="cds-form cds-form--inline" method="post" action="/admin/index/recrawl-extraction">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="action_id" value="{{.ExtractionRecrawl.ActionID}}">
+  {{if .ExtractionRecrawl.Result}}<input type="hidden" name="continuation" value="{{.ExtractionRecrawl.Result.Continuation}}">{{end}}
+  <div class="cds-field">
+    <label class="cds-label" for="extraction-recrawl-limit">Storage records per action</label>
+    <input class="cds-input" type="number" id="extraction-recrawl-limit" name="limit" min="1" max="{{.ExtractionRecrawl.Maximum}}" value="{{if .ExtractionRecrawl.Result}}{{.ExtractionRecrawl.Result.Limit}}{{else}}{{.ExtractionRecrawl.Default}}{{end}}" required>
+  </div>
+  <button class="cds-btn" type="submit">{{if and .ExtractionRecrawl.Result .ExtractionRecrawl.Result.Retry}}Retry bounded batch{{else if and .ExtractionRecrawl.Result .ExtractionRecrawl.Result.Partial}}Continue refresh{{else}}Start bounded refresh{{end}}</button>
+</form>
 {{end}}
 {{if .TermEnabled}}
 <h2 class="cds-h2">Term browser</h2>

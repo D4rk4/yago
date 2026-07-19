@@ -49,11 +49,17 @@ listener, behind the existing admin session guard:
   fit stays inside its own horizontal scroller and reveals the selected tab, so
   narrow pages do not overflow. Standalone console responses such as node restart
   load that same revisioned layer. The right shelf keeps a flat route list and a
-  compact system monitor fed by the existing ten-second bounded metric sampler.
-  It shows process CPU, process RSS relative to host RAM, host
+  compact system monitor fed by the existing bounded metric sampler. One
+  synchronous startup gathering immediately publishes available queue, memory,
+  and storage gauges while seeding counter baselines. Rate, latency, and process
+  CPU deltas remain unavailable until the next ten-second sample. The Performance
+  page shows the first gauge as a current-value card and adds its sparkline when
+  the second point arrives. It shows
+  process CPU, process RSS relative to host RAM, host
   used/total/available memory, vault storage use/quota, and live busy crawler
   fetch-worker slots when the crawler runtime is enabled; unavailable
-  observations remain explicit.
+  observations remain explicit. Page rendering reads bounded in-memory history
+  and does not trigger a system scan.
   The flat shelf uses the pinned local Haiku icon subset recorded in ADR-0049,
   with accessible text labels and no runtime asset request outside the node.
   Tables with column headers use a

@@ -36,6 +36,7 @@ func crawlerRuntimePolicyDefinitions() []settingDefinition {
 		crawlerBrowserFailureThresholdDefinition(),
 		crawlerConnectTimeoutDefinition(),
 		crawlerCrawlDelayDefinition(),
+		crawlerFrontierStateMaximumDefinition(),
 		crawlerHeaderTimeoutDefinition(),
 		crawlerMaximumDepthDefinition(),
 		crawlerMaximumHostConcurrencyDefinition(),

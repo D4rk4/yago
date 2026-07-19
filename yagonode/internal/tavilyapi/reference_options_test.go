@@ -97,7 +97,7 @@ func TestCrawlReferenceOptions(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if response.Usage == nil || response.Usage.Credits != 0 ||
+	if response.Usage == nil || response.Usage.Credits != 2 ||
 		len(response.Results) == 0 || len(response.Results[0].Images) != 2 ||
 		strings.HasPrefix(response.Results[0].RawContent, "# ") {
 		t.Fatalf("response=%#v", response)

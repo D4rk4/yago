@@ -38,6 +38,7 @@ const (
 	EnvBrowserFailureThreshold      = "YAGO_CRAWLER_BROWSER_FAILURE_THRESHOLD"
 	EnvStorageReservedFree          = "YAGO_CRAWLER_STORAGE_RESERVED_FREE"
 	EnvStoragePressureHysteresis    = "YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS"
+	EnvFrontierStateMaximumBytes    = "YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES"
 
 	DefaultWorkerID                         = "yago-crawler"
 	DefaultDataDir                          = "./data"
@@ -132,6 +133,7 @@ type ServiceConfig struct {
 	EgressAllowedCIDRs             []netip.Prefix
 	StorageReservedFreeBytes       uint64
 	StoragePressureHysteresisBytes uint64
+	FrontierStateMaximumBytes      uint64
 }
 
 func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
@@ -175,6 +177,14 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 	if err != nil {
 		return ServiceConfig{}, err
 	}
+	frontierStateMaximumBytes, err := envByteSize(
+		getenv,
+		EnvFrontierStateMaximumBytes,
+		yagocrawlcontract.DefaultCrawlerFrontierStateMaximumBytes,
+	)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
 	metricsAddress, err := yagocrawlcontract.ParseCrawlerMetricsAddress(
 		getenv(EnvMetricsAddr),
 	)
@@ -197,6 +207,7 @@ func LoadServiceConfig(getenv func(string) string) (ServiceConfig, error) {
 		EgressAllowedCIDRs:             egressAllowedCIDRs,
 		StorageReservedFreeBytes:       storageReservedFree,
 		StoragePressureHysteresisBytes: storagePressureHysteresis,
+		FrontierStateMaximumBytes:      frontierStateMaximumBytes,
 	}
 	if err := config.runtimePolicy().Validate(); err != nil {
 		return ServiceConfig{}, fmt.Errorf("crawler runtime policy: %w", err)

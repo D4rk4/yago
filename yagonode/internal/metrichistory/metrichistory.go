@@ -105,6 +105,10 @@ func New(
 // Run samples on the interval until the context ends.
 func (s *Sampler) Run(ctx context.Context, interval time.Duration) {
 	s.Sample()
+	s.RunAfterBaseline(ctx, interval)
+}
+
+func (s *Sampler) RunAfterBaseline(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -137,6 +141,7 @@ func (s *Sampler) Sample() {
 	previous := s.previous
 	s.previous = current
 	if !previous.seenGathering {
+		s.append(now, gauges)
 		return
 	}
 	elapsed := current.at.Sub(previous.at).Seconds()
@@ -155,7 +160,14 @@ func (s *Sampler) Sample() {
 	for name, value := range gauges {
 		values[name] = value
 	}
-	s.ring = append(s.ring, sample{at: now, values: values})
+	s.append(now, values)
+}
+
+func (s *Sampler) append(at time.Time, values map[string]float64) {
+	if len(values) == 0 {
+		return
+	}
+	s.ring = append(s.ring, sample{at: at, values: values})
 	if len(s.ring) > s.capacity {
 		s.ring = s.ring[len(s.ring)-s.capacity:]
 	}

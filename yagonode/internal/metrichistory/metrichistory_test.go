@@ -100,6 +100,35 @@ func seriesByName(t *testing.T, sampler *Sampler, name string) Series {
 	return Series{}
 }
 
+func assertSamplerSeriesEndValues(
+	t *testing.T,
+	sampler *Sampler,
+	wants map[string]float64,
+	firstGauges map[string]float64,
+) {
+	t.Helper()
+	for name, want := range wants {
+		series := seriesByName(t, sampler, name)
+		wantPoints := 1
+		if _, first := firstGauges[name]; first {
+			wantPoints = 2
+		}
+		if len(series.Points) != wantPoints ||
+			series.Points[len(series.Points)-1].Value != want {
+			t.Errorf(
+				"%s = %+v, want %d point(s) ending at %v",
+				name,
+				series.Points,
+				wantPoints,
+				want,
+			)
+		}
+		if series.Unit == "" {
+			t.Errorf("%s must carry a unit", name)
+		}
+	}
+}
+
 func TestSamplerRecordsRatesGaugesAndLatency(t *testing.T) {
 	h := newHarness(t, 8)
 
@@ -107,6 +136,24 @@ func TestSamplerRecordsRatesGaugesAndLatency(t *testing.T) {
 	h.sampler.Sample()
 	if points := seriesByName(t, h.sampler, SeriesRequests).Points; len(points) != 0 {
 		t.Fatalf("the first gathering must only seed the baseline, got %v", points)
+	}
+	firstGauges := map[string]float64{
+		SeriesCrawlQueue:          0,
+		SeriesProcessMemory:       64 << 20,
+		SeriesHostMemoryTotal:     16 << 30,
+		SeriesHostMemoryAvailable: 4 << 30,
+		SeriesStorageUse:          2 << 30,
+		SeriesStorageCap:          8 << 30,
+		SeriesIndexQueue:          3,
+	}
+	for name, want := range firstGauges {
+		points := seriesByName(t, h.sampler, name).Points
+		if len(points) != 1 || points[0].Value != want {
+			t.Errorf("first %s gauge = %+v, want one point of %v", name, points, want)
+		}
+	}
+	if points := seriesByName(t, h.sampler, SeriesProcessCPU).Points; len(points) != 0 {
+		t.Fatalf("first process CPU delta = %v, want unavailable", points)
 	}
 
 	h.requests.WithLabelValues("/", "200").Add(20)
@@ -136,21 +183,16 @@ func TestSamplerRecordsRatesGaugesAndLatency(t *testing.T) {
 	if h.hostReads != 2 {
 		t.Fatalf("host memory reads = %d, want one per sample", h.hostReads)
 	}
-	for name, want := range wants {
-		series := seriesByName(t, h.sampler, name)
-		if len(series.Points) != 1 || series.Points[0].Value != want {
-			t.Errorf("%s = %+v, want one point of %v", name, series.Points, want)
-		}
-		if series.Unit == "" {
-			t.Errorf("%s must carry a unit", name)
-		}
-	}
+	assertSamplerSeriesEndValues(t, h.sampler, wants, firstGauges)
 
 	h.advance()
 	h.sampler.Sample()
 	latency := seriesByName(t, h.sampler, SeriesLatency)
-	if latency.Points[1].Value != 0 {
-		t.Errorf("an idle interval must report zero latency, got %v", latency.Points[1])
+	if latency.Points[len(latency.Points)-1].Value != 0 {
+		t.Errorf(
+			"an idle interval must report zero latency, got %v",
+			latency.Points[len(latency.Points)-1],
+		)
 	}
 }
 
@@ -224,7 +266,7 @@ func TestSamplerKeepsTotalWhenHostAvailabilityIsInvalid(t *testing.T) {
 	h.sampler.Sample()
 
 	total := seriesByName(t, h.sampler, SeriesHostMemoryTotal).Points
-	if len(total) != 1 || total[0].Value != 16<<30 {
+	if len(total) != 2 || total[len(total)-1].Value != 16<<30 {
 		t.Fatalf("host total observations = %v", total)
 	}
 	available := seriesByName(t, h.sampler, SeriesHostMemoryAvailable).Points
@@ -236,14 +278,14 @@ func TestSamplerKeepsTotalWhenHostAvailabilityIsInvalid(t *testing.T) {
 	h.hostAvailabilityKnown = true
 	h.advance()
 	h.sampler.Sample()
-	if total = seriesByName(t, h.sampler, SeriesHostMemoryTotal).Points; len(total) != 1 {
+	if total = seriesByName(t, h.sampler, SeriesHostMemoryTotal).Points; len(total) != 2 {
 		t.Fatalf("invalid host total observations = %v", total)
 	}
 
 	h.hostTotal = 1<<62 + 1
 	h.advance()
 	h.sampler.Sample()
-	if total = seriesByName(t, h.sampler, SeriesHostMemoryTotal).Points; len(total) != 1 {
+	if total = seriesByName(t, h.sampler, SeriesHostMemoryTotal).Points; len(total) != 2 {
 		t.Fatalf("overflowing host total observations = %v", total)
 	}
 }
@@ -274,6 +316,38 @@ func TestSamplerSkipsNonPositiveIntervalsAndResets(t *testing.T) {
 	points := seriesByName(t, h.sampler, SeriesRequests).Points
 	if got := points[len(points)-1].Value; got != 0 {
 		t.Fatalf("a counter reset must record zero, got %v", got)
+	}
+}
+
+func TestSamplerFirstGatheringPublishesOnlyAvailableGauges(t *testing.T) {
+	h := newHarness(t, 8)
+	h.crawl.Set(7)
+	h.sampler.Sample()
+
+	for _, name := range []string{
+		SeriesRequests,
+		SeriesErrors,
+		SeriesLatency,
+		SeriesDHT,
+		SeriesProcessCPU,
+	} {
+		if points := seriesByName(t, h.sampler, name).Points; len(points) != 0 {
+			t.Errorf("first %s derived series = %v, want unavailable", name, points)
+		}
+	}
+	for name, want := range map[string]float64{
+		SeriesCrawlQueue:          7,
+		SeriesProcessMemory:       64 << 20,
+		SeriesHostMemoryTotal:     16 << 30,
+		SeriesHostMemoryAvailable: 4 << 30,
+		SeriesStorageUse:          2 << 30,
+		SeriesStorageCap:          8 << 30,
+		SeriesIndexQueue:          3,
+	} {
+		points := seriesByName(t, h.sampler, name).Points
+		if len(points) != 1 || points[0].Value != want || points[0].At != h.now {
+			t.Errorf("first %s gauge = %+v, want %v at %s", name, points, want, h.now)
+		}
 	}
 }
 

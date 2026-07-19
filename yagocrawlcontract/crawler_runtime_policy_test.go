@@ -74,14 +74,17 @@ func TestCrawlerRuntimePolicyLegacyFacilityPresenceKeepsFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode policy: %v", err)
 	}
-	if message.BrowserPath == nil || message.MetricsAddress == nil {
+	if message.BrowserPath == nil || message.MetricsAddress == nil ||
+		message.FrontierStateMaxBytes == nil {
 		t.Fatalf("current policy facility presence = %+v", message)
 	}
 	message.BrowserPath = nil
 	message.MetricsAddress = nil
+	message.FrontierStateMaxBytes = nil
 	fallback := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
 	fallback.BrowserPath = "/usr/bin/firefox-esr"
 	fallback.MetricsAddress = "127.0.0.1:9101"
+	fallback.FrontierStateMaximumBytes = 7 << 30
 	decoded, err := yagocrawlcontract.CrawlerRuntimePolicyFromProtoWithFallback(
 		message,
 		fallback,
@@ -90,7 +93,8 @@ func TestCrawlerRuntimePolicyLegacyFacilityPresenceKeepsFallback(t *testing.T) {
 		t.Fatalf("decode legacy policy: %v", err)
 	}
 	if decoded.BrowserPath != fallback.BrowserPath ||
-		decoded.MetricsAddress != fallback.MetricsAddress {
+		decoded.MetricsAddress != fallback.MetricsAddress ||
+		decoded.FrontierStateMaximumBytes != fallback.FrontierStateMaximumBytes {
 		t.Fatalf("legacy facility fallback = %+v, want %+v", decoded, fallback)
 	}
 }
@@ -132,6 +136,9 @@ func TestCrawlerRuntimePolicyRejectsOutOfBoundsValues(t *testing.T) {
 			policy.BrowserPath = " /usr/bin/firefox-esr "
 		},
 		func(policy *yagocrawlcontract.CrawlerRuntimePolicy) { policy.ConnectTimeout = 0 },
+		func(policy *yagocrawlcontract.CrawlerRuntimePolicy) {
+			policy.FrontierStateMaximumBytes = math.MaxUint64
+		},
 		func(policy *yagocrawlcontract.CrawlerRuntimePolicy) { policy.CrawlDelay = -time.Millisecond },
 		func(policy *yagocrawlcontract.CrawlerRuntimePolicy) { policy.HeaderTimeout = 3 * time.Hour },
 		func(policy *yagocrawlcontract.CrawlerRuntimePolicy) { policy.MaximumDepth = 0 },

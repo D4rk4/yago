@@ -78,6 +78,7 @@ type Frontier struct {
 	checkpointFailure     error
 	checkpointShutdown    func()
 	growthAdmission       GrowthAdmission
+	stateGrowthAdmission  StateGrowthAdmission
 	urlDenylist           URLDenylist
 }
 
@@ -270,6 +271,15 @@ func (f *Frontier) Submit(
 	candidates := f.prepareLinks(work, links, compiled)
 	var duplicates uint64
 	for start := 0; start < len(candidates); start += frontierMutationBatchSize {
+		growthAllowed, err := f.stateGrowthAllowed()
+		if err != nil {
+			f.RecordCheckpointFailure(err)
+
+			return duplicates
+		}
+		if !growthAllowed {
+			return duplicates
+		}
 		end := min(start+frontierMutationBatchSize, len(candidates))
 		batchDuplicates, continued := f.submitCandidateBatch(
 			ctx,

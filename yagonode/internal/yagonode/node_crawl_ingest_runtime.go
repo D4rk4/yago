@@ -43,7 +43,7 @@ func openCrawlIngestRuntime(
 		storage.urlReceiver,
 		storage.postingReceiver,
 	)
-	consumer.AdmitGrowth(config.GrowthAdmission)
+	consumer.AdmitGrowth(crawlStateLifecycleAdmission(config.GrowthAdmission))
 	consumer.OrderObservations(observationHistory)
 	consumer.RecordFetches(frontier)
 	consumer.CheckOwnership(frontier)

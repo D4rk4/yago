@@ -278,7 +278,7 @@ func (e searchEndpoint) searchResponse(
 			Results:        results,
 			ResponseTime:   e.now().Sub(start).Seconds(),
 			AutoParameters: responseAutoParameters(req),
-			Usage:          responseUsage(req),
+			Usage:          searchResponseUsage(req, false),
 			RequestID:      id,
 		}, nil
 	}
@@ -312,7 +312,7 @@ func (e searchEndpoint) searchResponse(
 		Results:        results,
 		ResponseTime:   e.now().Sub(start).Seconds(),
 		AutoParameters: responseAutoParameters(req),
-		Usage:          responseUsage(req),
+		Usage:          searchResponseUsage(req, true),
 		RequestID:      id,
 	}, nil
 }
@@ -852,10 +852,6 @@ func responseAutoParameters(req SearchRequest) map[string]string {
 		"topic":        topic,
 		"search_depth": depth,
 	}
-}
-
-func responseUsage(req SearchRequest) *SearchUsage {
-	return responseUsageEnabled(req.IncludeUsage)
 }
 
 func responseFavicon(req SearchRequest, rawURL string) string {

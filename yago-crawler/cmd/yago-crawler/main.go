@@ -23,7 +23,7 @@ var notifyProcessContext = signal.NotifyContext
 
 var runConfiguredCrawler = run
 
-var newCrawlerBrowserFetcher = firefoxfetch.NewBrowserPageFetcher
+var newCrawlerBrowserFetcher = firefoxfetch.NewBrowserPageFetcherWithPoolObservation
 
 var runCrawlerService = runServiceWithMetrics
 
@@ -95,7 +95,7 @@ func run(ctx context.Context, cfg ServiceConfig) error {
 			cfg.EgressAllowLAN,
 			yagoegress.WithPrivateAllowlist(cfg.EgressAllowedCIDRs),
 		),
-		metrics.ObserveBrowserSlotAcquisitionDeadline,
+		metrics,
 	)
 	if err != nil {
 		return fmt.Errorf("start browser fetcher: %w", err)

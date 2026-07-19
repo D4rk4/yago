@@ -32,7 +32,7 @@ type crawlerExecution struct {
 	emitter         ingest.BatchEmitter
 	urlDenylist     *crawldenylist.Denylist
 	growthAdmission interface {
-		WaitForGrowth(context.Context) bool
+		WaitForGrowth(context.Context) (bool, error)
 	}
 }
 

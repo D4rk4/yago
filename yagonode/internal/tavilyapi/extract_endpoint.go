@@ -227,7 +227,7 @@ func (e extractEndpoint) extractResponse(
 		Results:       results,
 		FailedResults: failures,
 		ResponseTime:  e.now().Sub(start).Seconds(),
-		Usage:         responseUsageEnabled(req.IncludeUsage),
+		Usage:         extractResponseUsage(req, len(results)),
 		RequestID:     id,
 	}, nil
 }

@@ -30,13 +30,16 @@ The persisted Configuration catalog covers these behavior groups:
   crawler metrics listener,
   connection/request/TLS/header timeouts, default crawl delay,
   maximum depth and per-host concurrency, default per-run rate, sitemap limit,
-  shutdown grace, and HTTP User-Agent. The node delivers one typed policy before
-  crawler assembly and again on heartbeats; persisted changes restart connected
-  crawler workers gracefully. A sandbox-only change instead retires each pooled
-  browser session after its active render and relaunches it before the next one.
+  shutdown grace, frontier-state soft boundary, and HTTP User-Agent. The node
+  delivers one typed policy before crawler assembly and again on heartbeats;
+  persisted changes restart connected crawler workers gracefully. A
+  sandbox-only change instead retires each pooled browser session after its
+  active render and relaunches it before the next one; a frontier-state boundary
+  change updates the live gate and wakes waiting orders.
 - Main-vault quota, reserved-free and recovery hysteresis for node and crawler,
-  compaction, automatic shard growth, deferred fsync, read deferral, restart
-  control visibility, ingest quality, and egress/CORS/trusted-proxy policy.
+  node crawl-state soft boundary, compaction, automatic shard growth, deferred
+  fsync, read deferral, restart control visibility, ingest quality, and
+  egress/CORS/trusted-proxy policy.
 - Advertised port, public reachability self-test URL, and DHT partition
   exponent, including their restart requirements and freeworld compatibility
   bounds. The self-test URL uses one bootstrap/Admin canonicalizer and rejects

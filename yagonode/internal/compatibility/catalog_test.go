@@ -105,6 +105,48 @@ func TestCatalogDescribesCurrentTavilyContract(t *testing.T) {
 	}
 }
 
+func TestCatalogDescribesRequestLocalTavilyUsage(t *testing.T) {
+	report := Catalog()
+	wantBehavior := map[string][]string{
+		"/search":  {"request-local compatible unit", "executed advanced search"},
+		"/extract": {"complete groups of five", "successful extractions"},
+		"/crawl":   {"complete groups of ten", "complete groups of five"},
+		"/map":     {"complete groups of ten", "successful pages"},
+	}
+	for _, surface := range report.Surfaces {
+		phrases, ok := wantBehavior[surface.Path]
+		if !ok || surface.Area != areaAgentAPI {
+			continue
+		}
+		for _, phrase := range phrases {
+			if !strings.Contains(surface.Behavior, phrase) {
+				t.Fatalf(
+					"%s behavior %q does not contain %q",
+					surface.Path,
+					surface.Behavior,
+					phrase,
+				)
+			}
+		}
+		if !strings.Contains(surface.Notes, "not billing") &&
+			!strings.Contains(surface.Notes, "rather than billing") {
+			t.Fatalf(
+				"%s notes do not distinguish usage from billing: %q",
+				surface.Path,
+				surface.Notes,
+			)
+		}
+		if strings.Contains(surface.Notes, "real credit accounting") ||
+			strings.Contains(surface.Notes, "synthetic zero") {
+			t.Fatalf("%s retains superseded usage limitation: %q", surface.Path, surface.Notes)
+		}
+		delete(wantBehavior, surface.Path)
+	}
+	if len(wantBehavior) != 0 {
+		t.Fatalf("catalog is missing Tavily usage surfaces: %v", wantBehavior)
+	}
+}
+
 func TestCatalogIncludesPlannedCompatibilityGaps(t *testing.T) {
 	report := Catalog()
 	paths := map[string]Surface{}

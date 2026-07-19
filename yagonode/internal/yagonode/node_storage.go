@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/contentcluster"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
@@ -160,6 +161,10 @@ func nodeStorageRebuildAdmission(
 	if len(admissions) == 0 {
 		return nil
 	}
+	if pressure, ok := admissions[0].(*yagocrawlcontract.StoragePressureGate); ok &&
+		pressure == nil {
+		return nil
+	}
 
-	return admissions[0]
+	return nodeSearchRebuildAdmission{admission: admissions[0]}
 }

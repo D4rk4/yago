@@ -104,6 +104,7 @@ func buildOpsMux(
 	}
 	applyOpsPageOptions(&options, config, assembled, sources)
 	applyIndexAdminOptions(&options, assembled)
+	applyExtractionRecrawlOption(&options, assembled)
 	if assembled.roster != nil {
 		options.PeerDetail = newPeerDetailSource(assembled.roster, blocks)
 	}

@@ -80,6 +80,7 @@ func extendedSettingDefinitions() []settingDefinition {
 	definitions = append(definitions, webFallbackDefinitions()...)
 	definitions = append(definitions, extendedGrowthDefinitions()...)
 	definitions = append(definitions, storagePressureDefinitions()...)
+	definitions = append(definitions, crawlStateMaximumDefinitions()...)
 	definitions = append(definitions, storageReadDeferDefinitions()...)
 	definitions = append(definitions, adminOperationsDefinitions()...)
 

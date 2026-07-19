@@ -39,10 +39,11 @@ type fleetFetchStartPolicy struct {
 }
 
 type fleetFetchStartLeaseRequest struct {
-	WorkerID        string
-	WorkerSessionID string
-	Sequence        uint64
-	MaximumPermits  uint32
+	WorkerID                string
+	WorkerSessionID         string
+	Sequence                uint64
+	MaximumPermits          uint32
+	PermitDeliveryAllowance time.Duration
 }
 
 type fleetFetchStartLease struct {
@@ -273,7 +274,8 @@ func (schedule *fleetFetchStartSchedule) validRequestLocked(
 ) bool {
 	return validCrawlerLeaseIdentity(request.WorkerID, request.WorkerSessionID) &&
 		request.Sequence > 0 && request.MaximumPermits > 0 &&
-		request.MaximumPermits <= schedule.policy.MaximumLeasePermits
+		request.MaximumPermits <= schedule.policy.MaximumLeasePermits &&
+		validFleetFetchStartPermitDeliveryAllowance(request.PermitDeliveryAllowance)
 }
 
 func (schedule *fleetFetchStartSchedule) sessionCurrentLocked(
@@ -368,12 +370,18 @@ func (schedule *fleetFetchStartSchedule) nextLeaseLocked(
 	}
 	lease.FirstPermitAt = firstPermitAt
 	lease.PermitInterval = interval
-	lease.PermitStartWindow = min(schedule.policy.ReservationHorizon, interval)
+	lease.PermitStartWindow = fleetFetchStartPermitWindowWidth(
+		min(schedule.policy.ReservationHorizon, interval),
+		request.PermitDeliveryAllowance,
+	)
 	lastPermitAt := firstPermitAt.Add(
 		time.Duration(lease.Permits-1) * interval,
 	)
 	schedule.lastPermitAt = lastPermitAt
-	schedule.nextPermitAt = lastPermitAt.Add(interval)
+	schedule.nextPermitAt = lastPermitAt.Add(
+		max(lease.PermitInterval, lease.PermitStartWindow),
+	)
+	lease.ExpiresAt = fleetFetchStartLeaseExpiry(lease.ExpiresAt, schedule.nextPermitAt)
 
 	return lease, true
 }

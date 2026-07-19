@@ -22,11 +22,13 @@ import (
 
 func restoreCrawlRuntimeStateSeams(t *testing.T) {
 	t.Helper()
+	oldAcquire := acquireCrawlRuntimeStateStartupLease
 	oldOpen := openCrawlRuntimeStateVault
 	oldMigrateBroker := migrateCrawlBrokerState
 	oldMigrateRuns := migrateCrawlRunState
 	oldClose := closeCrawlRuntimeStateVault
 	t.Cleanup(func() {
+		acquireCrawlRuntimeStateStartupLease = oldAcquire
 		openCrawlRuntimeStateVault = oldOpen
 		migrateCrawlBrokerState = oldMigrateBroker
 		migrateCrawlRunState = oldMigrateRuns

@@ -45,6 +45,14 @@ stable observation ID and UTC observation time so the node can order separate
 deliveries and recognize a committed retry after an acknowledgement is lost.
 Older batches without those fields remain accepted: observation time falls back
 to `Document.FetchedAt`, and the node derives a stable identity from the batch.
+Every newly parsed document carries `CurrentExtractionGeneration`, currently
+`1`. Increment that constant whenever a material parser or extractor change
+requires stored documents to be fetched and extracted again. Zero means an older
+payload that predates extraction generations and is omitted when encoded. The
+field is additive JSON inside the existing protobuf batch envelope, so older JSON
+decoders ignore it and the protobuf shape does not change. Changing the constant
+does not itself enumerate stored documents or create crawl work; the node exposes
+that as an explicit bounded operator action.
 The node persists the latest completed observation per source URL after ingest
 side effects and before acknowledging the submission. Before those side effects,
 it snapshots the exact worker, process-session, lease, and run authorization and
@@ -74,14 +82,17 @@ start rate. The default is 10 per second and the valid range is 0–1,000,000,
 where zero is unlimited. Every crawler retains it as a local non-bursting
 smoother. Before each page fetch, a current crawler also obtains a
 `LeaseFetchStarts` permit from the node's single fleet schedule. Permit windows
-are server-relative, span the smaller of one rate interval and the
-250-millisecond reservation horizon, and are never reclaimed after expiry. The
-crawler intersects the relative opening with response receipt and the relative
-closing with request send. Round-trip time below the span remains usable; equal
-or greater round-trip time yields an empty window that is discarded and retried
-without catch-up bursting. Requests batch only context-live fetch demand and
-remain bounded by the live per-process worker concurrency. Worker concurrency,
-per-run pace, and per-host politeness remain additional limits.
+are server-relative and are never reclaimed after expiry. A crawler reports the
+previous lease RPC's delivery time, bounded to one second. The node adds that
+allowance to one demand-backed batch, reserves the complete enlarged final
+window before scheduling another batch, and retains the configured interval
+between permit openings inside the batch. The crawler intersects each relative
+opening with response receipt and each relative closing with request send, then
+also enforces that interval between permits it actually consumes. A delivery
+spike beyond the prior allowance can discard a window, but cannot create a
+catch-up burst; the measured spike applies to the next sequence. Requests remain
+bounded by live per-process worker concurrency. Worker concurrency, per-run pace,
+and per-host politeness remain additional limits.
 
 `WorkerRegistration.fetch_start_leases` advertises this capability. A finite
 node rejects an order stream that omits it. Changing from unlimited to finite,
@@ -120,21 +131,34 @@ crawler can detect a persisted Admin change. It covers private-network access
 and private CIDR exceptions, the Firefox executable and content sandbox, browser
 failure threshold, the crawler metrics listener, connect/crawl-delay/header/request/TLS/shutdown durations,
 maximum depth and per-host concurrency, default per-run rate, sitemap expansion
-limit, and User-Agent. Every value is bounded by the shared contract. A browser
+limit, frontier-state soft boundary, and User-Agent. Every value is bounded by
+the shared contract. A browser
 path is empty or an absolute clean path whose exact basename is `firefox` or
 `firefox-esr`; a metrics address is empty or a loopback IP-literal listener.
 Filesystem ownership, mutability, executable, and set-ID trust checks remain a
 crawler-local responsibility rather than a node or wire concern. Private CIDR
 exceptions accept only RFC 1918 and IPv6 ULA subnets; they never admit
 loopback, link-local, metadata, carrier-grade NAT, multicast, or reserved ranges.
-The sandbox, browser-path, and metrics-address fields are optional on the wire.
-Their absence preserves a current crawler's bootstrap or already effective values
-when it talks to the immediately previous policy-capable node; a current node sends
-them explicitly and is authoritative. A sandbox-only live change retires pooled browser sessions after
-their active render and relaunches them before the next render, while other
+The sandbox, browser-path, metrics-address, and `frontier_state_max_bytes` fields
+are optional on the wire. The frontier boundary is field 18, defaults to 4 GiB,
+uses `0` to disable admission, and remains at the crawler's current bootstrap or
+effective value when omitted. Their absence preserves a current crawler's
+bootstrap or already effective values when it talks to the immediately previous
+policy-capable node; a current node sends them explicitly and is authoritative.
+A sandbox-only live change retires pooled browser sessions after their active
+render and relaunches them before the next render. A frontier-state boundary
+change updates the live gate and wakes waiting orders, while other
 policy changes request a graceful crawler restart. An older node returns
 `Unimplemented`, and the current crawler then retains its environment bootstrap.
 An older crawler ignores the additive heartbeat field.
+
+The `ReadRuntimePolicy` response may also carry optional
+`storage_reserved_free_bytes` and `storage_pressure_hysteresis_bytes` fields 19
+and 20. A crawler applies their explicit values, including zero, before it opens
+the frontier checkpoint and constructs its storage-pressure gate. Missing fields
+preserve the environment bootstrap for compatibility with an older node. Live
+storage changes continue through the dedicated heartbeat storage-policy fields;
+the two startup fields do not participate in runtime-policy restart comparison.
 
 The durable Index URL/domain denylist crosses the same heartbeat boundary as a
 separate revisioned policy. A crawler requests the complete snapshot before it
@@ -287,6 +311,9 @@ additions, but that compatibility does not weaken finite-rate policy: a current
 node rejects an incapable crawler stream, and a current crawler at a finite
 rate waits fail-closed when an older node lacks the method. Mixed-version
 operation is permitted only while the rate is explicitly zero.
+`FetchStartLeaseRequest.permit_delivery_allowance_nanoseconds` is additive field
+6. A node that predates it retains the conservative original window, while a
+current node interprets its zero default as that same original behavior.
 Upgrade the node and every crawler from one release as a coordinated operation:
 the shipped finite default makes this mandatory. Stop crawlers first, replace
 both binaries, start and verify the node, then start crawlers. Rollback requires

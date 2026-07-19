@@ -20,9 +20,12 @@ type crawlerCheckpointSession struct {
 func openCrawlerCheckpointSession(
 	ctx context.Context,
 	cfg ServiceConfig,
+	maintenance frontiercheckpoint.StateMaintenanceAdmission,
 ) (crawlerCheckpointSession, error) {
-	checkpoint, err := frontiercheckpoint.Open(
+	checkpoint, err := frontiercheckpoint.OpenWithStateMaximum(
 		filepath.Join(cfg.DataDir, "crawler", "frontier-v1.db"),
+		cfg.FrontierStateMaximumBytes,
+		maintenance,
 	)
 	if err != nil {
 		return crawlerCheckpointSession{}, fmt.Errorf(

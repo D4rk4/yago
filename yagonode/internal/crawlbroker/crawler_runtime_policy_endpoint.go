@@ -17,8 +17,9 @@ func (s *exchangeServer) ReadRuntimePolicy(
 	if !yagocrawlcontract.ValidCrawlerWorkerIdentity(request.GetWorkerId()) {
 		return nil, status.Error(codes.InvalidArgument, "invalid crawler worker identity")
 	}
-	policy, err := yagocrawlcontract.CrawlerRuntimePolicyToProto(
+	policy, err := crawlerStartupRuntimePolicy(
 		s.control.RuntimePolicy(),
+		s.control.StoragePressurePolicy(),
 	)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "invalid crawler runtime policy")

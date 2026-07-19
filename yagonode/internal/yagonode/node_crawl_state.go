@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -18,9 +19,18 @@ const (
 	crawlBrokerStateFileName                   = "crawlbroker.db"
 	crawlRuntimeStateOpenTimeout               = 5 * time.Second
 	crawlRuntimeStateProvisioningHeadroomBytes = 1 << 20
+	msgCrawlStateCompacted                     = "node crawl state compacted"
+	msgCrawlStateCompactionSkipped             = "node crawl state compaction skipped"
+	msgCrawlStateCompactionWarning             = "node crawl state installed with durability warning"
 )
 
 var (
+	acquireCrawlRuntimeStateStartupLease = func(
+		path string,
+		timeout time.Duration,
+	) (crawlRuntimeStateStartupLease, error) {
+		return boltvault.AcquireDatabaseStartupLease(path, timeout)
+	}
 	openCrawlRuntimeStateVault = func(path string) (*vault.Vault, error) {
 		return boltvault.OpenWithLockTimeout(path, crawlRuntimeStateOpenTimeout)
 	}
@@ -30,6 +40,10 @@ var (
 		return state.Close()
 	}
 )
+
+type crawlRuntimeStateStartupLease interface {
+	Release() error
+}
 
 func openCrawlRuntimeState(
 	ctx context.Context,
@@ -51,14 +65,15 @@ func openCrawlRuntimeState(
 	if err != nil {
 		return nil, false, fmt.Errorf("open crawl runtime state: %w", err)
 	}
-	if err := migrateCrawlBrokerState(ctx, legacy, state, admission); err != nil {
+	lifecycleAdmission := crawlStateLifecycleAdmission(admission)
+	if err := migrateCrawlBrokerState(ctx, legacy, state, lifecycleAdmission); err != nil {
 		return nil, false, crawlRuntimeStateFailure(
 			fmt.Errorf("migrate crawl broker state: %w", err),
 			state,
 			true,
 		)
 	}
-	if err := migrateCrawlRunState(ctx, legacy, state, admission); err != nil {
+	if err := migrateCrawlRunState(ctx, legacy, state, lifecycleAdmission); err != nil {
 		return nil, false, crawlRuntimeStateFailure(
 			fmt.Errorf("migrate crawl run state: %w", err),
 			state,
@@ -72,6 +87,40 @@ func openCrawlRuntimeStateStorage(
 	path string,
 	admission growthAdmission,
 ) (*vault.Vault, error) {
+	lease, err := acquireCrawlRuntimeStateStartupLease(
+		path,
+		crawlRuntimeStateOpenTimeout,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("acquire crawl runtime state startup lease: %w", err)
+	}
+	state, openErr := openCrawlRuntimeStateStorageWhileLeased(path, admission)
+	releaseErr := lease.Release()
+	if releaseErr == nil {
+		return state, openErr
+	}
+	failure := errors.Join(
+		openErr,
+		fmt.Errorf("release crawl runtime state startup lease: %w", releaseErr),
+	)
+	if state != nil {
+		return nil, crawlRuntimeStateFailure(failure, state, true)
+	}
+
+	return nil, failure
+}
+
+func openCrawlRuntimeStateStorageWhileLeased(
+	path string,
+	admission growthAdmission,
+) (*vault.Vault, error) {
+	maximumBytes := crawlStateMaximumBytes(admission)
+	compaction, compactErr := compactCrawlRuntimeState(
+		path,
+		maximumBytes,
+		crawlStateLifecycleAdmission(admission),
+	)
+	reportCrawlStateCompaction(path, maximumBytes, compaction, compactErr)
 	requiresProvisioning, err := crawlRuntimeStateRequiresProvisioning(path)
 	if err != nil {
 		return nil, err
@@ -81,7 +130,7 @@ func openCrawlRuntimeStateStorage(
 	}
 	var state *vault.Vault
 	_, err = runStorageMaintenance(
-		admission,
+		crawlStateLifecycleAdmission(admission),
 		func() (uint64, error) {
 			return crawlRuntimeStateProvisioningHeadroomBytes, nil
 		},
@@ -97,6 +146,48 @@ func openCrawlRuntimeStateStorage(
 	}
 
 	return state, nil
+}
+
+func reportCrawlStateCompaction(
+	path string,
+	maximumBytes int64,
+	compaction crawlStateCompaction,
+	compactionErr error,
+) {
+	if compactionErr != nil {
+		if compaction.installed {
+			slog.WarnContext(
+				context.Background(),
+				msgCrawlStateCompactionWarning,
+				slog.String("path", path),
+				slog.Int64("maximumBytes", maximumBytes),
+				slog.Bool("installed", true),
+				slog.Any("error", compactionErr),
+			)
+
+			return
+		}
+		slog.WarnContext(
+			context.Background(),
+			msgCrawlStateCompactionSkipped,
+			slog.String("path", path),
+			slog.Int64("maximumBytes", maximumBytes),
+			slog.Bool("installed", false),
+			slog.Any("error", compactionErr),
+		)
+
+		return
+	}
+	if compaction.installed {
+		slog.InfoContext(
+			context.Background(),
+			msgCrawlStateCompacted,
+			slog.String("path", path),
+			slog.Int64("beforeBytes", compaction.beforeBytes),
+			slog.Int64("afterBytes", compaction.afterBytes),
+			slog.Int64("reclaimedBytes", max(compaction.beforeBytes-compaction.afterBytes, 0)),
+		)
+	}
 }
 
 func crawlRuntimeStateRequiresProvisioning(path string) (bool, error) {

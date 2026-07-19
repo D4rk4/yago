@@ -45,8 +45,11 @@ The registry publishes:
   collectors exist only while the node crawl runtime owns the dedicated file;
   a measurement failure reports `NaN`. The file is outside
   `YAGO_STORAGE_QUOTA`, main-vault eviction, and main-vault compaction and
-  currently has no separate byte cap. Alert on the allocated-file gauge and
-  filesystem free space; bbolt may keep free pages after live rows are deleted.
+  has a separately configurable soft physical admission boundary through
+  `crawler.node_state_max_bytes` and `YAGO_CRAWLER_NODE_STATE_MAX_BYTES`, which
+  default to 4 GiB and accept zero to disable the boundary. Alert on the
+  allocated-file gauge and filesystem free space; bbolt may keep free pages
+  after live rows are deleted.
 - **Eviction** — URLs and postings purged under quota pressure and sweeps that
   failed (`eviction_*_total`).
 - **DHT** — inbound and outbound postings, batches and failures for the
@@ -103,10 +106,14 @@ caught as a build-time regression rather than a startup panic in production.
 The Admin console keeps a volatile ninety-point ring sampled every ten seconds.
 It derives request, error, latency, DHT, queue, process CPU, process RSS, host
 memory, and storage series from one registry gathering plus one `sysinfo` host
-memory snapshot per interval. The initial gathering runs at sampler startup to
-seed counter baselines; the first current System Monitor reading therefore
-appears after about ten seconds. Console requests and ten-second HTMX refreshes
-read the bounded ring and do not gather metrics or inspect the host directly.
+memory snapshot per interval. The initial gathering runs synchronously after the
+queue collectors are registered. It immediately appends available queue, memory,
+and storage gauges while seeding counter baselines, so the System Monitor and
+Performance current-value cards need no warm-up interval. A sparkline and the
+counter-derived request, error, latency, DHT, and process-CPU series require the
+next successful sample, normally after about ten seconds. Console requests and
+ten-second HTMX refreshes read the bounded ring and do not gather metrics or
+inspect the host directly.
 
 The host-memory display pairs `sysinfo` total RAM with Linux
 `/proc/meminfo` `MemAvailable`, the kernel estimate of memory available to new

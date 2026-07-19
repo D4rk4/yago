@@ -86,6 +86,7 @@ func crawlerRuntimePolicyParityEntries() []crawlerRuntimePolicyParityEntry {
 		{envCrawlerBrowserPath, settingKeyCrawlerBrowserPath, ""},
 		{envCrawlerConnectTimeout, settingKeyCrawlerConnectTimeout, "5s"},
 		{envCrawlerCrawlDelay, settingKeyCrawlerCrawlDelay, "1s"},
+		{envCrawlerFrontierStateMaximumBytes, settingKeyCrawlerFrontierStateMaximumBytes, "4GB"},
 		{envCrawlerHeaderTimeout, settingKeyCrawlerHeaderTimeout, "10s"},
 		{envCrawlerMaximumDepth, settingKeyCrawlerMaximumDepth, "5"},
 		{envCrawlerMaximumHostFetches, settingKeyCrawlerMaximumHostFetches, "2"},

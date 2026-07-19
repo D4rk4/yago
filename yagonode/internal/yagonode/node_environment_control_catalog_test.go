@@ -715,6 +715,12 @@ func addCrawlerCapacityEnvironmentSettings(add environmentCatalogAdder) {
 		settingKeyCrawlerStorageHysteresis,
 		consumers,
 	)
+	addEnvironmentSetting(
+		add,
+		envCrawlerNodeStateMaximumBytes,
+		settingKeyCrawlerNodeStateMaximumBytes,
+		environmentNodeConsumer,
+	)
 }
 
 func addCrawlerPolicyEnvironmentSettings(add environmentCatalogAdder) {
@@ -741,6 +747,12 @@ func addCrawlerPolicyEnvironmentSettings(add environmentCatalogAdder) {
 	addEnvironmentSetting(add, envCrawlerBrowserPath, settingKeyCrawlerBrowserPath, consumers)
 	addEnvironmentSetting(add, envCrawlerConnectTimeout, settingKeyCrawlerConnectTimeout, consumers)
 	addEnvironmentSetting(add, envCrawlerCrawlDelay, settingKeyCrawlerCrawlDelay, consumers)
+	addEnvironmentSetting(
+		add,
+		envCrawlerFrontierStateMaximumBytes,
+		settingKeyCrawlerFrontierStateMaximumBytes,
+		consumers,
+	)
 	addEnvironmentSetting(add, envCrawlerHeaderTimeout, settingKeyCrawlerHeaderTimeout, consumers)
 	addEnvironmentSetting(add, envCrawlerMaximumDepth, settingKeyCrawlerMaximumDepth, consumers)
 	addEnvironmentSetting(

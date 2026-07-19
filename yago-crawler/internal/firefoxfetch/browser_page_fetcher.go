@@ -64,6 +64,32 @@ func NewBrowserPageFetcher(
 	guard yagoegress.Guard,
 	observeBrowserSlotAcquisitionDeadline ...func(),
 ) (*BrowserPageFetcher, func(), error) {
+	return newBrowserPageFetcher(
+		launch,
+		guard,
+		browserPoolObservation{legacyDeadline: selectBrowserSlotAcquisitionDeadlineObserver(
+			observeBrowserSlotAcquisitionDeadline,
+		)},
+	)
+}
+
+func NewBrowserPageFetcherWithPoolObservation(
+	launch BrowserLaunch,
+	guard yagoegress.Guard,
+	observer BrowserPoolObserver,
+) (*BrowserPageFetcher, func(), error) {
+	return newBrowserPageFetcher(
+		launch,
+		guard,
+		browserPoolObservation{observer: observer},
+	)
+}
+
+func newBrowserPageFetcher(
+	launch BrowserLaunch,
+	guard yagoegress.Guard,
+	observation browserPoolObservation,
+) (*BrowserPageFetcher, func(), error) {
 	executablePath, err := launch.firefoxExecutable(false)
 	if err != nil {
 		return nil, nil, err
@@ -75,11 +101,11 @@ func NewBrowserPageFetcher(
 	if err != nil {
 		return nil, nil, fmt.Errorf("start browser egress proxy: %w", err)
 	}
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		launch,
 		proxy.url,
 		startFirefoxSession,
-		observeBrowserSlotAcquisitionDeadline...,
+		observation,
 	)
 	fetcher := &BrowserPageFetcher{
 		render:   pool.render,
@@ -161,6 +187,7 @@ type firefoxManager struct {
 	redirectUpdate   atomic.Bool
 	sandbox          atomic.Bool
 	sandboxUpdate    atomic.Bool
+	cooling          atomic.Bool
 }
 
 func (m *firefoxManager) render(ctx context.Context, rawURL string) (renderedPage, error) {
@@ -187,13 +214,14 @@ func (m *firefoxManager) render(ctx context.Context, rawURL string) (renderedPag
 			)
 		}
 		m.retryAfter = time.Time{}
+		m.cooling.Store(false)
 		probing = true
 	}
 
 	session, err := m.ensureSession(ctx)
 	if err != nil {
 		m.recordFailure(now(), probing)
-		return renderedPage{}, err
+		return renderedPage{}, browserFailureError{reason: BrowserFailureLaunch, cause: err}
 	}
 	page, err := session.render(ctx, rawURL, m.timeout)
 	if err != nil {
@@ -203,10 +231,11 @@ func (m *firefoxManager) render(ctx context.Context, rawURL string) (renderedPag
 		m.session = nil
 		m.recordFailure(now(), probing)
 
-		return renderedPage{}, err
+		return renderedPage{}, browserFailureError{reason: BrowserFailureRender, cause: err}
 	}
 	m.failures = 0
 	m.retryAfter = time.Time{}
+	m.cooling.Store(false)
 
 	return page, nil
 }
@@ -242,6 +271,7 @@ func (m *firefoxManager) recordFailure(now time.Time, probing bool) {
 	}
 	m.failures = 0
 	m.retryAfter = now.Add(cooldown)
+	m.cooling.Store(true)
 }
 
 func (m *firefoxManager) coolingUntil() time.Time {

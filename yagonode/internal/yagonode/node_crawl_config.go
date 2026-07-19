@@ -10,33 +10,35 @@ import (
 )
 
 const (
-	envCrawlRPCAddr                 = "YAGO_CRAWL_RPC_ADDR"
-	envCrawlerWorkers               = "YAGO_CRAWLER_WORKERS"
-	envCrawlerProcessPagesPerSecond = "YAGO_CRAWLER_MAX_PAGES_PER_SECOND"
-	envCrawlerMaximumRedirects      = "YAGO_CRAWLER_MAX_REDIRECTS"
-	envCrawlerMaxActiveRuns         = "YAGO_CRAWLER_MAX_ACTIVE_RUNS"
-	envCrawlerMaxPagesPerRun        = "YAGO_CRAWLER_MAX_PAGES_PER_RUN"
-	envPrioritizeAutomaticDiscovery = "YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY"
-	envCrawlerStorageReservedFree   = "YAGO_CRAWLER_STORAGE_RESERVED_FREE"
-	envCrawlerStorageHysteresis     = "YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS"
-	envCrawlerAllowPrivateNetworks  = "YAGO_CRAWLER_ALLOW_PRIVATE_NETWORKS"
-	envCrawlerAllowCIDRs            = "YAGO_CRAWLER_ALLOW_CIDRS"
-	envCrawlerBrowserSandbox        = "YAGO_CRAWLER_BROWSER_SANDBOX"
-	envCrawlerBrowserFailureLimit   = "YAGO_CRAWLER_BROWSER_FAILURE_THRESHOLD"
-	envCrawlerBrowserPath           = "YAGO_CRAWLER_BROWSER_PATH"
-	envCrawlerConnectTimeout        = "YAGO_CRAWLER_CONNECT_TIMEOUT"
-	envCrawlerCrawlDelay            = "YAGO_CRAWLER_CRAWL_DELAY"
-	envCrawlerHeaderTimeout         = "YAGO_CRAWLER_HEADER_TIMEOUT"
-	envCrawlerMaximumDepth          = "YAGO_CRAWLER_MAX_DEPTH"
-	envCrawlerMaximumHostFetches    = "YAGO_CRAWLER_MAX_HOST_CONCURRENCY"
-	envCrawlerMetricsAddress        = "YAGO_CRAWLER_METRICS_ADDR"
-	envCrawlerRequestTimeout        = "YAGO_CRAWLER_REQUEST_TIMEOUT"
-	envCrawlerRunPagesPerMinute     = "YAGO_CRAWLER_RUN_PAGES_PER_MINUTE"
-	envCrawlerSitemapURLLimit       = "YAGO_CRAWLER_SITEMAP_URL_LIMIT"
-	envCrawlerTLSTimeout            = "YAGO_CRAWLER_TLS_TIMEOUT"
-	envCrawlerShutdownGrace         = "YAGO_CRAWLER_SHUTDOWN_GRACE"
-	envCrawlerUserAgent             = "YAGO_CRAWLER_USER_AGENT"
-	defaultCrawlRPCAddr             = "127.0.0.1:9091"
+	envCrawlRPCAddr                     = "YAGO_CRAWL_RPC_ADDR"
+	envCrawlerWorkers                   = "YAGO_CRAWLER_WORKERS"
+	envCrawlerProcessPagesPerSecond     = "YAGO_CRAWLER_MAX_PAGES_PER_SECOND"
+	envCrawlerMaximumRedirects          = "YAGO_CRAWLER_MAX_REDIRECTS"
+	envCrawlerMaxActiveRuns             = "YAGO_CRAWLER_MAX_ACTIVE_RUNS"
+	envCrawlerMaxPagesPerRun            = "YAGO_CRAWLER_MAX_PAGES_PER_RUN"
+	envPrioritizeAutomaticDiscovery     = "YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY"
+	envCrawlerStorageReservedFree       = "YAGO_CRAWLER_STORAGE_RESERVED_FREE"
+	envCrawlerStorageHysteresis         = "YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS"
+	envCrawlerNodeStateMaximumBytes     = "YAGO_CRAWLER_NODE_STATE_MAX_BYTES"
+	envCrawlerAllowPrivateNetworks      = "YAGO_CRAWLER_ALLOW_PRIVATE_NETWORKS"
+	envCrawlerAllowCIDRs                = "YAGO_CRAWLER_ALLOW_CIDRS"
+	envCrawlerBrowserSandbox            = "YAGO_CRAWLER_BROWSER_SANDBOX"
+	envCrawlerBrowserFailureLimit       = "YAGO_CRAWLER_BROWSER_FAILURE_THRESHOLD"
+	envCrawlerBrowserPath               = "YAGO_CRAWLER_BROWSER_PATH"
+	envCrawlerConnectTimeout            = "YAGO_CRAWLER_CONNECT_TIMEOUT"
+	envCrawlerCrawlDelay                = "YAGO_CRAWLER_CRAWL_DELAY"
+	envCrawlerHeaderTimeout             = "YAGO_CRAWLER_HEADER_TIMEOUT"
+	envCrawlerMaximumDepth              = "YAGO_CRAWLER_MAX_DEPTH"
+	envCrawlerMaximumHostFetches        = "YAGO_CRAWLER_MAX_HOST_CONCURRENCY"
+	envCrawlerMetricsAddress            = "YAGO_CRAWLER_METRICS_ADDR"
+	envCrawlerRequestTimeout            = "YAGO_CRAWLER_REQUEST_TIMEOUT"
+	envCrawlerRunPagesPerMinute         = "YAGO_CRAWLER_RUN_PAGES_PER_MINUTE"
+	envCrawlerSitemapURLLimit           = "YAGO_CRAWLER_SITEMAP_URL_LIMIT"
+	envCrawlerTLSTimeout                = "YAGO_CRAWLER_TLS_TIMEOUT"
+	envCrawlerShutdownGrace             = "YAGO_CRAWLER_SHUTDOWN_GRACE"
+	envCrawlerUserAgent                 = "YAGO_CRAWLER_USER_AGENT"
+	envCrawlerFrontierStateMaximumBytes = "YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES"
+	defaultCrawlRPCAddr                 = "127.0.0.1:9091"
 )
 
 type crawlConfig struct {
@@ -49,6 +51,7 @@ type crawlConfig struct {
 	PrioritizeAutomaticDiscovery bool
 	StorageReservedFreeBytes     int64
 	StoragePressureRecoveryBytes int64
+	StateMaximumBytes            int64
 	RuntimePolicy                yagocrawlcontract.CrawlerRuntimePolicy
 	StatePath                    string
 	// QualityGate rejects crawled pages that fail the deterministic Gopher/C4
@@ -124,6 +127,10 @@ func loadCrawlConfig(getenv func(string) string) (crawlConfig, error) {
 	if err != nil {
 		return crawlConfig{}, err
 	}
+	stateMaximumBytes, err := loadCrawlerNodeStateMaximum(getenv)
+	if err != nil {
+		return crawlConfig{}, err
+	}
 	runtimePolicy, err := loadCrawlerRuntimePolicy(getenv)
 	if err != nil {
 		return crawlConfig{}, err
@@ -139,6 +146,7 @@ func loadCrawlConfig(getenv func(string) string) (crawlConfig, error) {
 		PrioritizeAutomaticDiscovery: scheduling.prioritizeAutomaticDiscovery,
 		StorageReservedFreeBytes:     storagePressure.reservedFreeBytes,
 		StoragePressureRecoveryBytes: storagePressure.recoveryBytes,
+		StateMaximumBytes:            stateMaximumBytes,
 		RuntimePolicy:                runtimePolicy,
 		QualityGate:                  qualityGate,
 	}, nil

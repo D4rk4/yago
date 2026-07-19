@@ -129,18 +129,21 @@ func TestGroupedLiveRemovalCollisionUsesNewestObservation(t *testing.T) {
 	}
 }
 
-func TestGroupedDuplicateURLCommitsLastDeliveryArtifacts(t *testing.T) {
+func TestGroupedDuplicateURLCommitsNewestObservationArtifacts(t *testing.T) {
 	const sourceURL = "https://example.org/page"
+	firstObservedAt := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	documents := &recordingDocumentReceiver{}
 	urls := &artifactURLReceiver{}
 	postings := &artifactPostingReceiver{}
 	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 2)}
 	consumer := crawlresults.NewIngestConsumer(stream, documents, urls, postings)
 
-	batch := func(version string) yagocrawlcontract.IngestBatch {
+	batch := func(version string, observedAt time.Time) yagocrawlcontract.IngestBatch {
 		return yagocrawlcontract.IngestBatch{
 			SourceURL:     sourceURL,
 			ProfileHandle: version,
+			ObservationID: version,
+			ObservedAt:    observedAt,
 			Document: yagocrawlcontract.DocumentIngest{
 				NormalizedURL: sourceURL,
 				ExtractedText: version,
@@ -154,8 +157,18 @@ func TestGroupedDuplicateURLCommitsLastDeliveryArtifacts(t *testing.T) {
 
 	var settled sync.WaitGroup
 	counter := &settleCounter{}
-	stream.out <- groupDelivery(batch("second"), &settled, counter, nil)
-	stream.out <- groupDelivery(batch("first"), &settled, counter, errors.New("ack failed"))
+	stream.out <- groupDelivery(
+		batch("second", firstObservedAt.Add(time.Hour)),
+		&settled,
+		counter,
+		nil,
+	)
+	stream.out <- groupDelivery(
+		batch("first", firstObservedAt),
+		&settled,
+		counter,
+		errors.New("ack failed"),
+	)
 	drainGroup(consumer, &settled)
 
 	if acks, naks := counter.counts(); acks != 2 || naks != 0 {

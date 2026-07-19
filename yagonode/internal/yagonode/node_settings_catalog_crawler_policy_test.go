@@ -12,21 +12,22 @@ func TestCrawlerRuntimePolicySettingsRoundTripAndApplyLive(t *testing.T) {
 	policy.UserAgent = "bootstrap-agent"
 	base := nodeConfig{Crawl: crawlConfig{RuntimePolicy: policy}}
 	values := map[string]string{
-		settingKeyCrawlerAllowPrivateNetworks: "true",
-		settingKeyCrawlerAllowCIDRs:           "10.30.0.0/16",
-		settingKeyCrawlerBrowserSandbox:       "true",
-		settingKeyCrawlerBrowserFailureLimit:  "8",
-		settingKeyCrawlerConnectTimeout:       "4s",
-		settingKeyCrawlerCrawlDelay:           "250ms",
-		settingKeyCrawlerHeaderTimeout:        "3s",
-		settingKeyCrawlerMaximumDepth:         "7",
-		settingKeyCrawlerMaximumHostFetches:   "5",
-		settingKeyCrawlerRequestTimeout:       "20s",
-		settingKeyCrawlerRunPagesPerMinute:    "120",
-		settingKeyCrawlerSitemapURLLimit:      "9000",
-		settingKeyCrawlerTLSTimeout:           "2s",
-		settingKeyCrawlerShutdownGrace:        "12s",
-		settingKeyCrawlerUserAgent:            "runtime-agent",
+		settingKeyCrawlerAllowPrivateNetworks:      "true",
+		settingKeyCrawlerAllowCIDRs:                "10.30.0.0/16",
+		settingKeyCrawlerBrowserSandbox:            "true",
+		settingKeyCrawlerBrowserFailureLimit:       "8",
+		settingKeyCrawlerConnectTimeout:            "4s",
+		settingKeyCrawlerCrawlDelay:                "250ms",
+		settingKeyCrawlerFrontierStateMaximumBytes: "8GB",
+		settingKeyCrawlerHeaderTimeout:             "3s",
+		settingKeyCrawlerMaximumDepth:              "7",
+		settingKeyCrawlerMaximumHostFetches:        "5",
+		settingKeyCrawlerRequestTimeout:            "20s",
+		settingKeyCrawlerRunPagesPerMinute:         "120",
+		settingKeyCrawlerSitemapURLLimit:           "9000",
+		settingKeyCrawlerTLSTimeout:                "2s",
+		settingKeyCrawlerShutdownGrace:             "12s",
+		settingKeyCrawlerUserAgent:                 "runtime-agent",
 	}
 	definitions := indexSettingDefinitions()
 	effective := base
@@ -70,19 +71,20 @@ func TestCrawlerRuntimePolicySettingsRoundTripAndApplyLive(t *testing.T) {
 func TestCrawlerRuntimePolicySettingValidation(t *testing.T) {
 	definitions := indexSettingDefinitions()
 	cases := map[string]string{
-		settingKeyCrawlerAllowCIDRs:          "169.254.0.0/16",
-		settingKeyCrawlerBrowserFailureLimit: "1001",
-		settingKeyCrawlerConnectTimeout:      "0s",
-		settingKeyCrawlerCrawlDelay:          "1us",
-		settingKeyCrawlerHeaderTimeout:       "3h",
-		settingKeyCrawlerMaximumDepth:        "65",
-		settingKeyCrawlerMaximumHostFetches:  "0",
-		settingKeyCrawlerRequestTimeout:      "11m",
-		settingKeyCrawlerRunPagesPerMinute:   "1000001",
-		settingKeyCrawlerSitemapURLLimit:     "0",
-		settingKeyCrawlerTLSTimeout:          "soon",
-		settingKeyCrawlerShutdownGrace:       "6m",
-		settingKeyCrawlerUserAgent:           "bad\nagent",
+		settingKeyCrawlerAllowCIDRs:                "169.254.0.0/16",
+		settingKeyCrawlerBrowserFailureLimit:       "1001",
+		settingKeyCrawlerConnectTimeout:            "0s",
+		settingKeyCrawlerCrawlDelay:                "1us",
+		settingKeyCrawlerFrontierStateMaximumBytes: "invalid",
+		settingKeyCrawlerHeaderTimeout:             "3h",
+		settingKeyCrawlerMaximumDepth:              "65",
+		settingKeyCrawlerMaximumHostFetches:        "0",
+		settingKeyCrawlerRequestTimeout:            "11m",
+		settingKeyCrawlerRunPagesPerMinute:         "1000001",
+		settingKeyCrawlerSitemapURLLimit:           "0",
+		settingKeyCrawlerTLSTimeout:                "soon",
+		settingKeyCrawlerShutdownGrace:             "6m",
+		settingKeyCrawlerUserAgent:                 "bad\nagent",
 	}
 	for key, raw := range cases {
 		if _, err := definitions[key].normalize(raw); err == nil {

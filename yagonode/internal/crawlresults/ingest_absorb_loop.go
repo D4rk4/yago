@@ -414,6 +414,7 @@ func documentFromIngestWithSafety(
 	classifier ContentSafetyClassifier,
 ) documentstore.Document {
 	return documentstore.Document{
+		ExtractionGeneration:        doc.ExtractionGeneration,
 		CanonicalURL:                doc.CanonicalURL,
 		NormalizedURL:               doc.NormalizedURL,
 		Title:                       doc.Title,

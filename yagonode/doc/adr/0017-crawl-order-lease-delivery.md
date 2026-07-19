@@ -90,6 +90,17 @@ leases alive with heartbeats.
   orders activate neither a frontier nor a progress reporter. Fetch-worker
   concurrency remains an independent control. A lower limit does not preempt
   existing tasks.
+- The fleet-wide page-fetch start ceiling uses a separate sequence of
+  server-relative permits. A crawler measures one completed lease RPC from
+  request start through response receipt, caps the observation at one second,
+  and reports it as the delivery allowance for the next sequence. The node adds
+  that allowance to the next demand-backed batch, reserves its complete enlarged
+  final window before another batch, and retains the configured interval between
+  permit openings. The crawler intersects openings with response receipt and
+  closings with request send, then also enforces the interval between permits it
+  actually consumes. A spike beyond the preceding allowance can discard a
+  window but cannot create a catch-up burst; that measurement applies to the next
+  sequence.
 - The progress-delivery queue keeps its in-flight generation immutable, coalesces
   newer running state into one pending per-run replacement, serves other ready
   runs fairly before that replacement, and continues to prioritize protected
@@ -149,6 +160,10 @@ leases alive with heartbeats.
   internal defaults rather than operator configuration for now. Both heartbeat
   bounds stay comfortably below the lease deadline. An unexpected local lease
   loss is a stream-reconnect signal; an intentional settlement is not.
+- The additive permit-delivery allowance is bounded from zero through one
+  second. Omission or zero retains the earlier conservative permit-window
+  behavior, while finite-rate operation still requires a matched current node
+  and crawler.
 - Invalid orders, deterministic seed-content failures, and operator cancellation
   terminate without a poison retry loop. Network, server, throttle, timeout, and
   retryable fetch-abort failures nak the order for redelivery.

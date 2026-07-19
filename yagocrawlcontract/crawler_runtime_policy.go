@@ -10,20 +10,21 @@ import (
 )
 
 const (
-	DefaultCrawlerBrowserFailureThreshold = 5
-	DefaultCrawlerMaximumDepth            = 5
-	DefaultCrawlerMaximumHostConcurrency  = 2
-	DefaultCrawlerRunPagesPerMinute       = 30
-	DefaultCrawlerSitemapURLLimit         = 10_000
-	MaximumCrawlerAllowedPrivateCIDRs     = 64
-	MaximumCrawlerBrowserFailureThreshold = 1_000
-	MaximumCrawlerMaximumDepth            = 64
-	MaximumCrawlerMaximumHostConcurrency  = MaximumFetchWorkerConcurrency
-	MaximumCrawlerRunPagesPerMinute       = 1_000_000
-	MaximumCrawlerSitemapURLLimit         = 1_000_000
-	MaximumCrawlerUserAgentBytes          = 256
-	MaximumCrawlerBrowserPathBytes        = 4_096
-	MaximumCrawlerMetricsAddressBytes     = 261
+	DefaultCrawlerBrowserFailureThreshold   = 5
+	DefaultCrawlerFrontierStateMaximumBytes = uint64(4) << 30
+	DefaultCrawlerMaximumDepth              = 5
+	DefaultCrawlerMaximumHostConcurrency    = 2
+	DefaultCrawlerRunPagesPerMinute         = 30
+	DefaultCrawlerSitemapURLLimit           = 10_000
+	MaximumCrawlerAllowedPrivateCIDRs       = 64
+	MaximumCrawlerBrowserFailureThreshold   = 1_000
+	MaximumCrawlerMaximumDepth              = 64
+	MaximumCrawlerMaximumHostConcurrency    = MaximumFetchWorkerConcurrency
+	MaximumCrawlerRunPagesPerMinute         = 1_000_000
+	MaximumCrawlerSitemapURLLimit           = 1_000_000
+	MaximumCrawlerUserAgentBytes            = 256
+	MaximumCrawlerBrowserPathBytes          = 4_096
+	MaximumCrawlerMetricsAddressBytes       = 261
 )
 
 const (
@@ -48,39 +49,41 @@ var crawlerPrivateNetworkRoots = []netip.Prefix{
 }
 
 type CrawlerRuntimePolicy struct {
-	AllowPrivateNetworks    bool
-	AllowedPrivateCIDRs     []netip.Prefix
-	BrowserFailureThreshold int
-	BrowserPath             string
-	BrowserSandbox          bool
-	ConnectTimeout          time.Duration
-	CrawlDelay              time.Duration
-	HeaderTimeout           time.Duration
-	MaximumDepth            int
-	MaximumHostConcurrency  int
-	MetricsAddress          string
-	RequestTimeout          time.Duration
-	RunPagesPerMinute       uint32
-	SitemapURLLimit         int
-	TLSTimeout              time.Duration
-	ShutdownGrace           time.Duration
-	UserAgent               string
+	AllowPrivateNetworks      bool
+	AllowedPrivateCIDRs       []netip.Prefix
+	BrowserFailureThreshold   int
+	BrowserPath               string
+	BrowserSandbox            bool
+	ConnectTimeout            time.Duration
+	CrawlDelay                time.Duration
+	FrontierStateMaximumBytes uint64
+	HeaderTimeout             time.Duration
+	MaximumDepth              int
+	MaximumHostConcurrency    int
+	MetricsAddress            string
+	RequestTimeout            time.Duration
+	RunPagesPerMinute         uint32
+	SitemapURLLimit           int
+	TLSTimeout                time.Duration
+	ShutdownGrace             time.Duration
+	UserAgent                 string
 }
 
 func DefaultCrawlerRuntimePolicy() CrawlerRuntimePolicy {
 	return CrawlerRuntimePolicy{
-		BrowserFailureThreshold: DefaultCrawlerBrowserFailureThreshold,
-		ConnectTimeout:          DefaultCrawlerConnectTimeout,
-		CrawlDelay:              DefaultCrawlerCrawlDelay,
-		HeaderTimeout:           DefaultCrawlerHeaderTimeout,
-		MaximumDepth:            DefaultCrawlerMaximumDepth,
-		MaximumHostConcurrency:  DefaultCrawlerMaximumHostConcurrency,
-		RequestTimeout:          DefaultCrawlerRequestTimeout,
-		RunPagesPerMinute:       DefaultCrawlerRunPagesPerMinute,
-		SitemapURLLimit:         DefaultCrawlerSitemapURLLimit,
-		TLSTimeout:              DefaultCrawlerTLSTimeout,
-		ShutdownGrace:           DefaultCrawlerShutdownGrace,
-		UserAgent:               "yago-crawler (+https://github.com/D4rk4/yago/)",
+		BrowserFailureThreshold:   DefaultCrawlerBrowserFailureThreshold,
+		ConnectTimeout:            DefaultCrawlerConnectTimeout,
+		CrawlDelay:                DefaultCrawlerCrawlDelay,
+		FrontierStateMaximumBytes: DefaultCrawlerFrontierStateMaximumBytes,
+		HeaderTimeout:             DefaultCrawlerHeaderTimeout,
+		MaximumDepth:              DefaultCrawlerMaximumDepth,
+		MaximumHostConcurrency:    DefaultCrawlerMaximumHostConcurrency,
+		RequestTimeout:            DefaultCrawlerRequestTimeout,
+		RunPagesPerMinute:         DefaultCrawlerRunPagesPerMinute,
+		SitemapURLLimit:           DefaultCrawlerSitemapURLLimit,
+		TLSTimeout:                DefaultCrawlerTLSTimeout,
+		ShutdownGrace:             DefaultCrawlerShutdownGrace,
+		UserAgent:                 "yago-crawler (+https://github.com/D4rk4/yago/)",
 	}
 }
 
@@ -144,6 +147,7 @@ func (policy CrawlerRuntimePolicy) Equal(other CrawlerRuntimePolicy) bool {
 		policy.BrowserSandbox == other.BrowserSandbox &&
 		policy.ConnectTimeout == other.ConnectTimeout &&
 		policy.CrawlDelay == other.CrawlDelay &&
+		policy.FrontierStateMaximumBytes == other.FrontierStateMaximumBytes &&
 		policy.HeaderTimeout == other.HeaderTimeout &&
 		policy.MaximumDepth == other.MaximumDepth &&
 		policy.MaximumHostConcurrency == other.MaximumHostConcurrency &&

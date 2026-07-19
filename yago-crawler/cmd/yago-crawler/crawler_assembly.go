@@ -144,13 +144,13 @@ func runServiceWithMetrics(
 	ctx, restart := newRestartController(ctx)
 	ctx, stopService := context.WithCancel(ctx)
 	defer stopService()
-	checkpointSession, err := openCrawlerCheckpointSession(ctx, cfg)
+	storagePressure := newCrawlerStorageAdmission(cfg, metrics)
+	checkpointSession, err := openCrawlerCheckpointSession(ctx, cfg, storagePressure)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = checkpointSession.checkpoint.Close() }()
 	cfg.WorkerID = checkpointSession.workerID
-	storagePressure := newCrawlerStorageAdmission(cfg, metrics)
 
 	nodeRPC, err := openCrawlerNodeRPC(cfg.NodeRPCAddr)
 	if err != nil {

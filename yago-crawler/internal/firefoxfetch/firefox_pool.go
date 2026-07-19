@@ -5,19 +5,22 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 const maximumFirefoxSessions = 2
 
 type firefoxPool struct {
-	available                             chan *firefoxManager
-	selection                             chan struct{}
-	managers                              []*firefoxManager
-	ctx                                   context.Context
-	cancel                                context.CancelFunc
-	closeOnce                             sync.Once
-	observeBrowserSlotAcquisitionDeadline func()
+	available        chan *firefoxManager
+	selection        chan struct{}
+	managers         []*firefoxManager
+	ctx              context.Context
+	cancel           context.CancelFunc
+	closeOnce        sync.Once
+	observationMutex sync.Mutex
+	active           atomic.Int32
+	observation      browserPoolObservation
 }
 
 func newFirefoxPool(
@@ -26,6 +29,22 @@ func newFirefoxPool(
 	start func(context.Context, BrowserLaunch, string) (browserSession, error),
 	observeBrowserSlotAcquisitionDeadline ...func(),
 ) *firefoxPool {
+	return newFirefoxPoolObserved(
+		launch,
+		proxyURL,
+		start,
+		browserPoolObservation{legacyDeadline: selectBrowserSlotAcquisitionDeadlineObserver(
+			observeBrowserSlotAcquisitionDeadline,
+		)},
+	)
+}
+
+func newFirefoxPoolObserved(
+	launch BrowserLaunch,
+	proxyURL string,
+	start func(context.Context, BrowserLaunch, string) (browserSession, error),
+	observation browserPoolObservation,
+) *firefoxPool {
 	sessions := launch.Sessions
 	if sessions <= 0 {
 		sessions = maximumFirefoxSessions
@@ -33,14 +52,12 @@ func newFirefoxPool(
 	sessions = min(sessions, maximumFirefoxSessions)
 	ctx, cancel := context.WithCancel(context.Background())
 	pool := &firefoxPool{
-		available: make(chan *firefoxManager, sessions),
-		selection: make(chan struct{}, 1),
-		managers:  make([]*firefoxManager, 0, sessions),
-		ctx:       ctx,
-		cancel:    cancel,
-		observeBrowserSlotAcquisitionDeadline: selectBrowserSlotAcquisitionDeadlineObserver(
-			observeBrowserSlotAcquisitionDeadline,
-		),
+		available:   make(chan *firefoxManager, sessions),
+		selection:   make(chan struct{}, 1),
+		managers:    make([]*firefoxManager, 0, sessions),
+		ctx:         ctx,
+		cancel:      cancel,
+		observation: observation,
 	}
 	for range sessions {
 		manager := &firefoxManager{
@@ -53,6 +70,7 @@ func newFirefoxPool(
 		pool.available <- manager
 	}
 	pool.selection <- struct{}{}
+	pool.observeState()
 
 	return pool
 }
@@ -70,24 +88,55 @@ func (p *firefoxPool) render(
 		stop()
 		cancel()
 	}()
+	waitStarted := time.Now()
 	manager, earliest, err := p.acquireRenderable(renderCtx)
+	p.observation.observeWait(time.Since(waitStarted))
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			p.observeBrowserSlotAcquisitionDeadline()
+			p.observation.observeFailure(BrowserFailureSlotDeadline)
 		}
 		return renderedPage{}, err
 	}
 	if manager != nil {
+		p.active.Add(1)
+		p.observeState()
 		page, renderErr := manager.render(renderCtx, rawURL)
+		if reason, ok := browserFailureReason(renderErr); ok &&
+			!errors.Is(renderErr, context.Canceled) {
+			p.observation.observeFailure(reason)
+		}
+		p.active.Add(-1)
 		p.release(manager)
+		p.observeState()
 
 		return page, renderErr
 	}
+	p.observation.observeFailure(BrowserFailureCooldown)
+	p.observeState()
 
 	return renderedPage{}, fmt.Errorf(
 		"all firefox sessions cooling down until %s",
 		earliest.UTC().Format(time.RFC3339),
 	)
+}
+
+func (p *firefoxPool) observeState() {
+	p.observationMutex.Lock()
+	defer p.observationMutex.Unlock()
+	busy := int(p.active.Load())
+	cooling := 0
+	for _, manager := range p.managers {
+		if manager.cooling.Load() {
+			cooling++
+		}
+	}
+	cooling = min(cooling, max(0, len(p.managers)-busy))
+	ready := max(0, len(p.managers)-busy-cooling)
+	p.observation.observeState(BrowserPoolState{
+		Ready:   ready,
+		Busy:    busy,
+		Cooling: cooling,
+	})
 }
 
 func (p *firefoxPool) acquireRenderable(
@@ -121,6 +170,7 @@ func (p *firefoxPool) acquireRenderable(
 
 			continue
 		}
+		manager.cooling.Store(false)
 
 		return manager, time.Time{}, nil
 	}

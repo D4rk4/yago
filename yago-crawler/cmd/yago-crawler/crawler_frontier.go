@@ -11,6 +11,7 @@ type crawlFrontierState struct {
 	checkpoint      frontier.Checkpoint
 	shutdown        func()
 	growthAdmission frontier.GrowthAdmission
+	stateGrowth     frontier.StateGrowthAdmission
 	urlDenylist     *crawldenylist.Denylist
 }
 
@@ -26,6 +27,7 @@ func newCrawlFrontier(crawl CrawlConfig, state crawlFrontierState) *frontier.Fro
 		frontier.WithCheckpoint(state.checkpoint),
 		frontier.WithCheckpointFailureShutdown(state.shutdown),
 		frontier.WithGrowthAdmission(state.growthAdmission),
+		frontier.WithStateGrowthAdmission(state.stateGrowth),
 		frontier.WithURLDenylist(state.urlDenylist),
 	)
 }

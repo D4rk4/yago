@@ -55,28 +55,31 @@ const (
 	sparklineHeight = 48
 )
 
-// performanceHistory renders every sampled series that has at least two
-// points; a shorter series has no shape to draw yet.
 func performanceHistory(source PerformanceHistorySource) []historyView {
 	if source == nil {
 		return nil
 	}
 	views := make([]historyView, 0, 8)
 	for _, series := range source.Series() {
-		if len(series.Points) < 2 {
+		if len(series.Points) == 0 {
 			continue
 		}
 		latest := series.Points[len(series.Points)-1]
+		window := "0s"
+		var sparkline template.HTML
+		if len(series.Points) > 1 {
+			window = latest.At.Sub(series.Points[0].At).Round(time.Second).String()
+			sparkline = sparklineSVG(series.Points)
+		}
 		views = append(views, historyView{
 			Name:       series.Name,
 			Unit:       historyDisplayUnit(series.Unit),
 			Latest:     formatHistoryMeasurement(latest.Value, series.Unit),
 			ObservedAt: latest.At.UTC().Format(time.RFC3339),
 			Peak:       formatHistoryMeasurement(peakValue(series.Points), series.Unit),
-			Window: series.Points[len(series.Points)-1].At.
-				Sub(series.Points[0].At).Round(time.Second).String(),
-			SVG:     sparklineSVG(series.Points),
-			Samples: len(series.Points),
+			Window:     window,
+			SVG:        sparkline,
+			Samples:    len(series.Points),
 		})
 	}
 

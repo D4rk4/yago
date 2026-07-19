@@ -62,9 +62,13 @@ func BuildDocument(
 	outlinks = append(outlinks, stats.ExternalLinks...)
 
 	return yagocrawlcontract.DocumentIngest{
-		CanonicalURL:  documentCanonicalURL(page),
-		NormalizedURL: page.URL,
-		Title:         boundedTextBytes(page.Title, yagocrawlcontract.MaximumDocumentTitleBytes),
+		ExtractionGeneration: yagocrawlcontract.CurrentExtractionGeneration,
+		CanonicalURL:         documentCanonicalURL(page),
+		NormalizedURL:        page.URL,
+		Title: boundedTextBytes(
+			page.Title,
+			yagocrawlcontract.MaximumDocumentTitleBytes,
+		),
 		Headings: boundedStrings(
 			page.Headings,
 			yagocrawlcontract.MaximumDocumentHeadings,

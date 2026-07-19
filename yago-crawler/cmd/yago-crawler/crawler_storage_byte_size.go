@@ -27,6 +27,9 @@ func envByteSize(
 	if raw == "" {
 		return fallback, nil
 	}
+	if raw == "0" {
+		return 0, nil
+	}
 	for _, unit := range crawlerByteSizeUnits {
 		if !strings.HasSuffix(raw, unit.suffix) {
 			continue

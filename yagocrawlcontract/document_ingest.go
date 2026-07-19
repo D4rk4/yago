@@ -3,6 +3,7 @@ package yagocrawlcontract
 import "time"
 
 type DocumentIngest struct {
+	ExtractionGeneration        uint64 `json:",omitempty"`
 	CanonicalURL                string
 	NormalizedURL               string
 	Title                       string

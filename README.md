@@ -150,7 +150,10 @@ its binaries (`yago-node`, `yago-crawler`).
   root portal's canonical global ranking for equivalent requests. Default
   results include `raw_content: null`, errors contain only `detail.error`, and
   raw-content requests retain YaGo's stricter 30-second and 200-page safety
-  limits.
+  limits. When `include_usage` is true, responses report request-local
+  Tavily-compatible usage units derived from the work that completed; these
+  units are not billing, an account balance, external-provider spend, or proof
+  that an upstream Tavily service was called.
 
 ### 🕷️ A crawler built for the hostile web
 
@@ -174,31 +177,44 @@ its binaries (`yago-node`, `yago-crawler`).
   concurrently.
 - One live `crawler.max_pages_per_second` ceiling controls page-fetch starts
   across every connected crawler process and active run. It defaults to 10 per
-  second; `0` is unlimited. The node leases non-bursting start windows, while
-  per-process smoothing, per-run pace, worker concurrency, and per-host
+  second; `0` is unlimited. The node leases non-bursting start windows and uses
+  the crawler's bounded measurement of the previous lease RPC delivery time to
+  keep permit windows usable across ordinary control-plane latency. The crawler
+  still enforces the configured interval between permits it consumes, so a
+  delivery spike can discard a permit window but cannot create a catch-up burst.
+  Per-process smoothing, per-run pace, worker concurrency, and per-host
   politeness remain additional limits. A finite ceiling fails closed unless
-  both the node and crawler support fetch-start leases, so upgrade them
-  together.
+  both the node and crawler support fetch-start leases, so upgrade them together.
 - Configuration → Crawler is authoritative for the typed crawler runtime policy;
   environment variables are bootstrap defaults. The policy includes the live
   redirect limit, depth ceiling, host concurrency, crawl delay, fetch timings,
   browser behavior, and shutdown grace. A change that cannot be applied in
-  place requests a graceful crawler restart; a browser-sandbox-only change
-  retires each Firefox session after its active render. A configured or
+  place requests a graceful crawler restart. A browser-sandbox-only change
+  retires each Firefox session after its active render, while a frontier-state
+  ceiling change updates the live admission gate and wakes waiting orders. A configured or
   discovered Firefox launcher must resolve through root-owned, non-writable
   path chains to a regular non-set-ID executable available to the crawler; the
   crawler checks this before assembly and again before every spawn. Its optional
   unauthenticated metrics listener accepts loopback IP literals only; remote
-  scraping uses a trusted local tunnel or proxy.
+  scraping uses a trusted local tunnel or proxy. Fixed-cardinality browser-pool
+  metrics expose acquisition time, ready/busy/cooling session state, and
+  slot-deadline/cooldown/launch/render failures without URL or error-text labels.
 - **Atomic node-side crawl control**: `yago-node` keeps its order queue, leases,
   settlements, controls, and terminal-run delivery state in
   `${YAGO_DATA_DIR}/crawlbroker.db`. One bbolt transaction can therefore move a
   lifecycle across all of its indexes. The first enabled crawl-runtime startup
   copies a frozen version-1 state set from the legacy node vault without deleting
   the source, and an interrupted copy resumes before listeners open. The
-  dedicated file is outside `YAGO_STORAGE_QUOTA` and main-vault compaction and
-  currently has no separate byte cap; `/metrics` exposes its live and allocated
-  bytes. A rollback must restore one coordinated stopped node-and-crawler backup,
+  dedicated file is outside `YAGO_STORAGE_QUOTA` and main-vault compaction.
+  `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` gives its physical file a 4 GiB soft
+  admission boundary by default; `0` disables the boundary. At or above the
+  boundary the node rejects fresh order enqueue while migration, ingest,
+  lifecycle, recovery, and settlement writes continue. Startup attempts a
+  copy compaction at the boundary before opening the authoritative file;
+  a failure before atomic replacement is logged and startup continues with the
+  original, while a directory-sync failure after replacement reports that the
+  compacted file is installed with a durability warning.
+  `/metrics` exposes live and allocated bytes. A rollback must restore one coordinated stopped node-and-crawler backup,
   because deleting only the dedicated file or downgrading in place can resurrect
   the retained stale cutover state. The sharded collection-length layout is also
   forward-compatible only: after current binaries record new mutations, an older
@@ -217,7 +233,8 @@ its binaries (`yago-node`, `yago-crawler`).
   budget and a 1 MiB UTF-8 text limit, and no OCR is performed. Synthetic
   regressions mirror malformed and custom-encoding shapes without redistributing
   external PDFs. The live Cisco ENCS document is a verification-only case; its
-  previously stored garbage text requires one normal recrawl after upgrade.
+  previously stored garbage text can be queued for a normal recrawl through the
+  bounded extraction-generation action on Admin → Index.
 - **Two-tier fetching**: fast HTTP first, headless-browser fallback (headless
   Firefox over Marionette, a lazy pool of at most two long-lived processes) for
   browser-resolvable status or bot-wall rejections and successful HTML app shells
@@ -293,6 +310,14 @@ its binaries (`yago-node`, `yago-crawler`).
   A valid, non-future sitemap `lastmod` can advance the next visit within the
   profile cadence; stale, future, unchanged, or malformed hints cannot create a
   recrawl loop.
+  Every newly parsed document carries extraction generation `1`; an unstamped
+  stored document is generation `0`. After a material parser or extractor
+  change advances the current generation, Admin → Index can explicitly examine
+  1–100 storage records at a time and queue only older documents through the
+  existing durable crawl dispatcher. A pass keeps bounded continuation state to
+  the captured high key of each document partition; it is not a transactional
+  snapshot. The node never starts this migration automatically and exposes no
+  environment knob for it, avoiding an upgrade-time crawl storm.
 - Automatic discovery: enabled swarm greedy-learning uses a depth-5,
   250-page-per-task HTTP-fast-path profile; web-discovery crawling stays opt-in
   with the same ready profile. The same value remains the per-host ceiling, and
@@ -330,9 +355,13 @@ its binaries (`yago-node`, `yago-crawler`).
   health), Network (peers, seedlists, news,
   blocking, an explicit public-endpoint self-test, and the complete sortable
   roster paged at exactly 20 peers), Index (browse, bounded per-document stored
-  evidence, node/crawler storage-reserve status, delete, blacklist, export,
-  schema, and safe next-restart rebuild scheduling), Performance
-  (live tiles **and sampled history sparklines**), Backup & restore,
+  evidence including extraction generation, explicit bounded outdated-extraction
+  recrawl, node/crawler storage-reserve status, delete, blacklist, export,
+  schema, and safe next-restart rebuild scheduling with startup storage preflight
+  and bounded journal progress), Performance (live tiles **and sampled history
+  sparklines**; gauge cards are available from the startup sample, sparklines
+  appear with a second point, and rates and CPU deltas require that second
+  sample), Backup & restore,
   Configuration (runtime settings with checkboxes, batch save, per-setting
   reset, Crawler/Automatic discovery/Document formats fieldsets, and live
   per-process active-task and fetch-worker limits plus the fleet-wide
@@ -491,6 +520,8 @@ peer identity on first run. The variables you are most likely to touch:
 | `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before gate-managed node growth admissions resume |
 | `YAGO_CRAWLER_STORAGE_RESERVED_FREE` | `1GB` | filesystem free-space reserve sent to and bootstrapped by crawler workers |
 | `YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before crawler frontier growth and fetch admission resume |
+| `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` | `4GB` | live soft physical boundary for `crawlbroker.db`; `0` disables it |
+| `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` | `4GB` | bootstrap in both services for the live soft physical boundary on `crawler/frontier-v1.db`; `0` disables it |
 
 The full reference — every variable and its default — is
 [doc/configuration.md](yagonode/doc/configuration.md). Bare-metal installs get

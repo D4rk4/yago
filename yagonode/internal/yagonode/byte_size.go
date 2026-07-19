@@ -20,6 +20,9 @@ var byteSizeUnits = []struct {
 
 func parseByteSize(raw string) (int64, error) {
 	text := strings.ToUpper(strings.TrimSpace(raw))
+	if text == "0" {
+		return 0, nil
+	}
 	for _, unit := range byteSizeUnits {
 		if !strings.HasSuffix(text, unit.suffix) {
 			continue

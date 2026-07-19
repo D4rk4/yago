@@ -3,6 +3,8 @@ package main
 import (
 	"math"
 	"testing"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 func TestCrawlerByteSizeParsing(t *testing.T) {
@@ -12,6 +14,7 @@ func TestCrawlerByteSizeParsing(t *testing.T) {
 		want     uint64
 	}{
 		{fallback: 13, want: 13},
+		{raw: "0", fallback: 13, want: 0},
 		{raw: "1B", want: 1},
 		{raw: " 2 kb ", want: 2 << 10},
 		{raw: "3mb", want: 3 << 20},
@@ -29,6 +32,7 @@ func TestCrawlerByteSizeParsing(t *testing.T) {
 		}
 	}
 	for _, raw := range []string{
+		"00",
 		"12",
 		"XB",
 		"not-a-numberB",
@@ -55,22 +59,40 @@ func TestServiceConfigLoadsCrawlerStoragePressure(t *testing.T) {
 		t.Fatalf("load defaults: %v", err)
 	}
 	if defaults.StorageReservedFreeBytes != DefaultStorageReservedFree ||
-		defaults.StoragePressureHysteresisBytes != DefaultStoragePressureHysteresis {
+		defaults.StoragePressureHysteresisBytes != DefaultStoragePressureHysteresis ||
+		defaults.FrontierStateMaximumBytes != yagocrawlcontract.DefaultCrawlerFrontierStateMaximumBytes {
 		t.Fatalf("default storage policy = %+v", defaults)
 	}
 	overrides, err := LoadServiceConfig(envFrom(map[string]string{
 		EnvNodeRPCAddr:               "node:9091",
 		EnvStorageReservedFree:       "2GB",
 		EnvStoragePressureHysteresis: "64MB",
+		EnvFrontierStateMaximumBytes: "8GB",
 	}))
 	if err != nil {
 		t.Fatalf("load overrides: %v", err)
 	}
 	if overrides.StorageReservedFreeBytes != 2<<30 ||
-		overrides.StoragePressureHysteresisBytes != 64<<20 {
+		overrides.StoragePressureHysteresisBytes != 64<<20 ||
+		overrides.FrontierStateMaximumBytes != 8<<30 {
 		t.Fatalf("override storage policy = %+v", overrides)
 	}
-	for _, key := range []string{EnvStorageReservedFree, EnvStoragePressureHysteresis} {
+	disabled, err := LoadServiceConfig(envFrom(map[string]string{
+		EnvNodeRPCAddr:               "node:9091",
+		EnvFrontierStateMaximumBytes: "0",
+	}))
+	if err != nil || disabled.FrontierStateMaximumBytes != 0 {
+		t.Fatalf(
+			"disabled frontier state maximum = %d, %v",
+			disabled.FrontierStateMaximumBytes,
+			err,
+		)
+	}
+	for _, key := range []string{
+		EnvStorageReservedFree,
+		EnvStoragePressureHysteresis,
+		EnvFrontierStateMaximumBytes,
+	} {
 		if _, err := LoadServiceConfig(envFrom(map[string]string{
 			EnvNodeRPCAddr: "node:9091",
 			key:            "invalid",

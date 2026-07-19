@@ -8,6 +8,7 @@ type DocumentDetailSource interface {
 
 type DocumentDetail struct {
 	Key                     string
+	Extraction              DocumentExtractionDetail
 	URL                     string
 	NormalizedURL           string
 	CanonicalURL            string
@@ -44,6 +45,11 @@ type DocumentDetail struct {
 	OutboundAnchorsTotal    int
 	Images                  []DocumentImageDetail
 	ImagesTotal             int
+}
+
+type DocumentExtractionDetail struct {
+	Generation uint64
+	Current    uint64
 }
 
 type DocumentQualityDetail struct {

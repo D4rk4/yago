@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
@@ -58,6 +59,10 @@ func (s documentDetailSource) DocumentDetail(
 func documentDetail(document documentstore.Document) adminui.DocumentDetail {
 	preview := boundedDocumentDetailText(document.ExtractedText, documentDetailContentBytes)
 	return adminui.DocumentDetail{
+		Extraction: adminui.DocumentExtractionDetail{
+			Generation: document.ExtractionGeneration,
+			Current:    yagocrawlcontract.CurrentExtractionGeneration,
+		},
 		Key: boundedDocumentDetailValue(document.NormalizedURL),
 		URL: boundedDocumentDetailValue(documentURL(document)),
 		NormalizedURL: boundedDocumentDetailText(

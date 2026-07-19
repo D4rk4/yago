@@ -30,6 +30,10 @@ type crawlerExecutionStart struct {
 
 func assembleCrawlerExecution(start crawlerExecutionStart) (crawlerExecution, error) {
 	crawl := start.config.Crawl
+	newGrowthAdmission := newCrawlerNewGrowthAdmission(
+		start.growthAdmission,
+		start.checkpoint.checkpoint,
+	)
 	pace, err := assembleCrawlerPace(
 		start.context,
 		crawl,
@@ -47,6 +51,7 @@ func assembleCrawlerExecution(start crawlerExecutionStart) (crawlerExecution, er
 		checkpoint:      start.checkpoint.checkpoint,
 		shutdown:        start.shutdown,
 		growthAdmission: start.growthAdmission,
+		stateGrowth:     start.checkpoint.checkpoint,
 		urlDenylist:     urlDenylist,
 	})
 	workerConcurrency := newWorkerConcurrency(crawl.Workers)
@@ -73,7 +78,7 @@ func assembleCrawlerExecution(start crawlerExecutionStart) (crawlerExecution, er
 		fetchBudget:     fetchBudget,
 		fleetAdmission:  fleetAdmission,
 		emitter:         start.emitter,
-		growthAdmission: start.growthAdmission,
+		growthAdmission: newGrowthAdmission,
 		urlDenylist:     urlDenylist,
 	}
 	execution.orders = assembleCrawlerOrderReceiver(start, execution, fetchStartSession)
@@ -93,6 +98,7 @@ func assembleCrawlerOrderReceiver(
 	runtimePolicyChanges := newCrawlerRuntimePolicyChange(
 		start.config.runtimePolicy(),
 		start.source,
+		start.checkpoint.checkpoint,
 		start.restart,
 	)
 	control := assembleCrawlerControlHandler(crawlerControlActions{

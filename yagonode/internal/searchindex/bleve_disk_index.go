@@ -119,7 +119,16 @@ func NewBleveDiskIndex(
 		return nil, fmt.Errorf("document directory required")
 	}
 
-	shards, rebuild, updatedAt, err := openOrCreateBleveDisk(path, stored != nil)
+	rebuildCoordinator := newBleveRebuildCoordinator(
+		path,
+		directory,
+		firstBleveRebuildGrowthAdmission(rebuildAdmissions),
+	)
+	shards, rebuild, updatedAt, err := openOrCreateBleveDisk(
+		path,
+		stored != nil,
+		func() error { return rebuildCoordinator.prepare(ctx) },
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +152,7 @@ func NewBleveDiskIndex(
 		now:              time.Now,
 	}
 	if rebuild && stored != nil {
-		if err := out.rebuild(ctx, stored, rebuildAdmissions...); err != nil {
+		if err := out.rebuild(ctx, stored, rebuildCoordinator); err != nil {
 			closeBleveShards(shards)
 
 			return nil, err
@@ -153,6 +162,7 @@ func NewBleveDiskIndex(
 
 			return nil, err
 		}
+		rebuildCoordinator.complete(ctx)
 	}
 	out.warm(ctx)
 
@@ -447,10 +457,22 @@ func closeBleveShards(shards []bleve.Index) {
 	}
 }
 
-func openOrCreateBleveDisk(root string, canRebuild bool) ([]bleve.Index, bool, time.Time, error) {
-	rebuildRequirement, err := prepareBleveRebuildRequirement(root, canRebuild)
+func openOrCreateBleveDisk(
+	root string,
+	canRebuild bool,
+	preflights ...func() error,
+) ([]bleve.Index, bool, time.Time, error) {
+	rebuildRequirement, err := prepareBleveRebuildRequirement(root, canRebuild, preflights...)
 	if err != nil {
 		return nil, false, time.Time{}, err
+	}
+	if rebuildRequirement.pending {
+		if err := rebuildRequirement.prepare(); err != nil {
+			return nil, false, time.Time{}, fmt.Errorf("prepare bleve index rebuild: %w", err)
+		}
+		if err := removeBleveDisk(root); err != nil {
+			return nil, false, time.Time{}, fmt.Errorf("restart bleve index rebuild: %w", err)
+		}
 	}
 	if legacy, info := legacyBleveLayout(root); legacy {
 		if !canRebuild {
@@ -472,14 +494,34 @@ func openOrCreateBleveDisk(root string, canRebuild bool) ([]bleve.Index, bool, t
 			return nil, false, time.Time{}, fmt.Errorf("retire legacy bleve index: %w", err)
 		}
 	}
+	shards, rebuild, updatedAt, err := openOrCreateBleveShards(
+		root,
+		canRebuild,
+		rebuildRequirement.require,
+	)
+	if err != nil {
+		return nil, false, time.Time{}, err
+	}
+	if rebuild {
+		updatedAt = time.Time{}
+	}
+
+	return shards, rebuild, updatedAt, nil
+}
+
+func openOrCreateBleveShards(
+	root string,
+	canRebuild bool,
+	rebuildRequired func() error,
+) ([]bleve.Index, bool, time.Time, error) {
 	shards := make([]bleve.Index, 0, diskShardCount)
 	rebuild := false
 	var updatedAt time.Time
-	for i := 0; i < diskShardCount; i++ {
+	for index := range diskShardCount {
 		shard, created, modTime, err := openOrCreateBleveShardForRebuild(
-			diskShardPath(root, i),
+			diskShardPath(root, index),
 			canRebuild,
-			rebuildRequirement.require,
+			rebuildRequired,
 		)
 		if err != nil {
 			closeBleveShards(shards)
@@ -491,9 +533,6 @@ func openOrCreateBleveDisk(root string, canRebuild bool) ([]bleve.Index, bool, t
 			updatedAt = modTime
 		}
 		shards = append(shards, shard)
-	}
-	if rebuild {
-		updatedAt = time.Time{}
 	}
 
 	return shards, rebuild, updatedAt, nil

@@ -15,12 +15,13 @@ func startPerformanceHistorySampler(
 	ctx context.Context,
 	sampler *metrichistory.Sampler,
 ) func() {
+	sampler.Sample()
 	ctx, cancel := context.WithCancel(ctx)
 	var sampling sync.WaitGroup
 	sampling.Add(1)
 	go func() {
 		defer sampling.Done()
-		sampler.Run(ctx, performanceHistorySampleInterval)
+		sampler.RunAfterBaseline(ctx, performanceHistorySampleInterval)
 	}()
 
 	return func() {

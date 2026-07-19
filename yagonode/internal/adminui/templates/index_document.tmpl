@@ -13,6 +13,7 @@
       <tr><th scope="row">Content type</th><td>{{if .Document.ContentType}}{{.Document.ContentType}}{{else}}—{{end}}</td></tr>
       <tr><th scope="row">Language</th><td>{{if .Document.Language}}{{.Document.Language}}{{else}}—{{end}}</td></tr>
       <tr><th scope="row">Fetch status</th><td>{{if .Document.FetchStatus}}{{.Document.FetchStatus}}{{else}}—{{end}}</td></tr>
+      <tr><th scope="row">Extraction generation</th><td>{{if .Document.Extraction.Generation}}{{.Document.Extraction.Generation}}{{if eq .Document.Extraction.Generation .Document.Extraction.Current}} (current){{else}} (current generation is {{.Document.Extraction.Current}}){{end}}{{else}}Unstamped (current generation is {{.Document.Extraction.Current}}){{end}}</td></tr>
       <tr><th scope="row">Fetched</th><td>{{if .Document.FetchedAt}}{{.Document.FetchedAt}}{{else}}—{{end}}</td></tr>
       <tr><th scope="row">Indexed</th><td>{{if .Document.IndexedAt}}{{.Document.IndexedAt}}{{else}}—{{end}}</td></tr>
       <tr><th scope="row">Published</th><td>{{if .Document.PublishedAt}}{{.Document.PublishedAt}}{{else}}—{{end}}</td></tr>

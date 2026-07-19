@@ -3,10 +3,12 @@ package crawlbroker
 import (
 	"context"
 	"errors"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
@@ -32,11 +34,20 @@ func (s *exchangeServer) LeaseFetchStarts(
 			return nil, fleetFetchStartStatus(err)
 		}
 	}
+	permitDeliveryAllowanceNanoseconds := request.GetPermitDeliveryAllowanceNanoseconds()
+	if permitDeliveryAllowanceNanoseconds > uint64(
+		yagocrawlcontract.MaximumFetchStartPermitDeliveryAllowance,
+	) {
+		return nil, fleetFetchStartStatus(errFleetFetchRequestInvalid)
+	}
 	decision, err := s.fetchStarts.Lease(fleetFetchStartLeaseRequest{
 		WorkerID:        request.GetWorkerId(),
 		WorkerSessionID: request.GetWorkerSessionId(),
 		Sequence:        request.GetSequence(),
 		MaximumPermits:  request.GetMaximumPermits(),
+		PermitDeliveryAllowance: time.Duration(
+			permitDeliveryAllowanceNanoseconds,
+		),
 	})
 	if err != nil {
 		return nil, fleetFetchStartStatus(err)

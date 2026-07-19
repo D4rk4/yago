@@ -16,7 +16,13 @@ func TestCrawlerRuntimePolicyEndpointReadsRegistrySnapshot(t *testing.T) {
 	policy := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
 	policy.CrawlDelay = 250 * time.Millisecond
 	policy.UserAgent = "crawler-policy-test"
-	server := newExchangeServer(nil, nil, crawlerControlDefaults{runtimePolicy: policy})
+	server := newExchangeServer(nil, nil, crawlerControlDefaults{
+		runtimePolicy: policy,
+		storagePressurePolicy: yagocrawlcontract.StoragePressurePolicy{
+			ReservedFreeBytes:       55,
+			RecoveryHysteresisBytes: 7,
+		},
+	})
 	read, err := server.ReadRuntimePolicy(t.Context(), &crawlrpc.CrawlerRuntimePolicyRequest{
 		WorkerId: "worker-policy",
 	})
@@ -26,6 +32,12 @@ func TestCrawlerRuntimePolicyEndpointReadsRegistrySnapshot(t *testing.T) {
 	decoded, err := yagocrawlcontract.CrawlerRuntimePolicyFromProto(read)
 	if err != nil || !decoded.Equal(policy) {
 		t.Fatalf("decoded policy = %+v/%v, want %+v", decoded, err, policy)
+	}
+	if read.StorageReservedFreeBytes == nil ||
+		read.StoragePressureHysteresisBytes == nil ||
+		read.GetStorageReservedFreeBytes() != 55 ||
+		read.GetStoragePressureHysteresisBytes() != 7 {
+		t.Fatalf("startup storage policy = %+v", read)
 	}
 	if _, err := server.ReadRuntimePolicy(
 		t.Context(),

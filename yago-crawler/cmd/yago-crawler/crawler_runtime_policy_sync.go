@@ -41,13 +41,20 @@ func readCrawlerRuntimePolicy(
 	if err != nil {
 		return ServiceConfig{}, fmt.Errorf("decode crawler runtime policy: %w", err)
 	}
+	resolved := config.withRuntimePolicy(policy)
+	if message.StorageReservedFreeBytes != nil {
+		resolved.StorageReservedFreeBytes = message.GetStorageReservedFreeBytes()
+	}
+	if message.StoragePressureHysteresisBytes != nil {
+		resolved.StoragePressureHysteresisBytes = message.GetStoragePressureHysteresisBytes()
+	}
 
-	return config.withRuntimePolicy(policy), nil
+	return resolved, nil
 }
 
 func restartOnCrawlerRuntimePolicyChange(
 	effective yagocrawlcontract.CrawlerRuntimePolicy,
 	restart func(),
 ) func(yagocrawlcontract.CrawlerRuntimePolicy) {
-	return newCrawlerRuntimePolicyChange(effective, nil, restart).Apply
+	return newCrawlerRuntimePolicyChange(effective, nil, nil, restart).Apply
 }

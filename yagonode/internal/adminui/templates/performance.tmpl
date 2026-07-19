@@ -33,12 +33,12 @@
     <div class="cds-metric__label">{{.Name}}</div>
     <div class="cds-metric__value">{{.Latest}}{{if .Unit}} <span class="cds-metric__unit">{{.Unit}}</span>{{end}}</div>
     {{.SVG}}
-    <div class="cds-muted cds-sparkline__meta">latest observed {{.ObservedAt}} · peak {{.Peak}}{{if .Unit}} {{.Unit}}{{end}} · {{.Samples}} samples over {{.Window}}</div>
+    <div class="cds-muted cds-sparkline__meta">latest observed {{.ObservedAt}} · peak {{.Peak}}{{if .Unit}} {{.Unit}}{{end}} · {{.Samples}} sample{{if ne .Samples 1}}s{{end}} over {{.Window}}</div>
   </section>
   {{end}}
 </div>
 {{else}}
-<p class="cds-muted">History charts appear after the sampler has collected at least two points (about twenty seconds after start).</p>
+<p class="cds-muted">History is unavailable until the sampler records a usable observation.</p>
 {{end}}
 {{else}}
 <div class="cds-empty" role="status" aria-live="polite">Performance metrics are not available.</div>

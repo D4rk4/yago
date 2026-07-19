@@ -41,7 +41,25 @@ When the node crawl runtime is enabled, it stores its broker queue, lease and se
 and terminal-run delivery state in `${YAGO_DATA_DIR}/crawlbroker.db`. This dedicated bbolt file provides
 one atomic transaction boundary for crawler control state. It is separate from the sharded main vault,
 so `YAGO_STORAGE_QUOTA`, main-vault eviction, and main-vault compaction do not limit or reclaim it. There
-is currently no separate byte cap for the file.
+is a separate soft physical admission boundary for this file
+(`crawler.node_state_max_bytes` / `YAGO_CRAWLER_NODE_STATE_MAX_BYTES`) and for
+the crawler's `crawler/frontier-v1.db`
+(`crawler.frontier_state_max_bytes` / `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES`);
+each defaults to 4 GiB and `0` disables it. The node rejects fresh order
+enqueue at its boundary while migration, ingest, lifecycle, recovery, and settlement continue. The
+crawler waits before expanding a fresh order and refuses new discovered-link batches at its boundary;
+already committed seed manifests, queued work, recovery, lifecycle, and settlement continue.
+
+At startup, an enabled boundary triggers compaction when the physical file size is equal to or greater
+than the configured value. Each process first takes a persistent path-stable sidecar lease and holds it
+through stale-copy cleanup, compaction, replacement, directory sync, inspection, and successful exclusive
+open of the authoritative database inode. Inside the shared serialized storage-maintenance gate,
+compaction remeasures the actual source size, reserves that temporary headroom, reads the authoritative
+database read-only, writes a private-mode sibling copy, then syncs and closes it. Still under the startup
+lease, it atomically replaces the original and syncs the containing directory. A pre-install failure
+leaves the original authoritative and is a recoverable warning; a post-install directory-sync or
+inspection failure is reported as an installed durability warning. Lease acquisition or release failure
+stops startup. The boundary limits selected new admissions and is not a filesystem quota.
 
 The first startup with the dedicated file performs one retained version-1 migration before listeners
 open. The version-1 bucket list is frozen. The migration copies the legacy main-vault rows in ordered
@@ -51,8 +69,9 @@ resumes from the committed target cursor. A conflicting target row, fingerprint 
 mismatch fails startup. The source rows are never changed or deleted, and a future bucket set requires a
 new migration version rather than silently extending version 1.
 
-Opening `crawlbroker.db` waits at most five seconds for its exclusive file lock. Another process using
-the same node data directory therefore causes bounded startup failure instead of an indefinite wait.
+Acquiring the path-stable startup sidecar lease and opening `crawlbroker.db` each wait at most five
+seconds. Another process using the same node data directory therefore causes bounded startup failure
+instead of an indefinite wait, including across an atomic database replacement.
 Prometheus exposes live database use as `crawl_broker_state_used_bytes` and the allocated file size as
 `crawl_broker_state_file_bytes`; the latter may remain above live use after rows are deleted.
 
@@ -105,10 +124,12 @@ settlement in a bounded transaction and atomically applies a still-pending reque
 that arrives after expiry succeeds idempotently, while an incomplete delivery phase remains retained and
 unindexed so cleanup cannot overtake it.
 
-The database file uses mode `0600`, its immediate parent uses `0700`, opening takes an exclusive bounded
-lock, and synchronous durability remains enabled. The schema rejects malformed and future versions
-rather than guessing a migration. Startup completes interrupted deletion, seed-manifest, cancellation,
-host-retirement, and terminal-outbox transitions before accepting normal work.
+The database and persistent startup sidecar files use mode `0600`, their immediate parent uses `0700`,
+opening takes an exclusive bounded lock, and synchronous durability remains enabled. The sidecar is never
+unlinked during normal operation, so its inode remains a stable interprocess rendezvous across database
+replacement. The schema rejects malformed and future versions rather than guessing a migration. Startup
+completes interrupted deletion, seed-manifest, cancellation, host-retirement, and terminal-outbox
+transitions before accepting normal work.
 
 ## Considered alternatives
 
