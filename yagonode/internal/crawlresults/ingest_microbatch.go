@@ -14,7 +14,7 @@ import (
 // grouped documents land in the vault through one Receive and in bleve through
 // one batch per shard, amortizing the per-write flush that made
 // document-at-a-time ingest the crawl bottleneck (PERF-05).
-const ingestMicroBatch = 16
+const ingestMicroBatch = 64
 
 // absorbGroup absorbs the deliveries as one unit: admission gates run per
 // delivery, the surviving documents are stored and indexed together, and the

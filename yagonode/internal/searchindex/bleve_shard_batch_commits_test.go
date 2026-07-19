@@ -3,6 +3,7 @@ package searchindex
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,6 +23,35 @@ type controlledBatchShard struct {
 	closeOnce     sync.Once
 	commitDelay   time.Duration
 	commitFailure error
+	commitMu      sync.Mutex
+	commitCalls   int
+	concurrency   *batchCommitConcurrency
+}
+
+type batchCommitConcurrency struct {
+	mu      sync.Mutex
+	active  int
+	maximum int
+}
+
+func (c *batchCommitConcurrency) enter() {
+	c.mu.Lock()
+	c.active++
+	c.maximum = max(c.maximum, c.active)
+	c.mu.Unlock()
+}
+
+func (c *batchCommitConcurrency) leave() {
+	c.mu.Lock()
+	c.active--
+	c.mu.Unlock()
+}
+
+func (c *batchCommitConcurrency) snapshot() (int, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.active, c.maximum
 }
 
 func newControlledBatchShard(
@@ -35,10 +65,11 @@ func newControlledBatchShard(
 	}
 
 	return &controlledBatchShard{
-		staging: staging,
-		started: make(chan struct{}),
-		release: release,
-		closed:  make(chan struct{}),
+		staging:     staging,
+		started:     make(chan struct{}),
+		release:     release,
+		closed:      make(chan struct{}),
+		concurrency: &batchCommitConcurrency{},
 	}
 }
 
@@ -47,6 +78,11 @@ func (s *controlledBatchShard) NewBatch() *bleve.Batch {
 }
 
 func (s *controlledBatchShard) Batch(*bleve.Batch) error {
+	s.concurrency.enter()
+	defer s.concurrency.leave()
+	s.commitMu.Lock()
+	s.commitCalls++
+	s.commitMu.Unlock()
 	s.startOnce.Do(func() { close(s.started) })
 	if s.release != nil {
 		<-s.release
@@ -56,6 +92,13 @@ func (s *controlledBatchShard) Batch(*bleve.Batch) error {
 	}
 
 	return s.commitFailure
+}
+
+func (s *controlledBatchShard) committed() int {
+	s.commitMu.Lock()
+	defer s.commitMu.Unlock()
+
+	return s.commitCalls
 }
 
 func (s *controlledBatchShard) Close() error {
@@ -100,60 +143,93 @@ func awaitBatchSignal(
 	}
 }
 
-func TestBleveShardBatchCommitsRunInParallelAndWaitForEveryShard(t *testing.T) {
-	firstRelease := make(chan struct{})
-	secondRelease := make(chan struct{})
-	first := newControlledBatchShard(t, firstRelease)
-	second := newControlledBatchShard(t, secondRelease)
-	shards := []bleve.Index{first, second}
-	index := &BleveDiskIndex{shards: shards, now: time.Now}
-	documents := []documentstore.Document{
-		documentForShard(t, shards, 0),
-		documentForShard(t, shards, 1),
+func TestBleveShardBatchCommitsUseFourLanesAndWaitForEveryShard(t *testing.T) {
+	release := make(chan struct{})
+	concurrency := &batchCommitConcurrency{}
+	controlled := make([]*controlledBatchShard, 5)
+	shards := make([]bleve.Index, len(controlled))
+	batches := make([]*bleve.Batch, len(controlled))
+	for shardNumber := range controlled {
+		controlled[shardNumber] = newControlledBatchShard(t, release)
+		controlled[shardNumber].concurrency = concurrency
+		shards[shardNumber] = controlled[shardNumber]
+		batches[shardNumber] = controlled[shardNumber].NewBatch()
 	}
-
+	t.Cleanup(func() { closeBleveShards(shards) })
 	finished := make(chan error, 1)
 	go func() {
-		finished <- index.IndexBatch(t.Context(), documents)
+		finished <- commitBleveShardBatches(shards, batches)
 	}()
-	awaitBatchSignal(t, first.started, "first shard commit")
-	awaitBatchSignal(t, second.started, "second shard commit")
-	close(firstRelease)
+	for shardNumber := range bleveShardCommitLanes {
+		awaitBatchSignal(
+			t,
+			controlled[shardNumber].started,
+			fmt.Sprintf("shard %d commit", shardNumber),
+		)
+	}
 	select {
-	case err := <-finished:
-		close(secondRelease)
-		t.Fatalf("batch returned before every shard completed: %v", err)
+	case <-controlled[bleveShardCommitLanes].started:
+		close(release)
+		t.Fatal("queued shard commit started while every lane was occupied")
 	case <-time.After(25 * time.Millisecond):
 	}
-	close(secondRelease)
+	close(release)
 	if err := <-finished; err != nil {
-		t.Fatalf("IndexBatch: %v", err)
+		t.Fatalf("commitBleveShardBatches: %v", err)
 	}
-	if err := index.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
+	for shardNumber, shard := range controlled {
+		if shard.committed() != 1 {
+			t.Fatalf("shard %d commits = %d, want 1", shardNumber, shard.committed())
+		}
+	}
+	active, maximum := concurrency.snapshot()
+	if active != 0 || maximum != bleveShardCommitLanes {
+		t.Fatalf("commit concurrency active=%d maximum=%d, want 0/%d",
+			active, maximum, bleveShardCommitLanes)
 	}
 }
 
 func TestBleveShardBatchCommitFailureIsDeterministic(t *testing.T) {
+	firstRelease := make(chan struct{})
 	released := make(chan struct{})
 	close(released)
 	firstFailure := errors.New("first shard failed")
-	secondFailure := errors.New("second shard failed")
-	first := newControlledBatchShard(t, released)
-	first.commitDelay = 25 * time.Millisecond
+	lastFailure := errors.New("last shard failed")
+	first := newControlledBatchShard(t, firstRelease)
 	first.commitFailure = firstFailure
 	second := newControlledBatchShard(t, released)
-	second.commitFailure = secondFailure
-	shards := []bleve.Index{first, second}
+	third := newControlledBatchShard(t, released)
+	last := newControlledBatchShard(t, released)
+	last.commitFailure = lastFailure
+	controlled := []*controlledBatchShard{first, second, third, last}
+	shards := []bleve.Index{first, second, third, last}
 	index := &BleveDiskIndex{shards: shards, now: time.Now}
-	documents := []documentstore.Document{
-		documentForShard(t, shards, 0),
-		documentForShard(t, shards, 1),
+	documents := make([]documentstore.Document, len(shards))
+	for shardNumber := range shards {
+		documents[shardNumber] = documentForShard(t, shards, shardNumber)
 	}
 
-	err := index.IndexBatch(t.Context(), documents)
-	if !errors.Is(err, firstFailure) || errors.Is(err, secondFailure) {
+	finished := make(chan error, 1)
+	go func() { finished <- index.IndexBatch(t.Context(), documents) }()
+	for shardNumber, shard := range controlled {
+		awaitBatchSignal(t, shard.started, fmt.Sprintf("shard %d commit", shardNumber))
+	}
+	select {
+	case err := <-finished:
+		close(firstRelease)
+		t.Fatalf("batch returned before lowest shard completed: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(firstRelease)
+	err := <-finished
+	if !errors.Is(err, firstFailure) || errors.Is(err, lastFailure) ||
+		!strings.Contains(err.Error(), "shard 1") {
 		t.Fatalf("IndexBatch error = %v, want lowest shard failure %v", err, firstFailure)
+	}
+	for shardNumber, shard := range controlled {
+		if shard.committed() != 1 {
+			t.Fatalf("shard %d commits = %d, want 1", shardNumber, shard.committed())
+		}
 	}
 	if !index.lastUpdate().IsZero() {
 		t.Fatalf("failed batch updated timestamp to %v", index.lastUpdate())
@@ -163,24 +239,26 @@ func TestBleveShardBatchCommitFailureIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestBleveDiskIndexCloseWaitsForParallelBatchCommits(t *testing.T) {
-	firstRelease := make(chan struct{})
-	secondRelease := make(chan struct{})
-	first := newControlledBatchShard(t, firstRelease)
-	second := newControlledBatchShard(t, secondRelease)
-	shards := []bleve.Index{first, second}
+func TestBleveDiskIndexCloseWaitsForBoundedBatchCommits(t *testing.T) {
+	release := make(chan struct{})
+	controlled := make([]*controlledBatchShard, 4)
+	shards := make([]bleve.Index, len(controlled))
+	for shardNumber := range controlled {
+		controlled[shardNumber] = newControlledBatchShard(t, release)
+		shards[shardNumber] = controlled[shardNumber]
+	}
 	index := &BleveDiskIndex{shards: shards, now: time.Now}
-	documents := []documentstore.Document{
-		documentForShard(t, shards, 0),
-		documentForShard(t, shards, 1),
+	documents := make([]documentstore.Document, len(shards))
+	for shardNumber := range shards {
+		documents[shardNumber] = documentForShard(t, shards, shardNumber)
 	}
 
 	batchFinished := make(chan error, 1)
 	go func() {
 		batchFinished <- index.IndexBatch(t.Context(), documents)
 	}()
-	awaitBatchSignal(t, first.started, "first shard commit")
-	awaitBatchSignal(t, second.started, "second shard commit")
+	awaitBatchSignal(t, controlled[0].started, "first shard commit")
+	awaitBatchSignal(t, controlled[1].started, "second shard commit")
 	closeFinished := make(chan error, 1)
 	closeStarted := make(chan struct{})
 	go func() {
@@ -189,22 +267,36 @@ func TestBleveDiskIndexCloseWaitsForParallelBatchCommits(t *testing.T) {
 	}()
 	awaitBatchSignal(t, closeStarted, "index close")
 	select {
-	case <-first.closed:
-		t.Fatal("first shard closed during batch commit")
-	case <-second.closed:
-		t.Fatal("second shard closed during batch commit")
+	case <-controlled[0].closed:
+		t.Fatal("shard closed during batch commit")
 	case <-time.After(25 * time.Millisecond):
 	}
-	close(firstRelease)
-	close(secondRelease)
+	close(release)
 	if err := <-batchFinished; err != nil {
 		t.Fatalf("IndexBatch: %v", err)
 	}
 	if err := <-closeFinished; err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	awaitBatchSignal(t, first.closed, "first shard close")
-	awaitBatchSignal(t, second.closed, "second shard close")
+	for shardNumber, shard := range controlled {
+		awaitBatchSignal(t, shard.closed, fmt.Sprintf("shard %d close", shardNumber))
+		if shard.committed() != 1 {
+			t.Fatalf("shard %d commits = %d, want 1", shardNumber, shard.committed())
+		}
+	}
+}
+
+func TestBleveShardBatchCommitsSkipUntouchedShards(t *testing.T) {
+	released := make(chan struct{})
+	close(released)
+	shard := newControlledBatchShard(t, released)
+	t.Cleanup(func() { _ = shard.Close() })
+	if err := commitBleveShardBatches([]bleve.Index{shard}, []*bleve.Batch{nil}); err != nil {
+		t.Fatalf("commitBleveShardBatches: %v", err)
+	}
+	if shard.committed() != 0 {
+		t.Fatalf("commits = %d, want 0", shard.committed())
+	}
 }
 
 func BenchmarkBleveShardBatchCommits(b *testing.B) {
@@ -223,7 +315,7 @@ func BenchmarkBleveShardBatchCommits(b *testing.B) {
 
 		return shards, batches
 	}
-	b.Run("parallel", func(b *testing.B) {
+	b.Run("four_lanes", func(b *testing.B) {
 		shards, batches := newBenchmarkShards(b)
 		b.Cleanup(func() { closeBleveShards(shards) })
 		b.ResetTimer()

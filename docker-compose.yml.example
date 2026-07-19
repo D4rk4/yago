@@ -8,6 +8,7 @@ services:
         VERSION: ${VERSION:-}
     image: yago-node:latest
     restart: unless-stopped
+    stop_grace_period: 15m
     ports:
       - "8090:8090"   # peer protocol (P2P /yacy/*) — keep reachable from the network
       - "8080:8080"   # public search (portal, OpenSearch, Tavily API, /yacysearch.*)

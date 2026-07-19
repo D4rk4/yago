@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/FastFilter/xorfilter"
+	bolt "go.etcd.io/bbolt"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -191,6 +192,10 @@ func TestBuildWordFilterReportsCollectError(t *testing.T) {
 	e := &engine{wordFilterBucket: testBucket, wordFilterWidth: testWordWidth}
 	if filter := e.buildWordFilter(db); !filter.degraded {
 		t.Fatal("a shard whose keys cannot be read must degrade to matching everything")
+	}
+	e.shards = []*bolt.DB{db}
+	if degraded := e.initWordFilters(); degraded != 1 {
+		t.Fatalf("degraded filters = %d, want 1", degraded)
 	}
 }
 

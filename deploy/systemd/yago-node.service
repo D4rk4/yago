@@ -13,6 +13,7 @@ EnvironmentFile=/opt/yago/etc/yago-node.env
 WorkingDirectory=/opt/yago
 Restart=on-failure
 RestartSec=5s
+TimeoutStopSec=15min
 
 # The service, not a container, is the isolation boundary on bare metal.
 NoNewPrivileges=yes

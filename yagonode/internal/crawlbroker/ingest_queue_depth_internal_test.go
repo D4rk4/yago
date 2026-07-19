@@ -34,6 +34,9 @@ func TestIngestReceiverTracksWaitingAndActiveDelivery(t *testing.T) {
 
 	waitForIngestDepth(t, receiver, 1)
 	delivery := <-receiver.Receive()
+	if delivery.BatchJSONSize != len(data) {
+		t.Fatalf("batch JSON size = %d, want %d", delivery.BatchJSONSize, len(data))
+	}
 	if receiver.Outstanding() != 1 {
 		t.Fatalf("active depth = %d, want 1", receiver.Outstanding())
 	}

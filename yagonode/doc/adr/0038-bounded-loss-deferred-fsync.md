@@ -50,9 +50,15 @@ their guards at boot. Restart-required is the point, not a limitation: the shard
 are reconfigured while single-threaded at startup, so NoSync is never flipped
 under a concurrent commit.
 
-On a clean shutdown `Close` fsyncs each shard before closing it when the mode is
-on, so a planned stop or a restart-to-change-the-setting loses nothing — only an
-abrupt power loss is exposed, and only back to the last background flush.
+On a clean shutdown `Close` disables both `NoSync` and `NoFreelistSync` under
+exclusive storage quiescence, then commits one empty transaction per shard.
+bbolt writes and syncs the current freelist before its meta page, so that commit
+both drains accepted deferred writes and leaves the shard ready for a fast
+planned restart; a second explicit sync would be redundant. If the checkpoint
+fails, `Close` attempts a best-effort explicit sync for that deferred shard,
+still closes every shard, and returns the joined failures. Only an abrupt power
+loss is exposed, and only back to the last background flush; an unclean stop
+also retains bbolt's scan-based freelist recovery.
 
 ### B. Staggered background flush, off the hot path
 
@@ -79,8 +85,9 @@ policy invisible to peers and the YaCy API.
 - The default stays fully crash-safe on every filesystem, including the XFS
   production node — deferred fsync is off unless an operator sets it.
 - Restart-required keeps the shards from being reconfigured under load and makes
-  the mode a deliberate choice; a clean shutdown flushes, so planned restarts and
-  the setting change itself lose nothing.
+  the mode a deliberate choice; a clean-shutdown freelist checkpoint flushes, so
+  planned restarts and the setting change itself lose nothing and do not rebuild
+  every freelist.
 - The exposure is narrow and named: an abrupt power loss or kernel panic can lose
   writes newer than the last background flush on the affected shards, bounded by
   the flush cadence; a clean process crash does not lose data (the OS page cache

@@ -117,9 +117,11 @@ drop results.
   fan-out cost was growing.
 - Memory cost is about nine bits per distinct term key per shard, plus the
   side-set between rebuilds.
-- Open pays one term-key scan per shard to build the filters — comparable to the
-  freelist rebuild bbolt already does on open (IO-AGG-03); noted for a large
-  index, with lazy build available as a follow-up.
+- Open pays one term-key scan per shard to build the filters. A clean shutdown
+  checkpoints bbolt freelists so a planned restart avoids their recovery scan;
+  the filter scan remains and is reported as its own startup phase. Successful
+  completion is INFO; degraded completion is WARN with the degraded-shard total.
+  Lazy build remains available as a follow-up for a large index.
 - One new third-party dependency (`xorfilter`), justified above; no wire-format,
   peer-protocol, or on-disk-layout change — the filters are an in-memory read
   accelerator rebuilt from the shards.

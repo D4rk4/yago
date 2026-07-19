@@ -1,9 +1,12 @@
 package yagonode
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,10 +17,17 @@ import (
 )
 
 func TestConfigureLogging(t *testing.T) {
-	if err := configureLogging(func(string) string { return "debug" }); err != nil {
+	previous := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	var output bytes.Buffer
+	if err := configureLoggingTo(func(string) string { return "debug" }, &output); err != nil {
 		t.Fatalf("configure: %v", err)
 	}
-	if err := configureLogging(func(string) string { return "nonsense" }); err == nil {
+	slog.InfoContext(t.Context(), "stdout logging probe")
+	if !strings.Contains(output.String(), `"msg":"stdout logging probe"`) {
+		t.Fatalf("configured output = %q", output.String())
+	}
+	if err := configureLoggingTo(func(string) string { return "nonsense" }, &output); err == nil {
 		t.Fatal("expected error for invalid level")
 	}
 }

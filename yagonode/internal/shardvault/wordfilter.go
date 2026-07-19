@@ -82,14 +82,20 @@ func (f *wordFilter) add(key uint64) {
 // initWordFilters builds a filter for every shard when the feature is configured;
 // without WithWordFilter it is a no-op and reads never skip. It runs at open,
 // before the store serves, so it needs no gate.
-func (e *engine) initWordFilters() {
+func (e *engine) initWordFilters() int {
 	if e.wordFilterBucket == "" {
-		return
+		return 0
 	}
 	e.wordFilters = make([]*wordFilter, len(e.shards))
+	degraded := 0
 	for i, db := range e.shards {
 		e.wordFilters[i] = e.buildWordFilter(db)
+		if e.wordFilters[i].degraded {
+			degraded++
+		}
 	}
+
+	return degraded
 }
 
 // rebuildWordFilter rebuilds one shard's filter from its current keys, folding

@@ -418,6 +418,24 @@ the normal restart window for a mapping-changing release until the same corpus
 size has been timed on representative storage and the maintenance window covers
 the measured rebuild.
 
+Main-vault startup reports each sequential shard open and the subsequent RWI
+word-filter initialization as stable JSON records on standard output, which the
+service journal captures. Successful
+completion is INFO; a degraded filter completion is WARN and includes its shard
+total. A binary that
+supports clean-shutdown freelist checkpoints must complete one orderly shutdown
+before later planned restarts can load those checkpoints directly. Its first
+start after upgrading from an older binary can therefore still perform the full
+scan, as does every start after an unclean stop. The in-memory word filters are
+rebuilt on every start even when the freelists load directly. The shipped
+Compose and systemd definitions allow up to 15 minutes for the node to finish
+draining event persistence and checkpointing its shards; ordinary exits return
+sooner. Event persistence gets five seconds to drain and five more seconds to
+quiesce after cancellation. If a writer remains active, the node reports an
+error and skips vault close rather than racing that transaction; the following
+start performs the ordinary recovery scan. Do not lower the supervisor limit
+below the measured clean-shutdown time for the deployed vault and storage.
+
 The append-ordered document layout is a forward-compatible upgrade, not an
 in-place downgrade format. An older binary ignores documents admitted into the
 ordered partition and can create conflicting legacy rows. Rollback therefore

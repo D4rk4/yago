@@ -24,7 +24,11 @@ func (s *exchangeServer) SubmitIngest(
 	if !validCrawlerLeaseIdentity(workerID, workerSessionID) {
 		return nil, status.Error(codes.InvalidArgument, "invalid worker session identity")
 	}
-	batch, err := yagocrawlcontract.UnmarshalIngestBatch(msg.GetBatchJson())
+	batchJSON := msg.GetBatchJson()
+	if len(batchJSON) > yagocrawlcontract.MaximumIngestBatchBytes {
+		return nil, status.Error(codes.InvalidArgument, "ingest batch exceeds size limit")
+	}
+	batch, err := yagocrawlcontract.UnmarshalIngestBatch(batchJSON)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "decode ingest batch: %v", err)
 	}
@@ -44,9 +48,10 @@ func (s *exchangeServer) SubmitIngest(
 
 	result := make(chan error, 1)
 	delivery := crawlresults.IngestDelivery{
-		Batch: batch,
-		Ack:   func(context.Context) error { finish(); result <- nil; return nil },
-		Nak:   func(context.Context) error { finish(); result <- errIngestDeferred; return nil },
+		Batch:         batch,
+		BatchJSONSize: len(batchJSON),
+		Ack:           func(context.Context) error { finish(); result <- nil; return nil },
+		Nak:           func(context.Context) error { finish(); result <- errIngestDeferred; return nil },
 		AuthorizeLeaseSnapshot: func(mutationContext context.Context) error {
 			if !s.sessions.current(authorization.WorkerID, authorization.WorkerSessionID) {
 				return errLeaseLost

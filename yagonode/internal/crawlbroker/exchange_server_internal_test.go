@@ -1,6 +1,7 @@
 package crawlbroker
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -239,6 +240,49 @@ func TestSubmitIngestRejectsMalformedBatch(t *testing.T) {
 	)
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("error = %v, want InvalidArgument", err)
+	}
+}
+
+func TestSubmitIngestRejectsBatchAboveContractLimit(t *testing.T) {
+	server := newExchangeServer(memQueue(t), make(chan crawlresults.IngestDelivery))
+	_, err := server.SubmitIngest(
+		context.Background(),
+		&crawlrpc.IngestBatchMessage{
+			BatchJson:       make([]byte, yagocrawlcontract.MaximumIngestBatchBytes+1),
+			WorkerId:        "worker",
+			WorkerSessionId: testWorkerSessionID,
+		},
+	)
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("error = %v, want InvalidArgument", err)
+	}
+}
+
+func TestSubmitIngestAcceptsBatchAtContractLimit(t *testing.T) {
+	out := make(chan crawlresults.IngestDelivery)
+	queue := memQueue(t)
+	server := newExchangeServer(queue, out)
+	message := ingestMessage(t, "https://example.org/maximum")
+	message.BatchJson = append(
+		message.BatchJson,
+		bytes.Repeat(
+			[]byte(" "),
+			yagocrawlcontract.MaximumIngestBatchBytes-len(message.BatchJson),
+		)...,
+	)
+	authorizeIngestMessage(t, server, message, "maximum-ingest")
+	received := make(chan int, 1)
+	go func() {
+		delivery := <-out
+		received <- delivery.BatchJSONSize
+		_ = delivery.Ack(context.Background())
+	}()
+	if _, err := server.SubmitIngest(context.Background(), message); err != nil {
+		t.Fatalf("submit maximum ingest: %v", err)
+	}
+	if size := <-received; size != yagocrawlcontract.MaximumIngestBatchBytes {
+		t.Fatalf("batch JSON size = %d, want %d",
+			size, yagocrawlcontract.MaximumIngestBatchBytes)
 	}
 }
 

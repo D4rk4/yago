@@ -92,6 +92,19 @@ module graph as indirect dependencies of bleve:
    sharded layout (compressing on the way) and the legacy index rebuilds from
    the vault; the old files are kept as `.migrated.bak` until the operator
    removes them.
+6. **Startup and clean restart**: keep bbolt freelist persistence disabled on
+   the serving write path. Close the shard pool under exclusive quiescence and
+   persist each in-memory freelist with one empty, fully synced write
+   transaction before closing that shard. A successful checkpoint needs no
+   second sync. If it fails after deferred-fsync operation, attempt one
+   best-effort sync before close, continue through every shard, and return all
+   checkpoint, sync, and close failures together. An unclean stop leaves the
+   no-freelist marker intact, so bbolt reconstructs by scanning the shard on the
+   next open. Open shards sequentially and emit stable structured INFO records
+   before and after each one, followed by distinct word-filter initialization
+   records; successful completion is INFO, while degraded completion is WARN and
+   carries the degraded-shard total. The structured logger writes to standard
+   output, which systemd and container runtimes collect.
 
 ## Consequences
 
@@ -107,6 +120,13 @@ module graph as indirect dependencies of bleve:
   versions and licenses; no new supply-chain surface is added.
 - Directory fanout keeps every directory small and gives backup and scrub
   tooling bounded units (the OpenStack Swift pattern).
+- Planned restarts load persisted freelists instead of rescanning every shard.
+  Every clean shutdown pays one bounded checkpoint per shard; the first start
+  after upgrading still scans because no prior checkpoint exists. Crash
+  recovery, a failed checkpoint, or an event writer that remains
+  active after the bounded shutdown grace retains scan-based recovery, and
+  startup progress identifies the exact shard or word-filter phase still
+  running.
 - Follow-up: STOR-02 implements shardvault, STOR-03 the index sharding,
   STOR-04 the quarantine and integrity checks; an offline `reshard` command
   covers future N changes.

@@ -1,9 +1,12 @@
 package yagonode
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -199,13 +202,22 @@ func TestVaultCloseWaitsForEventPersistenceDrain(t *testing.T) {
 		t.Fatalf("close error = %v, want deadline", err)
 	}
 	closed := make(chan bool, 1)
-	closeVaultAfterEventDrain(
-		eventDrainVaultCloser{active: &appender.active, closed: closed},
-		persistence.done,
-	)
+	returned := make(chan struct{})
+	go func() {
+		closeVaultAfterEventDrain(
+			eventDrainVaultCloser{active: &appender.active, closed: closed},
+			persistence.done,
+		)
+		close(returned)
+	}()
 	select {
 	case <-closed:
 		t.Fatal("vault closed before event persistence drained")
+	default:
+	}
+	select {
+	case <-returned:
+		t.Fatal("vault close returned before event persistence drained")
 	default:
 	}
 	close(appender.release)
@@ -216,6 +228,11 @@ func TestVaultCloseWaitsForEventPersistenceDrain(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("vault did not close after event persistence drained")
+	}
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("vault close did not return after event persistence drained")
 	}
 }
 
@@ -233,6 +250,60 @@ func TestVaultCloseHandlesAbsentAndCompletedEventDrain(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("vault did not close synchronously")
 		}
+	}
+}
+
+func TestVaultCloseSkipsActiveEventWriterAfterBoundedWait(t *testing.T) {
+	previousLogger := slog.Default()
+	var logOutput bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logOutput, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+	active := &atomic.Bool{}
+	active.Store(true)
+	closed := make(chan bool, 1)
+	done := make(chan struct{})
+	returned := make(chan struct{})
+	go func() {
+		closeVaultAfterEventDrainWithin(
+			eventDrainVaultCloser{active: active, closed: closed},
+			done,
+			time.Millisecond,
+		)
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("vault close did not return after event drain grace")
+	}
+	select {
+	case <-closed:
+		t.Fatal("vault closed while event append remained active")
+	default:
+	}
+	var record map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(logOutput.Bytes()), &record); err != nil {
+		t.Fatalf("decode shutdown log: %v", err)
+	}
+	if record["msg"] != "storage close skipped while event persistence remains active" ||
+		record["level"] != "ERROR" || record["grace"] != float64(time.Millisecond) {
+		t.Fatalf("shutdown log = %#v", record)
+	}
+}
+
+func TestVaultClosePrefersCompletedDrainAtTimeoutBoundary(t *testing.T) {
+	done := make(chan struct{})
+	close(done)
+	closed := make(chan bool, 1)
+	closeVaultAfterEventDrainWithin(
+		eventDrainVaultCloser{active: &atomic.Bool{}, closed: closed},
+		done,
+		0,
+	)
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("vault close skipped a completed boundary drain")
 	}
 }
 

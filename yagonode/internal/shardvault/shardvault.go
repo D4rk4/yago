@@ -74,6 +74,20 @@ func vaultOverEngine(shardEngine *engine) (*vault.Vault, error) {
 
 // openEngine opens the shard files behind the manifest-recorded layout.
 func openEngine(dir string, quotaBytes int64, opts ...Option) (*engine, error) {
+	return openEngineWithStartupProgress(
+		dir,
+		quotaBytes,
+		startupProgress{logger: slog.New(slog.DiscardHandler), clock: time.Now},
+		opts...,
+	)
+}
+
+func openEngineWithStartupProgress(
+	dir string,
+	quotaBytes int64,
+	progress startupProgress,
+	opts ...Option,
+) (*engine, error) {
 	// New vaults start at the concurrency floor and grow with the data (ADR-0037);
 	// the quota no longer sizes the layout.
 	manifest, err := loadOrCreateManifest(dir, minShards)
@@ -84,6 +98,7 @@ func openEngine(dir string, quotaBytes int64, opts ...Option) (*engine, error) {
 	shards := make([]*bolt.DB, count)
 	for i := range shards {
 		path := shardPath(dir, i)
+		started := progress.shardOpening(i, count, path)
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			closeShards(shards)
 
@@ -96,6 +111,7 @@ func openEngine(dir string, quotaBytes int64, opts ...Option) (*engine, error) {
 			return nil, err
 		}
 		shards[i] = db
+		progress.shardOpened(started, i, count, path)
 	}
 
 	e := &engine{
@@ -112,7 +128,18 @@ func openEngine(dir string, quotaBytes int64, opts ...Option) (*engine, error) {
 	for _, opt := range opts {
 		opt(e)
 	}
-	e.initWordFilters()
+	var wordFilterStarted time.Time
+	if e.wordFilterBucket != "" {
+		wordFilterStarted = progress.wordFilterBuilding(len(e.shards))
+	}
+	degradedWordFilters := e.initWordFilters()
+	if e.wordFilterBucket != "" {
+		progress.wordFilterInitialized(
+			wordFilterStarted,
+			len(e.shards),
+			degradedWordFilters,
+		)
+	}
 
 	return e, nil
 }
@@ -131,26 +158,21 @@ func openOrQuarantineShard(path string, shard int) (*bolt.DB, error) {
 		return db, nil
 	}
 	slog.WarnContext(context.Background(), "vault shard quarantined",
-		slog.Int("shard", shard),
+		slog.Int("shard", shard+1),
 		slog.String("path", path),
 		slog.Any("error", err),
 	)
 	if renameErr := os.Rename(path, path+quarantineSuffix); renameErr != nil {
-		return nil, fmt.Errorf("quarantine shard %d: %w", shard, renameErr)
+		return nil, fmt.Errorf("quarantine shard %d: %w", shard+1, renameErr)
 	}
 	db, err = openBolt(path, 0o600, openTimeoutOptions())
 	if err != nil {
-		return nil, fmt.Errorf("recreate quarantined shard %d: %w", shard, err)
+		return nil, fmt.Errorf("recreate quarantined shard %d: %w", shard+1, err)
 	}
 
 	return db, nil
 }
 
-// openTimeoutOptions bounds the file-lock wait so a stuck lock surfaces as an
-// error instead of hanging startup, and trims per-commit write volume for
-// fsync-bound storage (IO-AGG-03): the freelist is not persisted on every
-// commit (NoFreelistSync — bbolt rebuilds it on open by scanning the file) and
-// is held as a hashmap, the faster shape for write-heavy shards.
 func openTimeoutOptions() *bolt.Options {
 	return &bolt.Options{
 		Timeout:        5 * time.Second,
@@ -514,30 +536,6 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
-}
-
-func (e *engine) Close() error {
-	deferred := e.deferFsync.Load()
-	for _, db := range e.shards {
-		if deferred {
-			if err := syncDB(db); err != nil {
-				return fmt.Errorf("sync storage: %w", err)
-			}
-		}
-		if err := wrapCloseError(closeDB(db)); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func wrapCloseError(err error) error {
-	if err != nil {
-		return fmt.Errorf("close storage: %w", err)
-	}
-
-	return nil
 }
 
 // storageAtCapacityError mirrors the boltvault capacity mapping: quota checks

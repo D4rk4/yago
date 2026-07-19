@@ -134,11 +134,12 @@ type perDocInner struct {
 
 	indexed int
 	fail    bool
+	failAt  int
 }
 
 func (p *perDocInner) Index(context.Context, documentstore.Document) error {
 	p.indexed++
-	if p.fail {
+	if p.fail || p.indexed == p.failAt {
 		return errors.New("index failed")
 	}
 
@@ -171,6 +172,62 @@ func TestCachedIndexBatchDelegatesAndFallsBack(t *testing.T) {
 	perDoc.fail = true
 	if err := cached.IndexBatch(context.Background(), docs); err == nil {
 		t.Fatal("per-document failure must propagate")
+	}
+}
+
+func TestCachedIndexEmptyBatchDoesNotDelegateOrInvalidate(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	bulk := &bulkRecordingInner{}
+	cachedBulk := NewCachedSearchIndex(bulk, 8)
+	cachedBulk.generation = 7
+	if err := cachedBulk.IndexBatch(ctx, nil); err != nil {
+		t.Fatalf("bulk empty IndexBatch: %v", err)
+	}
+	if bulk.batches != 0 || cachedBulk.generation != 7 {
+		t.Fatalf("bulk calls=%d generation=%d, want 0/7",
+			bulk.batches, cachedBulk.generation)
+	}
+
+	perDocument := &perDocInner{}
+	cachedFallback := NewCachedSearchIndex(perDocument, 8)
+	cachedFallback.generation = 11
+	if err := cachedFallback.IndexBatch(ctx, []documentstore.Document{}); err != nil {
+		t.Fatalf("fallback empty IndexBatch: %v", err)
+	}
+	if perDocument.indexed != 0 || cachedFallback.generation != 11 {
+		t.Fatalf("fallback writes=%d generation=%d, want 0/11",
+			perDocument.indexed, cachedFallback.generation)
+	}
+}
+
+func TestCachedIndexFailedNonEmptyBatchInvalidatesPossiblePartialWrites(t *testing.T) {
+	documents := []documentstore.Document{
+		batchDoc("https://a.example/", "alpha"),
+		batchDoc("https://b.example/", "beta"),
+	}
+
+	bulk := &bulkRecordingInner{fail: true}
+	cachedBulk := NewCachedSearchIndex(bulk, 8)
+	cachedBulk.generation = 7
+	if err := cachedBulk.IndexBatch(t.Context(), documents); err == nil {
+		t.Fatal("bulk failure must propagate")
+	}
+	if bulk.batches != 1 || cachedBulk.generation != 8 {
+		t.Fatalf("bulk calls=%d generation=%d, want 1/8",
+			bulk.batches, cachedBulk.generation)
+	}
+
+	perDocument := &perDocInner{failAt: 2}
+	cachedFallback := NewCachedSearchIndex(perDocument, 8)
+	cachedFallback.generation = 11
+	if err := cachedFallback.IndexBatch(t.Context(), documents); err == nil {
+		t.Fatal("fallback partial failure must propagate")
+	}
+	if perDocument.indexed != 2 || cachedFallback.generation != 12 {
+		t.Fatalf("fallback writes=%d generation=%d, want 2/12",
+			perDocument.indexed, cachedFallback.generation)
 	}
 }
 

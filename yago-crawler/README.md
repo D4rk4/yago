@@ -164,10 +164,12 @@ dropped. Current nodes report saturation separately as `Unavailable`, and the
 crawler also accepts the legacy `ResourceExhausted` saturation code only after
 fitting its payload below the shared ceiling. Both use bounded jittered exponential retry
 delays, so backpressure cannot become a tight localhost resend loop.
-The receiving node coalesces at most 16 ready deliveries for grouped document,
-Bleve, metadata, posting, stale-sweep, and recrawl commits. A partial group waits
-at most two milliseconds and stops waiting immediately when its context is
-cancelled, so batching cannot create an unbounded ingest delay.
+The receiving node coalesces at most 64 ready deliveries and 64 MiB of their
+encoded JSON for grouped document, Bleve, metadata, posting, stale-sweep, and
+recrawl commits. A partial group waits at most ten milliseconds and stops
+waiting immediately when its context is cancelled. Populated Bleve shards
+persist through at most four concurrent commit lanes, so batching cannot create
+an unbounded ingest delay or an eight-shard persistence burst.
 Before those storage operations begin, the node snapshots the submitting
 worker, process session, exact lease, and run authorization under its short
 lease-mutation boundary. It releases that boundary before document or index

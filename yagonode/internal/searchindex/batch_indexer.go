@@ -78,11 +78,14 @@ func (c *CachedSearchIndex) IndexBatch(
 	ctx context.Context,
 	docs []documentstore.Document,
 ) error {
+	if len(docs) == 0 {
+		return nil
+	}
+	defer c.invalidate()
 	if bulk, ok := c.inner.(BatchIndexer); ok {
 		if err := bulk.IndexBatch(ctx, docs); err != nil {
 			return fmt.Errorf("cached index batch: %w", err)
 		}
-		c.invalidate()
 
 		return nil
 	}
@@ -91,7 +94,5 @@ func (c *CachedSearchIndex) IndexBatch(
 			return fmt.Errorf("cached index batch: %w", err)
 		}
 	}
-	c.invalidate()
-
 	return nil
 }

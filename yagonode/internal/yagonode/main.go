@@ -49,6 +49,7 @@ const (
 	serverMaxHeaderBytes    = 64 << 10
 	shutdownTimeout         = 15 * time.Second
 	shutdownForcedWait      = 5 * time.Second
+	msgVaultCloseSkipped    = "storage close skipped while event persistence remains active"
 )
 
 var buildVersion = "2026.07.16-dev"
@@ -416,18 +417,35 @@ func closeVault(storage vaultCloser) {
 }
 
 func closeVaultAfterEventDrain(storage vaultCloser, done <-chan struct{}) {
+	closeVaultAfterEventDrainWithin(storage, done, eventPersistenceShutdownWait)
+}
+
+func closeVaultAfterEventDrainWithin(
+	storage vaultCloser,
+	done <-chan struct{},
+	wait time.Duration,
+) {
 	if done == nil {
 		closeVault(storage)
 
 		return
 	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
 	select {
 	case <-done:
-		closeVault(storage)
-	default:
-		go func() {
-			<-done
-			closeVault(storage)
-		}()
+	case <-timer.C:
+		select {
+		case <-done:
+		default:
+			slog.ErrorContext(
+				context.Background(),
+				msgVaultCloseSkipped,
+				slog.Duration("grace", wait),
+			)
+
+			return
+		}
 	}
+	closeVault(storage)
 }

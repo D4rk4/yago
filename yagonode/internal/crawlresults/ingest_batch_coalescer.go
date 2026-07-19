@@ -3,9 +3,16 @@ package crawlresults
 import (
 	"context"
 	"time"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
-const ingestMicroBatchMaximumWait = 2 * time.Millisecond
+const (
+	ingestMicroBatchMaximumWait      = 10 * time.Millisecond
+	ingestMicroBatchMaximumJSONBytes = 64 << 20
+	ingestMicroBatchJSONStopAt       = ingestMicroBatchMaximumJSONBytes -
+		yagocrawlcontract.MaximumIngestBatchBytes
+)
 
 type ingestBatchDeadline func(time.Duration) <-chan time.Time
 
@@ -29,7 +36,8 @@ func collectIngestMicroBatch(
 ) []IngestDelivery {
 	group := make([]IngestDelivery, 1, ingestMicroBatch)
 	group[0] = first
-	if ctx.Err() != nil {
+	groupJSONBytes := first.BatchJSONSize
+	if ctx.Err() != nil || groupJSONBytes >= ingestMicroBatchJSONStopAt {
 		return group
 	}
 	for len(group) < ingestMicroBatch {
@@ -39,11 +47,16 @@ func collectIngestMicroBatch(
 				return group
 			}
 			group = append(group, delivery)
+			groupJSONBytes += delivery.BatchJSONSize
+			if groupJSONBytes >= ingestMicroBatchJSONStopAt {
+				return group
+			}
 		default:
 			return collectIngestMicroBatchUntil(
 				ctx,
 				receive,
 				group,
+				groupJSONBytes,
 				deadline(ingestMicroBatchMaximumWait),
 			)
 		}
@@ -56,6 +69,7 @@ func collectIngestMicroBatchUntil(
 	ctx context.Context,
 	receive <-chan IngestDelivery,
 	group []IngestDelivery,
+	groupJSONBytes int,
 	deadline <-chan time.Time,
 ) []IngestDelivery {
 	for len(group) < ingestMicroBatch {
@@ -67,6 +81,10 @@ func collectIngestMicroBatchUntil(
 				return group
 			}
 			group = append(group, delivery)
+			groupJSONBytes += delivery.BatchJSONSize
+			if groupJSONBytes >= ingestMicroBatchJSONStopAt {
+				return group
+			}
 		case <-deadline:
 			return group
 		}

@@ -2,20 +2,36 @@ package crawlresults
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
-func TestCollectIngestMicroBatchSkipsDeadlineWhenAlreadyFull(t *testing.T) {
-	receive := make(chan IngestDelivery, ingestMicroBatch-1)
-	for range ingestMicroBatch - 1 {
-		receive <- IngestDelivery{}
+func TestIngestMicroBatchPolicy(t *testing.T) {
+	if ingestMicroBatch != 64 || ingestMicroBatchMaximumWait != 10*time.Millisecond ||
+		ingestMicroBatchMaximumJSONBytes != 64<<20 {
+		t.Fatalf("batch policy = %d/%v/%d, want 64/10ms/64MiB",
+			ingestMicroBatch, ingestMicroBatchMaximumWait,
+			ingestMicroBatchMaximumJSONBytes)
 	}
+}
+
+func TestCollectIngestMicroBatchPreservesOrderAndStopsAtCap(t *testing.T) {
+	receive := make(chan IngestDelivery, ingestMicroBatch+1)
+	for position := 1; position < ingestMicroBatch+2; position++ {
+		delivery := IngestDelivery{}
+		delivery.Batch.SourceURL = fmt.Sprint(position)
+		receive <- delivery
+	}
+	first := IngestDelivery{}
+	first.Batch.SourceURL = "0"
 	deadlineCalled := false
 	group := collectIngestMicroBatch(
 		t.Context(),
 		receive,
-		IngestDelivery{},
+		first,
 		func(time.Duration) <-chan time.Time {
 			deadlineCalled = true
 
@@ -24,6 +40,14 @@ func TestCollectIngestMicroBatchSkipsDeadlineWhenAlreadyFull(t *testing.T) {
 	)
 	if len(group) != ingestMicroBatch || deadlineCalled {
 		t.Fatalf("batch = %d, deadline called = %t", len(group), deadlineCalled)
+	}
+	for position, delivery := range group {
+		if delivery.Batch.SourceURL != fmt.Sprint(position) {
+			t.Fatalf("batch[%d] = %q", position, delivery.Batch.SourceURL)
+		}
+	}
+	if len(receive) != 2 {
+		t.Fatalf("pending deliveries = %d, want 2", len(receive))
 	}
 }
 
@@ -52,9 +76,86 @@ func TestCollectIngestMicroBatchUsesBoundedWindow(t *testing.T) {
 	}
 	expires <- time.Now()
 	group := <-done
-	if requested != ingestMicroBatchMaximumWait ||
-		requested > 2*time.Millisecond || len(group) != 2 {
+	if requested != ingestMicroBatchMaximumWait || len(group) != 2 {
 		t.Fatalf("wait = %v, batch = %d", requested, len(group))
+	}
+}
+
+func TestCollectIngestMicroBatchStopsBeforeEncodedPayloadCanExceedLimit(t *testing.T) {
+	delivery := IngestDelivery{BatchJSONSize: yagocrawlcontract.MaximumIngestBatchBytes}
+	receive := make(chan IngestDelivery, ingestMicroBatch)
+	for range ingestMicroBatch {
+		receive <- delivery
+	}
+	group := collectIngestMicroBatch(
+		t.Context(),
+		receive,
+		delivery,
+		func(time.Duration) <-chan time.Time { return make(chan time.Time) },
+	)
+	encodedBytes := 0
+	for _, retained := range group {
+		encodedBytes += retained.BatchJSONSize
+	}
+	if encodedBytes > ingestMicroBatchMaximumJSONBytes {
+		t.Fatalf("encoded batch bytes = %d, limit %d",
+			encodedBytes, ingestMicroBatchMaximumJSONBytes)
+	}
+	expectedDeliveries := (ingestMicroBatchJSONStopAt +
+		yagocrawlcontract.MaximumIngestBatchBytes - 1) /
+		yagocrawlcontract.MaximumIngestBatchBytes
+	if len(group) != expectedDeliveries || len(receive) != ingestMicroBatch+1-expectedDeliveries {
+		t.Fatalf("group = %d, pending = %d, want %d/%d",
+			len(group), len(receive), expectedDeliveries,
+			ingestMicroBatch+1-expectedDeliveries)
+	}
+}
+
+func TestCollectIngestMicroBatchTimedPathStopsAtEncodedThreshold(t *testing.T) {
+	delivery := IngestDelivery{BatchJSONSize: yagocrawlcontract.MaximumIngestBatchBytes}
+	expectedDeliveries := (ingestMicroBatchJSONStopAt +
+		yagocrawlcontract.MaximumIngestBatchBytes - 1) /
+		yagocrawlcontract.MaximumIngestBatchBytes
+	receive := make(chan IngestDelivery)
+	windowStarted := make(chan struct{})
+	done := make(chan []IngestDelivery, 1)
+	go func() {
+		done <- collectIngestMicroBatch(
+			t.Context(),
+			receive,
+			delivery,
+			func(time.Duration) <-chan time.Time {
+				close(windowStarted)
+
+				return make(chan time.Time)
+			},
+		)
+	}()
+	<-windowStarted
+	for range expectedDeliveries - 1 {
+		receive <- delivery
+	}
+	group := <-done
+	if len(group) != expectedDeliveries {
+		t.Fatalf("timed group = %d, want %d", len(group), expectedDeliveries)
+	}
+}
+
+func TestCollectIngestMicroBatchReturnsFirstDeliveryAtEncodedThreshold(t *testing.T) {
+	deadlineCalled := false
+	group := collectIngestMicroBatch(
+		t.Context(),
+		make(chan IngestDelivery),
+		IngestDelivery{BatchJSONSize: ingestMicroBatchJSONStopAt},
+		func(time.Duration) <-chan time.Time {
+			deadlineCalled = true
+
+			return make(chan time.Time)
+		},
+	)
+	if len(group) != 1 || deadlineCalled {
+		t.Fatalf("group = %d, deadline called = %t, want 1/false",
+			len(group), deadlineCalled)
 	}
 }
 

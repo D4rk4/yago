@@ -122,7 +122,7 @@ func TestSleepWithContext(t *testing.T) {
 	}
 }
 
-func TestCloseFlushesShardsWhenDeferred(t *testing.T) {
+func TestCloseCheckpointAvoidsRedundantSyncWhenDeferred(t *testing.T) {
 	e := openEngineForClose(t)
 	e.SetDeferredFsync(true)
 
@@ -131,12 +131,21 @@ func TestCloseFlushesShardsWhenDeferred(t *testing.T) {
 	syncDB = func(*bolt.DB) error { synced++; return nil }
 	t.Cleanup(func() { syncDB = restoreSync })
 
-	shards := len(e.shards)
 	if err := e.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if synced != shards {
-		t.Fatalf("Close flushed %d shards, want %d", synced, shards)
+	if synced != 0 {
+		t.Fatalf("Close explicitly synced %d shards after durable checkpoints", synced)
+	}
+	for shard, database := range e.shards {
+		if database.NoSync || database.NoFreelistSync {
+			t.Fatalf(
+				"shard %d close flags = NoSync:%t NoFreelistSync:%t",
+				shard,
+				database.NoSync,
+				database.NoFreelistSync,
+			)
+		}
 	}
 }
 
@@ -153,18 +162,5 @@ func TestCloseSkipsFlushWhenNotDeferred(t *testing.T) {
 	}
 	if synced != 0 {
 		t.Fatalf("Close flushed %d shards with deferred fsync off, want 0", synced)
-	}
-}
-
-func TestCloseReportsFlushErrorWhenDeferred(t *testing.T) {
-	e := openEngineForClose(t)
-	e.SetDeferredFsync(true)
-
-	restoreSync := syncDB
-	syncDB = func(*bolt.DB) error { return errors.New("flush failed") }
-	t.Cleanup(func() { syncDB = restoreSync })
-
-	if err := e.Close(); err == nil {
-		t.Fatal("Close ignored a shard flush error under deferred fsync")
 	}
 }

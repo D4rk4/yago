@@ -227,9 +227,10 @@ to the crawler that submitted the batch. There is no shared feedback topic.
 `IngestBatch` JSON is limited to 4 MiB minus 64 KiB of transport headroom, and
 the enclosing gRPC message is limited to 4 MiB. The crawler bounds text, URLs,
 headings, links, metadata, images, anchors, and postings before submission, then
-fits optional collections to the encoded limit. Identity URLs over 2,048 bytes
-are rejected, and overlong URL-bearing collection elements are dropped rather
-than changed by truncation. The node reports temporary
+fits optional collections to the encoded limit; the node rejects an oversized
+batch before JSON decoding. Identity URLs over 2,048 bytes are rejected, and
+overlong URL-bearing collection elements are dropped rather than changed by
+truncation. The node reports temporary
 pipeline or storage saturation as gRPC `Unavailable`; the crawler retries it
 with a jittered exponential delay. It also retries the legacy `ResourceExhausted`
 saturation code used by older nodes. Current crawler payloads are fitted below

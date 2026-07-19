@@ -167,9 +167,11 @@ its binaries (`yago-node`, `yago-crawler`).
   Concurrent document, anchor, URL-metadata, and RWI admission checks share one
   live-capacity observation for at most one second instead of repeating a
   shard-wide disk measurement for every phase; exact metrics and eviction reads
-  remain exact and refresh that observation. The node coalesces at most 16 ready
-  ingest deliveries for shared vault and Bleve commits, waiting no more than a
-  cancel-aware 2 milliseconds for a partial group.
+  remain exact and refresh that observation. The node coalesces at most 64 ready
+  ingest deliveries and 64 MiB of their encoded JSON for shared vault and Bleve
+  commits, waiting no more than a cancel-aware 10 milliseconds for a partial
+  group. Each grouped index mutation persists at most four Bleve shards
+  concurrently.
 - One live `crawler.max_pages_per_second` ceiling controls page-fetch starts
   across every connected crawler process and active run. It defaults to 10 per
   second; `0` is unlimited. The node leases non-bursting start windows, while
@@ -370,9 +372,12 @@ its binaries (`yago-node`, `yago-crawler`).
 - Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
   SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
   structured logs (never secrets), and a durable event store fed through a
-  bounded asynchronous queue. Shutdown drains it for up to five seconds; if a
-  writer remains stuck, service shutdown proceeds and storage close waits for
-  writer quiescence. HTTP listeners share a fixed fifteen-second shutdown
+  bounded asynchronous queue. Shutdown drains it for up to five seconds, then
+  cancels the worker and grants five more seconds for writer quiescence. A
+  writer that still ignores cancellation is reported as an error; vault close
+  is skipped so the process can exit without closing over an active transaction,
+  and the next startup uses scan-based recovery. HTTP listeners share a fixed
+  fifteen-second shutdown
   budget: ten seconds for graceful requests and five seconds for forced close
   and handler drain. A completed forced close is a clean stop; close or drain
   failures remain actionable errors.
@@ -387,7 +392,19 @@ its binaries (`yago-node`, `yago-crawler`).
   at most 8,192, and DHT transfer tallies are coalesced before persistence. If
   normal stale-URL eviction cannot reach the soft quota target, a bounded
   posting scan can reclaim posting-only lineages that have no URL-metadata row
-  without selecting metadata-backed URLs through that fallback.
+  without selecting metadata-backed URLs through that fallback. The hot write
+  path does not persist bbolt freelists; a clean shutdown checkpoints each one
+  durably so planned restarts load them directly, while an unclean stop retains
+  bbolt's full recovery scan. Stable INFO records show each sequential shard
+  open and the separate word-filter initialization as structured JSON on
+  standard output, captured by the systemd or container service log. A
+  successful filter completion is INFO; a degraded shard changes
+  that completion to WARN and reports the degraded-shard total. Node shutdown
+  gives event persistence a bounded drain and
+  cancellation grace before the checkpoint. If a writer still remains active,
+  it reports an error and skips vault close so the next start follows bbolt's
+  scan-based recovery path. The shipped supervisors allow a successful clean
+  close up to 15 minutes.
 - Outbound traffic is screened in-process at dial time: private networks,
   loopback, link-local, and the cloud metadata range are blocked by default,
   with explicit CIDR allowlists (`YAGO_EGRESS_ALLOW_CIDRS`) when you need

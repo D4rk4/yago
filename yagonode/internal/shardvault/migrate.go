@@ -17,7 +17,12 @@ const migratedSuffix = ".migrated.bak"
 // sharded layout once (compressing on the way) and is kept as a .migrated.bak
 // file until the operator removes it.
 func OpenAt(legacyPath string, quotaBytes int64, opts ...Option) (*vault.Vault, error) {
-	shardEngine, err := openEngine(legacyPath+".vault", quotaBytes, opts...)
+	shardEngine, err := openEngineWithStartupProgress(
+		legacyPath+".vault",
+		quotaBytes,
+		runtimeStartupProgress(),
+		opts...,
+	)
 	if err != nil {
 		return nil, err
 	}
