@@ -38,8 +38,8 @@ func storageAndAccessDefinitions() []settingDefinition {
 		storageDeferFsyncDefinition(),
 		{
 			key:          "search.api.scoped_access",
-			title:        "Require scoped API keys",
-			description:  "Authorize the agent search API against the scoped key store instead of the single static token.",
+			title:        "Require scoped API keys only",
+			description:  "Admin-minted keys holding the required scope work in either state; when enabled, reject the legacy static YAGO_SEARCH_API_KEY token.",
 			options:      boolSettingOptions(),
 			defaultValue: func(config nodeConfig) string { return formatSettingBool(config.SearchRequireAPIKey) },
 			normalize:    normalizeSettingBool,

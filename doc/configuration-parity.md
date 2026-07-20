@@ -13,7 +13,8 @@ The persisted Configuration catalog covers these behavior groups:
 
 - Search, portal, OpenSearch public base URL, query logging, result-link
   behavior, remote-result caching, peer snippets, click capture, extract fetch,
-  scoped API access, search rate limits, and the live node logging threshold.
+  scoped-only API enforcement, search rate limits, and the live node logging
+  threshold.
 - DDGS consent/start mode, backend, result limit, timeout, safe search, cache
   lifetime, and optional web-discovery crawl profile.
 - Swarm morphology, seedlists, peer name and advertised host, LAN discovery,
@@ -86,9 +87,10 @@ Credential bootstraps are also Admin-backed surfaces rather than exceptions:
 `YAGO_ADMIN_USER` and `YAGO_ADMIN_PASSWORD` provide authoritative headless
 administrator provisioning on each startup; the guarded first-run setup and
 password-change flows are their interactive Admin alternatives.
-`YAGO_SEARCH_API_KEY` is a static bootstrap credential; the Security page
-provides durable scoped search-key creation and revocation instead of persisting
-that environment secret. The catalog explicitly classifies these three
+`YAGO_SEARCH_API_KEY` is an optional legacy static bootstrap credential; the
+Security page provides durable scoped search-key creation and revocation, and
+those scoped keys are accepted regardless of the scoped-only enforcement
+setting. The catalog explicitly classifies these three
 bootstrap credentials and proves the corresponding setup or scoped-key surface
 exists. The controlled-network secret uses its own write-only persisted setting.
 

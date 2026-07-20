@@ -153,7 +153,7 @@ func storeLegacyAPIKeyRecords(
 		for index := range total {
 			id := deterministicAPIKeyID(index)
 			record := apiKeyRecord{
-				SecretHash: fmt.Sprintf("hash-%d", index),
+				SecretHash: hashToken(fmt.Sprintf("secret-%d", index)),
 				Scopes:     []Scope{ScopeAdminRead},
 				Label:      fmt.Sprintf("legacy-%d", index),
 				CreatedAt:  time.Unix(int64(total-index), 0),

@@ -1393,15 +1393,15 @@ func TestConsoleConfigRendersGroups(t *testing.T) {
 
 	view := ConfigView{Groups: []ConfigGroup{
 		{Title: "Search", Settings: []ConfigSetting{
-			{Name: "Search API key", Value: "Configured"},
-			{Name: "Require API key", Value: "Yes"},
+			{Name: "Legacy static search API key", Value: "Configured"},
+			{Name: "Scoped-only API keys", Value: "Yes"},
 		}},
 	}}
 	got := do(t, New(Options{Config: fakeConfig{view: view}}), "/admin/configuration")
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
 	}
-	for _, want := range []string{"Search", "Search API key", "Configured", "Require API key"} {
+	for _, want := range []string{"Search", "Legacy static search API key", "Configured", "Scoped-only API keys"} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("config view missing %q", want)
 		}

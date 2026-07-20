@@ -332,7 +332,7 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	dht := buildSurfaceDHT(in, runtime)
 	searchAccess := searchAccessPolicy(publicSearchAssembly{
 		searchAuthorizer: in.telemetry.searchAuthorizer,
-		searchAPIKey:     in.config.SearchAPIKey,
+		searchAPIKey:     legacySearchAPIKeyFor(in.config),
 	})
 	limitedPublic := publicratelimit.Wrap(publicMux, searchLimiter, searchAccess.AuthenticatedRead)
 	closeRuntime = false
@@ -395,7 +395,7 @@ func newPublicSearchAssembly(
 		client:                 in.client,
 		peerClient:             in.peerClient,
 		peerHTTPSPreferred:     in.config.PeerHTTPSPreferred,
-		searchAPIKey:           in.config.SearchAPIKey,
+		searchAPIKey:           legacySearchAPIKeyFor(in.config),
 		searchAuthorizer:       in.telemetry.searchAuthorizer,
 		searchAdmission:        parts.admission,
 		extractFetcher:         buildExtractFetcher(in.config, in.client),

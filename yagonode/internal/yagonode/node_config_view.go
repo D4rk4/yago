@@ -45,8 +45,8 @@ func buildConfigView(config nodeConfig) adminui.ConfigView {
 			{Name: "Storage quota", Value: storageQuota(config.StorageQuotaByte)},
 		}},
 		{Title: "Search", Settings: []adminui.ConfigSetting{
-			{Name: "Require API key", Value: yesNo(config.SearchRequireAPIKey)},
-			{Name: "Search API key", Value: redactedSecret(config.SearchAPIKey)},
+			{Name: "Scoped-only API keys", Value: yesNo(config.SearchRequireAPIKey)},
+			{Name: "Legacy static search API key", Value: redactedSecret(config.SearchAPIKey)},
 			{Name: "Public search portal", Value: enabledDisabled(config.PublicSearchUIEnabled)},
 			{
 				Name:  "Web fallback",

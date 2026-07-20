@@ -164,13 +164,13 @@ func signInGuardedAdmin(
 	loginRequest.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(login, loginRequest)
 	if login.Code != http.StatusOK {
-		t.Fatalf("login status = %d, body = %s", login.Code, login.Body.String())
+		t.Fatalf("login status = %d, want %d", login.Code, http.StatusOK)
 	}
 	var session struct {
 		CSRFToken string `json:"csrfToken"`
 	}
 	if err := json.Unmarshal(login.Body.Bytes(), &session); err != nil || session.CSRFToken == "" {
-		t.Fatalf("decode login response: token=%q err=%v", session.CSRFToken, err)
+		t.Fatalf("decode login response: token_present=%t err=%v", session.CSRFToken != "", err)
 	}
 	response := login.Result()
 	cookies := response.Cookies()

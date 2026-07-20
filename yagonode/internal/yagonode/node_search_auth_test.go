@@ -1,6 +1,7 @@
 package yagonode
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminauth"
@@ -8,13 +9,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 )
 
-func TestSearchScopeAuthorizerForDisabled(t *testing.T) {
-	if searchScopeAuthorizerFor(nodeConfig{SearchRequireAPIKey: false}, nil) != nil {
-		t.Fatal("authorizer must be nil when API keys are not required")
-	}
-}
-
-func TestSearchScopeAuthorizerForEnabled(t *testing.T) {
+func TestBuildSearchScopeAuthorizer(t *testing.T) {
 	storage, err := memvault.Open(0)
 	if err != nil {
 		t.Fatalf("memvault.Open: %v", err)
@@ -23,8 +18,19 @@ func TestSearchScopeAuthorizerForEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("adminauth.New: %v", err)
 	}
-	if searchScopeAuthorizerFor(nodeConfig{SearchRequireAPIKey: true}, service) == nil {
-		t.Fatal("authorizer must be built when API keys are required")
+	if buildSearchScopeAuthorizer(service) == nil {
+		t.Fatal("authorizer must be built")
+	}
+}
+
+func TestLegacySearchAPIKeyPolicy(t *testing.T) {
+	config := nodeConfig{SearchAPIKey: "static"}
+	if got := legacySearchAPIKeyFor(config); got != "static" {
+		t.Fatalf("legacy token = %q", got)
+	}
+	config.SearchRequireAPIKey = true
+	if got := legacySearchAPIKeyFor(config); got != "" {
+		t.Fatalf("scoped-only legacy token = %q, want empty", got)
 	}
 }
 
@@ -51,12 +57,12 @@ func TestAdminSearchScopeMapping(t *testing.T) {
 	}
 }
 
-func TestSearchAccessPolicyPrefersAuthorizer(t *testing.T) {
+func TestSearchAccessPolicyCombinesAuthorizerAndStaticToken(t *testing.T) {
 	scoped := searchAccessPolicy(publicSearchAssembly{
 		searchAuthorizer: searchScopeAuthorizer{},
 		searchAPIKey:     "static",
 	})
-	if scoped.Authorizer == nil || scoped.BearerToken != "" {
+	if scoped.Authorizer == nil || scoped.BearerToken != "static" {
 		t.Fatalf("scoped policy = %#v", scoped)
 	}
 
@@ -79,6 +85,22 @@ func TestLoadDerivedConfigsRequireAPIKey(t *testing.T) {
 		t.Fatalf("loadDerivedConfigs: %v", err)
 	}
 	if !derived.requireAPIKey {
-		t.Fatal("YAGO_SEARCH_REQUIRE_API_KEY=true should require API keys")
+		t.Fatal("YAGO_SEARCH_REQUIRE_API_KEY=true should disable the legacy token")
+	}
+}
+
+func TestScopedOnlySettingExplainsLegacyCompatibility(t *testing.T) {
+	definition := settingByKey(
+		t,
+		storageAndAccessDefinitions(),
+		"search.api.scoped_access",
+	)
+	if definition.title != "Require scoped API keys only" {
+		t.Fatalf("title = %q", definition.title)
+	}
+	for _, phrase := range []string{"holding the required scope", "legacy static"} {
+		if !strings.Contains(definition.description, phrase) {
+			t.Fatalf("description missing %q: %q", phrase, definition.description)
+		}
 	}
 }

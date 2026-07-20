@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/adminauth"
@@ -196,6 +197,11 @@ func TestSecurityScopeGroupsCoverKnownScopesWithoutOverlap(t *testing.T) {
 	groups := securityScopeGroups()
 	if len(groups) != 2 {
 		t.Fatalf("scope groups = %d, want node + search", len(groups))
+	}
+	if !strings.Contains(groups[1].Description, "Ordinary /search needs search:read") ||
+		!strings.Contains(groups[1].Description, "/crawl, and /map need search:raw") ||
+		strings.Contains(groups[1].Description, "YAGO_SEARCH_REQUIRE_API_KEY is on") {
+		t.Fatalf("search key description = %q", groups[1].Description)
 	}
 	seen := map[string]bool{}
 	for _, group := range groups {

@@ -36,29 +36,19 @@ type ScopeAuthorizer interface {
 }
 
 func (p SearchAccessPolicy) authorize(r *http.Request, scope SearchScope) AuthDecision {
-	if p.Authorizer != nil {
-		token, ok := bearerToken(r.Header.Get("Authorization"))
-		if !ok {
-			return DecisionUnauthenticated
-		}
-
-		return p.Authorizer.Authorize(r.Context(), token, scope)
-	}
-
-	// No configured credential means no access, never public access: the
-	// search API returns raw page content and feeds the crawler, so an
-	// operator who has not minted a key or set a static token has not opted
-	// into exposing it (SEC-02).
-	expected := strings.TrimSpace(p.BearerToken)
-	if expected == "" {
-		return DecisionUnauthenticated
-	}
 	got, ok := bearerToken(r.Header.Get("Authorization"))
-	if !ok || subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {
+	if !ok {
 		return DecisionUnauthenticated
 	}
+	expected := strings.TrimSpace(p.BearerToken)
+	if expected != "" && subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1 {
+		return DecisionAllow
+	}
+	if p.Authorizer != nil {
+		return p.Authorizer.Authorize(r.Context(), got, scope)
+	}
 
-	return DecisionAllow
+	return DecisionUnauthenticated
 }
 
 func writeAuthDecision(w http.ResponseWriter, decision AuthDecision, id string) {

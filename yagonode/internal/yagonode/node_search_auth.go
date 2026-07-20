@@ -7,19 +7,16 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/tavilyapi"
 )
 
-// searchScopeAuthorizerFor returns a scoped API-key authorizer for the Tavily
-// surface when the operator requires API keys; otherwise nil, leaving the
-// surface on its static-token or public policy. It reuses the admin service's
-// key store, so keys minted through the operations API authenticate here.
-func searchScopeAuthorizerFor(
-	config nodeConfig,
-	service *adminauth.Service,
-) tavilyapi.ScopeAuthorizer {
-	if !config.SearchRequireAPIKey {
-		return nil
+func buildSearchScopeAuthorizer(service *adminauth.Service) tavilyapi.ScopeAuthorizer {
+	return searchScopeAuthorizer{authorizer: service.APIKeyAuthorizer()}
+}
+
+func legacySearchAPIKeyFor(config nodeConfig) string {
+	if config.SearchRequireAPIKey {
+		return ""
 	}
 
-	return searchScopeAuthorizer{authorizer: service.APIKeyAuthorizer()}
+	return config.SearchAPIKey
 }
 
 type searchScopeAuthorizer struct {

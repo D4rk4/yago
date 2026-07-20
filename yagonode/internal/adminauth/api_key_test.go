@@ -42,7 +42,7 @@ func TestFormatAPIKeyLength(t *testing.T) {
 		t.Fatalf("key length = %d, want %d", len(created.Key), apiKeyLen)
 	}
 	if _, _, ok := parseAPIKey(created.Key); !ok {
-		t.Fatalf("generated key %q does not parse", created.Key)
+		t.Fatal("generated key does not parse")
 	}
 }
 

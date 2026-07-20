@@ -2,7 +2,9 @@ package adminauth
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -33,6 +35,11 @@ func (apiKeyRecordCodec) Decode(raw []byte) (apiKeyRecord, error) {
 	var record apiKeyRecord
 	if err := json.Unmarshal(raw, &record); err != nil {
 		return apiKeyRecord{}, fmt.Errorf("decode api key record: %w", err)
+	}
+	decodedSecret, err := hex.DecodeString(record.SecretHash)
+	if err != nil || len(decodedSecret) != sha256.Size ||
+		hex.EncodeToString(decodedSecret) != record.SecretHash {
+		return apiKeyRecord{}, fmt.Errorf("decode api key record: invalid secret credential")
 	}
 
 	return record, nil

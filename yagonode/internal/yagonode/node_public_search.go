@@ -393,11 +393,10 @@ func (d *rootDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func searchAccessPolicy(assembly publicSearchAssembly) tavilyapi.SearchAccessPolicy {
-	if assembly.searchAuthorizer != nil {
-		return tavilyapi.SearchAccessPolicy{Authorizer: assembly.searchAuthorizer}
+	return tavilyapi.SearchAccessPolicy{
+		BearerToken: assembly.searchAPIKey,
+		Authorizer:  assembly.searchAuthorizer,
 	}
-
-	return tavilyapi.SearchAccessPolicy{BearerToken: assembly.searchAPIKey}
 }
 
 // withWebFallback wraps the searcher with the optional DDGS web-search fallback.

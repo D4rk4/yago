@@ -155,9 +155,10 @@ func securityScopeGroups() []adminui.ScopeGroup {
 		},
 		{
 			Title: "Search API key (Tavily-compatible)",
-			Description: "Authenticates the Tavily-compatible POST /search and " +
-				"POST /extract on the public listener (Authorization: Bearer), enforced " +
-				"when YAGO_SEARCH_REQUIRE_API_KEY is on. Raw page content needs search:raw.",
+			Description: "Authenticates Tavily-compatible POST /search, /extract, " +
+				"/crawl, and /map on the public listener (Authorization: Bearer). " +
+				"Ordinary /search needs search:read; raw-content /search, /extract, " +
+				"/crawl, and /map need search:raw.",
 			Scopes: scopeOptions(adminauth.ScopeSearchRead, adminauth.ScopeSearchRaw),
 		},
 	}

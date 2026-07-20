@@ -18,14 +18,14 @@ func TestCreateAPIKeyReturnsUsableKey(t *testing.T) {
 		`{"label":"ci","scopes":["admin:read"]}`,
 	)
 	if rec.Code != http.StatusCreated {
-		t.Fatalf("status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("status = %d, want 201", rec.Code)
 	}
 	var body createAPIKeyResponse
 	if err := decodeBody(rec, &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if id, _, ok := parseAPIKey(body.Key); !ok || id != body.ID {
-		t.Fatalf("response key %q does not parse to id %q", body.Key, body.ID)
+		t.Fatalf("response credential does not parse to public id %q", body.ID)
 	}
 	if len(body.Scopes) != 1 || body.Scopes[0] != ScopeAdminRead {
 		t.Fatalf("scopes = %v", body.Scopes)

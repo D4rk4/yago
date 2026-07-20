@@ -2,7 +2,9 @@ package adminauth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -26,7 +28,7 @@ func TestAPIKeyStoreCreateProducesUsableKey(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	if id, _, ok := parseAPIKey(created.Key); !ok || id != created.ID {
-		t.Fatalf("created key %q does not parse to id %q", created.Key, created.ID)
+		t.Fatalf("created credential does not parse to public id %q", created.ID)
 	}
 	if !created.CreatedAt.Equal(clock.now) {
 		t.Fatalf("CreatedAt = %v, want %v", created.CreatedAt, clock.now)
@@ -147,6 +149,48 @@ func TestAPIKeyStoreAuthenticateSurfacesDecodeError(t *testing.T) {
 	engine.buckets[adminAPIKeysBucket][created.ID] = []byte("{corrupt")
 	if _, _, err := store.authenticate(context.Background(), created.Key); err == nil {
 		t.Fatal("authenticate should surface the decode error")
+	}
+}
+
+func TestAPIKeyStoreAuthenticateSurfacesInvalidStoredCredential(t *testing.T) {
+	store, engine, _ := newTestKeyStore(t)
+	created, err := store.create(context.Background(), "ci", []Scope{ScopeAdminRead})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	encoded, err := json.Marshal(apiKeyRecord{
+		SecretHash: "invalid",
+		Scopes:     []Scope{ScopeAdminRead},
+	})
+	if err != nil {
+		t.Fatalf("encode invalid record: %v", err)
+	}
+	engine.buckets[adminAPIKeysBucket][created.ID] = encoded
+	if _, _, err := store.authenticate(context.Background(), created.Key); err == nil {
+		t.Fatal("authenticate should surface an invalid stored credential")
+	}
+}
+
+func TestAPIKeyRecordCodecRejectsNoncanonicalSecretHash(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		secretHash string
+	}{
+		{"uppercase", strings.Repeat("AB", 32)},
+		{"mixed_case", strings.Repeat("aB", 32)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			encoded, err := json.Marshal(apiKeyRecord{
+				SecretHash: test.secretHash,
+				Scopes:     []Scope{ScopeSearchRead},
+			})
+			if err != nil {
+				t.Fatalf("encode record: %v", err)
+			}
+			if _, err := (apiKeyRecordCodec{}).Decode(encoded); err == nil {
+				t.Fatal("noncanonical stored credential must fail decoding")
+			}
+		})
 	}
 }
 

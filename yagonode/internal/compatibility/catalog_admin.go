@@ -34,13 +34,14 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Path:     "/api/admin/v1/auth/api-keys",
 		Methods:  []string{"GET", "POST", "DELETE"},
 		State:    Implemented,
-		Behavior: "Mints high-entropy API keys with explicit scopes, returning the secret once and storing only its SHA-256 hash with a public identifier, lists key metadata and last-used time without the secret, and revokes keys by identifier. A Bearer API key authenticates operations requests as an alternative to a session cookie, is checked against the scope required for the path, is rate limited per key, and needs no CSRF token.",
+		Behavior: "Mints high-entropy API keys with explicit scopes, returning the secret once and storing only its SHA-256 hash with a public identifier, lists key metadata and last-used time without the secret, and revokes keys by identifier. A Bearer API key authenticates operations requests as an alternative to a session cookie and always authenticates the Tavily-compatible public API when its search scope matches. Scoped-only mode disables only the legacy static search token. Keys are rate limited per key and need no CSRF token.",
 		Evidence: []string{
 			"yagonode/internal/adminauth/api_key_store_test.go",
 			"yagonode/internal/adminauth/api_key_endpoints_test.go",
 			"yagonode/internal/adminauth/guard_apikey_test.go",
+			"yagonode/internal/yagonode/node_tavily_scoped_auth_integration_test.go",
 		},
-		Notes: "Scopes are admin:read, admin:write, crawl:write, search:read, and search:raw; search scopes are reserved for the public search API. Managing keys requires admin:write or a session.",
+		Notes: "Scopes are admin:read, admin:write, crawl:write, search:read, and search:raw; search scopes authorize the public Tavily-compatible API. Managing keys requires admin:write or a session.",
 	},
 	{
 		Name:     "Metrics",

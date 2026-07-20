@@ -18,7 +18,7 @@ func TestServiceAPIKeyLifecycle(t *testing.T) {
 		t.Fatal("created key is missing its secret or id")
 	}
 	if _, _, ok := parseAPIKey(created.Secret); !ok {
-		t.Fatalf("created secret %q does not parse", created.Secret)
+		t.Fatal("created secret does not parse")
 	}
 
 	keys, err := service.ListAPIKeys(ctx)

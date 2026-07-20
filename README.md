@@ -146,6 +146,9 @@ its binaries (`yago-node`, `yago-crawler`).
 - **Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map`** with API
   keys and scopes. Raw-content work has fixed concurrency, time, fetch, and
   response-memory budgets, while ordinary search stays on the low-cost path.
+  Admin-minted keys holding the required scope authenticate in every mode; the
+  optional `YAGO_SEARCH_REQUIRE_API_KEY` switch makes the surface scoped-only
+  by disabling the legacy static `YAGO_SEARCH_API_KEY` credential.
   `basic`, `fast`, and `ultra-fast` use local retrieval; `advanced` shares the
   root portal's canonical global ranking for equivalent requests. Default
   results include `raw_content: null`, errors contain only `detail.error`, and

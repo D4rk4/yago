@@ -6,9 +6,12 @@ var agentAPISurfaceSpecs = []surfaceSpec{
 		Path:     "/search",
 		Methods:  []string{"POST"},
 		State:    Partial,
-		Behavior: "Serves default Tavily result fields without Yago provenance, uses local retrieval for basic, fast, and ultra-fast, uses global retrieval for advanced, and preserves the canonical root-portal order for equivalent advanced requests when click exposure randomization is disabled. Successful responses carry request IDs; errors carry only detail.error. Requested usage reports one request-local compatible unit for an executed basic, fast, or ultra-fast search and two for an executed advanced search.",
-		Evidence: []string{"yagonode/internal/tavilyapi/*_test.go"},
-		Notes:    "Answers are deterministic extraction, local depths share one retrieval plan, and semantic reranking, geographic boosting, image ranking, and external Tavily upstream mode are not implemented. Usage is request-local compatibility accounting, not billing, an account balance, external-provider spend, or evidence of an upstream Tavily call.",
+		Behavior: "Serves default Tavily result fields without Yago provenance, uses local retrieval for basic, fast, and ultra-fast, uses global retrieval for advanced, and preserves the canonical root-portal order for equivalent advanced requests when click exposure randomization is disabled. Admin-minted keys holding the required scope authenticate whether scoped-only enforcement is on or off; while it is off, the optional legacy static token may also authenticate. Successful responses carry request IDs; errors carry only detail.error. Requested usage reports one request-local compatible unit for an executed basic, fast, or ultra-fast search and two for an executed advanced search.",
+		Evidence: []string{
+			"yagonode/internal/tavilyapi/*_test.go",
+			"yagonode/internal/yagonode/node_tavily_scoped_auth_integration_test.go",
+		},
+		Notes: "Answers are deterministic extraction, local depths share one retrieval plan, and semantic reranking, geographic boosting, image ranking, and external Tavily upstream mode are not implemented. Usage is request-local compatibility accounting, not billing, an account balance, external-provider spend, or evidence of an upstream Tavily call.",
 	},
 	{
 		Name:     "Tavily-compatible extract",

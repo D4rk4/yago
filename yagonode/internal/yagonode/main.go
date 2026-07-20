@@ -215,7 +215,7 @@ func bootNodeWithEventDrain(
 			crawlRuns:        obs.crawlRuns,
 			remoteCrawl:      obs.remoteCrawl,
 			recorder:         obs.recorder,
-			searchAuthorizer: searchScopeAuthorizerFor(config, authService),
+			searchAuthorizer: buildSearchScopeAuthorizer(authService),
 			toggles:          toggles,
 			saturation:       obs.saturation,
 			registry:         obs.endpoints.Registry(),
