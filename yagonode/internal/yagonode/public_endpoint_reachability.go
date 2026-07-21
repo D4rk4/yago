@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagoproto"
@@ -19,10 +20,6 @@ const (
 	publicEndpointSelfTestRejectedMessage       = "public endpoint self-test rejected"
 )
 
-type publicReachability interface {
-	Reachable(ctx context.Context) bool
-}
-
 type publicEndpointSelfTest struct {
 	client      *http.Client
 	networkName string
@@ -30,6 +27,8 @@ type publicEndpointSelfTest struct {
 	base        *url.URL
 	access      yagoproto.NetworkAccess
 	sign        func(url.Values) error
+	pinned      bool
+	now         func() time.Time
 }
 
 func newPublicEndpointSelfTest(
@@ -56,14 +55,37 @@ func newPublicEndpointSelfTest(
 		base:        base,
 		access:      configured,
 		sign:        configured.Sign,
+		now:         time.Now,
 	}
 }
 
 func (p publicEndpointSelfTest) Reachable(ctx context.Context) bool {
+	return p.Snapshot(ctx).state == publicReachabilityReachable
+}
+
+func (p publicEndpointSelfTest) Snapshot(ctx context.Context) publicReachabilitySnapshot {
+	if !p.pinned {
+		return publicReachabilitySnapshot{source: publicReachabilitySourceDerivedProbe}
+	}
 	if p.base == nil {
-		return false
+		return publicReachabilitySnapshot{source: publicReachabilitySourcePinnedProbe}
 	}
 
+	state := publicReachabilityUnreachable
+	if p.probe(ctx) {
+		state = publicReachabilityReachable
+	}
+	observedAt := time.Now()
+	if p.now != nil {
+		observedAt = p.now()
+	}
+
+	return publicReachabilitySnapshot{
+		state: state, source: publicReachabilitySourcePinnedProbe, observedAt: observedAt,
+	}
+}
+
+func (p publicEndpointSelfTest) probe(ctx context.Context) bool {
 	target, err := p.queryURL()
 	if err != nil {
 		slog.DebugContext(ctx, publicEndpointSelfTestFailedMessage, slog.Any("error", err))

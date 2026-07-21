@@ -86,6 +86,60 @@ func TestNetworkSourcesUseLocalRosterObservation(t *testing.T) {
 	}
 }
 
+func TestNetworkSourceRendersLocallyObservedJuniorCaller(t *testing.T) {
+	observedAt := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	storage, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	roster, err := peerroster.Open(storage, func() time.Time { return observedAt }, 8, 4)
+	if err != nil {
+		t.Fatalf("peerroster.Open: %v", err)
+	}
+	caller := networkTestSeed(t)
+	caller.Hash = yagomodel.Hash("JJJJJJJJJJJJ")
+	caller.Name = yagomodel.Some("juniorCaller")
+	roster.ObserveCaller(t.Context(), caller, yagomodel.PeerJunior)
+
+	visibleRoster := newBlockingRoster(roster, newFakePeerBlocks())
+	status := newNetworkSource(
+		dhtGateStatusSource{}, visibleRoster, nil, nil, nil,
+	).Network(t.Context())
+	if !status.RosterAvailable || status.KnownPeers != 1 || status.ReachablePeers != 0 ||
+		len(status.Peers) != 1 || status.Peers[0].Name != "juniorCaller" ||
+		status.Peers[0].Type != "junior" || status.Peers[0].Address != "1.2.3.4:8090" ||
+		status.Peers[0].LastSeen != observedAt.Format(time.RFC3339) {
+		t.Fatalf("junior Admin projection = %+v", status)
+	}
+}
+
+func TestNetworkSourceKeepsBlockedActivePeerVisibleButNotReachable(t *testing.T) {
+	observedAt := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	storage, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = storage.Close() })
+	roster, err := peerroster.Open(storage, func() time.Time { return observedAt }, 8, 4)
+	if err != nil {
+		t.Fatalf("peerroster.Open: %v", err)
+	}
+	peer := networkTestSeed(t)
+	roster.ObserveCaller(t.Context(), peer, yagomodel.PeerSenior)
+	blocks := newFakePeerBlocks(peer.Hash)
+	visibleRoster := newBlockingRoster(roster, blocks)
+
+	status := newNetworkSource(
+		dhtGateStatusSource{}, visibleRoster, nil, nil, blocks,
+	).Network(t.Context())
+	if !status.RosterAvailable || status.KnownPeers != 1 || status.ReachablePeers != 0 ||
+		len(status.Peers) != 1 || !status.Peers[0].Blocked ||
+		!status.Peers[0].BlockStatusKnown || status.Peers[0].Hash != peer.Hash.String() {
+		t.Fatalf("blocked active Admin projection = %+v", status)
+	}
+}
+
 func TestNetworkSourcesKeepClosedRosterUnavailable(t *testing.T) {
 	storage, err := memvault.Open(0)
 	if err != nil {

@@ -81,6 +81,17 @@ func (d documentVault) FinalizeOutboundAnchors(
 	if err != nil {
 		return err
 	}
+	if err := d.publishOutboundAnchorFinalizations(ctx, ordered); err != nil {
+		return fmt.Errorf("finalize outbound anchors: %w", err)
+	}
+
+	return nil
+}
+
+func (d documentVault) publishOutboundAnchorFinalizations(
+	ctx context.Context,
+	ordered []OutboundAnchorFinalization,
+) error {
 	if err := d.vault.Update(ctx, func(tx *vault.Txn) error {
 		for _, finalization := range ordered {
 			current, err := d.readOutboundAnchorPublication(tx, finalization.sourceURL)
@@ -104,7 +115,7 @@ func (d documentVault) FinalizeOutboundAnchors(
 
 		return nil
 	}); err != nil {
-		return fmt.Errorf("finalize outbound anchors: %w", err)
+		return fmt.Errorf("store outbound anchor publications: %w", err)
 	}
 
 	return nil
@@ -121,7 +132,7 @@ func (d documentVault) ReleaseOutboundAnchors(
 func canonicalOutboundAnchorFinalizations(
 	finalizations []OutboundAnchorFinalization,
 ) ([]OutboundAnchorFinalization, error) {
-	if len(finalizations) > maximumOutboundAnchorSources {
+	if len(finalizations) > MaximumOutboundAnchorSourcesPerReplacement {
 		return nil, fmt.Errorf("outbound anchor finalization source limit exceeded")
 	}
 	bySource := make(map[string]OutboundAnchorFinalization, len(finalizations))

@@ -256,6 +256,10 @@ func TestConfirmUnreachableLogsDeleteError(t *testing.T) {
 	engine.deleteErrors[peersBucket] = errors.New("delete failed")
 
 	r.ConfirmUnreachable(t.Context(), peer.Hash)
+
+	engine.deleteErrors[peersBucket] = nil
+	corruptPeerRecord(t, r, engine, peer.Hash)
+	r.ConfirmUnreachable(t.Context(), peer.Hash)
 }
 
 func TestRejectRemoteIndexLogsReadAndStoreErrors(t *testing.T) {

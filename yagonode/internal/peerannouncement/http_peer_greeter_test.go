@@ -64,7 +64,7 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 			YourIP:   "203.0.113.9",
 			YourType: yagomodel.PeerSenior,
 			Seeds: []yagomodel.Seed{
-				callerSeed(t, "self", "203.0.113.9"),
+				callerSeed(t, "server", "203.0.113.1"),
 				callerSeed(t, "known", "198.51.100.7"),
 			},
 		}
@@ -115,7 +115,7 @@ func TestPeerGreeterSignsControlledNetworkRequest(t *testing.T) {
 			}
 			response := yagoproto.HelloResponse{
 				YourIP: "203.0.113.9", YourType: yagomodel.PeerSenior,
-				Seeds: []yagomodel.Seed{self},
+				Seeds: []yagomodel.Seed{callerSeed(t, "server", "203.0.113.1")},
 			}
 			_, _ = strings.NewReader(response.Encode().Encode()).WriteTo(w)
 		}),
@@ -249,6 +249,71 @@ func TestPeerGreeterRejectsBadHelloResponse(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("expected bad hello response error")
+	}
+}
+
+func TestPeerGreeterValidatesRequiredHelloResponseFields(t *testing.T) {
+	responder := callerSeed(t, "server", "203.0.113.1")
+	for _, test := range []struct {
+		name     string
+		yourIP   string
+		yourType yagomodel.PeerType
+		seeds    []yagomodel.Seed
+	}{
+		{name: "missing caller address", yourType: yagomodel.PeerSenior, seeds: []yagomodel.Seed{responder}},
+		{name: "invalid caller address", yourIP: "public.example", yourType: yagomodel.PeerSenior, seeds: []yagomodel.Seed{responder}},
+		{name: "unspecified caller address", yourIP: "0.0.0.0", yourType: yagomodel.PeerSenior, seeds: []yagomodel.Seed{responder}},
+		{name: "invalid caller type", yourIP: "203.0.113.9", yourType: yagomodel.PeerMentor, seeds: []yagomodel.Seed{responder}},
+		{name: "missing responder seed", yourIP: "203.0.113.9", yourType: yagomodel.PeerSenior},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := yagoproto.HelloResponse{
+				YourIP: test.yourIP, YourType: test.yourType, Seeds: test.seeds,
+			}
+			if _, err := parseGreetResponse(
+				t.Context(),
+				strings.NewReader(response.Encode().Encode()),
+			); err == nil {
+				t.Fatal("invalid hello response was accepted")
+			}
+		})
+	}
+}
+
+func TestPeerGreeterAcceptsCommaSeparatedCallerAddresses(t *testing.T) {
+	response := yagoproto.HelloResponse{
+		YourIP:   "203.0.113.9, 2001:db8::9",
+		YourType: yagomodel.PeerSenior,
+		Seeds:    []yagomodel.Seed{callerSeed(t, "server", "203.0.113.1")},
+	}
+	result, err := parseGreetResponse(
+		t.Context(),
+		strings.NewReader(response.Encode().Encode()),
+	)
+	if err != nil || result.YourIP != response.YourIP {
+		t.Fatalf("comma-separated caller addresses = %+v, %v", result, err)
+	}
+}
+
+func TestPeerGreeterRejectsMismatchedResponderIdentity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		response := yagoproto.HelloResponse{
+			YourIP:   "203.0.113.9",
+			YourType: yagomodel.PeerSenior,
+			Seeds:    []yagomodel.Seed{callerSeed(t, "different", "203.0.113.1")},
+		}
+		_, _ = strings.NewReader(response.Encode().Encode()).WriteTo(w)
+	}))
+	defer server.Close()
+
+	_, err := newHTTPPeerGreeter(server.Client(), "freeworld", false).Greet(
+		t.Context(),
+		serverSeed(t, server),
+		callerSeed(t, "self", "203.0.113.9"),
+		0,
+	)
+	if !errors.Is(err, errGreetFailed) {
+		t.Fatalf("mismatched responder error = %v", err)
 	}
 }
 

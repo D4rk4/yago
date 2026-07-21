@@ -2,7 +2,6 @@ package yagonode
 
 import (
 	"context"
-	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -14,8 +13,9 @@ import (
 )
 
 const (
-	msgWebSeedFailed   = "web-search crawl seeding failed"
-	webSeedProfileName = "web-fallback-seed"
+	msgWebSeedFailed       = "web-search crawl seeding failed"
+	webSeedProfileName     = "web-fallback-seed"
+	webSeedPresenceTimeout = 50 * time.Millisecond
 )
 
 // seedProfile names a crawl-seeding source and bounds how far its
@@ -96,33 +96,19 @@ func newCrawlSeeder(
 
 func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
 	for _, raw := range urls {
-		target := seedURL(raw)
-		if target == "" || s.stored(ctx, target) {
+		target, admitted := s.AdmitCrawlSeedURL(raw)
+		if !admitted || s.stored(ctx, target) {
 			continue
 		}
-		profile := s.profile
-		maximum := automaticDiscoveryPageLimit(
-			s.maximumPages,
-			s.crawlerMaximum(),
-		)
-		profile.MaxPagesPerRun = &maximum
-		profile = yagocrawlcontract.NewCrawlProfile(profile)
-		order := yagocrawlcontract.CrawlOrder{
-			Provenance: mintProvenance(),
-			Priority:   yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery,
-			Profile:    profile,
-			Requests: []yagocrawlcontract.CrawlRequest{{
-				URL:           target,
-				Mode:          yagocrawlcontract.CrawlRequestModeURL,
-				ProfileHandle: profile.Handle,
-				Initiator:     s.initiator,
-				AppDate:       s.now(),
-			}},
-		}
-		if _, err := s.queue.PublishOnce(ctx, target, order); err != nil {
-			slog.DebugContext(ctx, msgWebSeedFailed, slog.Any("error", err))
-		}
+		instant := s.now()
+		s.publishWebDiscoveryOrder(ctx, target, instant)
 	}
+}
+
+func (*webCrawlSeeder) AdmitCrawlSeedURL(raw string) (string, bool) {
+	target := seedURL(raw)
+
+	return target, target != ""
 }
 
 func selectMaxPagesPerRunSource(sources []func() int) func() int {
@@ -141,20 +127,26 @@ func selectMaxPagesPerRunSource(sources []func() int) func() int {
 }
 
 func (s *webCrawlSeeder) stored(ctx context.Context, target string) bool {
-	_, found, err := s.documents.Document(ctx, target)
+	lookupContext, cancel := context.WithTimeout(ctx, webSeedPresenceTimeout)
+	defer cancel()
+	_, found, err := s.documents.Document(lookupContext, target)
 
 	return err == nil && found
 }
 
 func seedURL(raw string) string {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || !parsed.IsAbs() {
+	if err != nil || !parsed.IsAbs() || parsed.Hostname() == "" || parsed.User != nil {
 		return ""
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return ""
 	}
 	parsed.Fragment = ""
+	normalized := parsed.String()
+	if len(normalized) > yagomodel.MaximumURLIdentityBytes {
+		return ""
+	}
 
-	return parsed.String()
+	return normalized
 }

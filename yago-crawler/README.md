@@ -56,13 +56,17 @@ leases, and leaves them available for immediate or delayed same-worker adoption
 from the same data directory. Heartbeat calls have a one-second deadline. An
 omitted or expired active lease cancels the current order stream and forces a
 same-worker reconnect, so a delayed heartbeat cannot leave parked work waiting
-indefinitely on an otherwise healthy stream. Each ordinary delivery is confirmed
-with a heartbeat that targets its lease; the node does not claim or send another
-order for that session until the renewal succeeds. Confirmation occurs before the
-payload is decoded, so an undecodable order remains a tracked grant until its
-settlement succeeds or the stream reconnects. The node also accepts a successful
-session-authorized disposition of that exact lease as receipt evidence, preventing
-legacy malformed-order handling from stranding delivery credit. Reconnect replay
+indefinitely on an otherwise healthy stream. That stream-attempt cancellation
+also interrupts a confirmed delivery waiting behind local active-run admission,
+so a live crawler reopens its logical session after a node process restart rather
+than remaining attached to a dead delivery attempt. Each ordinary delivery is
+confirmed with a heartbeat that targets its lease; the node does not claim or
+send another order for that session until the renewal succeeds. Confirmation
+occurs before the payload is decoded, so an undecodable order remains a tracked
+grant until its settlement succeeds or the stream reconnects. The node also
+accepts a successful session-authorized disposition of that exact lease as
+receipt evidence, preventing legacy malformed-order handling from stranding
+delivery credit. Reconnect replay
 retains the 1,024-active-lease safety ceiling but frames adopted work as ordered
 batches of at most 16. The first frame carries that batch's complete lease-ID
 header. The crawler validates and confirms only those IDs before exposing the
@@ -178,6 +182,15 @@ recrawl commits. A partial group waits at most ten milliseconds and stops
 waiting immediately when its context is cancelled. Populated Bleve shards
 persist through at most four concurrent commit lanes, so batching cannot create
 an unbounded ingest delay or an eight-shard persistence burst.
+Within that group, the node replaces outbound-anchor sources in groups of at
+most 16, aggregates their contributions once, and projects affected documents in
+pages of at most 16 exact target URLs. Target transactions retain at most 32
+physical rows and 8 MiB. After projection, sorted final source rows use
+deterministic subtransactions with a 64 MiB encoded ceiling. A page, capacity,
+index, or publication failure retries the original delivery group before
+metadata, postings, or acknowledgements advance; earlier publication groups may
+already be committed, and replay recomputes the remainder idempotently. This
+changes no crawler message or checkpoint format.
 Before those storage operations begin, the node snapshots the submitting
 worker, process session, exact lease, and run authorization under its short
 lease-mutation boundary. It releases that boundary before document or index

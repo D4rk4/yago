@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagoproto"
@@ -15,6 +16,8 @@ const (
 	backPingMaxBodyBytes                 int64 = 64 << 10
 	callerBackPingUnreachableMessage           = "caller back-ping unreachable"
 	callerBackPingBodyCloseFailedMessage       = "caller back-ping body close failed"
+	callerBackPingHTTPTimeout                  = 6500 * time.Millisecond
+	callerBackPingHTTPSTimeout                 = 13 * time.Second
 )
 
 type callerBackPing struct {
@@ -22,6 +25,7 @@ type callerBackPing struct {
 	preferHTTPS bool
 	access      yagoproto.NetworkAccess
 	signForm    func(yagoproto.NetworkAccess, url.Values) error
+	timeout     time.Duration
 }
 
 func newCallerBackPing(
@@ -34,9 +38,14 @@ func newCallerBackPing(
 		configured = access[0]
 	}
 
+	timeout := callerBackPingHTTPTimeout
+	if preferHTTPS {
+		timeout = callerBackPingHTTPSTimeout
+	}
+
 	return callerBackPing{
 		client: client, preferHTTPS: preferHTTPS, access: configured,
-		signForm: yagoproto.NetworkAccess.Sign,
+		signForm: yagoproto.NetworkAccess.Sign, timeout: timeout,
 	}
 }
 
@@ -50,6 +59,8 @@ func (p callerBackPing) Reachable(
 	self yagomodel.Hash,
 	networkName string,
 ) bool {
+	probeContext, cancel := context.WithTimeout(ctx, p.timeout)
+	defer cancel()
 	targets, err := caller.ProtocolEndpoints(yagoproto.PathQuery, p.preferHTTPS)
 	if err != nil {
 		slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
@@ -80,7 +91,12 @@ func (p callerBackPing) Reachable(
 	// the https-first candidates until one connects.
 	for _, target := range targets {
 		target.RawQuery = rawQuery
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+		req, _ := http.NewRequestWithContext(
+			probeContext,
+			http.MethodGet,
+			target.String(),
+			nil,
+		)
 		resp, err := p.client.Do(req)
 		if err != nil {
 			slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
@@ -124,8 +140,18 @@ func (p callerBackPing) confirms(ctx context.Context, resp *http.Response) bool 
 
 		return false
 	}
-	if _, err := yagoproto.ParseQueryResponse(msg); err != nil {
+	parsed, err := yagoproto.ParseQueryResponse(msg)
+	if err != nil {
 		slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
+
+		return false
+	}
+	if parsed.Response < 0 {
+		slog.DebugContext(
+			ctx,
+			callerBackPingUnreachableMessage,
+			slog.Int("response", parsed.Response),
+		)
 
 		return false
 	}

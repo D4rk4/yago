@@ -10,19 +10,22 @@ import (
 	"strings"
 )
 
-const maximumOutboundAnchorSources = 16
+const MaximumOutboundAnchorSourcesPerReplacement = 16
 
 func canonicalOutboundAnchorSets(
 	sets []OutboundAnchorSet,
 ) ([]OutboundAnchorSet, error) {
-	bySource := make(map[string]OutboundAnchorSet, min(len(sets), maximumOutboundAnchorSources))
+	bySource := make(
+		map[string]OutboundAnchorSet,
+		min(len(sets), MaximumOutboundAnchorSourcesPerReplacement),
+	)
 	for _, set := range sets {
 		sourceURL := strings.TrimSpace(set.SourceURL)
 		if !validOutboundAnchorIdentity(sourceURL) {
 			continue
 		}
 		if _, found := bySource[sourceURL]; !found &&
-			len(bySource) == maximumOutboundAnchorSources {
+			len(bySource) == MaximumOutboundAnchorSourcesPerReplacement {
 			return nil, fmt.Errorf("outbound anchor source limit exceeded")
 		}
 		set.SourceURL = sourceURL

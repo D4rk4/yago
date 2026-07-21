@@ -22,7 +22,10 @@ func hashFor(base string) yagomodel.Hash {
 func seniorSeed(t testing.TB, hash, ip string, port int) yagomodel.Seed {
 	t.Helper()
 
-	seed := yagomodel.Seed{Hash: hashFor(hash)}
+	seed := yagomodel.Seed{
+		Hash:     hashFor(hash),
+		PeerType: yagomodel.Some(yagomodel.PeerSenior),
+	}
 	if ip != "" {
 		host, err := yagomodel.ParseHost(ip)
 		if err != nil {
@@ -62,6 +65,27 @@ func openRoster(t *testing.T, reservoirCap, activeCap int) peerroster.Roster {
 
 	clock := &tickingClock{now: time.Unix(1_000, 0)}
 	roster, err := peerroster.Open(v, clock.Now, reservoirCap, activeCap)
+	if err != nil {
+		t.Fatalf("peerroster.Open: %v", err)
+	}
+
+	return roster
+}
+
+func openConcurrentRoster(t *testing.T, reservoirCap, activeCap int) peerroster.Roster {
+	t.Helper()
+
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault.Open: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := v.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+
+	roster, err := peerroster.Open(v, time.Now, reservoirCap, activeCap)
 	if err != nil {
 		t.Fatalf("peerroster.Open: %v", err)
 	}

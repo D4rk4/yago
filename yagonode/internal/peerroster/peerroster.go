@@ -17,6 +17,7 @@ import (
 
 type Roster interface {
 	Discover(ctx context.Context, seeds ...yagomodel.Seed)
+	ObserveCaller(ctx context.Context, caller yagomodel.Seed, classification yagomodel.PeerType)
 	ConfirmReachable(ctx context.Context, peer yagomodel.Hash)
 	ConfirmUnreachable(ctx context.Context, peer yagomodel.Hash)
 	RejectRemoteIndex(ctx context.Context, peer yagomodel.Seed)

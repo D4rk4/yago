@@ -332,12 +332,17 @@ func TestReceiveReportsWriteAndURLBoundaryCancellation(t *testing.T) {
 		_, err := documents.Receive(ctx, []Document{{NormalizedURL: url}})
 		result <- err
 	}()
-	index := documents.urlBoundaries.indices([]string{url})[0]
 	deadline := time.Now().Add(time.Second)
 	for {
-		documents.urlBoundaries.entries[index].mutex.Lock()
-		waiting := documents.urlBoundaries.entries[index].waitingWriters
-		documents.urlBoundaries.entries[index].mutex.Unlock()
+		documents.urlBoundaries.mutex.Lock()
+		boundary := documents.urlBoundaries.entries[url]
+		documents.urlBoundaries.mutex.Unlock()
+		waiting := 0
+		if boundary != nil {
+			boundary.mutex.Lock()
+			waiting = boundary.waitingWriters
+			boundary.mutex.Unlock()
+		}
 		if waiting > 0 {
 			break
 		}
@@ -468,12 +473,17 @@ func TestDeleteReportsURLBoundaryCancellation(t *testing.T) {
 		_, err := documents.Delete(ctx, url)
 		result <- err
 	}()
-	index := documents.urlBoundaries.indices([]string{url})[0]
 	deadline := time.Now().Add(time.Second)
 	for {
-		documents.urlBoundaries.entries[index].mutex.Lock()
-		waiting := documents.urlBoundaries.entries[index].waitingWriters
-		documents.urlBoundaries.entries[index].mutex.Unlock()
+		documents.urlBoundaries.mutex.Lock()
+		boundary := documents.urlBoundaries.entries[url]
+		documents.urlBoundaries.mutex.Unlock()
+		waiting := 0
+		if boundary != nil {
+			boundary.mutex.Lock()
+			waiting = boundary.waitingWriters
+			boundary.mutex.Unlock()
+		}
 		if waiting > 0 {
 			break
 		}

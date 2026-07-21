@@ -118,7 +118,7 @@ func (d documentVault) CanonicalReservedDocuments(
 	prepared := make([]Document, len(docs))
 	urls := make([]string, 0, len(docs))
 	for index, document := range docs {
-		prepared[index] = normalizedDocument(document)
+		prepared[index] = retainSubmittedInlinks(normalizedDocument(document))
 		urls = append(urls, prepared[index].NormalizedURL)
 	}
 	if err := d.activeDocumentLineageLease(reservation, urls); err != nil {

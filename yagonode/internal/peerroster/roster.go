@@ -27,8 +27,9 @@ type roster struct {
 	reservoirCap int
 	activeCap    int
 
-	mu     sync.Mutex
-	active map[yagomodel.Hash]yagomodel.Seed
+	membershipMu sync.Mutex
+	mu           sync.Mutex
+	active       map[yagomodel.Hash]yagomodel.Seed
 
 	candidateMu        sync.Mutex
 	candidateRevision  uint64
@@ -47,7 +48,7 @@ func (r *roster) Discover(ctx context.Context, seeds ...yagomodel.Seed) {
 	maximumDiscoveries := min(peerDiscoveryMaximumSeeds, len(seeds))
 	changed := false
 	for _, seed := range seeds[:maximumDiscoveries] {
-		if _, reachable := seed.NetworkAddress(); !reachable {
+		if _, reachable := seed.NetworkAddress(); !reachable || locallyJunior(seed) {
 			continue
 		}
 		stored, err := r.discoverOne(ctx, seed)
@@ -94,13 +95,18 @@ func (r *roster) discoverOne(ctx context.Context, seed yagomodel.Seed) (bool, er
 }
 
 func (r *roster) ConfirmReachable(ctx context.Context, peer yagomodel.Hash) {
+	r.membershipMu.Lock()
+	defer r.membershipMu.Unlock()
+
 	confirmed, found := r.touch(ctx, peer)
 	if !found {
 		return
 	}
 
 	r.mu.Lock()
-	if _, active := r.active[peer]; active || len(r.active) < r.activeCap {
+	if locallyJunior(confirmed) {
+		delete(r.active, peer)
+	} else if _, active := r.active[peer]; active || len(r.active) < r.activeCap {
 		r.active[peer] = confirmed
 	}
 	r.mu.Unlock()
@@ -142,6 +148,9 @@ func (r *roster) touch(ctx context.Context, peer yagomodel.Hash) (yagomodel.Seed
 
 // Future: tolerate a bounded number of strikes with a cooldown before removal.
 func (r *roster) ConfirmUnreachable(ctx context.Context, peer yagomodel.Hash) {
+	r.membershipMu.Lock()
+	defer r.membershipMu.Unlock()
+
 	r.mu.Lock()
 	_, active := r.active[peer]
 	delete(r.active, peer)
@@ -151,6 +160,13 @@ func (r *roster) ConfirmUnreachable(ctx context.Context, peer yagomodel.Hash) {
 
 	deleted := false
 	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
+		entry, known, err := r.peers.Get(tx, r.key(peer))
+		if err != nil {
+			return fmt.Errorf("read peer: %w", err)
+		}
+		if known && locallyJunior(entry.seed) {
+			return nil
+		}
 		removed, err := r.peers.Delete(tx, r.key(peer))
 		if err != nil {
 			return fmt.Errorf("delete peer: %w", err)
@@ -172,6 +188,9 @@ func (r *roster) ConfirmUnreachable(ctx context.Context, peer yagomodel.Hash) {
 }
 
 func (r *roster) RejectRemoteIndex(ctx context.Context, failed yagomodel.Seed) {
+	r.membershipMu.Lock()
+	defer r.membershipMu.Unlock()
+
 	var updated yagomodel.Seed
 	changed := false
 	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
@@ -364,7 +383,6 @@ func (r *roster) selectInactive(
 			if _, ok := active[entry.seed.Hash]; ok {
 				return true, nil
 			}
-
 			kept.retain(entry, limit)
 
 			return true, nil

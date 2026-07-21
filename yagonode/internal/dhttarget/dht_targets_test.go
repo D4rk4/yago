@@ -58,6 +58,12 @@ func withRWICount(value int) func(*yagomodel.Seed) {
 	}
 }
 
+func withPeerType(value yagomodel.PeerType) func(*yagomodel.Seed) {
+	return func(seed *yagomodel.Seed) {
+		seed.PeerType = yagomodel.Some(value)
+	}
+}
+
 func TestSelectOrdersEligiblePeersFromStartHash(t *testing.T) {
 	t.Parallel()
 
@@ -101,6 +107,12 @@ func TestSelectFiltersReachabilityFlagsAgeAndLimit(t *testing.T) {
 	targets, err := Select(
 		dhtHash(t, "AAAAAAAAAAAA"),
 		[]yagomodel.Seed{
+			dhtSeed(
+				t,
+				"BBBBBBBBBBBB",
+				withBirthDate(now.AddDate(0, 0, -5)),
+				withPeerType(yagomodel.PeerJunior),
+			),
 			dhtSeed(t, "CCCCCCCCCCCC", withBirthDate(now.AddDate(0, 0, -5))),
 			dhtSeed(t, "DDDDDDDDDDDD", withBirthDate(now.AddDate(0, 0, -1))),
 			dhtSeed(t, "EEEEEEEEEEEE"),

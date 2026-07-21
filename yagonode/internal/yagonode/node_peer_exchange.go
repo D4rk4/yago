@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/D4rk4/yago/yagoegress"
 	"github.com/D4rk4/yago/yagonode/internal/bootstrap"
 	"github.com/D4rk4/yago/yagonode/internal/hostlinks"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
@@ -39,7 +40,8 @@ type peerExchange struct {
 }
 
 type peerExchangeRuntime struct {
-	announcer peerannouncement.Announcer
+	announcer                    peerannouncement.Announcer
+	externalReachabilityEvidence *peerannouncement.ExternalReachabilityEvidence
 }
 
 var (
@@ -116,6 +118,7 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 	if err != nil {
 		return peerExchangeRuntime{}, fmt.Errorf("open peer message mailbox: %w", err)
 	}
+	externalReachabilityEvidence := peerannouncement.NewExternalReachabilityEvidence()
 
 	peeradmission.MountHello(
 		p.router,
@@ -142,18 +145,21 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 	return peerExchangeRuntime{
 		announcer: peerannouncement.New(
 			peerannouncement.Config{
-				Client:         p.client,
-				NetworkName:    p.config.NetworkName,
-				Interval:       p.config.AnnounceInterval,
-				GreetsPerCycle: p.config.GreetsPerCycle,
-				Observer:       announceObserver,
-				News:           p.news,
-				PreferHTTPS:    p.config.PeerHTTPSPreferred,
-				NetworkAccess:  p.identity.NetworkAccess(),
+				Client:                       p.client,
+				NetworkName:                  p.config.NetworkName,
+				Interval:                     p.config.AnnounceInterval,
+				GreetsPerCycle:               p.config.GreetsPerCycle,
+				Observer:                     announceObserver,
+				News:                         p.news,
+				PreferHTTPS:                  p.config.PeerHTTPSPreferred,
+				NetworkAccess:                p.identity.NetworkAccess(),
+				ExternalReachabilityEvidence: externalReachabilityEvidence,
+				AdmitExternalObserverAddress: yagoegress.NewGuard(false).AdmitAddr,
 			},
 			p.report,
 			bootstrap.NewObserved(p.client, p.config.SeedlistURLs, seedObserver),
 			p.roster,
 		),
+		externalReachabilityEvidence: externalReachabilityEvidence,
 	}, nil
 }

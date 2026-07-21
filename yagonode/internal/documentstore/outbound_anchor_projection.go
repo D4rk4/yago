@@ -72,7 +72,7 @@ func (d documentVault) readOutboundAnchorProjection(
 func activeOutboundAnchorLease(
 	finalizations []OutboundAnchorFinalization,
 ) (*outboundAnchorLease, error) {
-	if len(finalizations) > maximumOutboundAnchorSources {
+	if len(finalizations) > MaximumOutboundAnchorSourcesPerReplacement {
 		return nil, fmt.Errorf("outbound anchor finalization source limit exceeded")
 	}
 	lease := finalizations[0].lease

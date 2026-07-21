@@ -51,7 +51,7 @@ func TestOutboundAnchorProjectionValidatesActiveLease(t *testing.T) {
 		{},
 	})
 	shared := newOutboundAnchorLease(func() {}, nil)
-	tooMany := make([]OutboundAnchorFinalization, maximumOutboundAnchorSources+1)
+	tooMany := make([]OutboundAnchorFinalization, MaximumOutboundAnchorSourcesPerReplacement+1)
 	for index := range tooMany {
 		tooMany[index] = OutboundAnchorFinalization{
 			sourceURL: fmt.Sprintf("https://source.example/%02d", index),
@@ -332,7 +332,7 @@ func TestOutboundAnchorFinalizationRejectsInvalidLeaseSets(t *testing.T) {
 		t.Fatal("mixed finalization leases were accepted")
 	}
 	tooManyLease := newOutboundAnchorLease(func() {}, nil)
-	tooMany := make([]OutboundAnchorFinalization, maximumOutboundAnchorSources+1)
+	tooMany := make([]OutboundAnchorFinalization, MaximumOutboundAnchorSourcesPerReplacement+1)
 	for index := range tooMany {
 		tooMany[index] = OutboundAnchorFinalization{
 			sourceURL: fmt.Sprintf("https://source.example/limit/%02d", index),

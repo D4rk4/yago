@@ -2,7 +2,12 @@ package yagonode
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
@@ -10,6 +15,7 @@ import (
 )
 
 type fakeCrawlQueue struct {
+	mutex     sync.Mutex
 	keys      []string
 	orders    []yagocrawlcontract.CrawlOrder
 	published chan struct{}
@@ -20,13 +26,26 @@ func (q *fakeCrawlQueue) PublishOnce(
 	key string,
 	order yagocrawlcontract.CrawlOrder,
 ) (bool, error) {
+	q.mutex.Lock()
 	q.keys = append(q.keys, key)
 	q.orders = append(q.orders, order)
+	q.mutex.Unlock()
 	if q.published != nil {
 		q.published <- struct{}{}
 	}
 
 	return false, nil
+}
+
+func (q *fakeCrawlQueue) snapshot() ([]string, []yagocrawlcontract.CrawlOrder) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+
+	return append(
+			[]string(nil),
+			q.keys...), append(
+			[]yagocrawlcontract.CrawlOrder(nil),
+			q.orders...)
 }
 
 type fakeSeedDocuments struct {
@@ -44,6 +63,24 @@ func (d fakeSeedDocuments) Count(context.Context) (int, error) {
 	return len(d.stored), nil
 }
 
+type waitingSeedDocuments struct {
+	finished chan error
+}
+
+func (d waitingSeedDocuments) Document(
+	ctx context.Context,
+	_ string,
+) (documentstore.Document, bool, error) {
+	<-ctx.Done()
+	d.finished <- ctx.Err()
+
+	return documentstore.Document{}, false, fmt.Errorf("presence lookup: %w", ctx.Err())
+}
+
+func (waitingSeedDocuments) Count(context.Context) (int, error) {
+	return 0, nil
+}
+
 func TestWebCrawlSeederPublishesUnknownURLs(t *testing.T) {
 	queue := &fakeCrawlQueue{}
 	docs := fakeSeedDocuments{stored: map[string]bool{"https://known.example/": true}}
@@ -58,13 +95,14 @@ func TestWebCrawlSeederPublishesUnknownURLs(t *testing.T) {
 		"   ",
 	})
 
-	if len(queue.orders) != 1 {
-		t.Fatalf("orders = %d, want 1", len(queue.orders))
+	keys, orders := queue.snapshot()
+	if len(orders) != 1 {
+		t.Fatalf("orders = %d, want 1", len(orders))
 	}
-	if queue.keys[0] != "https://fresh.example/page" {
-		t.Errorf("key = %q, want fragment stripped", queue.keys[0])
+	if keys[0] != "https://fresh.example/page" {
+		t.Errorf("keys = %#v, want one discovery URL", keys)
 	}
-	order := queue.orders[0]
+	order := orders[0]
 	if len(order.Requests) != 1 || order.Requests[0].URL != "https://fresh.example/page" {
 		t.Fatalf("requests = %#v", order.Requests)
 	}
@@ -77,6 +115,37 @@ func TestWebCrawlSeederPublishesUnknownURLs(t *testing.T) {
 	}
 	if order.Requests[0].Mode != yagocrawlcontract.CrawlRequestModeURL {
 		t.Errorf("mode = %v", order.Requests[0].Mode)
+	}
+}
+
+func TestWebCrawlSeederBoundsPresenceLookupBeforePublishing(t *testing.T) {
+	finished := make(chan error, 1)
+	queue := &fakeCrawlQueue{published: make(chan struct{}, 1)}
+	seeder := newWebCrawlSeeder(
+		queue,
+		waitingSeedDocuments{finished: finished},
+		yagomodel.Hash("node"),
+		webCrawlSeedProfile{
+			fallback: webFallbackConfig{SeedDepth: 0, SeedMaxPages: 1},
+		},
+	)
+	started := time.Now()
+	seeder.Seed(context.Background(), []string{"https://fresh.example/page"})
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("seed elapsed = %v, want at most 1s", elapsed)
+	}
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("presence lookup error = %v", err)
+		}
+	default:
+		t.Fatal("presence lookup did not observe its deadline")
+	}
+	select {
+	case <-queue.published:
+	default:
+		t.Fatal("unknown URL was not published after bounded lookup")
 	}
 }
 
@@ -96,18 +165,51 @@ func TestWebCrawlSeederReadsCurrentRunBudget(t *testing.T) {
 	maximum = 7
 	seeder.Seed(context.Background(), []string{"https://two.example/"})
 
-	if len(queue.orders) != 2 {
-		t.Fatalf("orders = %d, want 2", len(queue.orders))
+	_, orders := queue.snapshot()
+	if len(orders) != 2 {
+		t.Fatalf("orders = %d, want 2", len(orders))
 	}
 	for index, want := range []int{12, 7} {
-		profile := queue.orders[index].Profile
+		profile := orders[index].Profile
 		if profile.MaxPagesPerRun == nil || *profile.MaxPagesPerRun != want {
 			t.Fatalf("order %d max pages per run = %v, want %d",
 				index, profile.MaxPagesPerRun, want)
 		}
 	}
-	if queue.orders[0].Profile.Handle == queue.orders[1].Profile.Handle {
-		t.Fatalf("different run budgets shared profile handle %q", queue.orders[0].Profile.Handle)
+	if orders[0].Profile.Handle == orders[1].Profile.Handle {
+		t.Fatalf("different run budgets shared profile handle %q", orders[0].Profile.Handle)
+	}
+}
+
+type canceledWebSeedQueue struct {
+	calls int
+}
+
+func (q *canceledWebSeedQueue) PublishOnce(
+	context.Context,
+	string,
+	yagocrawlcontract.CrawlOrder,
+) (bool, error) {
+	q.calls++
+
+	return false, fmt.Errorf("publish failed")
+}
+
+func TestWebSeedPublishRetryStopsWhenContextIsCanceled(t *testing.T) {
+	queue := &canceledWebSeedQueue{}
+	seeder := newWebCrawlSeeder(
+		queue,
+		fakeSeedDocuments{},
+		yagomodel.Hash("node"),
+		webCrawlSeedProfile{
+			fallback: webFallbackConfig{SeedDepth: 0, SeedMaxPages: 1},
+		},
+	)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	seeder.Seed(ctx, []string{"https://fresh.example/page"})
+	if queue.calls != 1 {
+		t.Fatalf("publish attempts = %d, want 1 after cancellation", queue.calls)
 	}
 }
 
@@ -130,7 +232,11 @@ func TestSeedRunBudgetSourceRejectsNegativeValue(t *testing.T) {
 }
 
 func TestSeedURLRejectsNonHTTP(t *testing.T) {
-	for _, raw := range []string{"", "ftp://x/", "mailto:a@b", "/relative", "   "} {
+	for _, raw := range []string{
+		"", "ftp://x/", "mailto:a@b", "/relative", "   ",
+		"https://user:password@example.test/page", "https:///missing-host",
+		"https://example.test/" + strings.Repeat("x", yagomodel.MaximumURLIdentityBytes),
+	} {
 		if got := seedURL(raw); got != "" {
 			t.Errorf("seedURL(%q) = %q, want empty", raw, got)
 		}

@@ -40,16 +40,6 @@ type IngestObserver interface {
 	ObserveLowQuality()
 }
 
-type noopIngestObserver struct{}
-
-func (noopIngestObserver) ObserveAbsorbed(int, int, int) {}
-
-func (noopIngestObserver) ObserveDeferred() {}
-
-func (noopIngestObserver) ObserveRejected() {}
-
-func (noopIngestObserver) ObserveLowQuality() {}
-
 // FetchRecorder is told, once per successfully absorbed page batch, which URL was
 // fetched under which profile and when, so a recrawl schedule can be maintained.
 // It is called only after the batch is durably absorbed, is best-effort (a failure
@@ -188,10 +178,8 @@ func NewIngestConsumerWithIndex(
 		reservedAnchors:   reservedAnchors,
 		reservedDocuments: reservedDocuments,
 		index:             index,
-		indexWrites:       noopSearchIndexWriteObserver{},
 		urls:              urls,
 		postings:          postings,
-		observer:          noopIngestObserver{},
 		recorder:          noopFetchRecorder{},
 		owner:             allowAllOwnership{},
 		purger:            noopURLPurger{},

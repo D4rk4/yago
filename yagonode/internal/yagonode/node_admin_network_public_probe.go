@@ -11,6 +11,7 @@ import (
 const (
 	publicEndpointReachableEvent   = "network.public_endpoint.reachable"
 	publicEndpointUnreachableEvent = "network.public_endpoint.unreachable"
+	publicEndpointUnconfirmedEvent = "network.public_endpoint.unconfirmed"
 	publicEndpointTestFailedEvent  = "network.public_endpoint.test_failed"
 )
 
@@ -23,7 +24,7 @@ func newNetworkSelfTester(
 	network networkSource,
 	recorder *events.Recorder,
 ) adminui.NetworkSelfTester {
-	if network.gates.snapshot == nil {
+	if network.gates.snapshot == nil && network.gates.snapshotWithReachability == nil {
 		return nil
 	}
 
@@ -40,19 +41,27 @@ func (s networkSelfTester) TestPublicEndpoint(
 	}
 	status := s.network.Network(ctx)
 	if s.recorder != nil {
-		if status.PublicReachable {
+		switch {
+		case !status.PublicReachabilityKnown:
+			s.recorder.Record(
+				events.SeverityWarn,
+				events.CategoryP2P,
+				publicEndpointUnconfirmedEvent,
+				"public endpoint reachability remains unconfirmed",
+			)
+		case status.PublicReachable:
 			s.recorder.Record(
 				events.SeverityInfo,
 				events.CategoryP2P,
 				publicEndpointReachableEvent,
-				"public endpoint self-test confirmed reachability",
+				"public endpoint reachability check confirmed reachability",
 			)
-		} else {
+		default:
 			s.recorder.Record(
 				events.SeverityWarn,
 				events.CategoryP2P,
 				publicEndpointUnreachableEvent,
-				"public endpoint self-test could not confirm reachability",
+				"public endpoint reachability check reports unreachable",
 			)
 		}
 	}

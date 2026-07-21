@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagoproto"
@@ -211,6 +212,81 @@ func TestCallerBackPingRejectsBadQueryResponse(t *testing.T) {
 
 	if probe.Reachable(context.Background(), serverSeed(t, srv.URL), hashFor("self"), "freeworld") {
 		t.Fatal("Reachable = true, want false on bad query response")
+	}
+}
+
+func TestCallerBackPingRejectsNegativeQueryResponse(t *testing.T) {
+	for _, rejected := range []int{yagoproto.QueryResponseRejected, -2} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			response := yagoproto.QueryResponse{Response: rejected}
+			_, _ = strings.NewReader(response.Encode().Encode()).WriteTo(w)
+		}))
+		probe := newCallerBackPing(srv.Client(), false)
+		if probe.Reachable(t.Context(), serverSeed(t, srv.URL), hashFor("self"), "freeworld") {
+			t.Fatalf("Reachable = true, want false for response %d", rejected)
+		}
+		srv.Close()
+	}
+}
+
+func TestCallerBackPingBoundsBlackholedCallback(t *testing.T) {
+	requestFinished := make(chan error, 1)
+	probe := newCallerBackPing(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			<-request.Context().Done()
+			requestFinished <- request.Context().Err()
+
+			return nil, request.Context().Err()
+		}),
+	}, false)
+	probe.timeout = time.Millisecond
+	started := time.Now()
+	if probe.Reachable(
+		t.Context(),
+		callerSeed(t, "peer", "203.0.113.1", 8090),
+		hashFor("self"),
+		"freeworld",
+	) {
+		t.Fatal("Reachable = true, want false for a timed-out callback")
+	}
+	if !errors.Is(<-requestFinished, context.DeadlineExceeded) {
+		t.Fatal("callback did not finish at the probe deadline")
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("bounded callback elapsed = %v", elapsed)
+	}
+}
+
+func TestCallerBackPingUsesCompatibilityBudgets(t *testing.T) {
+	tests := []struct {
+		preferHTTPS bool
+		want        time.Duration
+	}{
+		{preferHTTPS: false, want: callerBackPingHTTPTimeout},
+		{preferHTTPS: true, want: callerBackPingHTTPSTimeout},
+	}
+	for _, test := range tests {
+		var deadline time.Time
+		probe := newCallerBackPing(&http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				deadline, _ = request.Context().Deadline()
+
+				return nil, errors.New("stop after deadline capture")
+			}),
+		}, test.preferHTTPS)
+		started := time.Now()
+		if probe.Reachable(
+			t.Context(),
+			callerSeed(t, "peer", "203.0.113.1", 8090),
+			hashFor("self"),
+			"freeworld",
+		) {
+			t.Fatal("deadline capture was reported reachable")
+		}
+		budget := deadline.Sub(started)
+		if budget < test.want-time.Second || budget > test.want+100*time.Millisecond {
+			t.Fatalf("probe budget = %v, want %v", budget, test.want)
+		}
 	}
 }
 

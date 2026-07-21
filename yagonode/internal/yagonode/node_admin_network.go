@@ -63,12 +63,15 @@ func (s networkSource) withSelf(self selfSeedSource) networkSource {
 func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 	report := s.gates.response(ctx)
 	status := adminui.NetworkStatus{
-		Available:       true,
-		DHTOpen:         report.Open,
-		PublicReachable: report.State.PublicReachable,
-		BlockingReason:  report.BlockingReason,
-		Gates:           adminNetworkGates(report.Gates),
-		Seedlists:       s.adminSeedlists(ctx),
+		Available:                    true,
+		DHTOpen:                      report.Open,
+		PublicReachable:              report.State.PublicReachable,
+		PublicReachabilityKnown:      report.reachability.state != publicReachabilityUnknown,
+		PublicReachabilitySource:     adminReachabilitySource(report.reachability.source),
+		PublicReachabilityObservedAt: adminReachabilityObservedAt(report.reachability.observedAt),
+		BlockingReason:               report.BlockingReason,
+		Gates:                        adminNetworkGates(report.Gates),
+		Seedlists:                    s.adminSeedlists(ctx),
 	}
 	if s.self != nil {
 		status.OwnFlags = advertisedFlagStates(s.self.SelfSeed(ctx))
@@ -83,6 +86,27 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 	}
 
 	return status
+}
+
+func adminReachabilityObservedAt(observedAt time.Time) string {
+	if observedAt.IsZero() {
+		return ""
+	}
+
+	return observedAt.UTC().Format(time.RFC3339)
+}
+
+func adminReachabilitySource(source publicReachabilitySource) string {
+	switch source {
+	case publicReachabilitySourcePeerBackPing:
+		return adminui.PublicReachabilityPeerBackPing
+	case publicReachabilitySourcePinnedProbe:
+		return adminui.PublicReachabilityPinnedProbe
+	case publicReachabilitySourceDerivedProbe:
+		return adminui.PublicReachabilityDerivedProbe
+	default:
+		return ""
+	}
 }
 
 func (s networkSource) blockedSet(ctx context.Context) (map[yagomodel.Hash]struct{}, bool) {

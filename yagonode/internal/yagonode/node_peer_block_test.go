@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/peerblock"
+	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 )
 
 type fakePeerBlocks struct {
@@ -113,6 +115,49 @@ func TestBlockingRosterFailsOpenOnReadError(t *testing.T) {
 
 	if len(roster.ReachablePeers(ctx)) != 2 {
 		t.Fatal("a blocklist read error must fail open, not drop every peer")
+	}
+}
+
+func TestBlockingRosterForwardsPeerObservations(t *testing.T) {
+	when := time.Unix(100, 0)
+	base := &observationCountingRoster{observation: peerroster.PeerObservation{
+		Seed: yagomodel.Seed{Hash: yagomodel.Hash("AAAAAAAAAAAA")}, LastSeen: when,
+	}}
+	reader := newBlockingRoster(base, newFakePeerBlocks()).(peerroster.ObservationReader)
+
+	observations, known, reachable, err := reader.PeerObservations(t.Context())
+	if err != nil || known != 1 || reachable != 0 || len(observations) != 1 ||
+		observations[0].LastSeen != when {
+		t.Fatalf("PeerObservations = %+v/%d/%d/%v", observations, known, reachable, err)
+	}
+	observation, found, err := reader.PeerObservation(
+		t.Context(), yagomodel.Hash("AAAAAAAAAAAA"),
+	)
+	if err != nil || !found || observation.LastSeen != when {
+		t.Fatalf("PeerObservation = %+v/%v/%v", observation, found, err)
+	}
+
+	base.err = errors.New("read failed")
+	if _, _, _, err := reader.PeerObservations(t.Context()); err == nil {
+		t.Fatal("peer observation scan error was discarded")
+	}
+	if _, _, err := reader.PeerObservation(
+		t.Context(), yagomodel.Hash("AAAAAAAAAAAA"),
+	); err == nil {
+		t.Fatal("peer observation read error was discarded")
+	}
+
+	missing := newBlockingRoster(reachableRoster{}, newFakePeerBlocks()).(peerroster.ObservationReader)
+	if _, _, _, err := missing.PeerObservations(t.Context()); !errors.Is(
+		err,
+		errPeerObservationsUnavailable,
+	) {
+		t.Fatalf("missing PeerObservations error = %v", err)
+	}
+	if _, _, err := missing.PeerObservation(
+		t.Context(), yagomodel.Hash("AAAAAAAAAAAA"),
+	); !errors.Is(err, errPeerObservationsUnavailable) {
+		t.Fatalf("missing PeerObservation error = %v", err)
 	}
 }
 

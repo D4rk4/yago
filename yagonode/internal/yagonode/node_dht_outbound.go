@@ -31,33 +31,25 @@ type dhtGateStateSource struct {
 }
 
 type dhtOutboundRuntimeAssembly struct {
-	ctx          context.Context
-	config       nodeConfig
-	storage      *vault.Vault
-	nodeStorage  nodeStorage
-	report       nodestatus.Report
-	roster       peerroster.Roster
-	client       *http.Client
-	observer     dhtexchange.DistributionObserver
-	events       nodeEventRecorder
-	reachability publicReachability
-	crawl        crawlQueueDepthSource
-	index        indexQueueDepthSource
+	ctx                  context.Context
+	config               nodeConfig
+	storage              *vault.Vault
+	nodeStorage          nodeStorage
+	report               nodestatus.Report
+	roster               peerroster.Roster
+	client               *http.Client
+	observer             dhtexchange.DistributionObserver
+	events               nodeEventRecorder
+	reachability         publicReachability
+	crawl                crawlQueueDepthSource
+	index                indexQueueDepthSource
+	externalReachability externalReachabilitySnapshots
 }
 
 func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundProcess {
 	self := assembly.report.SelfSeed(assembly.ctx)
 	access := configuredNetworkAccess(assembly.config, self.Hash)
-	reachability := assembly.reachability
-	if reachability == nil {
-		reachability = newPublicEndpointSelfTest(
-			assembly.client,
-			assembly.config.NetworkName,
-			self.Hash,
-			assembly.config.PublicSelfTestURL,
-			access,
-		)
-	}
+	reachability := dhtPublicReachability(assembly, self.Hash, access)
 	gateSource := dhtGateStateSource{
 		reachability: reachability,
 		storage:      assembly.storage,
@@ -108,8 +100,9 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 	)
 
 	gateStatus := dhtGateStatusSource{
-		snapshot: gateSource.Snapshot,
-		config:   assembly.config.DHT.Gates,
+		snapshot:                 gateSource.Snapshot,
+		snapshotWithReachability: gateSource.snapshot,
+		config:                   assembly.config.DHT.Gates,
 	}
 
 	return dhtOutboundProcess{
@@ -123,6 +116,14 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 }
 
 func (s dhtGateStateSource) Snapshot(ctx context.Context) dhtexchange.GateState {
+	state, _ := s.snapshot(ctx)
+
+	return state
+}
+
+func (s dhtGateStateSource) snapshot(
+	ctx context.Context,
+) (dhtexchange.GateState, publicReachabilitySnapshot) {
 	words, err := s.postings.RWICount(ctx)
 	localRWIKnown := err == nil
 	if err != nil {
@@ -136,15 +137,15 @@ func (s dhtGateStateSource) Snapshot(ctx context.Context) dhtexchange.GateState 
 		slog.WarnContext(ctx, dhtStorageCapacityUnavailableMessage, slog.Any("error", err))
 	}
 
-	publicReachable := false
+	reachability := publicReachabilitySnapshot{}
 	if s.reachability != nil {
-		publicReachable = s.reachability.Reachable(ctx)
+		reachability = s.reachability.Snapshot(ctx)
 	}
 	crawlQueueSize, crawlQueueKnown := s.crawl.observation(ctx)
 	indexQueueSize, indexQueueKnown := s.index.observation(ctx)
 
 	return dhtexchange.GateState{
-		PublicReachable:  publicReachable,
+		PublicReachable:  reachability.state == publicReachabilityReachable,
 		LocalPeerKnown:   true,
 		ConnectedPeers:   len(s.roster.ReachablePeers(ctx)),
 		LocalRWIWords:    words,
@@ -155,5 +156,5 @@ func (s dhtGateStateSource) Snapshot(ctx context.Context) dhtexchange.GateState 
 		IndexQueueKnown:  indexQueueKnown,
 		StorageAvailable: storageAvailable,
 		StorageKnown:     storageKnown,
-	}
+	}, reachability
 }

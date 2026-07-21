@@ -11,8 +11,9 @@ import (
 const pathDHTGates = "/api/admin/v1/network/dht/gates"
 
 type dhtGateStatusSource struct {
-	snapshot func(context.Context) dhtexchange.GateState
-	config   dhtexchange.GateConfig
+	snapshot                 func(context.Context) dhtexchange.GateState
+	snapshotWithReachability func(context.Context) (dhtexchange.GateState, publicReachabilitySnapshot)
+	config                   dhtexchange.GateConfig
 }
 
 type dhtGateStatusEndpoint struct {
@@ -25,6 +26,7 @@ type dhtGateStatusResponse struct {
 	State          dhtGateStateResponse    `json:"state"`
 	Config         dhtGateConfigResponse   `json:"config"`
 	Gates          []dhtGateResultResponse `json:"gates"`
+	reachability   publicReachabilitySnapshot
 }
 
 type dhtGateStateResponse struct {
@@ -76,8 +78,15 @@ func (e dhtGateStatusEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 func (s dhtGateStatusSource) response(ctx context.Context) dhtGateStatusResponse {
 	var state dhtexchange.GateState
-	if s.snapshot != nil {
+	reachability := publicReachabilitySnapshot{}
+	if s.snapshotWithReachability != nil {
+		state, reachability = s.snapshotWithReachability(ctx)
+	} else if s.snapshot != nil {
 		state = s.snapshot(ctx)
+		reachability.state = publicReachabilityUnreachable
+		if state.PublicReachable {
+			reachability.state = publicReachabilityReachable
+		}
 	}
 	report := dhtexchange.EvaluateGates(state, s.config)
 
@@ -87,6 +96,7 @@ func (s dhtGateStatusSource) response(ctx context.Context) dhtGateStatusResponse
 		State:          dhtGateState(state),
 		Config:         dhtGateConfig(s.config),
 		Gates:          dhtGateResults(report.Results),
+		reachability:   reachability,
 	}
 }
 

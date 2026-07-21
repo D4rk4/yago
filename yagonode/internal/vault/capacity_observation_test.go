@@ -155,7 +155,7 @@ func TestSuccessfulUpdatesRetainCapacityObservationWithinLifetime(t *testing.T) 
 	}
 }
 
-func TestCapacityObservationRetriesAfterMutation(t *testing.T) {
+func TestCapacityObservationReturnsBoundedSnapshotDuringMutation(t *testing.T) {
 	observation := newCapacityObservation()
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -197,12 +197,116 @@ func TestCapacityObservationRetriesAfterMutation(t *testing.T) {
 	close(release)
 	for range 2 {
 		got := <-resultChannel
-		if got.err != nil || got.used != 11 {
+		if got.err != nil || got.used != 1 {
 			t.Fatalf("capacity observation = %d, %v", got.used, got.err)
 		}
 	}
+	if calls != 1 {
+		t.Fatalf("shared capacity measurements = %d, want 1", calls)
+	}
+	used, err := observation.measure(t.Context(), read)
+	if err != nil || used != 1 || calls != 1 {
+		t.Fatalf("cached capacity observation = %d, %v after %d calls", used, err, calls)
+	}
+}
+
+func TestCapacityObservationDoesNotWaitForMutationQuiescence(t *testing.T) {
+	observation := newCapacityObservation()
+	calls := 0
+	used, err := observation.measure(t.Context(), func(context.Context) (int64, error) {
+		calls++
+		observation.recordMutation()
+
+		return int64(calls), nil
+	})
+	if err != nil || used != 1 || calls != 1 {
+		t.Fatalf("capacity observation = %d, %v after %d calls", used, err, calls)
+	}
+}
+
+func TestCapacityObservationCachesSnapshotDuringSustainedMutation(t *testing.T) {
+	observation := newCapacityObservation()
+	now := time.Unix(100, 0)
+	observation.now = func() time.Time { return now }
+	calls := 0
+	read := func(context.Context) (int64, error) {
+		calls++
+		observation.recordMutation()
+
+		return int64(calls), nil
+	}
+	for request := range 100 {
+		used, err := observation.measure(t.Context(), read)
+		if err != nil || used != 1 {
+			t.Fatalf("capacity observation %d = %d, %v", request, used, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("capacity measurements = %d, want 1 within the observation lifetime", calls)
+	}
+	now = now.Add(capacityObservationLifetime)
+	used, err := observation.measure(t.Context(), read)
+	if err != nil || used != 2 || calls != 2 {
+		t.Fatalf("refreshed capacity observation = %d, %v after %d calls", used, err, calls)
+	}
+}
+
+func TestCapacityFollowersShareFailedMutatingMeasurement(t *testing.T) {
+	observation := newCapacityObservation()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	calls := 0
+	read := func(context.Context) (int64, error) {
+		calls++
+		if calls == 1 {
+			close(started)
+			<-release
+			observation.recordMutation()
+
+			return 0, errors.New("measurement failed")
+		}
+
+		return 7, nil
+	}
+	type result struct {
+		used int64
+		err  error
+	}
+	leader := make(chan result, 1)
+	go func() {
+		used, err := observation.measure(t.Context(), read)
+		leader <- result{used: used, err: err}
+	}()
+	<-started
+	waiting := make(chan struct{})
+	follower := make(chan result, 1)
+	go func() {
+		used, err := observation.measure(
+			&capacityWaitContext{Context: t.Context(), waiting: waiting},
+			read,
+		)
+		follower <- result{used: used, err: err}
+	}()
+	<-waiting
+	close(release)
+	for name, results := range map[string]<-chan result{
+		"leader":   leader,
+		"follower": follower,
+	} {
+		got := <-results
+		if got.err == nil || got.used != 0 {
+			t.Fatalf("%s capacity observation = %d, %v", name, got.used, got.err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("capacity measurements = %d, want 1", calls)
+	}
+	used, err := observation.measure(t.Context(), read)
+	if err != nil || used != 7 {
+		t.Fatalf("next caller capacity observation = %d, %v", used, err)
+	}
 	if calls != 2 {
-		t.Fatalf("capacity measurements = %d, want 2", calls)
+		t.Fatalf("capacity measurements after caller wave = %d, want 2", calls)
 	}
 }
 

@@ -66,5 +66,6 @@ func completeNodeAssembly(in nodeAssemblyCompletion) node {
 		swarmMorph:  in.config.SwarmMorphology,
 		tally:       in.tally,
 		events:      in.telemetry.recorder,
+		peerType:    in.exchange.externalReachabilityEvidence,
 	}, in.telemetry.toggles)
 }

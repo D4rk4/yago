@@ -56,18 +56,27 @@ type NetworkFlag struct {
 
 // NetworkStatus is the peer-network snapshot the Network section renders.
 type NetworkStatus struct {
-	Available       bool
-	RosterAvailable bool
-	DHTOpen         bool
-	PublicReachable bool
-	BlockingReason  string
-	OwnFlags        []NetworkFlag
-	Gates           []NetworkGate
-	KnownPeers      int
-	ReachablePeers  int
-	Peers           []NetworkPeer
-	Seedlists       []SeedlistEntry
+	Available                    bool
+	RosterAvailable              bool
+	DHTOpen                      bool
+	PublicReachable              bool
+	PublicReachabilityKnown      bool
+	PublicReachabilitySource     string
+	PublicReachabilityObservedAt string
+	BlockingReason               string
+	OwnFlags                     []NetworkFlag
+	Gates                        []NetworkGate
+	KnownPeers                   int
+	ReachablePeers               int
+	Peers                        []NetworkPeer
+	Seedlists                    []SeedlistEntry
 }
+
+const (
+	PublicReachabilityPeerBackPing = "peer-back-ping"
+	PublicReachabilityPinnedProbe  = "pinned-direct-probe"
+	PublicReachabilityDerivedProbe = "derived-local-probe"
+)
 
 // NetworkSource supplies the network snapshot on each request.
 type NetworkSource interface {

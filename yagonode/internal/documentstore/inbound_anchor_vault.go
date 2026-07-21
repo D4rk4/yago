@@ -76,6 +76,17 @@ func (d documentVault) replaceReservedOutboundAnchors(
 
 		return AnchorUpdate{}, err
 	}
+	atCapacity, err := d.outboundAnchorUpdateAtCapacity(ctx, sets)
+	if err != nil {
+		d.releaseOwnedDocumentLineage(releaseReservation, reservation)
+
+		return AnchorUpdate{}, err
+	}
+	if atCapacity {
+		d.releaseOwnedDocumentLineage(releaseReservation, reservation)
+
+		return AnchorUpdate{Busy: true}, nil
+	}
 	releaseWrite, err := d.enterStoredDocumentWrite(ctx)
 	if err != nil {
 		d.releaseOwnedDocumentLineage(releaseReservation, reservation)
@@ -101,13 +112,6 @@ func (d documentVault) replaceReservedOutboundAnchors(
 		reservation,
 	)
 	defer releaseCurrentOutboundAnchorBoundaries(&releaseBoundaries)
-	atCapacity, err := d.outboundAnchorUpdateAtCapacity(ctx, sets)
-	if err != nil {
-		return AnchorUpdate{}, err
-	}
-	if atCapacity {
-		return AnchorUpdate{Busy: true}, nil
-	}
 	urls, finalizations, err := d.replaceOutboundAnchorSets(ctx, sets)
 	if err != nil {
 		return AnchorUpdate{}, err

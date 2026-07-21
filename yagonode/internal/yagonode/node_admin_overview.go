@@ -10,6 +10,7 @@ import (
 type overviewSource struct {
 	report         nodestatus.Report
 	localDocuments overviewLocalDocuments
+	peerType       localPeerClassification
 }
 
 func newOverviewSource(report nodestatus.Report) overviewSource {
@@ -20,7 +21,6 @@ func (s overviewSource) Overview(ctx context.Context) adminui.Overview {
 	seed := s.report.SelfSeed(ctx)
 
 	name, _ := seed.Name.Get()
-	peerType, _ := seed.PeerType.Get()
 	indexedDocuments, indexedDocumentsKnown := s.localDocuments.read(ctx)
 	urlMetadataRecords, urlMetadataRecordsKnown := seedStatistic(seed.URLCount)
 	words, wordsKnown := seedStatistic(seed.RWICount)
@@ -33,7 +33,7 @@ func (s overviewSource) Overview(ctx context.Context) adminui.Overview {
 	return adminui.Overview{
 		PeerName: name,
 		PeerHash: string(seed.Hash),
-		PeerType: string(peerType),
+		PeerType: s.readPeerType(ctx),
 		// The branded console reports yago's own build version (buildVersion,
 		// stamped by a release build), not the numeric YaCy-compatibility
 		// protocol version that report.Version carries for the wire — those two

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 
@@ -21,9 +22,10 @@ var (
 )
 
 type greetResult struct {
-	YourIP   string
-	YourType yagomodel.PeerType
-	Known    []yagomodel.Seed
+	Responder yagomodel.Seed
+	YourIP    string
+	YourType  yagomodel.PeerType
+	Known     []yagomodel.Seed
 }
 
 type httpPeerGreeter struct {
@@ -87,6 +89,14 @@ func (g httpPeerGreeter) Greet(
 	for _, endpoint := range endpoints {
 		result, err := g.greetEndpoint(ctx, endpoint, form)
 		if err == nil {
+			if result.Responder.Hash != target.Hash {
+				return greetResult{}, fmt.Errorf(
+					"%w: responder hash %s does not match target %s",
+					errGreetFailed,
+					result.Responder.Hash,
+					target.Hash,
+				)
+			}
 			return result, nil
 		}
 		lastErr = err
@@ -139,12 +149,37 @@ func parseGreetResponse(ctx context.Context, body io.Reader) (greetResult, error
 	if err != nil {
 		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
+	if !validGreetReportedAddresses(parsed.YourIP) {
+		return greetResult{}, fmt.Errorf("%w: invalid reported caller address", errGreetFailed)
+	}
+	if parsed.YourType != yagomodel.PeerJunior &&
+		parsed.YourType != yagomodel.PeerSenior &&
+		parsed.YourType != yagomodel.PeerPrincipal {
+		return greetResult{}, fmt.Errorf("%w: invalid caller peer type", errGreetFailed)
+	}
+	responder, ok := parsed.OwnSeed().Get()
+	if !ok {
+		return greetResult{}, fmt.Errorf("%w: missing responder seed", errGreetFailed)
+	}
 
 	return greetResult{
-		YourIP:   parsed.YourIP,
-		YourType: parsed.YourType,
-		Known:    parsed.KnownSeeds(),
+		Responder: responder,
+		YourIP:    parsed.YourIP,
+		YourType:  parsed.YourType,
+		Known:     parsed.KnownSeeds(),
 	}, nil
+}
+
+func validGreetReportedAddresses(value string) bool {
+	addresses := strings.Split(value, ",")
+	for _, value := range addresses {
+		address, err := netip.ParseAddr(strings.TrimSpace(value))
+		if err != nil || !address.IsValid() || address.IsUnspecified() {
+			return false
+		}
+	}
+
+	return true
 }
 
 func greetEndpoints(target yagomodel.Seed, preferHTTPS bool) ([]*url.URL, error) {

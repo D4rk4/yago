@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -191,13 +192,21 @@ func (c rwiCounter) RWIURLCount(context.Context, yagomodel.Hash) (int, error) {
 
 type publicReachabilityScript struct {
 	reachable bool
+	known     bool
+	source    publicReachabilitySource
 	calls     atomic.Int32
 }
 
-func (s *publicReachabilityScript) Reachable(context.Context) bool {
+func (s *publicReachabilityScript) Snapshot(context.Context) publicReachabilitySnapshot {
 	s.calls.Add(1)
+	state := publicReachabilityUnreachable
+	if s.reachable {
+		state = publicReachabilityReachable
+	} else if !s.known {
+		state = publicReachabilityUnknown
+	}
 
-	return s.reachable
+	return publicReachabilitySnapshot{state: state, source: s.source}
 }
 
 type postingIndexOnly struct{}
@@ -228,7 +237,8 @@ func restoreMainSeams(t *testing.T) {
 	oldAssembleRuntimeNode := assembleRuntimeNode
 	oldBuildRuntimeEgressClient := buildRuntimeEgressClient
 	oldServeRuntimeNode := serveRuntimeNode
-	oldListenAndServeHTTP := listenAndServeHTTP
+	oldBindHTTPListener := bindHTTPListener
+	oldServeHTTPListener := serveHTTPListener
 	oldShutdownHTTPServer := shutdownHTTPServer
 	oldCloseHTTPServer := closeHTTPServer
 	t.Cleanup(func() {
@@ -238,7 +248,8 @@ func restoreMainSeams(t *testing.T) {
 		assembleRuntimeNode = oldAssembleRuntimeNode
 		buildRuntimeEgressClient = oldBuildRuntimeEgressClient
 		serveRuntimeNode = oldServeRuntimeNode
-		listenAndServeHTTP = oldListenAndServeHTTP
+		bindHTTPListener = oldBindHTTPListener
+		serveHTTPListener = oldServeHTTPListener
 		shutdownHTTPServer = oldShutdownHTTPServer
 		closeHTTPServer = oldCloseHTTPServer
 	})
@@ -494,7 +505,7 @@ func TestRunOmitsPublicServerWhenDisabled(t *testing.T) {
 func TestServeHandlesClosedServerAndCrawlRuntime(t *testing.T) {
 	t.Run("closed server", func(t *testing.T) {
 		restoreMainSeams(t)
-		listenAndServeHTTP = func(*http.Server) error { return http.ErrServerClosed }
+		serveHTTPListener = func(*http.Server, net.Listener) error { return http.ErrServerClosed }
 		err := serve(
 			context.Background(),
 			node{announcer: fakeAnnouncer{}, sweeper: &scriptedSweeper{}},
@@ -531,7 +542,7 @@ func TestServeHandlesClosedServerAndCrawlRuntime(t *testing.T) {
 func TestServeShutsDownAfterListenerFailure(t *testing.T) {
 	restoreMainSeams(t)
 	sentinel := errors.New("listener failed")
-	listenAndServeHTTP = func(*http.Server) error { return sentinel }
+	serveHTTPListener = func(*http.Server, net.Listener) error { return sentinel }
 	shutdowns := 0
 	shutdownHTTPServer = func(*http.Server, context.Context) error {
 		shutdowns++

@@ -2,6 +2,8 @@ package peerroster_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -12,8 +14,10 @@ func TestDiscoverKeepsSeniorsAndDropsJuniors(t *testing.T) {
 	roster := openRoster(t, 8, 4)
 
 	senior := seniorSeed(t, "senior", "203.0.113.1", 8090)
-	junior := seniorSeed(t, "junior", "", 0)
-	roster.Discover(ctx, senior, junior)
+	addressless := seniorSeed(t, "noaddress", "", 0)
+	junior := seniorSeed(t, "junior", "203.0.113.2", 8090)
+	junior.PeerType = yagomodel.Some(yagomodel.PeerJunior)
+	roster.Discover(ctx, senior, addressless, junior)
 
 	targets := hashes(roster.FreshestPeers(ctx, 4))
 	if _, ok := targets[senior.Hash]; !ok {
@@ -21,6 +25,182 @@ func TestDiscoverKeepsSeniorsAndDropsJuniors(t *testing.T) {
 	}
 	if _, ok := targets[junior.Hash]; ok {
 		t.Fatalf("junior should have been dropped: %v", targets)
+	}
+	if _, ok := targets[addressless.Hash]; ok {
+		t.Fatalf("addressless seed should have been dropped: %v", targets)
+	}
+}
+
+func TestCallerObservationRetainsPromotesAndDemotesPeer(t *testing.T) {
+	ctx := t.Context()
+	roster := openRoster(t, 8, 4)
+	caller := seniorSeed(t, "caller", "203.0.113.2", 8090)
+	caller.Name = yagomodel.Some("first")
+
+	roster.ObserveCaller(ctx, caller, yagomodel.PeerJunior)
+	stored, found := roster.PeerByHash(ctx, caller.Hash)
+	classification, classified := stored.PeerType.Get()
+	if !found || !classified || classification != yagomodel.PeerJunior ||
+		roster.KnownPeerCount(ctx) != 1 || roster.ReachablePeerCount(ctx) != 0 {
+		t.Fatalf(
+			"junior observation = found %v type %q/%v known/reachable %d/%d",
+			found,
+			classification,
+			classified,
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+	if candidates := roster.FreshestPeers(ctx, 8); len(candidates) != 0 {
+		t.Fatalf("junior candidates = %#v, want none", candidates)
+	}
+
+	caller.Name = yagomodel.Some("updated")
+	roster.ObserveCaller(ctx, caller, yagomodel.PeerSenior)
+	stored, found = roster.PeerByHash(ctx, caller.Hash)
+	classification, classified = stored.PeerType.Get()
+	name, _ := stored.Name.Get()
+	if !found || !classified || classification != yagomodel.PeerSenior || name != "updated" ||
+		roster.KnownPeerCount(ctx) != 1 || roster.ReachablePeerCount(ctx) != 1 {
+		t.Fatalf(
+			"senior observation = %#v found %v type %q/%v known/reachable %d/%d",
+			stored,
+			found,
+			classification,
+			classified,
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+	if candidates := roster.FreshestPeers(ctx, 8); len(candidates) != 1 ||
+		candidates[0].Hash != caller.Hash {
+		t.Fatalf("senior candidates = %#v, want promoted caller", candidates)
+	}
+
+	roster.ObserveCaller(ctx, caller, yagomodel.PeerJunior)
+	roster.ConfirmReachable(ctx, caller.Hash)
+	roster.ConfirmUnreachable(ctx, caller.Hash)
+	stored, found = roster.PeerByHash(ctx, caller.Hash)
+	classification, classified = stored.PeerType.Get()
+	if !found || !classified || classification != yagomodel.PeerJunior ||
+		roster.KnownPeerCount(ctx) != 1 || roster.ReachablePeerCount(ctx) != 0 {
+		t.Fatalf(
+			"demoted observation = found %v type %q/%v known/reachable %d/%d",
+			found,
+			classification,
+			classified,
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+	if candidates := roster.FreshestPeers(ctx, 8); len(candidates) != 0 {
+		t.Fatalf("demoted junior candidates = %#v, want none", candidates)
+	}
+}
+
+func TestCallerObservationRejectsAddresslessJunior(t *testing.T) {
+	ctx := t.Context()
+	roster := openRoster(t, 8, 4)
+	caller := seniorSeed(t, "caller", "", 0)
+
+	roster.ObserveCaller(ctx, caller, yagomodel.PeerJunior)
+
+	if _, found := roster.PeerByHash(ctx, caller.Hash); found {
+		t.Fatal("addressless caller entered the roster")
+	}
+	if roster.KnownPeerCount(ctx) != 0 || roster.ReachablePeerCount(ctx) != 0 {
+		t.Fatalf(
+			"addressless caller counts = %d/%d, want 0/0",
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+}
+
+func TestCallerObservationKeepsReservoirBounded(t *testing.T) {
+	ctx := t.Context()
+	roster := openRoster(t, 2, 1)
+	first := seniorSeed(t, "first", "203.0.113.1", 8090)
+	second := seniorSeed(t, "second", "203.0.113.2", 8090)
+	third := seniorSeed(t, "third", "203.0.113.3", 8090)
+
+	roster.ObserveCaller(ctx, first, yagomodel.PeerJunior)
+	roster.ObserveCaller(ctx, second, yagomodel.PeerJunior)
+	roster.ObserveCaller(ctx, third, yagomodel.PeerJunior)
+
+	if known := roster.KnownPeerCount(ctx); known != 2 {
+		t.Fatalf("known callers = %d, want reservoir bound 2", known)
+	}
+	if _, found := roster.PeerByHash(ctx, first.Hash); found {
+		t.Fatal("stalest junior caller was not evicted")
+	}
+}
+
+func TestCallerObservationRejectsUnclassifiedPeer(t *testing.T) {
+	roster := openRoster(t, 8, 4)
+	caller := seniorSeed(t, "caller", "203.0.113.2", 8090)
+
+	roster.ObserveCaller(t.Context(), caller, yagomodel.PeerPrincipal)
+
+	if known := roster.KnownPeerCount(t.Context()); known != 0 {
+		t.Fatalf("known callers = %d, want invalid observation ignored", known)
+	}
+}
+
+func TestCallerObservationConcurrentRosterRemainsBounded(t *testing.T) {
+	ctx := t.Context()
+	roster := openConcurrentRoster(t, 16, 4)
+	var writers sync.WaitGroup
+	for index := range 64 {
+		writers.Add(1)
+		go func() {
+			defer writers.Done()
+			caller := seniorSeed(
+				t,
+				fmt.Sprintf("%012d", index),
+				"203.0.113.2",
+				8090,
+			)
+			classification := yagomodel.PeerJunior
+			if index%3 == 0 {
+				classification = yagomodel.PeerSenior
+			}
+			roster.ObserveCaller(ctx, caller, classification)
+		}()
+	}
+	writers.Wait()
+	shared := seniorSeed(t, "shared", "203.0.113.3", 8090)
+	for index := range 32 {
+		writers.Add(1)
+		go func() {
+			defer writers.Done()
+			classification := yagomodel.PeerJunior
+			if index%2 == 0 {
+				classification = yagomodel.PeerSenior
+			}
+			roster.ObserveCaller(ctx, shared, classification)
+		}()
+	}
+	writers.Wait()
+	roster.ObserveCaller(ctx, shared, yagomodel.PeerJunior)
+
+	if known := roster.KnownPeerCount(ctx); known > 16 {
+		t.Fatalf("known callers = %d, maximum 16", known)
+	}
+	if reachable := roster.ReachablePeers(ctx); len(reachable) > 4 {
+		t.Fatalf("reachable callers = %d, maximum 4", len(reachable))
+	} else {
+		for _, peer := range reachable {
+			classification, _ := peer.PeerType.Get()
+			if classification == yagomodel.PeerJunior {
+				t.Fatalf("junior caller entered reachable set: %#v", peer)
+			}
+		}
+	}
+	stored, found := roster.PeerByHash(ctx, shared.Hash)
+	classification, classified := stored.PeerType.Get()
+	if !found || !classified || classification != yagomodel.PeerJunior {
+		t.Fatalf("final shared caller = %#v/%v", stored, found)
 	}
 }
 

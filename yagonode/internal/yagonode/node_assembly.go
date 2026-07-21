@@ -105,6 +105,7 @@ type node struct {
 	peerEvents      *peerReputationObserver
 	storagePressure *yagocrawlcontract.StoragePressureGate
 	transferTally   *transfertally.Tally
+	peerType        localPeerClassification
 }
 
 type nodeTelemetry struct {
@@ -216,8 +217,9 @@ func assembleNode(
 		ctx: ctx, config: config, vault: vault, client: client,
 		peerClient: peerClient, storage: storage, roster: roster, identity: identity,
 		report: report, tally: tally, telemetry: telemetry, toggles: telemetry.toggles,
-		hostLinks:   hostLinkSnapshot,
-		remoteCrawl: remoteCrawl,
+		hostLinks:                    hostLinkSnapshot,
+		remoteCrawl:                  remoteCrawl,
+		externalReachabilityEvidence: exchange.externalReachabilityEvidence,
 	})
 	if err != nil {
 		return node{}, err
@@ -241,20 +243,21 @@ func nodePeerClient(config nodeConfig, client *http.Client) *http.Client {
 }
 
 type assembleSurfacesInput struct {
-	ctx         context.Context
-	config      nodeConfig
-	vault       *vault.Vault
-	client      *http.Client
-	peerClient  *http.Client
-	storage     nodeStorage
-	roster      peerroster.Roster
-	identity    nodeidentity.Identity
-	report      nodestatus.Report
-	tally       *transfertally.Tally
-	telemetry   nodeTelemetry
-	toggles     *runtimeToggles
-	hostLinks   *hostlinks.SnapshotHolder
-	remoteCrawl *remotecrawl.Broker
+	ctx                          context.Context
+	config                       nodeConfig
+	vault                        *vault.Vault
+	client                       *http.Client
+	peerClient                   *http.Client
+	storage                      nodeStorage
+	roster                       peerroster.Roster
+	identity                     nodeidentity.Identity
+	report                       nodestatus.Report
+	tally                        *transfertally.Tally
+	telemetry                    nodeTelemetry
+	toggles                      *runtimeToggles
+	hostLinks                    *hostlinks.SnapshotHolder
+	remoteCrawl                  *remotecrawl.Broker
+	externalReachabilityEvidence *peerannouncement.ExternalReachabilityEvidence
 }
 
 type nodeSurfaces struct {
@@ -465,6 +468,7 @@ type nodeParts struct {
 	corpusPass  *corpusSignalRefresh
 	tally       *transfertally.Tally
 	events      *events.Recorder
+	peerType    localPeerClassification
 }
 
 func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
@@ -533,6 +537,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		theme:         parts.theme,
 		peerEvents:    parts.peerEvents,
 		transferTally: parts.tally,
+		peerType:      parts.peerType,
 	}
 }
 

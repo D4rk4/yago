@@ -28,10 +28,9 @@ type exactCapacityMeasurement struct {
 }
 
 type capacityMeasurement struct {
-	done  chan struct{}
-	used  int64
-	err   error
-	retry bool
+	done chan struct{}
+	used int64
+	err  error
 }
 
 type capacityMeasurementClaim struct {
@@ -91,12 +90,7 @@ func (o *capacityObservation) measure(
 			return claim.used, nil
 		}
 		if claim.leads {
-			used, err, retry := o.performMeasurement(ctx, read, claim)
-			if retry {
-				continue
-			}
-
-			return used, err
+			return o.performMeasurement(ctx, read, claim)
 		}
 		used, err, retry := awaitMeasurement(ctx, claim.measurement)
 		if !retry {
@@ -143,9 +137,6 @@ func awaitMeasurement(
 		return 0, fmt.Errorf("wait for capacity observation: %w", ctx.Err()), false
 	case <-measurement.done:
 	}
-	if measurement.retry {
-		return 0, nil, true
-	}
 	if measurement.err == nil {
 		return measurement.used, nil, false
 	}
@@ -161,21 +152,20 @@ func (o *capacityObservation) performMeasurement(
 	ctx context.Context,
 	read func(context.Context) (int64, error),
 	claim capacityMeasurementClaim,
-) (int64, error, bool) {
+) (int64, error) {
 	used, err := read(ctx)
 	if err != nil {
 		err = fmt.Errorf("measure capacity observation: %w", err)
 	}
-	retry := false
 	o.mutex.Lock()
 	if o.mutation != claim.mutation || o.revision != claim.revision {
 		if observed, fresh := o.freshObservationLocked(); fresh {
 			used = observed
 			err = nil
-		} else {
-			used = 0
-			err = nil
-			retry = true
+		} else if err == nil {
+			o.used = used
+			o.observedAt = o.now()
+			o.revision++
 		}
 	} else if err == nil {
 		o.used = used
@@ -184,12 +174,11 @@ func (o *capacityObservation) performMeasurement(
 	}
 	claim.measurement.used = used
 	claim.measurement.err = err
-	claim.measurement.retry = retry
 	o.current = nil
 	close(claim.measurement.done)
 	o.mutex.Unlock()
 
-	return used, err, retry
+	return used, err
 }
 
 func (o *capacityObservation) recordMutation() {

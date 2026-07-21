@@ -34,6 +34,13 @@ func (d documentLineageEvictor) clearOutboundAnchorContributions(
 		return nil
 	}
 	sets := []documentstore.OutboundAnchorSet{{SourceURL: normalizedURL}}
+	if handled, err := d.clearOutboundAnchorDocuments(
+		ctx,
+		reservation,
+		sets,
+	); handled {
+		return err
+	}
 	var update documentstore.AnchorUpdate
 	var err error
 	switch {
@@ -76,20 +83,7 @@ func (d documentLineageEvictor) indexOutboundAnchorContributions(
 		ctx,
 		finalizations,
 		func(documents []documentstore.Document) error {
-			if batch, ok := d.index.(documentBatchUpdateIndexer); ok {
-				if err := batch.IndexBatch(ctx, documents); err != nil {
-					return fmt.Errorf("index outbound anchor document batch: %w", err)
-				}
-
-				return nil
-			}
-			for _, document := range documents {
-				if err := d.index.Index(ctx, document); err != nil {
-					return fmt.Errorf("index outbound anchor document: %w", err)
-				}
-			}
-
-			return nil
+			return d.indexOutboundAnchorDocuments(ctx, documents)
 		},
 	); err != nil {
 		return fmt.Errorf("index outbound anchor contributions: %w", err)

@@ -203,11 +203,13 @@ func (c *IngestConsumer) absorbReservedTail(
 	if !c.completeObservations(ctx, []IngestDelivery{delivery}) {
 		return
 	}
-	c.observer.ObserveAbsorbed(
-		len(batch.Document.ExtractedText),
-		len(batch.Metadata),
-		len(batch.Postings),
-	)
+	if c.observer != nil {
+		c.observer.ObserveAbsorbed(
+			len(batch.Document.ExtractedText),
+			len(batch.Metadata),
+			len(batch.Postings),
+		)
+	}
 	if err := delivery.Ack(ctx); err != nil {
 		slog.WarnContext(ctx, msgIngestAckFailed,
 			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))
@@ -326,7 +328,9 @@ func (c *IngestConsumer) rejectLowQuality(
 	delivery IngestDelivery,
 	rule string,
 ) {
-	c.observer.ObserveLowQuality()
+	if c.observer != nil {
+		c.observer.ObserveLowQuality()
+	}
 	slog.DebugContext(ctx, msgIngestLowQuality,
 		slog.String("sourceUrl", delivery.Batch.SourceURL),
 		slog.String("rule", rule))
@@ -391,7 +395,9 @@ func batchRejectionReason(batch yagocrawlcontract.IngestBatch) string {
 // acks the delivery so the poison batch leaves the queue instead of being
 // redelivered forever.
 func (c *IngestConsumer) reject(ctx context.Context, delivery IngestDelivery, reason string) {
-	c.observer.ObserveRejected()
+	if c.observer != nil {
+		c.observer.ObserveRejected()
+	}
 	slog.WarnContext(ctx, msgIngestBatchRejected,
 		slog.String("sourceUrl", delivery.Batch.SourceURL),
 		slog.String("reason", reason))
@@ -497,7 +503,9 @@ func (c *IngestConsumer) redeliver(
 	reason string,
 	cause error,
 ) {
-	c.observer.ObserveDeferred()
+	if c.observer != nil {
+		c.observer.ObserveDeferred()
+	}
 	if cause != nil {
 		slog.WarnContext(ctx, msgIngestBatchDeferred,
 			slog.String("sourceUrl", sourceURL),

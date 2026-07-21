@@ -37,6 +37,8 @@ type Document struct {
 	OutboundAnchorEvidenceKnown bool
 	Images                      []ImageMetadata
 	Metadata                    map[string]string
+	submittedInlinks            []AnchorText
+	submittedInlinksKnown       bool
 }
 
 type AnchorText struct {

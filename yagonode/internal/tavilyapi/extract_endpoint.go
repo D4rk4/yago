@@ -83,11 +83,12 @@ type ContentFetcher interface {
 }
 
 type extractEndpoint struct {
-	documents    documentstore.DocumentDirectory
-	access       SearchAccessPolicy
-	fetcher      ContentFetcher
-	now          func() time.Time
-	workDuration time.Duration
+	documents              documentstore.DocumentDirectory
+	access                 SearchAccessPolicy
+	fetcher                ContentFetcher
+	now                    func() time.Time
+	workDuration           time.Duration
+	documentLookupDuration time.Duration
 }
 
 func MountExtract(
@@ -116,11 +117,12 @@ func NewExtractEndpointWithFetcher(
 	fetcher ContentFetcher,
 ) http.Handler {
 	return extractEndpoint{
-		documents:    documents,
-		access:       access,
-		fetcher:      fetcher,
-		now:          time.Now,
-		workDuration: maximumRawContentWorkDuration,
+		documents:              documents,
+		access:                 access,
+		fetcher:                fetcher,
+		now:                    time.Now,
+		workDuration:           maximumRawContentWorkDuration,
+		documentLookupDuration: maximumExtractDocumentLookupDuration,
 	}
 }
 
@@ -208,19 +210,9 @@ func (e extractEndpoint) extractResponse(
 			len(req.URLs)*(rawContentExtractResultBytes+rawContentExtractFailureBytes),
 		output: rawContentEnvelopeBytes + rawContentJSONStringBytes(id),
 	}
-	results := make([]ExtractResult, 0, len(req.URLs))
-	failures := make([]ExtractFailure, 0, len(req.URLs))
-	for _, raw := range req.URLs {
-		result, failure, err := e.extractOne(ctx, req, raw, budget)
-		if err != nil {
-			return ExtractResponse{}, err
-		}
-		if failure != nil {
-			failures = append(failures, *failure)
-
-			continue
-		}
-		results = append(results, result)
+	results, failures, err := e.resolveExtractURLs(ctx, req, budget)
+	if err != nil {
+		return ExtractResponse{}, err
 	}
 
 	return ExtractResponse{
@@ -230,49 +222,6 @@ func (e extractEndpoint) extractResponse(
 		Usage:         extractResponseUsage(req, len(results)),
 		RequestID:     id,
 	}, nil
-}
-
-func (e extractEndpoint) extractOne(
-	ctx context.Context,
-	req ExtractRequest,
-	raw string,
-	budget *rawContentBudget,
-) (ExtractResult, *ExtractFailure, error) {
-	normalized, ok := normalizeExtractURL(raw)
-	if !ok {
-		failure, err := retainExtractFailure(
-			budget,
-			raw,
-			"url must be an absolute http or https URL",
-		)
-
-		return ExtractResult{}, failure, err
-	}
-	doc, found, err := e.lookup(ctx, normalized)
-	if err != nil {
-		return ExtractResult{}, nil, err
-	}
-	if found {
-		return retainDocumentExtractResult(req, raw, doc, budget)
-	}
-	if e.fetcher == nil {
-		failure, failureErr := retainExtractFailure(
-			budget,
-			raw,
-			"url is not in the index and fetch-on-extract is disabled",
-		)
-
-		return ExtractResult{}, failure, failureErr
-	}
-
-	fetched, err := e.fetcher.Fetch(ctx, normalized)
-	if err != nil {
-		failure, failureErr := retainExtractFailure(budget, raw, "fetch-on-extract failed")
-
-		return ExtractResult{}, failure, failureErr
-	}
-
-	return retainFetchedExtractResult(req, raw, fetched, budget)
 }
 
 func retainDocumentExtractResult(

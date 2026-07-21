@@ -49,7 +49,16 @@ its binaries (`yago-node`, `yago-crawler`).
   advertised received-word and received-URL totals.
 - **Swarm participation**: seedlist bootstrap, peer roster with birth-date
   promotion, LAN discovery, peer news, per-peer blocking, and the DHT gates
-  dashboard showing exactly why a transfer would or would not fire.
+  dashboard showing exactly why a transfer would or would not fire. Authenticated
+  inbound hello callers that fail the local callback remain visible as bounded
+  `junior` potential peers, but cannot enter reachable membership, search,
+  seed-list, or DHT target selection. Callback work uses YaCy's aggregate
+  6.5-second HTTP or 13-second HTTPS-first budget; its bounded caller-observation
+  write survives request cancellation, so a blackholed endpoint does not erase
+  the junior row. Validated outbound hello responses retain
+  recent external back-ping evidence, so DHT readiness uses peer observations
+  first and no longer depends solely on a NAT-sensitive request from the node
+  to itself.
 - Deliberate divergences are documented, not hidden — see
   [compatibility.md](yagonode/doc/compatibility.md).
 
@@ -67,7 +76,13 @@ its binaries (`yago-node`, `yago-crawler`).
   minus remains an exclusion operator. A web row must independently cover the
   query before it can appear or seed a crawl: one token occurrence cannot stand
   in for several query words, and another language's stopword list cannot weaken
-  that check. Results are merged with **reciprocal-rank
+  that check. When web-discovery seeding is enabled, surfaced URLs are admitted
+  to bounded background warming and normalized before admission. Each absent or
+  lookup-indeterminate page attempts URL-idempotent durable publication; at most
+  one accepted automatic-discovery order remains for its normalized URL, without
+  delaying the search response or scheduling a second root fetch.
+  Results are
+  merged with **reciprocal-rank
   fusion** and **MMR result diversity**. A slow swarm branch cannot discard a
   completed local answer, and a transient refresh cannot replace a recent
   nonempty search session with an infrastructure-generated zero, including when
@@ -153,7 +168,11 @@ its binaries (`yago-node`, `yago-crawler`).
   root portal's canonical global ranking for equivalent requests. Default
   results include `raw_content: null`, errors contain only `detail.error`, and
   raw-content requests retain YaGo's stricter 30-second and 200-page safety
-  limits. When `include_usage` is true, responses report request-local
+  limits. `/extract` gives each local document lookup at most 250 milliseconds;
+  an enabled guarded fetch then uses only the remaining request budget. A lookup
+  timeout without that fetch path, an exhausted request deadline, or a fetch
+  failure is reported for that URL while completed rows remain in the successful
+  HTTP 200 response. When `include_usage` is true, responses report request-local
   Tavily-compatible usage units derived from the work that completed; these
   units are not billing, an account balance, external-provider spend, or proof
   that an upstream Tavily service was called.
@@ -164,7 +183,12 @@ its binaries (`yago-node`, `yago-crawler`).
   gRPC channels with durable leased orders, nonblocking coalesced progress
   reports, and backpressured at-least-once ingest. A restart on the same durable
   data volume retains committed pages and replays only work whose outcome was
-  not committed; at-least-once delivery can repeat an in-flight page. Run-report
+  not committed; at-least-once delivery can repeat an in-flight page. The
+  crawler's stream-attempt cancellation extends through local run admission, so
+  a live crawler abandons an obsolete confirmed delivery and adopts its leases
+  after an independent node restart. An independently restarted crawler keeps
+  its durable worker identity, creates a replacement process session, and adopts
+  that worker's unfinished leases. Run-report
   phases are staggered across concurrent crawls; terminal
   snapshots admitted to the bounded queue receive delivery priority, retry, and
   graceful-shutdown drain attempts, while admitted same-ID NAK phases retain
@@ -177,7 +201,14 @@ its binaries (`yago-node`, `yago-crawler`).
   ingest deliveries and 64 MiB of their encoded JSON for shared vault and Bleve
   commits, waiting no more than a cancel-aware 10 milliseconds for a partial
   group. Each grouped index mutation persists at most four Bleve shards
-  concurrently.
+  concurrently. Outbound-anchor work divides one group into at most 16 source
+  replacements at a time, aggregates their contributions once, and projects at
+  most 16 exact target URLs per storage page. Target transactions retain at most
+  32 rows and 8 MiB; sorted final source rows use deterministic subtransactions
+  with a 64 MiB encoded ceiling. Publication starts only after every target page
+  is stored and indexed. If a later publication subtransaction fails, earlier
+  source rows may already be committed; retry recomputes the remainder and
+  converges before metadata, postings, or acknowledgements advance.
 - One live `crawler.max_pages_per_second` ceiling controls page-fetch starts
   across every connected crawler process and active run. It defaults to 10 per
   second; `0` is unlimited. The node leases non-bursting start windows and uses
@@ -323,8 +354,12 @@ its binaries (`yago-node`, `yago-crawler`).
   environment knob for it, avoiding an upgrade-time crawl storm.
 - Automatic discovery: enabled swarm greedy-learning uses a depth-5,
   250-page-per-task HTTP-fast-path profile; web-discovery crawling stays opt-in
-  with the same ready profile. The same value remains the per-host ceiling, and
-  a lower positive global run cap can reduce either automatic task. Explicit
+  with the same ready profile. Surfaced fallback URLs use two background workers,
+  at most 128 pending warming jobs, and a ten-second deadline beginning when each
+  job starts. A full
+  queue warns and drops only new optional warming work; an admitted crawl order
+  remains durable across restarts. The same value remains the per-host ceiling,
+  and a lower positive global run cap can reduce either automatic task. Explicit
   discovery orders receive fair priority in the durable queue, and every
   profile and document-format control lives in Configuration → Crawler. On
   recovery, a legacy automatic checkpoint that exceeds the visible cap drops
@@ -356,7 +391,9 @@ its binaries (`yago-node`, `yago-crawler`).
   (settings + design tabs), Crawler (dispatch, saved profiles, live monitor,
   per-run detail with up to 64 recent URL outcomes, pause/resume/rate control,
   health), Network (peers, seedlists, news,
-  blocking, an explicit public-endpoint self-test, and the complete sortable
+  blocking, an evidence-backed public-endpoint check whose current peer
+  classification is authoritative and whose explicitly configured direct query
+  runs only when no peer observation exists, and the complete sortable
   roster paged at exactly 20 peers), Index (browse, bounded per-document stored
   evidence including extraction generation, explicit bounded outdated-extraction
   recrawl, node/crawler storage-reserve status, delete, blacklist, export,
@@ -570,7 +607,7 @@ per-feature test pointers is [FEATURES.md](FEATURES.md).
 
 ```sh
 make verify   # fmt-check · vet · lint · arch · race tests · exact coverage · build
-make e2e      # containerized end-to-end suites (node, crawler, backup/restore)
+make e2e      # build current images, then run containerized node/crawler suites
 ```
 
 Every feature lands with tests; new third-party dependencies require an ADR
@@ -582,7 +619,9 @@ self-test proves the checker rejects a profile that display rounding would call
 crawler suite also exercises the complete YagoRank promotion path with 66
 documents across 22 query clusters, split into 1 training, 1 development, and
 20 test clusters, and verifies that the promoted model changes the public top
-result.
+result. The E2E targets rebuild their required product images from the current
+working tree before starting either suite, so stale local tags cannot satisfy
+the gate.
 
 ## 📚 Documentation
 

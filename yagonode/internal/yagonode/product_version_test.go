@@ -278,3 +278,19 @@ func TestImageMakeTargetRejectsDirtyReleaseIdentity(t *testing.T) {
 		t.Fatal("Makefile does not use the worktree-aware product version command")
 	}
 }
+
+func TestE2ETargetsBuildCurrentSourceImages(t *testing.T) {
+	contents, err := os.ReadFile("../../../Makefile")
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	text := string(contents)
+	for _, required := range []string{
+		`e2e-node: e2e-node-image`,
+		`e2e-crawler: e2e-node-image e2e-crawler-image`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("Makefile missing %q", required)
+		}
+	}
+}

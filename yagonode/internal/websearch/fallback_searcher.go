@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	msgFallbackFailed = "web-search fallback provider failed"
-	webResultDecay    = 0.01
+	msgFallbackFailed  = "web-search fallback provider failed"
+	msgWebSeedRejected = "web-search crawl seeding saturated"
+	msgWebSeedPanicked = "web-search crawl seeding panicked"
+	webResultDecay     = 0.01
 )
 
 type FallbackSearcher struct {
@@ -20,7 +22,7 @@ type FallbackSearcher struct {
 	permit         func(searchcore.Request) bool
 	seeder         CrawlSeeder
 	providerBudget time.Duration
-	spawnSeedWork  func(func()) bool
+	spawnSeedWork  func(string, context.Context, func(context.Context)) bool
 }
 
 func NewFallbackSearcher(
@@ -80,17 +82,6 @@ func webProviderFailure() searchcore.PartialFailure {
 		Source: searchcore.PartialFailureSourceWeb,
 		Reason: msgFallbackFailed,
 	}
-}
-
-func resultURLs(results []Result) []string {
-	urls := make([]string, 0, len(results))
-	for _, result := range results {
-		if result.URL != "" {
-			urls = append(urls, result.URL)
-		}
-	}
-
-	return urls
 }
 
 func (s *FallbackSearcher) shouldFallback(resp searchcore.Response, req searchcore.Request) bool {

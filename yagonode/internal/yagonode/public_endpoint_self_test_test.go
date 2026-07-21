@@ -61,6 +61,7 @@ func TestPublicEndpointSelfTestConfirmsQueryResponse(t *testing.T) {
 
 	self := yagomodel.Hash("AAAAAAAAAAAA")
 	probe := newPublicEndpointSelfTest(server.Client(), "freeworld", self, base)
+	probe.pinned = true
 	if !probe.Reachable(context.Background()) {
 		t.Fatal("Reachable = false, want true")
 	}
@@ -97,6 +98,7 @@ func TestPublicEndpointSelfTestRejectsReachabilityFailures(t *testing.T) {
 			yagomodel.Hash("AAAAAAAAAAAA"),
 			mustURL(t, "http://127.0.0.1:8090"),
 		)
+		probe.pinned = true
 		if probe.Reachable(context.Background()) {
 			t.Fatal("Reachable = true, want false")
 		}
@@ -114,6 +116,7 @@ func TestPublicEndpointSelfTestRejectsReachabilityFailures(t *testing.T) {
 			yagomodel.Hash("AAAAAAAAAAAA"),
 			&url.URL{Scheme: "http", Host: "[::1"},
 		)
+		probe.pinned = true
 		if probe.Reachable(context.Background()) {
 			t.Fatal("Reachable = true, want false")
 		}
@@ -229,6 +232,7 @@ func TestPublicEndpointSelfTestRejectsSigningFailure(t *testing.T) {
 	)
 	want := errors.New("entropy unavailable")
 	probe.sign = func(url.Values) error { return want }
+	probe.pinned = true
 	if _, err := probe.queryURL(); !errors.Is(err, want) {
 		t.Fatalf("query signing failure = %v", err)
 	}

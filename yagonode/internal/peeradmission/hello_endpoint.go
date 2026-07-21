@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math/big"
 	"slices"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
@@ -24,10 +25,12 @@ type callerReachabilityProbe interface {
 
 type ReachableRoster interface {
 	ReachablePeers(ctx context.Context) []yagomodel.Seed
-	ConfirmReachable(ctx context.Context, peer yagomodel.Hash)
+	ObserveCaller(ctx context.Context, caller yagomodel.Seed, classification yagomodel.PeerType)
 }
 
 var randomPeerIndex = rand.Int
+
+const callerObservationTimeout = time.Second
 
 type helloEndpoint struct {
 	identity     nodeidentity.Identity
@@ -52,9 +55,18 @@ func (e helloEndpoint) Serve(
 		req.Iam.String(),
 		req.MagicMD5,
 	) {
-		resp.YourType = e.classifyCaller(ctx, req.Seed)
+		caller, observable := observableHelloCaller(ctx, req.Seed)
+		resp.YourType = e.classifyCaller(ctx, caller, observable)
+		if observable && resp.YourType != yagomodel.PeerVirgin {
+			observationContext, cancel := context.WithTimeout(
+				context.WithoutCancel(ctx),
+				callerObservationTimeout,
+			)
+			e.reachability.ObserveCaller(observationContext, caller, resp.YourType)
+			cancel()
+			e.acceptCallerNews(ctx, caller, resp.YourType)
+		}
 		resp.Seeds = append(resp.Seeds, e.knownPeers(ctx, req.Count)...)
-		e.acceptCallerNews(ctx, req.Seed, resp.YourType)
 	}
 
 	slog.DebugContext(ctx, "hello served", slog.Int("seedCount", len(resp.Seeds)))
@@ -78,20 +90,19 @@ func (e helloEndpoint) acceptCallerNews(
 func (e helloEndpoint) classifyCaller(
 	ctx context.Context,
 	caller yagomodel.Seed,
+	observable bool,
 ) yagomodel.PeerType {
 	if samePeerIdentity(caller, e.status.SelfSeed(ctx)) {
 		return yagomodel.PeerVirgin
 	}
 
-	if _, ok := caller.NetworkAddress(); !ok {
+	if !observable {
 		return yagomodel.PeerJunior
 	}
 
 	if !e.probe.Reachable(ctx, caller, e.status.SelfSeed(ctx).Hash, e.status.NetworkName(ctx)) {
 		return yagomodel.PeerJunior
 	}
-
-	e.reachability.ConfirmReachable(ctx, caller.Hash)
 
 	return yagomodel.PeerSenior
 }

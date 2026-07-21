@@ -74,7 +74,9 @@ func buildOpsMux(
 		blocks,
 	).withSelf(assembled.report)
 	options := adminui.Options{
-		Overview:          newOverviewSource(assembled.report).withLocalIndex(assembled.index),
+		Overview: newOverviewSource(assembled.report).
+			withLocalIndex(assembled.index).
+			withPeerType(assembled.peerType),
 		Search:            newSearchSource(assembled.searcher),
 		SearchExplanation: assembled.searchExplain,
 		Activity:          newActivitySource(assembled.activity),

@@ -75,7 +75,6 @@ var (
 	assembleRuntimeNode      = assembleNode
 	buildRuntimeEgressClient = newRuntimeEgressClient
 	serveRuntimeNode         = serve
-	listenAndServeHTTP       = func(server *http.Server) error { return server.ListenAndServe() }
 	shutdownHTTPServer       = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 	closeHTTPServer          = func(server *http.Server) error { return server.Close() }
 )
@@ -315,7 +314,27 @@ func serve(
 	servers ...namedServer,
 ) error {
 	ctx, cancel := context.WithCancel(ctx)
-	listenAndServe := listenAndServeHTTP
+	boundServers, err := bindHTTPServers(servers)
+	if err != nil {
+		cancel()
+
+		return err
+	}
+	serveListener := serveHTTPListener
+	errs := make(chan error, len(boundServers))
+	for _, binding := range boundServers {
+		go func(binding boundHTTPServer) {
+			slog.InfoContext(
+				ctx,
+				"serving",
+				slog.String("service", binding.name),
+				slog.String("addr", binding.listener.Addr().String()),
+			)
+			err := serveListener(binding.server, binding.listener)
+			_ = binding.listener.Close()
+			errs <- err
+		}(binding)
+	}
 	var background sync.WaitGroup
 	background.Add(3)
 	startPeerPresenceLoops(ctx, &background, assembled)
@@ -356,18 +375,6 @@ func serve(
 	defer awaitBackgroundAndDrainTransferTally(&background, assembled.transferTally)
 	defer stopPeerReputation(cancel, assembled.peerEvents)
 
-	errs := make(chan error, len(servers))
-	for _, s := range servers {
-		go func(s namedServer) {
-			slog.InfoContext(
-				ctx,
-				"serving",
-				slog.String("service", s.name),
-				slog.String("addr", s.server.Addr),
-			)
-			errs <- listenAndServe(s.server)
-		}(s)
-	}
 	select {
 	case err := <-errs:
 		return settleListenerExit(err, servers)

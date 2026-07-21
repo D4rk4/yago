@@ -19,25 +19,55 @@ import (
 type stubProbe struct {
 	reachable bool
 	called    bool
+	caller    yagomodel.Seed
 }
 
-func (p *stubProbe) Reachable(context.Context, yagomodel.Seed, yagomodel.Hash, string) bool {
+type cancelingProbe struct {
+	cancel context.CancelFunc
+}
+
+func (p cancelingProbe) Reachable(
+	context.Context,
+	yagomodel.Seed,
+	yagomodel.Hash,
+	string,
+) bool {
+	p.cancel()
+
+	return false
+}
+
+func (p *stubProbe) Reachable(
+	_ context.Context,
+	caller yagomodel.Seed,
+	_ yagomodel.Hash,
+	_ string,
+) bool {
 	p.called = true
+	p.caller = caller
 
 	return p.reachable
 }
 
 type stubReachability struct {
-	seeds     []yagomodel.Seed
-	refreshed []yagomodel.Hash
+	seeds       []yagomodel.Seed
+	observed    []yagomodel.Seed
+	classifying []yagomodel.PeerType
+	contextErrs []error
 }
 
 func (s *stubReachability) ReachablePeers(context.Context) []yagomodel.Seed {
 	return s.seeds
 }
 
-func (s *stubReachability) ConfirmReachable(_ context.Context, peer yagomodel.Hash) {
-	s.refreshed = append(s.refreshed, peer)
+func (s *stubReachability) ObserveCaller(
+	ctx context.Context,
+	caller yagomodel.Seed,
+	classification yagomodel.PeerType,
+) {
+	s.observed = append(s.observed, caller)
+	s.classifying = append(s.classifying, classification)
+	s.contextErrs = append(s.contextErrs, ctx.Err())
 }
 
 func newEndpoint(
@@ -82,8 +112,13 @@ func TestHelloClassifiesReachableAddressedCallerAsSenior(t *testing.T) {
 	if resp.Seeds[0].Hash != hashFor("self") {
 		t.Fatalf("first seed = %q, want self", resp.Seeds[0].Hash)
 	}
-	if !slices.Equal(reachability.refreshed, []yagomodel.Hash{caller.Hash}) {
-		t.Fatalf("refreshed = %v, want senior caller refreshed", reachability.refreshed)
+	if len(reachability.observed) != 1 || reachability.observed[0].Hash != caller.Hash ||
+		!slices.Equal(reachability.classifying, []yagomodel.PeerType{yagomodel.PeerSenior}) {
+		t.Fatalf(
+			"observed = %v/%v, want senior caller",
+			reachability.observed,
+			reachability.classifying,
+		)
 	}
 }
 
@@ -101,8 +136,37 @@ func TestHelloClassifiesUnreachableCallerAsJunior(t *testing.T) {
 	if resp.YourType != yagomodel.PeerJunior {
 		t.Fatalf("YourType = %q, want junior", resp.YourType)
 	}
-	if len(reachability.refreshed) != 0 {
-		t.Fatalf("refreshed = %v, want no refresh for junior caller", reachability.refreshed)
+	if len(reachability.observed) != 1 ||
+		reachability.classifying[0] != yagomodel.PeerJunior {
+		t.Fatalf(
+			"observed = %v/%v, want junior caller",
+			reachability.observed,
+			reachability.classifying,
+		)
+	}
+}
+
+func TestHelloPersistsJuniorAfterRequestCancellationDuringProbe(t *testing.T) {
+	requestContext, cancel := context.WithCancel(t.Context())
+	reachability := &stubReachability{}
+	endpoint := newEndpoint(t, cancelingProbe{cancel: cancel}, reachability)
+	resp, err := endpoint.Serve(
+		requestContext,
+		helloRequest("freeworld", callerSeed(t, "caller", "10.0.0.1", 8090), 0),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.YourType != yagomodel.PeerJunior || len(reachability.observed) != 1 ||
+		len(reachability.contextErrs) != 1 || reachability.contextErrs[0] != nil ||
+		!errors.Is(requestContext.Err(), context.Canceled) {
+		t.Fatalf(
+			"canceled probe response/observations/context = %q/%d/%v/%v",
+			resp.YourType,
+			len(reachability.observed),
+			reachability.contextErrs,
+			requestContext.Err(),
+		)
 	}
 }
 
@@ -124,8 +188,150 @@ func TestHelloClassifiesAddresslessCallerAsJunior(t *testing.T) {
 	if probe.called {
 		t.Fatal("probe consulted for addressless caller")
 	}
-	if len(reachability.refreshed) != 0 {
-		t.Fatalf("refreshed = %v, want no refresh for addressless caller", reachability.refreshed)
+	if len(reachability.observed) != 0 {
+		t.Fatalf("observed = %v, want addressless caller rejected", reachability.observed)
+	}
+}
+
+func TestHelloDerivesCallerEndpointFromTransportAddress(t *testing.T) {
+	reachability := &stubReachability{}
+	probe := &stubProbe{reachable: false}
+	endpoint := newEndpoint(t, probe, reachability)
+	caller := callerSeed(t, "caller", "", 8090)
+	ctx := httpguard.WithRemoteAddr(t.Context(), "198.51.100.8")
+
+	resp, err := endpoint.Serve(ctx, helloRequest("freeworld", caller, 0))
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.YourType != yagomodel.PeerJunior || !probe.called ||
+		len(reachability.observed) != 1 ||
+		reachability.classifying[0] != yagomodel.PeerJunior {
+		t.Fatalf(
+			"derived caller response = %q called %v observations %v/%v",
+			resp.YourType,
+			probe.called,
+			reachability.observed,
+			reachability.classifying,
+		)
+	}
+	address, addressable := reachability.observed[0].NetworkAddress()
+	probeAddress, probeAddressable := probe.caller.NetworkAddress()
+	if !addressable || address != "198.51.100.8:8090" || !probeAddressable ||
+		probeAddress != address {
+		t.Fatalf(
+			"derived observed/probed addresses = %q/%v %q/%v",
+			address,
+			addressable,
+			probeAddress,
+			probeAddressable,
+		)
+	}
+}
+
+func TestHelloReplacesUnspecifiedAdvertisedEndpointWithTransportAddress(t *testing.T) {
+	for _, advertised := range []string{"0.0.0.0", "::", "::ffff:0.0.0.0"} {
+		reachability := &stubReachability{}
+		probe := &stubProbe{reachable: false}
+		endpoint := newEndpoint(t, probe, reachability)
+		caller := callerSeed(t, "caller", advertised, 8090)
+		ctx := httpguard.WithRemoteAddr(t.Context(), "198.51.100.8")
+
+		resp, err := endpoint.Serve(ctx, helloRequest("freeworld", caller, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(reachability.observed) != 1 {
+			t.Fatalf(
+				"unspecified %q caller observations = %d, want 1",
+				advertised,
+				len(reachability.observed),
+			)
+		}
+		address, addressable := reachability.observed[0].NetworkAddress()
+		if resp.YourType != yagomodel.PeerJunior || !probe.called ||
+			!addressable || address != "198.51.100.8:8090" {
+			t.Fatalf(
+				"unspecified %q caller response/called/address = %q/%v/%q/%v",
+				advertised,
+				resp.YourType,
+				probe.called,
+				address,
+				addressable,
+			)
+		}
+	}
+}
+
+func TestHelloRejectsUnspecifiedAdvertisedEndpointWithoutTransportAddress(t *testing.T) {
+	for _, advertised := range []string{"0.0.0.0", "::", "::ffff:0.0.0.0"} {
+		reachability := &stubReachability{}
+		probe := &stubProbe{reachable: true}
+		endpoint := newEndpoint(t, probe, reachability)
+		resp, err := endpoint.Serve(
+			t.Context(),
+			helloRequest("freeworld", callerSeed(t, "caller", advertised, 8090), 0),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.YourType != yagomodel.PeerJunior || probe.called ||
+			len(reachability.observed) != 0 {
+			t.Fatalf(
+				"unspecified %q caller response/called/observed = %q/%v/%d",
+				advertised,
+				resp.YourType,
+				probe.called,
+				len(reachability.observed),
+			)
+		}
+	}
+}
+
+func TestHelloRejectsUnusableTransportDerivedCaller(t *testing.T) {
+	for _, remote := range []string{"", "not-an-ip", "0.0.0.0", "::", "::ffff:0.0.0.0"} {
+		reachability := &stubReachability{}
+		probe := &stubProbe{reachable: true}
+		endpoint := newEndpoint(t, probe, reachability)
+		ctx := httpguard.WithRemoteAddr(t.Context(), remote)
+
+		resp, err := endpoint.Serve(
+			ctx,
+			helloRequest("freeworld", callerSeed(t, "caller", "", 8090), 0),
+		)
+		if err != nil {
+			t.Fatalf("Serve(%q): %v", remote, err)
+		}
+		if resp.YourType != yagomodel.PeerJunior || probe.called ||
+			len(reachability.observed) != 0 {
+			t.Fatalf(
+				"remote %q response/called/observed = %q/%v/%v",
+				remote,
+				resp.YourType,
+				probe.called,
+				reachability.observed,
+			)
+		}
+	}
+}
+
+func TestHelloAcceptsAdvertisedHostnameEndpoint(t *testing.T) {
+	reachability := &stubReachability{}
+	probe := &stubProbe{reachable: false}
+	endpoint := newEndpoint(t, probe, reachability)
+	caller := callerSeed(t, "caller", "peer.example", 8090)
+	resp, err := endpoint.Serve(t.Context(), helloRequest("freeworld", caller, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.YourType != yagomodel.PeerJunior || !probe.called ||
+		len(reachability.observed) != 1 {
+		t.Fatalf(
+			"hostname caller response/called/observed = %q/%v/%d",
+			resp.YourType,
+			probe.called,
+			len(reachability.observed),
+		)
 	}
 }
 
@@ -147,8 +353,8 @@ func TestHelloRejectsCallerUsingSelfHash(t *testing.T) {
 	if probe.called {
 		t.Fatal("probe consulted for caller using self hash")
 	}
-	if len(reachability.refreshed) != 0 {
-		t.Fatalf("refreshed = %v, want no refresh for self hash", reachability.refreshed)
+	if len(reachability.observed) != 0 {
+		t.Fatalf("observed = %v, want no self observation", reachability.observed)
 	}
 }
 
@@ -170,8 +376,8 @@ func TestHelloRejectsCallerUsingSelfEndpoint(t *testing.T) {
 	if probe.called {
 		t.Fatal("probe consulted for caller using self endpoint")
 	}
-	if len(reachability.refreshed) != 0 {
-		t.Fatalf("refreshed = %v, want no refresh for self endpoint", reachability.refreshed)
+	if len(reachability.observed) != 0 {
+		t.Fatalf("observed = %v, want no self observation", reachability.observed)
 	}
 }
 
@@ -194,8 +400,13 @@ func TestHelloAcceptsSameHostOnDifferentPort(t *testing.T) {
 	if !probe.called {
 		t.Fatal("probe was not consulted for different-port caller")
 	}
-	if !slices.Equal(reachability.refreshed, []yagomodel.Hash{caller.Hash}) {
-		t.Fatalf("refreshed = %v, want caller refreshed", reachability.refreshed)
+	if len(reachability.observed) != 1 || reachability.observed[0].Hash != caller.Hash ||
+		reachability.classifying[0] != yagomodel.PeerSenior {
+		t.Fatalf(
+			"observed = %v/%v, want senior caller",
+			reachability.observed,
+			reachability.classifying,
+		)
 	}
 }
 
@@ -219,6 +430,33 @@ func TestHelloOnForeignNetworkOmitsAdmission(t *testing.T) {
 	}
 	if probe.called {
 		t.Fatal("probe consulted despite foreign network")
+	}
+	if len(endpoint.reachability.(*stubReachability).observed) != 0 {
+		t.Fatal("foreign-network caller was observed")
+	}
+}
+
+func TestHelloDoesNotObserveUnauthenticatedCaller(t *testing.T) {
+	reachability := &stubReachability{}
+	probe := &stubProbe{reachable: true}
+	endpoint := newEndpoint(t, probe, reachability)
+	endpoint.identity.AuthenticationMode = yagoproto.NetworkAuthenticationSaltedMagic
+	endpoint.identity.AuthenticationEssentials = "shared-secret"
+
+	resp, err := endpoint.Serve(
+		t.Context(),
+		helloRequest("freeworld", callerSeed(t, "unknown", "10.0.0.1", 8090), 0),
+	)
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if resp.YourType != "" || probe.called || len(reachability.observed) != 0 {
+		t.Fatalf(
+			"unauthenticated response/observation = %q/%v/%v",
+			resp.YourType,
+			probe.called,
+			reachability.observed,
+		)
 	}
 }
 

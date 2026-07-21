@@ -3,6 +3,7 @@ package peerannouncement
 import (
 	"context"
 	"log/slog"
+	"net/netip"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -28,29 +29,37 @@ type peerRoster interface {
 }
 
 type announcer struct {
-	interval       time.Duration
-	greetsPerCycle int
-	self           SelfSeed
-	seeds          bootstrap.SeedSource
-	roster         peerRoster
-	greeter        peerGreeter
-	observer       Observer
-	news           PeerNews
+	interval                     time.Duration
+	externalRefreshInterval      time.Duration
+	greetsPerCycle               int
+	self                         SelfSeed
+	seeds                        bootstrap.SeedSource
+	roster                       peerRoster
+	greeter                      peerGreeter
+	observer                     Observer
+	news                         PeerNews
+	externalReachabilityEvidence *ExternalReachabilityEvidence
+	admitExternalObserverAddress func(netip.Addr) error
+	ticks                        func(time.Duration) (<-chan time.Time, func())
 }
 
 func (a *announcer) Run(ctx context.Context) {
 	a.roster.Discover(ctx, a.seeds.Fetch(ctx)...)
 	a.Announce(ctx)
 
-	ticker := time.NewTicker(a.interval)
-	defer ticker.Stop()
+	announcementTicks, stopAnnouncements := a.tickSource(a.interval)
+	defer stopAnnouncements()
+	refreshTicks, stopRefresh := a.externalRefreshTicks()
+	defer stopRefresh()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-announcementTicks:
 			a.Announce(ctx)
+		case <-refreshTicks:
+			a.greetPeers(ctx)
 		}
 	}
 }
@@ -59,6 +68,10 @@ func (a *announcer) Announce(ctx context.Context) {
 	if a.news != nil {
 		a.news.RotateSeedNews(ctx)
 	}
+	a.greetPeers(ctx)
+}
+
+func (a *announcer) greetPeers(ctx context.Context) {
 	self := a.self.SelfSeed(ctx)
 	targets := a.roster.FreshestPeers(ctx, a.greetsPerCycle)
 
@@ -103,6 +116,7 @@ func (a *announcer) Announce(ctx context.Context) {
 				slog.String("reportedAddress", result.YourIP),
 			)
 		}
+		a.observeExternalReachability(target, result.YourType)
 
 		a.roster.ConfirmReachable(ctx, target.Hash)
 		a.roster.Discover(ctx, result.Known...)
@@ -136,8 +150,21 @@ func (a *announcer) GreetDiscovered(ctx context.Context, target yagomodel.Seed) 
 
 		return
 	}
+	a.observeExternalReachability(target, result.YourType)
 	a.roster.Discover(ctx, target)
 	a.roster.ConfirmReachable(ctx, target.Hash)
 	a.roster.Discover(ctx, result.Known...)
 	a.acceptGreetedNews(ctx, result.Known)
+}
+
+func (a *announcer) observeExternalReachability(
+	observer yagomodel.Seed,
+	classification yagomodel.PeerType,
+) {
+	if a.externalReachabilityEvidence != nil && externallyEligibleObserver(
+		observer,
+		a.admitExternalObserverAddress,
+	) {
+		a.externalReachabilityEvidence.Observe(observer.Hash, classification)
+	}
 }

@@ -211,7 +211,7 @@ func (c *IngestConsumer) storedClusterProjection(
 		if _, skip := excluded[memberURL]; skip {
 			continue
 		}
-		doc, found, err := directory.Document(ctx, memberURL)
+		doc, found, err := c.documentClusterRevision(ctx, directory, memberURL)
 		if err != nil {
 			return nil, fmt.Errorf("read clustered document: %w", err)
 		}

@@ -3,6 +3,7 @@ package websearch
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -208,8 +209,12 @@ func TestFallbackDegradesOnProviderError(t *testing.T) {
 	}
 	seeder := &stubSeeder{}
 	searcher := NewFallbackSearcher(primary, provider, enabled, WithSeeder(seeder))
-	searcher.spawnSeedWork = func(work func()) bool {
-		work()
+	searcher.spawnSeedWork = func(
+		_ string,
+		ctx context.Context,
+		work func(context.Context),
+	) bool {
+		work(ctx)
 
 		return true
 	}
@@ -240,8 +245,12 @@ func TestFallbackKeepsAndSeedsVerifiedPartialProviderRows(t *testing.T) {
 		enabled,
 		WithSeeder(seeder),
 	)
-	searcher.spawnSeedWork = func(work func()) bool {
-		work()
+	searcher.spawnSeedWork = func(
+		_ string,
+		ctx context.Context,
+		work func(context.Context),
+	) bool {
+		work(ctx)
 
 		return true
 	}
@@ -278,17 +287,39 @@ func TestFallbackPropagatesPrimaryError(t *testing.T) {
 }
 
 type stubSeeder struct {
+	mutex sync.Mutex
+	once  sync.Once
 	urls  []string
 	calls int
 	done  chan struct{}
 }
 
-func (s *stubSeeder) Seed(_ context.Context, urls []string) {
-	s.calls++
-	s.urls = urls
-	if s.done != nil {
-		close(s.done)
+type urlSeedRecorder struct {
+	urls chan string
+}
+
+func (s urlSeedRecorder) Seed(_ context.Context, urls []string) {
+	for _, url := range urls {
+		s.urls <- url
 	}
+}
+
+func (urlSeedRecorder) AdmitCrawlSeedURL(rawURL string) (string, bool) {
+	return rawURL, rawURL != ""
+}
+
+func (s *stubSeeder) Seed(_ context.Context, urls []string) {
+	s.mutex.Lock()
+	s.calls++
+	s.urls = append(s.urls, urls...)
+	s.mutex.Unlock()
+	if s.done != nil {
+		s.once.Do(func() { close(s.done) })
+	}
+}
+
+func (*stubSeeder) AdmitCrawlSeedURL(rawURL string) (string, bool) {
+	return rawURL, rawURL != ""
 }
 
 func TestFallbackSeedsProviderURLs(t *testing.T) {
@@ -297,7 +328,7 @@ func TestFallbackSeedsProviderURLs(t *testing.T) {
 		{URL: "https://a.example/gap-intro"},
 		{URL: "https://b.example/mind-the-gap"},
 	}}
-	seeder := &stubSeeder{done: make(chan struct{})}
+	seeder := urlSeedRecorder{urls: make(chan string, 2)}
 	searcher := NewFallbackSearcher(primary, provider, enabled, WithSeeder(seeder))
 
 	if _, err := searcher.Search(
@@ -306,13 +337,17 @@ func TestFallbackSeedsProviderURLs(t *testing.T) {
 	); err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	select {
-	case <-seeder.done:
-	case <-time.After(time.Second):
-		t.Fatal("seeding did not run")
+	seeded := make(map[string]struct{}, 2)
+	for range 2 {
+		select {
+		case url := <-seeder.urls:
+			seeded[url] = struct{}{}
+		case <-time.After(time.Second):
+			t.Fatal("seeding did not run")
+		}
 	}
-	if seeder.calls != 1 || len(seeder.urls) != 2 {
-		t.Fatalf("seeder = %#v", seeder)
+	if len(seeded) != 2 {
+		t.Fatalf("seeded URLs = %#v", seeded)
 	}
 }
 

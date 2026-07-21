@@ -16,18 +16,19 @@
     <div class="cds-metric__value">{{if .Network.DHTOpen}}Open{{else}}Closed{{end}}</div>
   </section>
   <section class="cds-tile">
-    <div class="cds-metric__label">Public endpoint self-test</div>
-    <div class="cds-metric__value">{{if .Network.PublicReachable}}Reachable{{else}}Unreachable{{end}}</div>
+    <div class="cds-metric__label">Public endpoint reachability</div>
+    <div class="cds-metric__value">{{if not .Network.PublicReachabilityKnown}}Unconfirmed{{else if .Network.PublicReachable}}Reachable{{else}}Unreachable{{end}}</div>
+    {{if .Network.PublicReachabilityKnown}}<div class="cds-muted">{{if eq .Network.PublicReachabilitySource "peer-back-ping"}}Peer back-ping{{else if eq .Network.PublicReachabilitySource "pinned-direct-probe"}}Configured direct query{{else}}Reachability check{{end}}{{if .Network.PublicReachabilityObservedAt}} · observed <time datetime="{{.Network.PublicReachabilityObservedAt}}">{{.Network.PublicReachabilityObservedAt}}</time>{{end}}</div>{{end}}
   </section>
 </div>
 {{if .NetworkSelfTestEnabled}}
-<h2 class="cds-h2">Public endpoint self-test</h2>
-<p class="cds-muted">Run a fresh bounded YaCy query through the configured public endpoint.</p>
+<h2 class="cds-h2">Public endpoint reachability check</h2>
+<p class="cds-muted">Evaluate current peer back-ping evidence; an explicitly configured public YaCy query is used only when no peer observation exists.</p>
 {{if .NetworkSelfTestNotice}}<div class="cds-inline-notification" role="status">{{.NetworkSelfTestNotice}}</div>{{end}}
 {{if .NetworkSelfTestError}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.NetworkSelfTestError}}</div>{{end}}
 <form method="post" action="/admin/network/public-endpoint/test">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  <button class="cds-btn" type="submit">Run self-test</button>
+  <button class="cds-btn" type="submit">Check reachability</button>
 </form>
 {{end}}
 {{if and (not .Network.DHTOpen) .Network.BlockingReason}}

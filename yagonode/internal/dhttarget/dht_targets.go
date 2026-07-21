@@ -92,6 +92,10 @@ func canReceiveIndex(peer yagomodel.Seed, config Config, now time.Time) bool {
 	if _, ok := peer.NetworkAddress(); !ok {
 		return false
 	}
+	if classification, known := peer.PeerType.Get(); known &&
+		classification == yagomodel.PeerJunior {
+		return false
+	}
 
 	flags, ok := peer.Flags.Get()
 	if !ok || !flags.Get(yagomodel.FlagAcceptRemoteIndex) {

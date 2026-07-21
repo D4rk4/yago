@@ -290,7 +290,7 @@ func TestReplaceOutboundAnchorsBoundsSourcesAndTargets(t *testing.T) {
 
 func TestReplaceOutboundAnchorsRejectsSeventeenthDistinctSource(t *testing.T) {
 	_, receiver := openDocuments(t)
-	sets := make([]OutboundAnchorSet, maximumOutboundAnchorSources+1)
+	sets := make([]OutboundAnchorSet, MaximumOutboundAnchorSourcesPerReplacement+1)
 	for index := range sets {
 		sets[index].SourceURL = fmt.Sprintf("https://source.example/%02d", index)
 	}

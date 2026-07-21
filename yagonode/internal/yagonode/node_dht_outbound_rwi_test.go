@@ -228,7 +228,9 @@ func TestBuildDHTOutboundRuntimeSkipsFeederWhenGatesAreClosed(t *testing.T) {
 		observer: metrics.NewDHTOutboundMetrics(
 			prometheus.NewRegistry(),
 		),
-		reachability: &publicReachabilityScript{reachable: true},
+		reachability: &publicReachabilityScript{
+			reachable: true, source: publicReachabilitySourcePinnedProbe,
+		},
 	})
 
 	receipt, err := process.cycle.RunOnce(context.Background())

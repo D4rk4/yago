@@ -121,7 +121,7 @@ func TestReservedOutboundAnchorsRejectWrongOwnerAndUncoveredSource(t *testing.T)
 	); err == nil {
 		t.Fatal("nil lineage reservation was accepted")
 	}
-	tooMany := make([]OutboundAnchorSet, maximumOutboundAnchorSources+1)
+	tooMany := make([]OutboundAnchorSet, MaximumOutboundAnchorSourcesPerReplacement+1)
 	for index := range tooMany {
 		tooMany[index].SourceURL = "https://source.example/" + strings.Repeat("x", index+1)
 	}

@@ -149,7 +149,7 @@ func startDHTSenderRuntime(
 		client:      fixture.receiverServer.Client(),
 		observer:    metrics.NewDHTOutboundMetrics(prometheus.NewRegistry()),
 		reachability: &publicReachabilityScript{
-			reachable: true,
+			reachable: true, source: publicReachabilitySourcePinnedProbe,
 		},
 	})
 

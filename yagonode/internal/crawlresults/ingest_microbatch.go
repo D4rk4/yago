@@ -156,11 +156,13 @@ func (c *IngestConsumer) absorbReservedTailGroup(
 // its group's stores committed.
 func (c *IngestConsumer) finishAbsorbed(ctx context.Context, delivery IngestDelivery) {
 	batch := delivery.Batch
-	c.observer.ObserveAbsorbed(
-		len(batch.Document.ExtractedText),
-		len(batch.Metadata),
-		len(batch.Postings),
-	)
+	if c.observer != nil {
+		c.observer.ObserveAbsorbed(
+			len(batch.Document.ExtractedText),
+			len(batch.Metadata),
+			len(batch.Postings),
+		)
+	}
 	if err := delivery.Ack(ctx); err != nil {
 		slog.WarnContext(ctx, msgIngestAckFailed,
 			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))

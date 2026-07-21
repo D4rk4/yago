@@ -91,6 +91,8 @@ Crawler product identity: The canonical module directory and import path, comman
 
 Logging: Use stable message constants; put variable data in key/value fields. Happy paths: DEBUG. Sad paths: WARN if recoverable, ERROR if action is needed.
 
+Issue stewardship: After an externally reported defect is fixed and its validation is complete, reply on the original issue with a concise old-school engineering closure note. State the observed symptom, root cause, corrective change, and verification evidence; identify the release that carries the fix when one exists; thank the reporter for the actionable feedback. Keep the note factual, self-contained, and free of promotional language. Do not claim completion before the evidence is available.
+
 Comments: No comments without explicit user approval. Use naming and structure instead. Put required prose in `yagonode/doc/` or the relevant module README. Godoc package docs are allowed. If a comment seems unavoidable, ask first.
 
 Single source of truth: Do not duplicate facts in comments, errors, logs, or similar text when they already exist in constants, config, docs, or protocol definitions.
@@ -155,5 +157,7 @@ git log -1 --format=%B | grep -F "Motivation:"
 Keep commit text in English.
 
 Feature closure: Closing a feature requires the tests to be written with the code, then a full test run, Dockerized Semgrep, Dockerized Trivy source and container-image scans, container builds, sanity tests, and smoke tests, and updating `FEATURES.md` (the affected capability, surface, status, behavior summary, and files/tests) plus `docker-compose.yml.example` when the deployed surface (ports, listeners, services, images, or env vars) changed, alongside the code — a slice is not closed until its `FEATURES.md` row and, where relevant, the compose example reflect it. If all feature-closure checks pass, commit the change and push it to `main`.
+
+Live lifecycle sanity: Before every release, locally built current-source Docker images must pass an executable interaction test with real `yago-node` and `yago-crawler` processes. Keep the crawler running while restarting only the node, then prove that the crawler establishes a new logical session and crawl work progresses without a repeating lease-loss loop. Next, keep the node running while restarting only the crawler, then prove that the replacement crawler session is accepted and crawl work progresses. This local Docker test is a mandatory release gate. Never substitute an installed production package or production restarts for it. Post-deployment production verification is observation-only: service state, health, readiness, logs, and API probes.
 
 Gate: `make verify` is the mandatory code gate. A code change is not done until it is green. Feature closure adds the required Dockerized Semgrep, Dockerized Trivy, container, sanity, smoke, commit, and push checks.

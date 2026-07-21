@@ -1,7 +1,6 @@
 package peerroster
 
 import (
-	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -228,25 +227,19 @@ func (r *roster) scanFreshestCandidates(
 
 	var candidates freshestRosterCandidates
 	retainedBytes := 0
+	bounds := candidateSnapshotBounds{peerLimit: peerLimit, byteLimit: byteLimit}
 	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
 		return r.peers.Scan(tx, nil, func(_ vault.Key, entry rosterEntry) (bool, error) {
 			if err := ctx.Err(); err != nil {
 				return false, fmt.Errorf("scan peer candidate context: %w", err)
 			}
-			if _, ok := active[entry.seed.Hash]; ok {
-				return true, nil
-			}
-
-			entryBytes := entry.seed.RetainedBytes() + rosterCandidateRetentionBytes
-			if entryBytes > byteLimit {
-				return true, nil
-			}
-			heap.Push(&candidates, rosterCandidate{entry: entry, retainedBytes: entryBytes})
-			retainedBytes += entryBytes
-			for len(candidates) > peerLimit || retainedBytes > byteLimit {
-				removed := heap.Pop(&candidates).(rosterCandidate)
-				retainedBytes -= removed.retainedBytes
-			}
+			retainedBytes = retainFreshestRosterCandidate(
+				&candidates,
+				retainedBytes,
+				entry,
+				active,
+				bounds,
+			)
 
 			return true, nil
 		})

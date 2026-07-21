@@ -7,6 +7,7 @@ package peerannouncement
 import (
 	"context"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -36,14 +37,16 @@ type PeerNews interface {
 }
 
 type Config struct {
-	Client         *http.Client
-	NetworkName    string
-	Interval       time.Duration
-	GreetsPerCycle int
-	Observer       Observer
-	News           PeerNews
-	PreferHTTPS    bool
-	NetworkAccess  yagoproto.NetworkAccess
+	Client                       *http.Client
+	NetworkName                  string
+	Interval                     time.Duration
+	GreetsPerCycle               int
+	Observer                     Observer
+	News                         PeerNews
+	PreferHTTPS                  bool
+	NetworkAccess                yagoproto.NetworkAccess
+	ExternalReachabilityEvidence *ExternalReachabilityEvidence
+	AdmitExternalObserverAddress func(netip.Addr) error
 }
 
 func New(
@@ -53,15 +56,18 @@ func New(
 	roster peerRoster,
 ) Announcer {
 	return &announcer{
-		interval:       cfg.Interval,
-		greetsPerCycle: cfg.GreetsPerCycle,
-		self:           self,
-		seeds:          seeds,
-		roster:         roster,
+		interval:                cfg.Interval,
+		externalRefreshInterval: externalReachabilityRefreshInterval,
+		greetsPerCycle:          cfg.GreetsPerCycle,
+		self:                    self,
+		seeds:                   seeds,
+		roster:                  roster,
 		greeter: newHTTPPeerGreeter(
 			cfg.Client, cfg.NetworkName, cfg.PreferHTTPS, cfg.NetworkAccess,
 		),
-		observer: cfg.Observer,
-		news:     cfg.News,
+		observer:                     cfg.Observer,
+		news:                         cfg.News,
+		externalReachabilityEvidence: cfg.ExternalReachabilityEvidence,
+		admitExternalObserverAddress: cfg.AdmitExternalObserverAddress,
 	}
 }

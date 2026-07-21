@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 )
@@ -85,5 +86,23 @@ func TestDHTGateStatusSourceUsesZeroStateWithoutSnapshot(t *testing.T) {
 	got := (dhtGateStatusSource{}).response(t.Context())
 	if got.Open || got.State.PublicReachable || len(got.Gates) != 11 {
 		t.Fatalf("response = %#v", got)
+	}
+}
+
+func TestDHTGateStatusSourceKeepsEnrichedReachabilitySnapshot(t *testing.T) {
+	want := publicReachabilitySnapshot{
+		state: publicReachabilityReachable, source: publicReachabilitySourcePeerBackPing,
+		observedAt: time.Unix(12, 0),
+	}
+	got := (dhtGateStatusSource{
+		snapshotWithReachability: func(context.Context) (
+			dhtexchange.GateState,
+			publicReachabilitySnapshot,
+		) {
+			return dhtexchange.GateState{PublicReachable: true}, want
+		},
+	}).response(t.Context())
+	if got.reachability != want || !got.State.PublicReachable {
+		t.Fatalf("enriched reachability = %+v", got)
 	}
 }

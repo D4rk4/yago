@@ -34,11 +34,10 @@ optional, admin-toggled **DDGS web-search fallback**:
   and fuses their completed rankings, `explicit` requires the individual request
   to consent and runs after a miss, and `disabled` does not install web search. A
   local-only request never reaches peers or this provider.
-- A Tavily-compatible `/search` call explicitly permits web fallback because it
-  is itself a web-search request. Basic depth can therefore use local exact and
-  fuzzy recovery before web without enabling swarm fan-out; YaCy
-  `resource=local` and admin `scope=local`
-  remain strictly local.
+- Tavily-compatible `advanced` search permits web fallback according to the
+  operator policy because it uses the global retrieval path. `basic`, `fast`,
+  and `ultra-fast` remain local-only, as do YaCy `resource=local` and Admin
+  `scope=local`.
 - It uses the pure-Go keyless provider selected in ADR-0021. `auto` starts the
   preferred engine immediately, hedges later engines at 50-millisecond intervals,
   and cancels the remaining attempts when one answer survives relevance checks.
@@ -73,9 +72,15 @@ keep all searches local plus peers, require request-level consent, permit
 provenance-marked web results after a true miss, or select `always` to run bounded
 web retrieval alongside every eligible local and peer query.
 Fallback results can seed the crawler so the local index grows toward its query
-traffic. Durable queue publishing runs after the search response through a
-process-wide two-work admission with a ten-second deadline. Saturation drops the
-optional seed operation instead of adding search latency or an unbounded queue.
+traffic. Durable queue publishing runs after the search response through two
+background workers, at most 128 pending jobs, and a ten-second deadline per job.
+Each worker starts with a fresh bounded context, so queue delay does not consume
+that deadline. Normalized URLs coalesce before admission, and each absent or
+lookup-indeterminate page attempts one URL-idempotent automatic-discovery
+publication; at most one accepted order remains for that normalized URL. Its
+root fetch performs the warming, and no parallel cache order duplicates that
+fetch. A full queue drops only the new optional warming job instead of adding
+search latency or an unbounded queue.
 
 The providers are external rate-limited surfaces with their own terms of service,
 so the client backs off, caches briefly, and degrades to an empty result rather

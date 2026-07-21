@@ -411,8 +411,12 @@ func TestParallelSearcherKeepsAndSeedsVerifiedPartialProviderRows(t *testing.T) 
 		enabled,
 		WithSeeder(seeder),
 	)
-	searcher.fallback.spawnSeedWork = func(work func()) bool {
-		work()
+	searcher.fallback.spawnSeedWork = func(
+		_ string,
+		ctx context.Context,
+		work func(context.Context),
+	) bool {
+		work(ctx)
 
 		return true
 	}
@@ -439,8 +443,12 @@ func TestParallelSearcherRejectsAndDoesNotSeedUnverifiedPartialProviderRows(t *t
 		enabled,
 		WithSeeder(seeder),
 	)
-	searcher.fallback.spawnSeedWork = func(work func()) bool {
-		work()
+	searcher.fallback.spawnSeedWork = func(
+		_ string,
+		ctx context.Context,
+		work func(context.Context),
+	) bool {
+		work(ctx)
 
 		return true
 	}

@@ -33,7 +33,7 @@ func (c *IngestConsumer) updateReservedInboundAnchors(
 		return false
 	}
 
-	return c.replaceOutboundAnchors(ctx, deliveries, sets, reservation)
+	return c.replaceOutboundAnchorChunks(ctx, deliveries, sets, reservation)
 }
 
 func (c *IngestConsumer) clearOutboundAnchors(
@@ -58,6 +58,14 @@ func (c *IngestConsumer) replaceOutboundAnchors(
 	sets []documentstore.OutboundAnchorSet,
 	reservation documentstore.DocumentLineageReservation,
 ) bool {
+	if deferred, replaced := c.replaceOutboundAnchorDocuments(
+		ctx,
+		deliveries,
+		sets,
+		reservation,
+	); replaced {
+		return deferred
+	}
 	var update documentstore.AnchorUpdate
 	var err error
 	switch {

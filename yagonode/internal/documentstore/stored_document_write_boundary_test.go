@@ -214,23 +214,13 @@ func waitForStoredDocumentPendingScan(
 }
 
 func distinctStoredDocumentBoundaryURLs(
-	boundaries *storedDocumentURLBoundaries,
+	_ *storedDocumentURLBoundaries,
 	total int,
 	prefix string,
 ) []string {
 	urls := make([]string, 0, total)
-	used := make(map[int]struct{}, total)
-	for sequence := 0; len(urls) < total; sequence++ {
-		url := fmt.Sprintf("%s%d", prefix, sequence)
-		indices := boundaries.indices([]string{url})
-		if len(indices) != 1 {
-			continue
-		}
-		if _, exists := used[indices[0]]; exists {
-			continue
-		}
-		used[indices[0]] = struct{}{}
-		urls = append(urls, url)
+	for sequence := range total {
+		urls = append(urls, fmt.Sprintf("%s%d", prefix, sequence))
 	}
 
 	return urls

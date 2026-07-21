@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,16 +58,19 @@ func (s *fakeSearcher) Search(
 }
 
 type fakeDocuments struct {
-	rows map[string]documentstore.Document
-	err  error
-	got  string
+	mutex sync.Mutex
+	rows  map[string]documentstore.Document
+	err   error
+	got   string
 }
 
 func (d *fakeDocuments) Document(
 	_ context.Context,
 	normalizedURL string,
 ) (documentstore.Document, bool, error) {
+	d.mutex.Lock()
 	d.got = normalizedURL
+	d.mutex.Unlock()
 	if d.err != nil {
 		return documentstore.Document{}, false, d.err
 	}

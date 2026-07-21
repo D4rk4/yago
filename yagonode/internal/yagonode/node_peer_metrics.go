@@ -44,6 +44,15 @@ func (r observedPeerRoster) Discover(ctx context.Context, seeds ...yagomodel.See
 	r.observe(ctx)
 }
 
+func (r observedPeerRoster) ObserveCaller(
+	ctx context.Context,
+	caller yagomodel.Seed,
+	classification yagomodel.PeerType,
+) {
+	r.Roster.ObserveCaller(ctx, caller, classification)
+	r.observe(ctx)
+}
+
 func (r observedPeerRoster) ConfirmReachable(ctx context.Context, peer yagomodel.Hash) {
 	r.Roster.ConfirmReachable(ctx, peer)
 	r.observe(ctx)

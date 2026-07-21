@@ -83,8 +83,24 @@ admin console.
 Changing the **peer** listener's port also re-derives the advertised port and the
 local DHT self-test address from the new value, so the node announces the port it
 actually listens on — unless you pinned them explicitly with `YAGO_ADVERTISE_PORT`
-or `YAGO_PUBLIC_SELF_TEST_URL`, which stay authoritative (set the latter when the
+or `YAGO_PUBLIC_SELF_TEST_URL`, which remain pinned instead of being re-derived (set the latter when the
 peer listener is behind a reverse proxy or NAT and the external address differs).
+Successful outbound peer greetings also carry the observer's external back-ping
+classification. Any current peer observation is authoritative: `senior` or
+`principal` confirms that the advertised endpoint is reachable, while an
+all-`junior` observation set reports it unreachable. Only when no current peer
+observation exists does the node consult the direct self-test, and it executes
+that request only when `YAGO_PUBLIC_SELF_TEST_URL` was explicitly configured.
+The automatically derived loopback or listener address is not treated as public
+reachability evidence. This prevents a router without NAT hairpin support from
+overriding successful external ingress and prevents a local loopback response
+from proving public ingress.
+
+The node binds every configured peer, operations, and public-search HTTP
+listener before starting its peer-presence loops. If any HTTP bind fails, it
+closes the listeners already opened and starts no announcement work. A first
+outbound greeting therefore cannot classify the node before its advertised peer
+HTTP endpoint is listening.
 
 ### Storage admission
 
@@ -175,13 +191,13 @@ required.
 | `YAGO_REMOTE_CRAWL_QUEUE_CAPACITY` | `1000` | Maximum distinct locally accepted URLs retained in the durable delegation queue (1–100,000). A full delegation queue never rejects or removes the authoritative local crawler order. Admin key: `swarm.remote_crawl.queue_capacity`; takes effect after restart. |
 | `YAGO_SEEDLIST_URLS` | _(empty)_ | Comma-separated YaCy seedlist URLs to discover peers from. |
 | `YAGO_LAN_DISCOVERY` | `false` | Announce this node over the local UDP discovery beacon and greet announcing neighbors through the verified YaCy hello exchange. Admin key: `network.lan_discovery`; takes effect after restart. |
-| `YAGO_ADVERTISE_HOST` | _(auto)_ | Public IP or DNS name other peers use to reach you. When unset and the node announces to the network (`YAGO_SEEDLIST_URLS` set), it auto-detects the first non-loopback IPv4 address. Set it explicitly behind NAT or Docker bridge networking, where the guess is wrong; the DHT self-test demotes an unreachable self. |
+| `YAGO_ADVERTISE_HOST` | _(auto)_ | Public IP or DNS name other peers use to reach you. When unset and the node announces to the network (`YAGO_SEEDLIST_URLS` set), it auto-detects the first non-loopback IPv4 address. Set it explicitly behind NAT or Docker bridge networking, where the guess is wrong. Validated external hello observations classify public reachability; without current peer evidence or an explicitly pinned public self-test URL, the DHT gate remains unconfirmed. |
 | `YAGO_ADVERTISE_PORT` | _(the `YAGO_PEER_ADDR` port)_ | Port other peers use to reach you. Admin key: `network.advertise.port`; an empty value follows the peer listener, and a pinned 1–65535 value takes effect after restart. |
 | `YAGO_PEER_ADVERTISE_DIRECT` | `true` | Advertise the YaCy direct-connect capability. Admin key: `peer.advertise.direct_connect`; takes effect after restart when the seed identity is rebuilt. |
 | `YAGO_PEER_ADVERTISE_REMOTE_INDEX` | `true` | Advertise and accept inbound YaCy RWI transfers. Admin key: `peer.advertise.remote_index`; when off, inbound transferRWI and transferURL calls are refused, and the change takes effect after restart. |
 | `YAGO_PEER_ADVERTISE_ROOT_NODE` | `false` | Advertise the YaCy root-node capability. Admin key: `peer.advertise.root_node`; takes effect after restart. |
 | `YAGO_PEER_ADVERTISE_SSL` | `false` | Advertise that the peer port terminates HTTPS. Admin key: `peer.advertise.ssl`; enable it only when the advertised port actually serves TLS. The change takes effect after restart. |
-| `YAGO_PUBLIC_SELF_TEST_URL` | local peer URL | Base URL used by outbound DHT gates to self-test `/yacy/query.html?object=rwicount`. Admin key: `network.public_self_test_url`; use an absolute public HTTP(S) URL behind a reverse proxy or NAT, or leave it empty to follow the peer listener after restart. Bootstrap and Admin share one 2,048-byte canonicalizer; credentials, query strings, fragments, opaque URLs, control characters, and invalid hosts or ports are rejected. |
+| `YAGO_PUBLIC_SELF_TEST_URL` | _(empty)_ | Explicit public base URL eligible for the bounded outbound DHT fallback query to `/yacy/query.html?object=rwicount` when no current peer observation exists. Admin key: `network.public_self_test_url`; set an absolute public HTTP(S) URL behind a reverse proxy or NAT. Empty leaves public reachability dependent on peer back-ping evidence and otherwise unconfirmed; the derived local peer URL is not queried as public evidence. Bootstrap and Admin share one 2,048-byte canonicalizer; credentials, query strings, fragments, opaque URLs, control characters, and invalid hosts or ports are rejected. |
 | `YAGO_ANNOUNCE_INTERVAL` | `10m` | How often to re-announce yourself to the network (e.g. `30s`, `10m`, `1h`). |
 | `YAGO_GREETS_PER_CYCLE` | `16` | How many peers to greet in each announce cycle. |
 | `YAGO_NETWORK_DHT` | `true` | Enables the sender-side DHT gate equivalent to YaCy `network.unit.dht`. |
@@ -212,7 +228,7 @@ required.
 | `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | Serve the anonymous public search portal on the public listener's root (`/`). Off by default; while off, the root serves the landing page and the portal is not mounted. When on, a minimal, server-rendered, no-JavaScript search page runs exact/morphological retrieval against the local index plus YaCy peers. An empty incomplete exact stage gets bounded local-exact rescue; an honest miss gets bounded local fuzzy recovery. The `enabled` DDGS mode runs only after the applicable local recovery also misses; `always` runs DDGS alongside local and swarm retrieval. It exposes only search — never admin APIs — and logs query text only when the operator explicitly selects `YAGO_QUERY_LOG_MODE=full`; the default and aggregate modes omit it. Overridable live from the admin console (see Runtime overrides). |
 | `YAGO_PUBLIC_BASE_URL` | _(derive from request)_ | Absolute HTTP(S) public base used by OpenSearch descriptors and public links behind a reverse proxy. An empty value derives the base from each request. Admin key: `public.base.url`; applies live. |
 | `YAGO_HTTPS_REDIRECT` | `false` | Redirect plain-HTTP requests to the `https://` origin with a 308, preserving path and query. Off by default. TLS termination is expected in front (a reverse proxy sets `X-Forwarded-Proto`); loopback requests are never redirected. Overridable live from the admin console (see Runtime overrides). |
-| `YAGO_EXTRACT_FETCH_ENABLED` | `false` | Enable fetch-on-extract for `POST /extract`. Off by default, so an uncached URL is a controlled `failed_result` with no outbound request. When on, an uncached URL is fetched through the shared egress-guarded client (private networks stay default-denied — no SSRF) and its title and visible text are extracted. |
+| `YAGO_EXTRACT_FETCH_ENABLED` | `false` | Enable fetch-on-extract for `POST /extract`. Each stored-document lookup is capped at 250 milliseconds. Off by default, so an uncached URL or a lookup timeout is a controlled per-URL `failed_results` entry with no outbound request. When on, an uncached URL or timed-out lookup uses the request's remaining budget to fetch through the shared egress-guarded client (private networks stay default-denied — no SSRF) and extract its title and visible text. A request deadline or fetch failure is also reported for that URL, preserving completed rows in a mixed HTTP 200 response. |
 | `YAGO_EXTRACT_FETCH_TIMEOUT` | `10s` | Per-request timeout for a fetch-on-extract fetch. |
 | `YAGO_EXTRACT_FETCH_MAX_BYTES` | `2097152` | Maximum response bytes read per fetch-on-extract fetch. The default is 2 MiB; configuration accepts 1 byte through the 4 MiB hard ceiling and rejects a larger value. A response above the configured limit is rejected, not truncated into a partial document. |
 | `YAGO_ADMIN_USER` | _(empty)_ | Administrator username. When set with `YAGO_ADMIN_PASSWORD`, the admin is provisioned on every start and those credentials are authoritative. |
@@ -231,7 +247,7 @@ required.
 | `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-engine timeout ceiling. Interactive search additionally caps the complete hedged web stage at 900ms after a local-plus-swarm miss or 1500ms when `always` starts it in parallel, inside the fixed 1.8-second deadline. |
 | `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Safe-search preference passed to engines that support it (`strict`, `moderate`, `off`). |
 | `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. Normalized responses share a fixed 4 MiB/256-entry byte-aware cache, retain at most 20 rows per query, and bound each title, URL, and snippet before insertion. |
-| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so the next identical query can be answered locally. Publishing runs after the search response through a process-wide two-work admission with a ten-second deadline; saturated admission skips optional seed work. URLs already in the document store are skipped, and the durable queue deduplicates by URL. No effect when crawling is disabled. |
+| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so later queries can be answered locally. Publishing runs after the search response through two background workers, a process-wide queue of at most 128 pending jobs, and a ten-second deadline that begins when each job starts. A full queue warns and skips only new optional warming work. Each URL gets a 50-millisecond stored-document presence check before an absent or indeterminate URL attempts URL-idempotent durable publication; at most one accepted order remains for that normalized URL. No effect when crawling is disabled. |
 | `YAGO_WEB_FALLBACK_SEED_DEPTH` | `5` | Crawl depth for web-discovery orders when web-discovery crawling is enabled (0–8). |
 | `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `250` | Whole-run page cap for each web-discovery crawl task when enabled. The global crawler run cap may reduce it further. |
 | `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records the query length and result count but never the text; `full` records the query text. In either enabled mode, an incomplete response also records `partialFailures` and at most eight ordered unique `failureSources`. The default keeps queries out of the logs. |
@@ -466,6 +482,16 @@ separate Crawler, Automatic discovery, and Document formats fieldsets. The
 legacy `/admin/autocrawler` URLs redirect to this tab and do not keep a second
 settings surface.
 
+When web-fallback crawl seeding is enabled, every eligible surfaced URL enters
+the bounded background warming path described by `YAGO_WEB_FALLBACK_SEED_CRAWL`.
+Fragments are removed before URL deduplication; credential-bearing, addressless,
+non-HTTP, and oversized identities are rejected. Each absent or
+lookup-indeterminate URL attempts one URL-idempotent durable
+automatic-discovery publication and keeps the web-discovery profile's depth,
+per-host limit, and whole-run cap. At most one accepted order remains for a
+normalized URL. Its root page is the warming fetch, so the node does not create a
+second cache order for the same result.
+
 `YAGO_CRAWLER_MAX_PAGES_PER_RUN` bootstraps a 50,000-page whole-run budget in
 both the node and crawler. The node records the effective value in every new
 manual and scheduled profile. A swarm- or web-discovery task uses the smaller
@@ -521,6 +547,14 @@ streams it in confirmed batches of at most 16. Periodic heartbeats keep every
 active lease alive but do not confirm unseen deliveries; a targeted heartbeat
 must explicitly confirm the current lease or batch. This protocol is automatic
 and has no separate operator timing control.
+
+Every order-stream attempt carries its own cancellation through lease
+confirmation and local active-run admission. If a node restart invalidates the
+process session while a confirmed delivery is waiting locally, that attempt is
+cancelled and the live crawler opens a replacement stream to adopt its durable
+leases. Restarting the crawler instead preserves its checkpoint-backed worker
+identity, creates a new process session, and adopts the same worker's unfinished
+leases. No runtime setting controls this recovery behavior.
 
 Accepting an untrusted certificate authority preserves encryption but does not
 authenticate the remote server and permits an on-path endpoint to substitute

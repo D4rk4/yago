@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 )
 
@@ -24,6 +25,10 @@ func TestSearchTargetPeersOffersKnownUnconfirmedPeers(t *testing.T) {
 
 	seed := networkTestSeed(t)
 	roster.Discover(ctx, seed) // known, but never ConfirmReachable
+	junior := seed
+	junior.Hash = yagomodel.Hash("JJJJJJJJJJJJ")
+	junior.Name = yagomodel.Some("junior")
+	roster.ObserveCaller(ctx, junior, yagomodel.PeerJunior)
 
 	if n := roster.ReachablePeerCount(ctx); n != 0 {
 		t.Fatalf("reachable peers = %d, want 0 (never confirmed)", n)
@@ -31,6 +36,6 @@ func TestSearchTargetPeersOffersKnownUnconfirmedPeers(t *testing.T) {
 
 	targets := searchTargetPeers{roster: roster}.SearchTargetPeers(ctx)
 	if len(targets) != 1 || targets[0].Hash != seed.Hash {
-		t.Fatalf("search targets = %v, want the known peer %q", targets, seed.Hash)
+		t.Fatalf("search targets = %v, want only known senior %q", targets, seed.Hash)
 	}
 }

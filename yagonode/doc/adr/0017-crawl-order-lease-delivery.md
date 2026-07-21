@@ -138,6 +138,10 @@ leases alive with heartbeats.
 - A node restart does not make a live worker's unfinished order globally
   claimable. Its durable session-aware lease remains authoritative until that
   stable worker settles it, even after the process-session deadline.
+- A node-reported process-session loss cancels the complete client stream
+  attempt, including a confirmed order waiting for local active-run admission.
+  The live crawler can therefore reopen the stream and adopt its durable leases
+  after the node restarts without requiring a crawler restart.
 - Duplicate terminal acknowledgement remains successful after a lost response.
   An acknowledgement for a lease already requeued by NAK or expiry is rejected,
   so it cannot delete crawler recovery state while another copy remains pending.

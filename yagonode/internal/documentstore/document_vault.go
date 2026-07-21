@@ -38,8 +38,15 @@ func (d documentVault) Receive(ctx context.Context, docs []Document) (Receipt, e
 	prepared := make([]Document, len(docs))
 	urls := make([]string, 0, len(docs))
 	for index, document := range docs {
-		prepared[index] = normalizedDocument(document)
+		prepared[index] = retainSubmittedInlinks(normalizedDocument(document))
 		urls = append(urls, prepared[index].NormalizedURL)
+	}
+	atCapacity, err := d.vault.AtCapacity(ctx)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("check capacity: %w", err)
+	}
+	if atCapacity {
+		return Receipt{Busy: true}, nil
 	}
 	releaseWrite, err := d.enterStoredDocumentWrite(ctx)
 	if err != nil {
@@ -51,14 +58,6 @@ func (d documentVault) Receive(ctx context.Context, docs []Document) (Receipt, e
 		return Receipt{}, err
 	}
 	defer releaseURLs()
-
-	atCapacity, err := d.vault.AtCapacity(ctx)
-	if err != nil {
-		return Receipt{}, fmt.Errorf("check capacity: %w", err)
-	}
-	if atCapacity {
-		return Receipt{Busy: true}, nil
-	}
 	plan, err := d.planStoredDocumentWrites(ctx, prepared)
 	if err != nil {
 		return Receipt{}, err
@@ -227,7 +226,7 @@ func (d documentVault) CanonicalDocuments(
 	prepared := make([]Document, len(docs))
 	urls := make([]string, 0, len(docs))
 	for index, document := range docs {
-		prepared[index] = normalizedDocument(document)
+		prepared[index] = retainSubmittedInlinks(normalizedDocument(document))
 		urls = append(urls, prepared[index].NormalizedURL)
 	}
 	releaseURLs, err := d.urlBoundaries.lockReads(ctx, urls)
@@ -268,7 +267,7 @@ func (d documentVault) canonicalDocument(
 	document Document,
 	staged map[string]stagedStoredDocument,
 ) (Document, storedDocumentLocation, bool, bool, error) {
-	document = normalizedDocument(document)
+	document = restoreSubmittedInlinks(normalizedDocument(document))
 	if document.NormalizedURL == "" {
 		return Document{}, storedDocumentLocation{}, false, false, nil
 	}
@@ -299,8 +298,9 @@ func (d documentVault) canonicalDocument(
 		)
 	}
 	if anchorsFound {
-		document.Inlinks = canonicalAnchorTexts(append(document.Inlinks, storedAnchors...))
+		document.Inlinks = append(document.Inlinks, storedAnchors...)
 	}
+	document.Inlinks = canonicalAnchorTexts(document.Inlinks)
 
 	return document, location, true, found, nil
 }
@@ -425,6 +425,7 @@ func normalizedDocument(doc Document) Document {
 	doc.Headings = append([]string(nil), doc.Headings...)
 	doc.Outlinks = append([]string(nil), doc.Outlinks...)
 	doc.Inlinks = append([]AnchorText(nil), doc.Inlinks...)
+	doc.submittedInlinks = append([]AnchorText(nil), doc.submittedInlinks...)
 	doc.OutboundAnchors = append([]OutboundAnchor(nil), doc.OutboundAnchors...)
 	doc.Images = append([]ImageMetadata(nil), doc.Images...)
 	if doc.Metadata != nil {

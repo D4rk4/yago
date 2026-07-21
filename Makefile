@@ -144,11 +144,11 @@ e2e-crawler-image:
 		--build-arg VERSION=$(PRODUCT_VERSION) \
 		-f yago-crawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
 
-e2e-node:
+e2e-node: e2e-node-image
 	cd yagonode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...
 
-e2e-crawler:
+e2e-crawler: e2e-node-image e2e-crawler-image
 	cd yago-crawler/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) \
 		YAGO_CRAWLER_IMAGE=$(E2E_CRAWLER_IMAGE) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \
 		$(GO) test -tags e2e -timeout $(E2E_TIMEOUT) -count=1 -v ./...

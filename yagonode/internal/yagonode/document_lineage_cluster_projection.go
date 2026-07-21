@@ -40,7 +40,7 @@ func (d documentLineageEvictor) projectSurvivingContentCluster(
 		if memberURL == normalizedURL {
 			continue
 		}
-		document, found, err := d.directory.Document(ctx, memberURL)
+		document, found, err := d.contentClusterDocumentRevision(ctx, memberURL)
 		if err != nil {
 			return fmt.Errorf("read surviving clustered document: %w", err)
 		}

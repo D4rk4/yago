@@ -201,7 +201,7 @@ func streamCrawlOrdersWithLeaseSession(
 			if session.fetchStartSession != nil {
 				session.fetchStartSession.Connected()
 			}
-			drainOrderStreamWithLeaseSession(ctx, crawlOrderStreamDrain{
+			drainOrderStreamWithLeaseSession(streamCtx, crawlOrderStreamDrain{
 				client:              session.client,
 				stream:              stream,
 				out:                 session.out,

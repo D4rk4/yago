@@ -39,6 +39,12 @@ node signs outbound peer requests with a fresh bounded salt and validates
 inbound requests against the authenticated peer identity. Every participating
 peer must use the same mode and secret.
 
+At startup the node binds every configured peer, operations, and public-search
+HTTP listener before it starts peer greeting and announcement loops. A bind
+failure closes the HTTP listeners already opened and prevents the presence loops
+from starting. The first outbound hello therefore cannot race the advertised
+peer HTTP listener into a false `junior` classification.
+
 Public `resource=global` search uses YaCy DHT positions but draws candidates from
 the known senior-peer roster, including peers that have not completed an inbound
 callback. This matches YaCy remote search and lets a node behind NAT search the
@@ -84,6 +90,24 @@ YaCy promotes a requester to `senior` or `principal` only after a successful
 callback to the requester's advertised `/yacy/query.html?object=rwicount`. A
 failed callback leaves the requester `junior` or potential/disconnected.
 
+The Go node retains that distinction for authenticated inbound hello callers.
+A caller must provide a usable advertised endpoint, or an advertised port that
+can be combined with the trusted request address. The locally observed callback
+result replaces the caller's claimed type. A failed callback stores the caller
+as `junior` in the bounded persistent roster, where Admin Network can display
+it, but does not place it in the active set. A later successful callback promotes
+the same caller; a later failed callback demotes it. Locally junior callers are
+excluded from hello seed replies, seed-list export, search candidates, reachable
+counts, and DHT targets. They share the existing 4,096-peer reservoir bound and
+cannot grow an independent unbounded table.
+
+The callback uses the same aggregate 6.5-second HTTP or 13-second HTTPS-first
+budget as stock YaCy and requires a nonnegative RWI-count result. An unspecified
+advertised literal is replaced by a usable trusted transport address or rejected.
+The final caller observation has its own bounded one-second storage context, so
+a callback or client disconnect that exhausts the hello request cannot discard
+the `junior` record.
+
 ---
 
 ## Active peer visibility
@@ -125,20 +149,40 @@ A YaCy node originates DHT transfer only when all of these are true:
 
 The Go gate evaluator keeps the same sender-side decision as named gate results
 with stable reason text. The runtime scheduler feeds these gates from the local
-YaCy-compatible public endpoint self-test, reachable peer count, local RWI word
-count, storage capacity, and DHT distribution environment flags.
+evidence-backed public endpoint state, reachable peer count, local RWI word
+count, storage capacity, and DHT distribution environment flags. Public endpoint
+state uses current external hello classifications first and only the explicitly
+pinned direct YaCy query when no such classification exists.
 
 The ops listener exposes the current sender-side gate report at
 `/api/admin/v1/network/dht/gates`. The JSON response includes the overall open
 state, the first blocking reason, raw gate inputs, configured thresholds, and
-each named gate result. This is the current machine-readable surface for future
-admin UI work.
+each named gate result. Admin Network renders the same named gates and current
+public-reachability evidence.
 
-The public endpoint self-test calls
-`/yacy/query.html?object=rwicount&youare=<local-peer-hash>`. By default it uses
-the local peer listener with loopback substituted for wildcard listen addresses.
-Set `YAGO_PUBLIC_SELF_TEST_URL` to the externally reachable peer base URL when a
-reverse proxy or NAT path should be tested instead.
+The direct public endpoint self-test calls
+`/yacy/query.html?object=rwicount&youare=<local-peer-hash>`. It is eligible as
+operational reachability evidence only when `YAGO_PUBLIC_SELF_TEST_URL`
+explicitly pins the externally reachable peer base URL. Without that setting,
+the automatically derived local or loopback target is not queried and does not
+prove public ingress. A failed request from a node to its own pinned advertised
+address is still sensitive to a NAT that does not support hairpinning.
+
+Ordinary outbound `/yacy/hello.html` exchanges provide an external observation:
+the remote peer reports `senior` or `principal` only after it successfully
+back-pings the advertised query endpoint, and reports `junior` when that callback
+fails. The node retains these classifications for 15 minutes, keyed by at most
+1,024 observer hashes. Only observers whose primary advertised address is a
+public IP literal contribute this evidence; a hostname or a private, local, or
+reserved address does not. Any current observation is authoritative. At least
+one current `senior` or `principal` observation reports reachable. If every
+current observation is `junior`, the endpoint reports unreachable and an
+explicitly pinned direct probe is not used to override it. A `junior`
+observation replaces only the same observer's earlier positive result, so one
+observer does not erase another observer's successful back-ping. Only when no
+current observer evidence exists may the explicitly pinned direct query run.
+A greet transport failure records no self-reachability classification because
+failure to reach the observer says nothing about ingress to this node.
 
 The Go outbound transfer layer can probe a target peer's `rwicount` through
 `/yacy/query.html` and treats `response=-1`, missing responses, malformed

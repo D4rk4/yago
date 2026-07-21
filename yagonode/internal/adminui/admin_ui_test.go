@@ -192,6 +192,17 @@ func TestConsoleOverviewRendersLiveStatus(t *testing.T) {
 	}
 }
 
+func TestConsoleOverviewRendersJuniorPeerType(t *testing.T) {
+	t.Parallel()
+
+	overview := sampleOverview()
+	overview.PeerType = "junior"
+	got := do(t, New(Options{Overview: fakeOverview{snap: overview}}), "/admin/overview")
+	if !strings.Contains(got.body, `<span class="cds-tag">junior</span>`) {
+		t.Fatal("overview missing junior peer type")
+	}
+}
+
 func TestConsoleOverviewMetricsPartialIsFragment(t *testing.T) {
 	t.Parallel()
 
@@ -515,13 +526,16 @@ func TestConsoleNetworkRendersStatus(t *testing.T) {
 	t.Parallel()
 
 	snap := NetworkStatus{
-		Available:       true,
-		RosterAvailable: true,
-		DHTOpen:         false,
-		PublicReachable: true,
-		BlockingReason:  "not enough peers",
-		KnownPeers:      12,
-		ReachablePeers:  5,
+		Available:                    true,
+		RosterAvailable:              true,
+		DHTOpen:                      false,
+		PublicReachable:              true,
+		PublicReachabilityKnown:      true,
+		PublicReachabilitySource:     PublicReachabilityPeerBackPing,
+		PublicReachabilityObservedAt: "2026-07-21T03:04:03Z",
+		BlockingReason:               "not enough peers",
+		KnownPeers:                   12,
+		ReachablePeers:               5,
 		OwnFlags: []NetworkFlag{
 			{Name: "direct", Set: true},
 			{Name: "remote-crawl", Set: false},
@@ -565,6 +579,7 @@ func TestConsoleNetworkRendersStatus(t *testing.T) {
 		"not enough peers", "Closed", "senior", "remote-index", ">42<",
 		"2026-01-02T03:04:05Z", "Reachable", "https://seeds.example/seed.txt",
 		"Advertised to swarm", "direct: on", "remote-crawl: off",
+		"Peer back-ping", `datetime="2026-07-21T03:04:03Z"`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("network section missing %q", want)
@@ -590,6 +605,9 @@ func TestConsoleNetworkEmptyStates(t *testing.T) {
 	}
 	if !strings.Contains(got.body, "No seedlist URLs configured.") {
 		t.Fatal("expected empty seedlist state")
+	}
+	if !strings.Contains(got.body, `cds-metric__value">Unconfirmed`) {
+		t.Fatal("expected unconfirmed public reachability state")
 	}
 }
 

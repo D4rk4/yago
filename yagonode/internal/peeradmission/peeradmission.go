@@ -1,8 +1,6 @@
 // Package peeradmission answers inbound hello requests: it classifies the calling
 // peer as senior or junior by probing it back, and returns a random sample of the
-// reachable peers it reads from the roster. On a confirmed back-ping it refreshes
-// that caller's recency in the roster, but it never introduces a peer learned from
-// an inbound request.
+// reachable peers it reads from the roster.
 package peeradmission
 
 import (

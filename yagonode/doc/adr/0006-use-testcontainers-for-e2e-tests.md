@@ -52,4 +52,5 @@ reason at a lower level of abstraction, with more code to maintain than the CLI 
 End-to-end interoperability, crawl-to-index delivery, and ranking promotion are verified in real
 product containers on demand. The testcontainers dependency is confined to the two e2e modules;
 production modules, release artifacts, and `make verify` are unaffected. Running `make e2e`
-requires a working Docker daemon and network access for any image that is not already local.
+requires a working Docker daemon, rebuilds the required product images from the current working
+tree, and requires network access for any dependency image that is not already local.

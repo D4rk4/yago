@@ -190,8 +190,10 @@ func TestWithWebFallbackInstallsSeeder(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("crawl seed was not published")
 	}
-	if len(queue.orders) != 1 || queue.keys[0] != "https://web.example/x" {
-		t.Fatalf("seeded orders = %#v keys = %#v", queue.orders, queue.keys)
+	keys, orders := queue.snapshot()
+	if len(orders) != 1 || keys[0] != "https://web.example/x" ||
+		orders[0].Profile.Name != webSeedProfileName {
+		t.Fatalf("seeded orders = %#v keys = %#v", orders, keys)
 	}
 }
 

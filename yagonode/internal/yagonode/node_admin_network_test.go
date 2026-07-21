@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 )
 
@@ -86,7 +87,7 @@ func TestNetworkSourceSurfacesReachabilityAndSeedlists(t *testing.T) {
 	source := newNetworkSource(gates, roster, []string{"https://seeds.example/seed.txt"}, nil, nil)
 
 	status := source.Network(context.Background())
-	if !status.PublicReachable {
+	if !status.PublicReachable || !status.PublicReachabilityKnown {
 		t.Fatal("expected the public self-test result to be surfaced")
 	}
 	if len(status.Seedlists) != 1 || status.Seedlists[0].URL != "https://seeds.example/seed.txt" {
@@ -97,6 +98,50 @@ func TestNetworkSourceSurfacesReachabilityAndSeedlists(t *testing.T) {
 	}
 	if len(status.Peers) != 1 || status.KnownPeers != 1 {
 		t.Fatalf("peers = %+v known=%d", status.Peers, status.KnownPeers)
+	}
+}
+
+func TestNetworkSourceSurfacesReachabilityProvenance(t *testing.T) {
+	observedAt := time.Unix(12, 0)
+	gates := dhtGateStatusSource{
+		snapshotWithReachability: func(context.Context) (
+			dhtexchange.GateState,
+			publicReachabilitySnapshot,
+		) {
+			return dhtexchange.GateState{PublicReachable: true}, publicReachabilitySnapshot{
+				state: publicReachabilityReachable, source: publicReachabilitySourcePeerBackPing,
+				observedAt: observedAt,
+			}
+		},
+	}
+	status := newNetworkSource(gates, nil, nil, nil, nil).Network(t.Context())
+	if !status.PublicReachabilityKnown || !status.PublicReachable ||
+		status.PublicReachabilitySource != adminui.PublicReachabilityPeerBackPing ||
+		status.PublicReachabilityObservedAt != "1970-01-01T00:00:12Z" {
+		t.Fatalf("network reachability provenance = %+v", status)
+	}
+}
+
+func TestAdminReachabilityObservedAtFormatsUTCAndZero(t *testing.T) {
+	if got := adminReachabilityObservedAt(time.Time{}); got != "" {
+		t.Fatalf("zero observation = %q", got)
+	}
+	observed := time.Date(2026, time.July, 21, 5, 4, 3, 0, time.FixedZone("test", 2*60*60))
+	if got := adminReachabilityObservedAt(observed); got != "2026-07-21T03:04:03Z" {
+		t.Fatalf("UTC observation = %q", got)
+	}
+}
+
+func TestAdminReachabilitySourceMapsEveryProvenance(t *testing.T) {
+	for source, want := range map[publicReachabilitySource]string{
+		publicReachabilitySourcePeerBackPing: adminui.PublicReachabilityPeerBackPing,
+		publicReachabilitySourcePinnedProbe:  adminui.PublicReachabilityPinnedProbe,
+		publicReachabilitySourceDerivedProbe: adminui.PublicReachabilityDerivedProbe,
+		publicReachabilitySourceUnspecified:  "",
+	} {
+		if got := adminReachabilitySource(source); got != want {
+			t.Fatalf("source %q = %q, want %q", source, got, want)
+		}
 	}
 }
 
