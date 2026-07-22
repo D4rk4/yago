@@ -19,6 +19,7 @@ type searchEndpoint struct {
 	gate           *httpguard.IntakeGate
 	analyzerRecall negotiatedAnalyzerRecallSource
 	evidence       queryMatchEvidenceSource
+	potentialPeers PotentialPeerObserver
 }
 
 func (e searchEndpoint) Serve(
@@ -40,10 +41,12 @@ func (e searchEndpoint) Serve(
 
 	if e.identity.Authenticates(
 		req.NetworkName,
+		req.NetworkNamePresent,
 		req.Key,
 		req.Iam,
 		req.MagicMD5,
 	) {
+		e.observePotentialPeer(ctx, req)
 		criteria, err := searchCriteriaFromRequest(req)
 		if err != nil {
 			return yagoproto.SearchResponse{}, fmt.Errorf("search criteria: %w", err)
@@ -79,6 +82,7 @@ func (e searchEndpoint) Serve(
 					slog.Any("error", err),
 				)
 			}
+			result.resources = resourcesWithDefaultWordReferences(result.resources)
 			resp.SearchTime = int(result.searchDuration / time.Millisecond)
 			resp.References = strings.Join(result.topics, ",")
 			resp.JoinCount = result.totalDocumentsMatchingEveryTerm

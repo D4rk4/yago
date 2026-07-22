@@ -119,8 +119,13 @@ func TestVerifiedWebResultsEnforcesStructuredConstraints(t *testing.T) {
 	}{
 		{
 			name: "site host", request: searchcore.Request{SiteHost: "example.org"},
-			accepted: Result{URL: "https://docs.example.org/guide.pdf"},
-			rejected: Result{URL: "https://example.com/guide.pdf"},
+			accepted: Result{URL: "https://www.example.org/guide.pdf"},
+			rejected: Result{URL: "https://docs.example.org/guide.pdf"},
+		},
+		{
+			name: "www site host", request: searchcore.Request{SiteHost: "www.example.org"},
+			accepted: Result{URL: "https://example.org/guide.pdf"},
+			rejected: Result{URL: "https://www.docs.example.org/guide.pdf"},
 		},
 		{
 			name: "top level domain", request: searchcore.Request{TLD: ".org"},
@@ -141,6 +146,18 @@ func TestVerifiedWebResultsEnforcesStructuredConstraints(t *testing.T) {
 			name: "excluded term", request: searchcore.Request{ExcludedTerms: []string{"java"}},
 			accepted: Result{Title: "Golang tools", URL: "https://example.org/tools.pdf"},
 			rejected: Result{Title: "Golang and Java tools", URL: "https://example.org/tools.pdf"},
+		},
+		{
+			name:     "included parent domain",
+			request:  searchcore.Request{IncludeDomains: []string{"example.org"}},
+			accepted: Result{URL: "https://docs.example.org/guide.pdf"},
+			rejected: Result{URL: "https://example.net/guide.pdf"},
+		},
+		{
+			name:     "excluded parent domain",
+			request:  searchcore.Request{ExcludeDomains: []string{"blocked.example"}},
+			accepted: Result{URL: "https://allowed.example/guide.pdf"},
+			rejected: Result{URL: "https://deep.blocked.example/guide.pdf"},
 		},
 	}
 	for _, test := range tests {

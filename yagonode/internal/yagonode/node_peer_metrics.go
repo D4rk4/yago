@@ -17,7 +17,8 @@ type peerMetricsObserver interface {
 
 type observedPeerRoster struct {
 	peerroster.Roster
-	observer peerMetricsObserver
+	directory peerroster.Directory
+	observer  peerMetricsObserver
 }
 
 type observedKnownPeerCounter interface {
@@ -33,7 +34,8 @@ func observePeerRoster(
 		return roster
 	}
 
-	observed := observedPeerRoster{Roster: roster, observer: observer}
+	directory, _ := roster.(peerroster.Directory)
+	observed := observedPeerRoster{Roster: roster, directory: directory, observer: observer}
 	observed.observe(ctx)
 
 	return observed
@@ -50,6 +52,28 @@ func (r observedPeerRoster) ObserveCaller(
 	classification yagomodel.PeerType,
 ) {
 	r.Roster.ObserveCaller(ctx, caller, classification)
+	r.observe(ctx)
+}
+
+func (r observedPeerRoster) ObserveResponder(
+	ctx context.Context,
+	responder yagomodel.Seed,
+) {
+	r.Roster.ObserveResponder(ctx, responder)
+	r.observe(ctx)
+}
+
+func (r observedPeerRoster) ObservePotential(
+	ctx context.Context,
+	potential yagomodel.Seed,
+) {
+	observer, ok := r.Roster.(interface {
+		ObservePotential(context.Context, yagomodel.Seed)
+	})
+	if !ok {
+		return
+	}
+	observer.ObservePotential(ctx, potential)
 	r.observe(ctx)
 }
 

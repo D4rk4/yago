@@ -21,17 +21,24 @@ const (
 	MessageResponseAccepted   = "Thank you!"
 )
 
+const (
+	MessageSubjectMaximumBytes    = 100
+	MessageBodyMaximumBytes       = 10240
+	MessageAttachmentMaximumBytes = 0
+)
+
 type MessageRequest struct {
-	NetworkName string
-	YouAre      yagomodel.Hash
-	Iam         yagomodel.Hash
-	Key         string
-	MagicMD5    string
-	MyTime      string
-	Process     MessageProcess
-	MySeed      yagomodel.Optional[yagomodel.Seed]
-	Subject     string
-	Body        string
+	NetworkName        string
+	NetworkNamePresent bool
+	YouAre             yagomodel.Hash
+	Iam                yagomodel.Hash
+	Key                string
+	MagicMD5           string
+	MyTime             string
+	Process            MessageProcess
+	MySeed             yagomodel.Optional[yagomodel.Seed]
+	Subject            string
+	Body               string
 }
 
 type MessageResponse struct {
@@ -43,7 +50,7 @@ type MessageResponse struct {
 
 func (r MessageRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
 	putString(form, FieldYouAre, r.YouAre.String())
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldKey, r.Key)
@@ -60,12 +67,14 @@ func (r MessageRequest) Form() url.Values {
 }
 
 func ParseMessageRequest(ctx context.Context, form url.Values) (MessageRequest, error) {
+	networkName, networkNamePresent := parseNetworkName(form)
 	req := MessageRequest{
-		NetworkName: form.Get(FieldNetworkName),
-		Key:         form.Get(FieldKey),
-		MagicMD5:    form.Get(FieldMagicMD5),
-		MyTime:      form.Get(FieldMyTime),
-		Process:     MessageProcess(form.Get(FieldMessageProcess)),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		Key:                form.Get(FieldKey),
+		MagicMD5:           form.Get(FieldMagicMD5),
+		MyTime:             form.Get(FieldMyTime),
+		Process:            MessageProcess(form.Get(FieldMessageProcess)),
 	}
 	if req.Process == "" {
 		req.Process = MessageProcessPermission
@@ -96,12 +105,15 @@ func ParseMessageRequest(ctx context.Context, form url.Values) (MessageRequest, 
 			ctx,
 			FieldMessageSubject,
 			form.Get(FieldMessageSubject),
+			MessageSubjectMaximumBytes,
 		)
 		if err != nil {
 			return MessageRequest{}, err
 		}
 
-		req.Body, err = decodeMessageField(ctx, FieldMessage, form.Get(FieldMessage))
+		req.Body, err = decodeMessageField(
+			ctx, FieldMessage, form.Get(FieldMessage), MessageBodyMaximumBytes,
+		)
 		if err != nil {
 			return MessageRequest{}, err
 		}
@@ -143,8 +155,8 @@ func ParseMessageResponse(m yagomodel.Message) (MessageResponse, error) {
 	}, nil
 }
 
-func decodeMessageField(ctx context.Context, field, raw string) (string, error) {
-	plain, err := yagomodel.DecodeWireForm(ctx, raw)
+func decodeMessageField(ctx context.Context, field, raw string, limit int) (string, error) {
+	plain, err := yagomodel.DecodeWireFormWithLimit(ctx, raw, int64(limit))
 	if err != nil {
 		return "", fmt.Errorf("message request %s: %w", field, err)
 	}

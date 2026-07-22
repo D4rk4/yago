@@ -15,8 +15,13 @@ import (
 // inbound reachability, yet must still search the network, so a discovered-but-
 // unconfirmed senior peer must remain a valid search target.
 func TestSearchTargetPeersOffersKnownUnconfirmedPeers(t *testing.T) {
+	now := time.Date(2026, 7, 21, 12, 0, 0, 0, time.UTC)
 	roster, err := peerroster.Open(
-		openTestVault(t), time.Now, reservoirCapacity, activeSetCapacity,
+		t.Context(),
+		openTestVault(t),
+		yagomodel.Hash("LLLLLLLLLLLL"),
+		func() time.Time { return now },
+		peerroster.Capacity{Reservoir: reservoirCapacity, Active: activeSetCapacity},
 	)
 	if err != nil {
 		t.Fatalf("open roster: %v", err)
@@ -24,6 +29,7 @@ func TestSearchTargetPeersOffersKnownUnconfirmedPeers(t *testing.T) {
 	ctx := context.Background()
 
 	seed := networkTestSeed(t)
+	seed.LastSeen = yagomodel.Some(yagomodel.NewSeedLastSeenUTC(now))
 	roster.Discover(ctx, seed) // known, but never ConfirmReachable
 	junior := seed
 	junior.Hash = yagomodel.Hash("JJJJJJJJJJJJ")

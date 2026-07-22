@@ -36,6 +36,7 @@ type SearchRequest struct {
 	MaxResults         int
 	IncludeRaw         bool
 	SafeSearch         bool
+	SiteHost           string
 	IncludeDomain      []string
 	ExcludeDomain      []string
 	Language           string

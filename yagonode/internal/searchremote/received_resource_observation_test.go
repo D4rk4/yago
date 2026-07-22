@@ -112,7 +112,7 @@ func TestSaltedRemoteSearchRequiresSelfIdentity(t *testing.T) {
 		t.Context(),
 		yagomodel.Seed{},
 		yagoproto.SearchRequest{},
-		remoteSearchBodyCap,
+		remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap},
 	)
 	if !errors.Is(err, errRemoteSearchFailed) ||
 		!strings.Contains(err.Error(), "missing self identity") {
@@ -137,7 +137,7 @@ func TestSaltedRemoteSearchSurfacesSigningFailure(t *testing.T) {
 		t.Context(),
 		yagomodel.Seed{},
 		yagoproto.SearchRequest{},
-		remoteSearchBodyCap,
+		remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap},
 	)
 	if !errors.Is(err, sentinel) || !errors.Is(err, errRemoteSearchFailed) {
 		t.Fatalf("remote search signing error = %v", err)

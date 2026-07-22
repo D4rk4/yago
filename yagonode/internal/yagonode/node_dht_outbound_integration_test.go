@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,7 +20,9 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/indextransfer"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodestatus"
+	"github.com/D4rk4/yago/yagonode/internal/peerannouncement"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
+	"github.com/D4rk4/yago/yagoproto"
 )
 
 type dhtOutboundTransferFixture struct {
@@ -29,13 +32,13 @@ type dhtOutboundTransferFixture struct {
 	urlHash        yagomodel.Hash
 }
 
-func TestOutboundDHTTransfersStoredRWIAndURLToPeer(t *testing.T) {
+func TestOutboundDHTTransfersWithoutRemoteRWICountQuery(t *testing.T) {
 	ctx := context.Background()
 	receiverHash := yagomodel.Hash("BBBBBBBBBBBB")
 	receiverConfig := testConfig(t)
 	receiverConfig.Hash = receiverHash
 	receiverConfig.Name = "receiver"
-	receiverStorage, receiverServer := startDHTReceiverNode(t, receiverConfig)
+	receiverStorage, receiverServer, queryRequests := startDHTReceiverNode(t, receiverConfig)
 
 	word := yagomodel.Hash("CCCCCCCCCCCC")
 	urlHash := yagomodel.Hash("DDDDDDDDDDDD")
@@ -57,6 +60,9 @@ func TestOutboundDHTTransfersStoredRWIAndURLToPeer(t *testing.T) {
 	assertDHTTransferReceipt(t, receipt, urlHash)
 	assertDHTTransferCounts(t, ctx, senderStorage, receiverStorage)
 	assertDHTReceiverPosting(t, ctx, receiverStorage, word, urlHash)
+	if queryRequests.Load() != 0 {
+		t.Fatalf("remote rwi count queries = %d, want 0", queryRequests.Load())
+	}
 }
 
 func TestOpenNodeStorageRecoversPendingOutboundSelectionAfterRestart(t *testing.T) {
@@ -132,12 +138,15 @@ func startDHTSenderRuntime(
 	storeSenderDHTRows(t, ctx, senderStorage, fixture.word, fixture.urlHash)
 
 	receiverSeed := dhtOutboundServerSeed(t, fixture.receiverHash, fixture.receiverServer)
+	evidence := peerannouncement.NewExternalReachabilityEvidence()
+	evidence.Observe(receiverSeed.Hash, yagomodel.PeerSenior)
 	report := nodestatus.NewReport(nodeIdentity(senderConfig), nodestatus.ReportSources{
-		RWI:       senderStorage.postings,
-		URLs:      senderStorage.urlDirectory,
-		Peers:     fakeRoster{},
-		News:      fakeSeedNews{},
-		Transfers: fakeTransferTotals{},
+		RWI:                senderStorage.postings,
+		URLs:               senderStorage.urlDirectory,
+		Peers:              fakeRoster{},
+		News:               fakeSeedNews{},
+		Transfers:          fakeTransferTotals{},
+		PeerClassification: evidence,
 	})
 	process := buildDHTOutboundRuntime(dhtOutboundRuntimeAssembly{
 		ctx:         ctx,
@@ -262,7 +271,7 @@ func assertDHTReceiverPosting(
 func startDHTReceiverNode(
 	t *testing.T,
 	config nodeConfig,
-) (nodeStorage, *httptest.Server) {
+) (nodeStorage, *httptest.Server, *atomic.Int64) {
 	t.Helper()
 
 	storage, err := openNodeStorage(openTestVault(t), "")
@@ -291,12 +300,29 @@ func startDHTReceiverNode(
 			Address: httpguard.NewClientAddressResolver(config.TrustedProxies),
 		},
 	)
-	mountNodeProtocol(router, identity, storage, nil, true)
+	mountNodeProtocol(nodeProtocolAssembly{
+		router:   router,
+		identity: identity,
+		storage:  storage,
+		peers: reachableRoster{
+			peers: []yagomodel.Seed{{Hash: yagomodel.Hash("AAAAAAAAAAAA")}},
+		},
+		acceptRemoteIndex: true,
+	})
 
-	server := httptest.NewServer(mux)
+	queryRequests := &atomic.Int64{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == yagoproto.PathQuery {
+			queryRequests.Add(1)
+			http.NotFound(w, req)
+
+			return
+		}
+		mux.ServeHTTP(w, req)
+	}))
 	t.Cleanup(server.Close)
 
-	return storage, server
+	return storage, server, queryRequests
 }
 
 func dhtOutboundServerSeed(

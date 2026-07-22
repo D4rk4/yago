@@ -6,6 +6,7 @@ package bootstrap
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 )
@@ -23,7 +24,14 @@ func New(client *http.Client, urls []string) SeedSource {
 }
 
 func NewObserved(client *http.Client, urls []string, observer SeedImportObserver) SeedSource {
-	return &seedlists{fetcher: newHTTPSeedlistFetcher(client), urls: urls, observer: observer}
+	return &seedlists{
+		fetcher:     newHTTPSeedlistFetcher(client),
+		urls:        urls,
+		observer:    observer,
+		now:         time.Now,
+		timeout:     seedlistAggregateTimeout,
+		concurrency: seedlistFetchConcurrency,
+	}
 }
 
 // SeedlistImporter fetches a single seed list on demand — e.g. an operator's

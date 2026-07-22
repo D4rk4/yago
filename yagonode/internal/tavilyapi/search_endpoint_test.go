@@ -261,10 +261,14 @@ func assertRichSearchResponse(
 	}
 	if search.got.Source != searchcore.SourceGlobal ||
 		search.got.Verify != searchcore.VerifyIfExist ||
-		search.got.Limit != 2 ||
+		search.got.Limit != 2*domainOverfetchFactor ||
 		!search.got.AllowWebFallback ||
 		!search.got.SafeSearch ||
-		search.got.SiteHost != "example.org" ||
+		search.got.SiteHost != "ignored.example" ||
+		len(search.got.IncludeDomains) != 1 ||
+		search.got.IncludeDomains[0] != "example.org" ||
+		len(search.got.ExcludeDomains) != 1 ||
+		search.got.ExcludeDomains[0] != "blocked.example" ||
 		search.got.ContentDomain != searchcore.ContentDomainText ||
 		documents.got != "https://example.org/doc" {
 		t.Fatalf("search=%#v doc=%q", search.got, documents.got)
@@ -295,8 +299,11 @@ func TestSearchEndpointDefaultsToLocalAndMetadataSnippet(t *testing.T) {
 	got := decodeSearchResponse(t, rec)
 	if search.got.Source != searchcore.SourceLocal ||
 		search.got.Verify != searchcore.VerifyFalse ||
-		search.got.Limit != defaultMaxResults ||
+		search.got.Limit != defaultMaxResults*domainOverfetchFactor ||
 		!search.got.AllowWebFallback ||
+		search.got.SiteHost != "" ||
+		len(search.got.IncludeDomains) != 1 ||
+		search.got.IncludeDomains[0] != "example.org" ||
 		got.Results[0].Content != "metadata snippet" ||
 		got.Results[0].RawContent != nil {
 		t.Fatalf("request=%#v response=%#v", search.got, got)
@@ -328,6 +335,40 @@ func TestSearchEndpointFiltersMismatchedIncludeDomains(t *testing.T) {
 	got := decodeSearchResponse(t, rec)
 	if len(got.Results) != 0 {
 		t.Fatalf("results = %#v", got.Results)
+	}
+}
+
+func TestSearchEndpointOverfetchesBeforeDomainPostfilter(t *testing.T) {
+	search := &fakeSearcher{response: searchcore.Response{Results: []searchcore.Result{
+		{
+			Title: "Blocked", URL: "https://blocked.example/doc",
+			Snippet: "blocked", Host: "blocked.example",
+		},
+		{
+			Title: "Allowed", URL: "https://docs.allowed.example/doc",
+			Snippet: "allowed", Host: "docs.allowed.example",
+		},
+	}}}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		PathSearch,
+		strings.NewReader(
+			`{"query":"golang","max_results":1,"include_domains":["allowed.example"],"exclude_domains":["blocked.example"]}`,
+		),
+	)
+	request.Header.Set("Authorization", "Bearer "+searchTestKey)
+
+	newTestSearchEndpoint(search, nil).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	response := decodeSearchResponse(t, recorder)
+	if search.got.Limit != domainOverfetchFactor || len(response.Results) != 1 ||
+		response.Results[0].URL != "https://docs.allowed.example/doc" {
+		t.Fatalf("request = %#v response = %#v", search.got, response)
 	}
 }
 
@@ -817,6 +858,9 @@ func TestCanonicalRankScoresAreBoundedAndMonotone(t *testing.T) {
 }
 
 func TestDomainHelpers(t *testing.T) {
+	if normalizedDomains(nil) != nil {
+		t.Fatal("empty domain list must stay nil")
+	}
 	if !domainMatches("docs.example.org", ".example.org") ||
 		domainMatches("example.net", "example.org") ||
 		domainMatches("", "example.org") ||
@@ -826,7 +870,7 @@ func TestDomainHelpers(t *testing.T) {
 		normalizeDomain("*.com") != "com" {
 		t.Fatal("domain helper mismatch")
 	}
-	if firstDomain([]string{"", "bad/path?query"}) != "" ||
+	if len(normalizedDomains([]string{"", "bad/path?query"})) != 0 ||
 		normalizeDomain("") != "" ||
 		normalizeDomain("://bad") != "" ||
 		normalizeDomain("https://example.org/path?query") != "" ||

@@ -40,3 +40,12 @@ func (catalog termAbstractCatalog) peerAdmitted(
 
 	return admitted
 }
+
+func (catalog termAbstractCatalog) peerReported(
+	peer yagomodel.Seed,
+	term yagomodel.Hash,
+) bool {
+	_, reported := catalog.peerTerms[peerRankingIdentity(peer)][term]
+
+	return reported
+}

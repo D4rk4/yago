@@ -254,6 +254,7 @@ func TestCandidateSnapshotBoundsBytesCountAndFreshness(t *testing.T) {
 	if entries, retained, err := r.scanFreshestCandidates(
 		t.Context(),
 		nil,
+		nil,
 		0,
 		1,
 	); err != nil || entries != nil ||
@@ -266,10 +267,8 @@ func TestCandidateSnapshotBoundsActiveSeeds(t *testing.T) {
 	r, _ := openScriptedRoster(t, 1, 4)
 	first := internalSeed(t, "first", "203.0.113.1")
 	second := internalSeed(t, "second", "203.0.113.2")
-	r.mu.Lock()
-	r.active[first.Hash] = first
-	r.active[second.Hash] = second
-	r.mu.Unlock()
+	r.ObserveResponder(t.Context(), first)
+	r.ObserveResponder(t.Context(), second)
 
 	seeds, retained, err := r.buildCandidateSnapshot(t.Context())
 	if err != nil {
@@ -318,10 +317,6 @@ func TestCandidateAndReachableSnapshotsDetachIP6(t *testing.T) {
 	if reachableAgainHosts[0].String() != "2001:db8::1" {
 		t.Fatalf("reachable snapshot retained caller mutation: %#v", reachableAgain)
 	}
-
-	if detached := detachCandidateSeeds([]yagomodel.Seed{peer}, -1); len(detached) != 0 {
-		t.Fatalf("negative detach limit = %d, want 0", len(detached))
-	}
 }
 
 func TestCandidateSnapshotRetainsCompactStrings(t *testing.T) {
@@ -344,6 +339,7 @@ func TestDiscoverBoundsRotatingAndBatchSeeds(t *testing.T) {
 	r, _ := openScriptedRoster(t, 4, 2)
 	for index := range 64 {
 		peer := internalSeed(t, fmt.Sprintf("%012d", index), "203.0.113.1")
+		peer.Port = yagomodel.Some(yagomodel.Port(10_000 + index))
 		r.Discover(t.Context(), peer)
 		if known := r.KnownPeerCount(t.Context()); known > 4 {
 			t.Fatalf("rotating known peers = %d, maximum 4", known)
@@ -358,6 +354,7 @@ func TestDiscoverBoundsRotatingAndBatchSeeds(t *testing.T) {
 	batch := make([]yagomodel.Seed, peerDiscoveryMaximumSeeds+1)
 	for index := range batch {
 		batch[index] = internalSeed(t, fmt.Sprintf("%012d", index), "203.0.113.1")
+		batch[index].Port = yagomodel.Some(yagomodel.Port(10_000 + index))
 	}
 	batchRoster.Discover(t.Context(), batch...)
 	if known := batchRoster.KnownPeerCount(t.Context()); known != peerDiscoveryMaximumSeeds {

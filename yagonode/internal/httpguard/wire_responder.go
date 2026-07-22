@@ -16,21 +16,19 @@ type RuntimeStatus interface {
 }
 
 type WireResponder struct {
-	status RuntimeStatus
+	status      RuntimeStatus
+	contentType string
 }
 
 func NewWireResponder(status RuntimeStatus) WireResponder {
-	return WireResponder{status: status}
+	return WireResponder{status: status, contentType: wireContentType}
 }
 
 func (r WireResponder) Write(ctx context.Context, w http.ResponseWriter, msg yagomodel.Message) {
 	yagoproto.InjectResponseHeader(msg, r.status.Version(ctx), r.status.Uptime(ctx))
-	writeWireMessage(ctx, w, msg)
+	writeWireMessageWithContentType(ctx, w, msg, r.contentType)
 }
 
 func writeWireMessage(ctx context.Context, w http.ResponseWriter, msg yagomodel.Message) {
-	w.Header().Set("Content-Type", wireContentType)
-	if err := writeResponseText(w, msg.Encode()); err != nil {
-		reportWireResponseWriteFailure(ctx, err)
-	}
+	writeWireMessageWithContentType(ctx, w, msg, wireContentType)
 }

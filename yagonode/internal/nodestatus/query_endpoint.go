@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
@@ -19,34 +20,42 @@ const (
 var (
 	errRWICount    = errors.New("count stored RWI words")
 	errRWIURLCount = errors.New("count URLs for stored RWI word")
-	errLURLCount   = errors.New("count stored URL metadata records")
 )
 
 type queryEndpoint struct {
 	identity nodeidentity.Identity
 	rwi      RWICounter
-	urls     URLCounter
+	now      func() time.Time
 }
 
 func (e queryEndpoint) Serve(
 	ctx context.Context,
 	req yagoproto.QueryRequest,
 ) (yagoproto.QueryResponse, error) {
-	resp := yagoproto.QueryResponse{Response: yagoproto.QueryResponseRejected}
+	resp := yagoproto.QueryResponse{
+		Response: yagoproto.QueryResponseRejected,
+		Magic:    queryMagic(e.identity),
+	}
 
-	if e.identity.AuthenticatesAddress(
+	if e.identity.Authenticates(
 		req.NetworkName,
-		req.YouAre,
+		req.NetworkNamePresent,
 		req.Key,
-		req.Iam.String(),
+		req.Iam,
 		req.MagicMD5,
 	) {
+		resp.MyTime = e.currentTime().UTC().Format(queryTimeLayout)
+		if req.YouAre != e.identity.Hash.String() {
+			return resp, nil
+		}
 		count, supported, err := e.count(ctx, req)
 		if err != nil {
 			return yagoproto.QueryResponse{}, fmt.Errorf("%s: %w", msgCountFailed, err)
 		}
 		if supported {
 			resp.Response = count
+		} else {
+			resp.UnresolvedResponse = true
 		}
 	}
 
@@ -71,12 +80,18 @@ func (e queryEndpoint) count(ctx context.Context, req yagoproto.QueryRequest) (i
 		}
 
 		n, err := e.rwi.RWIURLCount(ctx, word)
+		if err != nil {
+			slog.WarnContext(ctx, msgCountFailed,
+				slog.String("object", string(req.Object)),
+				slog.Any("error", wrapCount(errRWIURLCount, err)),
+			)
 
-		return n, true, wrapCount(errRWIURLCount, err)
+			return 0, false, nil
+		}
+
+		return n, true, nil
 	case yagoproto.ObjectLURLCount:
-		n, err := e.urls.Count(ctx)
-
-		return n, true, wrapCount(errLURLCount, err)
+		return 1, true, nil
 	case yagoproto.ObjectWantedLURLs,
 		yagoproto.ObjectWantedPURLs,
 		yagoproto.ObjectWantedWord,

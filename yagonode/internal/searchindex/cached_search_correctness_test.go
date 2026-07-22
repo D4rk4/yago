@@ -125,6 +125,9 @@ func TestCachedSearchIndexSeparatesExpansionPass(t *testing.T) {
 func TestCachedSearchIndexSeparatesFilters(t *testing.T) {
 	base := cachedRequest()
 	filterVariants := map[string]SearchRequest{}
+	addCacheVariant(filterVariants, "SiteHost", base, func(req *SearchRequest) {
+		req.SiteHost = "www.example.org"
+	})
 	addCacheVariant(filterVariants, "IncludeDomain", base, func(req *SearchRequest) {
 		req.IncludeDomain = []string{"example.org"}
 	})
@@ -242,6 +245,7 @@ func completeCachedSearchRequest() SearchRequest {
 		MaxResults:         20,
 		IncludeRaw:         true,
 		SafeSearch:         true,
+		SiteHost:           "www.site.example",
 		IncludeDomain:      []string{"example.org"},
 		ExcludeDomain:      []string{"blocked.example"},
 		Language:           "en",
@@ -295,6 +299,9 @@ func cacheRequestRetrievalFieldVariants(base SearchRequest) map[string]SearchReq
 	})
 	addCacheVariant(variants, "SafeSearch", base, func(req *SearchRequest) {
 		req.SafeSearch = false
+	})
+	addCacheVariant(variants, "SiteHost", base, func(req *SearchRequest) {
+		req.SiteHost = "site.example"
 	})
 	addCacheVariant(variants, "IncludeDomain", base, func(req *SearchRequest) {
 		req.IncludeDomain = []string{"other.example"}

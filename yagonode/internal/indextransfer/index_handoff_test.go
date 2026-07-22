@@ -65,11 +65,14 @@ func (d *recordingURLDirectory) RowsByHash(
 	return d.rows, d.err
 }
 
-func TestHandoffStopsWhenRWITransferHasNoUnknownURLs(t *testing.T) {
+func TestHandoffStopsWhenRWITransferHasPresentEmptyUnknownURLs(t *testing.T) {
 	t.Parallel()
 
 	writer := &recordingWriter{
-		rwiResponse: yagoproto.TransferRWIResponse{Result: yagoproto.ResultOK},
+		rwiResponse: yagoproto.TransferRWIResponse{
+			Result:                 yagoproto.ResultOK,
+			UnknownURLFieldPresent: true,
+		},
 	}
 	urls := &recordingURLDirectory{}
 	postings := []yagomodel.RWIPosting{postingOf(t, "word-a", "url-a")}
@@ -93,6 +96,25 @@ func TestHandoffStopsWhenRWITransferHasNoUnknownURLs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(writer.gotPostings, postings) || writer.gotPeer.Hash != peer.Hash {
 		t.Fatalf("rwi input mismatch: peer %#v postings %#v", writer.gotPeer, writer.gotPostings)
+	}
+}
+
+func TestHandoffRejectsOKWithoutUnknownURLField(t *testing.T) {
+	t.Parallel()
+
+	writer := &recordingWriter{
+		rwiResponse: yagoproto.TransferRWIResponse{Result: yagoproto.ResultOK},
+	}
+	receipt, err := NewHandoff(writer, &recordingURLDirectory{}).Send(
+		context.Background(),
+		peerSeed(t),
+		[]yagomodel.RWIPosting{postingOf(t, "word-a", "url-a")},
+	)
+	if !errors.Is(err, yagoproto.ErrBadField) {
+		t.Fatalf("Send error = %v, want %v", err, yagoproto.ErrBadField)
+	}
+	if receipt.State != HandoffRWIRejected || writer.rwiCalls != 1 || writer.urlCalls != 0 {
+		t.Fatalf("receipt/writer = %#v/%#v", receipt, writer)
 	}
 }
 
@@ -128,8 +150,9 @@ func TestHandoffSendsRowsForRemoteUnknownURLs(t *testing.T) {
 	rows := []yagomodel.URIMetadataRow{rowOf(t, "url-a"), rowOf(t, "url-b")}
 	writer := &recordingWriter{
 		rwiResponse: yagoproto.TransferRWIResponse{
-			Result:     yagoproto.ResultOK,
-			UnknownURL: unknown,
+			Result:                 yagoproto.ResultOK,
+			UnknownURL:             unknown,
+			UnknownURLFieldPresent: true,
 		},
 		urlResponse: yagoproto.TransferURLResponse{
 			Result: yagoproto.TransferURLResult(yagoproto.ResultOK),
@@ -167,8 +190,9 @@ func TestHandoffStillPostsURLTransferWhenRowsAreMissingLocally(t *testing.T) {
 
 	writer := &recordingWriter{
 		rwiResponse: yagoproto.TransferRWIResponse{
-			Result:     yagoproto.ResultOK,
-			UnknownURL: []yagomodel.Hash{hashOf(t, "url-a")},
+			Result:                 yagoproto.ResultOK,
+			UnknownURL:             []yagomodel.Hash{hashOf(t, "url-a")},
+			UnknownURLFieldPresent: true,
 		},
 		urlResponse: yagoproto.TransferURLResponse{
 			Result: yagoproto.TransferURLResult(yagoproto.ResultOK),
@@ -199,8 +223,9 @@ func TestHandoffStopsWhenPeerRejectsURLRows(t *testing.T) {
 	rejected := hashOf(t, "url-a")
 	writer := &recordingWriter{
 		rwiResponse: yagoproto.TransferRWIResponse{
-			Result:     yagoproto.ResultOK,
-			UnknownURL: []yagomodel.Hash{rejected},
+			Result:                 yagoproto.ResultOK,
+			UnknownURL:             []yagomodel.Hash{rejected},
+			UnknownURLFieldPresent: true,
 		},
 		urlResponse: yagoproto.TransferURLResponse{
 			Result:   yagoproto.ResultErrorNotGranted,
@@ -235,13 +260,22 @@ func TestHandoffReportsTransferAndLookupErrors(t *testing.T) {
 	if !errors.Is(err, rwiErr) {
 		t.Fatalf("rwi err = %v, want %v", err, rwiErr)
 	}
+	malformedRWI := errors.Join(yagoproto.ErrBadField, errors.New("malformed rwi"))
+	receipt, err := NewHandoff(
+		&recordingWriter{rwiErr: malformedRWI},
+		&recordingURLDirectory{},
+	).Send(context.Background(), peerSeed(t), []yagomodel.RWIPosting{postingOf(t, "word-a", "url-a")})
+	if !errors.Is(err, yagoproto.ErrBadField) || receipt.State != HandoffRWIRejected {
+		t.Fatalf("malformed rwi error/receipt = %v/%#v", err, receipt)
+	}
 
 	rowErr := errors.New("rows failed")
 	_, err = NewHandoff(
 		&recordingWriter{
 			rwiResponse: yagoproto.TransferRWIResponse{
-				Result:     yagoproto.ResultOK,
-				UnknownURL: []yagomodel.Hash{hashOf(t, "url-a")},
+				Result:                 yagoproto.ResultOK,
+				UnknownURL:             []yagomodel.Hash{hashOf(t, "url-a")},
+				UnknownURLFieldPresent: true,
 			},
 		},
 		&recordingURLDirectory{err: rowErr},
@@ -251,11 +285,12 @@ func TestHandoffReportsTransferAndLookupErrors(t *testing.T) {
 	}
 
 	urlErr := errors.New("url failed")
-	receipt, err := NewHandoff(
+	receipt, err = NewHandoff(
 		&recordingWriter{
 			rwiResponse: yagoproto.TransferRWIResponse{
-				Result:     yagoproto.ResultOK,
-				UnknownURL: []yagomodel.Hash{hashOf(t, "url-a")},
+				Result:                 yagoproto.ResultOK,
+				UnknownURL:             []yagomodel.Hash{hashOf(t, "url-a")},
+				UnknownURLFieldPresent: true,
 			},
 			urlErr: urlErr,
 		},
@@ -263,5 +298,21 @@ func TestHandoffReportsTransferAndLookupErrors(t *testing.T) {
 	).Send(context.Background(), peerSeed(t), []yagomodel.RWIPosting{postingOf(t, "word-a", "url-a")})
 	if !errors.Is(err, urlErr) || receipt.SentURLRows != 1 {
 		t.Fatalf("url err = %v receipt = %#v", err, receipt)
+	}
+
+	malformedURL := errors.Join(yagoproto.ErrBadField, errors.New("malformed url"))
+	receipt, err = NewHandoff(
+		&recordingWriter{
+			rwiResponse: yagoproto.TransferRWIResponse{
+				Result:                 yagoproto.ResultOK,
+				UnknownURL:             []yagomodel.Hash{hashOf(t, "url-a")},
+				UnknownURLFieldPresent: true,
+			},
+			urlErr: malformedURL,
+		},
+		&recordingURLDirectory{rows: []yagomodel.URIMetadataRow{rowOf(t, "url-a")}},
+	).Send(context.Background(), peerSeed(t), []yagomodel.RWIPosting{postingOf(t, "word-a", "url-a")})
+	if !errors.Is(err, yagoproto.ErrBadField) || receipt.State != HandoffURLRejected {
+		t.Fatalf("malformed url error/receipt = %v/%#v", err, receipt)
 	}
 }

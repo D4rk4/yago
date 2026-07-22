@@ -16,6 +16,7 @@ import (
 )
 
 type Report interface {
+	PublishedPeerClassification
 	Version(ctx context.Context) string
 	Uptime(ctx context.Context) int
 	UptimeSeconds(ctx context.Context) int
@@ -31,12 +32,27 @@ type URLCounter interface {
 	Count(ctx context.Context) (int, error)
 }
 
-type KnownPeerCounter interface {
-	KnownPeerCount(ctx context.Context) int
+type ReachablePeerCounter interface {
+	ReachablePeerCount(ctx context.Context) int
+}
+
+type SeedQueueStatistics struct {
+	Noticed      int
+	NoticedKnown bool
+	Offered      int
+	OfferedKnown bool
+}
+
+type SeedQueueStatisticsSource interface {
+	SeedQueueStatistics(ctx context.Context) SeedQueueStatistics
 }
 
 type SeedNewsSource interface {
 	SeedNews(ctx context.Context) string
+}
+
+type PublishedPeerClassification interface {
+	PublishedPeerType(ctx context.Context) yagomodel.PeerType
 }
 
 type TransferTotals struct {
@@ -52,12 +68,16 @@ type TransferTotalsSource interface {
 }
 
 type ReportSources struct {
-	RWI       RWICounter
-	URLs      URLCounter
-	Peers     KnownPeerCounter
-	News      SeedNewsSource
-	Transfers TransferTotalsSource
+	RWI                RWICounter
+	URLs               URLCounter
+	Peers              ReachablePeerCounter
+	Queues             SeedQueueStatisticsSource
+	News               SeedNewsSource
+	Transfers          TransferTotalsSource
+	PeerClassification PublishedPeerClassification
 }
+
+const queryContentType = "text/html; charset=UTF-8"
 
 func NewReport(id nodeidentity.Identity, sources ReportSources) Report {
 	return newReport(id, time.Now, sources)
@@ -67,13 +87,15 @@ func MountQuery(
 	router httpguard.WireRouter,
 	identity nodeidentity.Identity,
 	rwi RWICounter,
-	urls URLCounter,
 ) {
-	httpguard.Mount(
+	httpguard.MountWithContentType(
 		router,
 		yagoproto.PathQuery,
 		yagoproto.QueryEndpointMethods,
-		yagoproto.ParseQueryRequest,
-		queryEndpoint{identity: identity, rwi: rwi, urls: urls}.Serve,
+		queryContentType,
+		httpguard.WireEndpoint[yagoproto.QueryRequest, yagoproto.QueryResponse]{
+			Parse: yagoproto.ParseQueryRequest,
+			Serve: queryEndpoint{identity: identity, rwi: rwi}.Serve,
+		},
 	)
 }

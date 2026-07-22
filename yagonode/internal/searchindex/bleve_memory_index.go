@@ -16,6 +16,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/filetypeclass"
+	"github.com/D4rk4/yago/yagonode/internal/sitehost"
 )
 
 const (
@@ -420,6 +421,9 @@ func allowsDocument(doc documentstore.Document, req SearchRequest) bool {
 
 func allowsDocumentSource(doc documentstore.Document, req SearchRequest, host string) bool {
 	if req.SafeSearch && !allowsSafeDocument(doc, req.ContentDomain) {
+		return false
+	}
+	if req.SiteHost != "" && !sitehost.Matches(host, req.SiteHost) {
 		return false
 	}
 	if excludedDomain(host, req.ExcludeDomain) {

@@ -23,7 +23,9 @@ type scriptedEngine struct {
 	buckets         map[vault.Name]map[string][]byte
 	provisionErrors map[vault.Name]error
 	putErrors       map[vault.Name]error
+	putFailures     map[vault.Name]*scriptedMutationFailure
 	deleteErrors    map[vault.Name]error
+	deleteFailures  map[vault.Name]*scriptedMutationFailure
 	scanErrors      map[vault.Name]error
 }
 
@@ -32,7 +34,9 @@ func newScriptedEngine() *scriptedEngine {
 		buckets:         map[vault.Name]map[string][]byte{},
 		provisionErrors: map[vault.Name]error{},
 		putErrors:       map[vault.Name]error{},
+		putFailures:     map[vault.Name]*scriptedMutationFailure{},
 		deleteErrors:    map[vault.Name]error{},
+		deleteFailures:  map[vault.Name]*scriptedMutationFailure{},
 		scanErrors:      map[vault.Name]error{},
 	}
 }
@@ -93,6 +97,12 @@ func (b scriptedBucket) Put(key vault.Key, raw []byte) error {
 	if err := b.engine.putErrors[b.name]; err != nil {
 		return err
 	}
+	if failure := b.engine.putFailures[b.name]; failure != nil {
+		if failure.remainingSuccessfulMutations == 0 {
+			return failure.err
+		}
+		failure.remainingSuccessfulMutations--
+	}
 	b.engine.buckets[b.name][string(key)] = append([]byte(nil), raw...)
 	return nil
 }
@@ -100,6 +110,12 @@ func (b scriptedBucket) Put(key vault.Key, raw []byte) error {
 func (b scriptedBucket) Delete(key vault.Key) error {
 	if err := b.engine.deleteErrors[b.name]; err != nil {
 		return err
+	}
+	if failure := b.engine.deleteFailures[b.name]; failure != nil {
+		if failure.remainingSuccessfulMutations == 0 {
+			return failure.err
+		}
+		failure.remainingSuccessfulMutations--
 	}
 	delete(b.engine.buckets[b.name], string(key))
 	return nil
@@ -250,7 +266,7 @@ func TestOpenReturnsRegisterError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vault.New: %v", err)
 	}
-	engine.provisionErrors[outboundSelectedBucket] = errors.New("provision failed")
+	engine.provisionErrors[OutboundSelectionBucket] = errors.New("provision failed")
 	if _, _, _, err := Open(storage, fakeURLDirectory{}, Config{}); err == nil {
 		t.Fatal("expected outbound selected register error")
 	}
@@ -527,6 +543,7 @@ func TestTransferRWIReportsReceiveError(t *testing.T) {
 	_, err := (transferRWIEndpoint{
 		identity: localIdentity(),
 		intake:   failingPostingReceiver{},
+		senders:  acceptingSenderDirectory{},
 		accept:   true,
 	}).Serve(t.Context(), yagoproto.TransferRWIRequest{
 		NetworkName: "freeworld",
@@ -547,17 +564,17 @@ func (rwiWireStatus) Uptime(context.Context) int     { return 42 }
 
 func TestMountTransferRWIServesRoute(t *testing.T) {
 	mux := http.NewServeMux()
-	MountTransferRWI(
-		httpguard.NewWireRouter(mux, httpguard.WireGate{
+	MountTransferRWI(TransferRWIRoute{
+		Router: httpguard.NewWireRouter(mux, httpguard.WireGate{
 			Guard:   httpguard.NewRequestGuard(4096, time.Second),
 			Respond: httpguard.NewWireResponder(rwiWireStatus{}),
 			Address: httpguard.NewClientAddressResolver(nil),
 		}),
-		localIdentity(),
-		fakePostingReceiver{},
-		nil,
-		Config{BatchCap: 10, PauseMilliseconds: 5000, AcceptRemoteIndex: true},
-	)
+		Identity: localIdentity(),
+		Receiver: fakePostingReceiver{},
+		Senders:  acceptingSenderDirectory{},
+		Config:   Config{BatchCap: 10, PauseMilliseconds: 5000, AcceptRemoteIndex: true},
+	})
 	req := yagoproto.TransferRWIRequest{
 		NetworkName: "freeworld",
 		YouAre:      localIdentity().Hash,
@@ -581,17 +598,17 @@ func TestMountTransferRWIMapsUncommittedDeadlineToBusy(t *testing.T) {
 	_, index, receiver, _, engine := openScriptedRWI(t, fakeURLDirectory{})
 	engine.putErrors[PostingsBucket] = context.DeadlineExceeded
 	mux := http.NewServeMux()
-	MountTransferRWI(
-		httpguard.NewWireRouter(mux, httpguard.WireGate{
+	MountTransferRWI(TransferRWIRoute{
+		Router: httpguard.NewWireRouter(mux, httpguard.WireGate{
 			Guard:   httpguard.NewRequestGuard(4096, time.Second),
 			Respond: httpguard.NewWireResponder(rwiWireStatus{}),
 			Address: httpguard.NewClientAddressResolver(nil),
 		}),
-		localIdentity(),
-		receiver,
-		nil,
-		Config{BatchCap: 10, PauseMilliseconds: 5000, AcceptRemoteIndex: true},
-	)
+		Identity: localIdentity(),
+		Receiver: receiver,
+		Senders:  acceptingSenderDirectory{},
+		Config:   Config{BatchCap: 10, PauseMilliseconds: 5000, AcceptRemoteIndex: true},
+	})
 	req := yagoproto.TransferRWIRequest{
 		NetworkName: "freeworld",
 		YouAre:      localIdentity().Hash,

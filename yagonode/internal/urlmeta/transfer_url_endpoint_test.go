@@ -9,7 +9,10 @@ import (
 )
 
 func (m urlPorts) endpoint() transferURLEndpoint {
-	return transferURLEndpoint{identity: localIdentity(), intake: m.Receiver, accept: true}
+	return transferURLEndpoint{
+		identity: localIdentity(), intake: m.Receiver,
+		senders: acceptingSenderDirectory{}, accept: true,
+	}
 }
 
 // TestTransferURLRefusesWhenAcceptRemoteIndexOff: with the accept-remote-index
@@ -49,6 +52,52 @@ func TestTransferURLStoresAndAnswers(t *testing.T) {
 	}
 	if resp.Result != yagoproto.TransferURLResult(yagoproto.ResultOK) {
 		t.Fatalf("Result = %q, want ok", resp.Result)
+	}
+}
+
+func TestTransferURLRejectsUnknownSenderBeforeStorage(t *testing.T) {
+	module := openModule(t, 0)
+	known := yagomodel.Hash("BBBBBBBBBBBB")
+	endpoint := module.endpoint()
+	endpoint.senders = fixedSenderDirectory{peer: yagomodel.Seed{Hash: known}}
+
+	response, err := endpoint.Serve(t.Context(), yagoproto.TransferURLRequest{
+		NetworkName: "freeworld",
+		Iam:         yagomodel.Hash("CCCCCCCCCCCC"),
+		YouAre:      localIdentity().Hash,
+		URLCount:    1,
+		URLs:        []yagomodel.URIMetadataRow{urlRow(t, "a")},
+	})
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if response.Result != yagoproto.ResultErrorNotGranted {
+		t.Fatalf("response = %+v, want error_not_granted", response)
+	}
+	stored, err := module.Directory.Count(t.Context())
+	if err != nil || stored != 0 {
+		t.Fatalf("stored rows = %d, %v", stored, err)
+	}
+}
+
+func TestTransferURLAcceptsKnownInactiveJuniorSender(t *testing.T) {
+	module := openModule(t, 0)
+	sender := yagomodel.Seed{
+		Hash:     yagomodel.Hash("BBBBBBBBBBBB"),
+		PeerType: yagomodel.Some(yagomodel.PeerJunior),
+	}
+	endpoint := module.endpoint()
+	endpoint.senders = fixedSenderDirectory{peer: sender}
+
+	response, err := endpoint.Serve(t.Context(), yagoproto.TransferURLRequest{
+		NetworkName: "freeworld",
+		Iam:         sender.Hash,
+		YouAre:      localIdentity().Hash,
+		URLCount:    1,
+		URLs:        []yagomodel.URIMetadataRow{urlRow(t, "a")},
+	})
+	if err != nil || response.Result != yagoproto.ResultOK {
+		t.Fatalf("response = %+v, error = %v", response, err)
 	}
 }
 

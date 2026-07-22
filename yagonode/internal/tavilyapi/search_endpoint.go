@@ -349,7 +349,9 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		Limit:            limit,
 		ContentDomain:    searchcore.ContentDomainText,
 		Language:         parsed.Language,
-		SiteHost:         retrievalDomain(req.IncludeDomains),
+		SiteHost:         parsed.SiteHost,
+		IncludeDomains:   normalizedDomains(req.IncludeDomains),
+		ExcludeDomains:   normalizedDomains(req.ExcludeDomains),
 		InURL:            parsed.InURL,
 		TLD:              parsed.TLD,
 		FileType:         parsed.FileType,
@@ -367,9 +369,8 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 	if limit == 0 {
 		coreReq.Limit = 0
 	}
-	if len(req.IncludeDomains) > 1 && coreReq.Limit > 0 {
-		// Several include domains cannot narrow retrieval to one host; fetch
-		// wider so the post-filter can still fill max_results for them all.
+	if (len(coreReq.IncludeDomains) > 0 || len(coreReq.ExcludeDomains) > 0) &&
+		coreReq.Limit > 0 {
 		coreReq.Limit = min(
 			coreReq.Limit*domainOverfetchFactor,
 			maxResultsCap*domainOverfetchFactor,
@@ -379,19 +380,7 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 	return coreReq, nil
 }
 
-// domainOverfetchFactor widens retrieval when several include domains must be
-// served from one query.
 const domainOverfetchFactor = 4
-
-// retrievalDomain narrows retrieval only when exactly one include domain is
-// requested; several domains filter post-retrieval instead.
-func retrievalDomain(domains []string) string {
-	if len(domains) == 1 {
-		return firstDomain(domains)
-	}
-
-	return ""
-}
 
 // documentContent picks the served content: advanced searches with
 // chunks_per_source return the query-relevant chunks, everything else the
@@ -563,7 +552,7 @@ func (e searchEndpoint) responseResults(
 		if len(out) >= limit {
 			break
 		}
-		if !allowsDomain(result, req.IncludeDomains, req.ExcludeDomains) {
+		if !searchcore.ResultSatisfiesDomainConstraints(coreReq, result) {
 			continue
 		}
 
@@ -650,34 +639,6 @@ func (e searchEndpoint) document(
 	return doc, found, nil
 }
 
-func allowsDomain(result searchcore.Result, includeDomains, excludeDomains []string) bool {
-	host := resultHost(result)
-	for _, domain := range excludeDomains {
-		if domainMatches(host, domain) {
-			return false
-		}
-	}
-	if len(includeDomains) == 0 {
-		return true
-	}
-	for _, domain := range includeDomains {
-		if domainMatches(host, domain) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func resultHost(result searchcore.Result) string {
-	if result.Host != "" {
-		return strings.ToLower(result.Host)
-	}
-	parsed, _ := url.Parse(result.URL)
-
-	return strings.ToLower(parsed.Hostname())
-}
-
 func domainMatches(host, domain string) bool {
 	domain = normalizeDomain(domain)
 	if host == "" || domain == "" {
@@ -687,14 +648,15 @@ func domainMatches(host, domain string) bool {
 	return host == domain || strings.HasSuffix(host, "."+domain)
 }
 
-func firstDomain(domains []string) string {
+func normalizedDomains(domains []string) []string {
+	var normalized []string
 	for _, domain := range domains {
-		if normalized := normalizeDomain(domain); normalized != "" {
-			return normalized
+		if value := normalizeDomain(domain); value != "" {
+			normalized = append(normalized, value)
 		}
 	}
 
-	return ""
+	return normalized
 }
 
 func normalizeDomain(domain string) string {

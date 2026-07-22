@@ -48,7 +48,8 @@ type searchCriteria struct {
 	strictContentKind  bool
 	requiredProperties yagomodel.Bitfield
 	language           string
-	siteHash           string
+	siteHashes         []string
+	metadata           metadataConstraints
 	// allowEarlyTermination lets each per-term scan stop once matchesPerTerm
 	// matches are kept, skipping the tail of long posting lists. It is opt-in and
 	// off by default so the scan stays exhaustive and wire-visible indexcount

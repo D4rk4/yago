@@ -3,9 +3,9 @@
 // by a hash of bucket and key, each shard living at vault/aa/bb/cc/aabbcc.vlt;
 // values compress with zstd at the fastest level. Each shard is its own
 // failure domain: losing one file loses 1/N of the keyspace, never the store.
-// Cross-shard atomicity is relaxed by design — an Update commits each touched
-// shard independently, and callers order their writes so a crash leaves
-// re-ingestable partial state.
+// Cross-shard atomicity is not provided: an Update commits each touched shard
+// independently, so recovery-sensitive callers stage durable intent before
+// destructive writes.
 package shardvault
 
 import (
@@ -369,7 +369,11 @@ func (e *engine) View(ctx context.Context, fn func(vault.EngineTxn) error) error
 
 	txn := &shardTxn{engine: e, open: make([]*bolt.Tx, len(e.shards))}
 	defer txn.rollback()
-	if err := fn(txn); err != nil {
+	err := fn(txn)
+	if txn.accessErr != nil {
+		err = txn.accessErr
+	}
+	if err != nil {
 		return err
 	}
 
@@ -557,7 +561,7 @@ type shardTxn struct {
 func (t *shardTxn) Writable() bool { return t.writable }
 
 func (t *shardTxn) latchAccessError(err error) {
-	if t.accessErr == nil && errors.Is(err, errShardContended) {
+	if t.accessErr == nil && err != nil {
 		t.accessErr = err
 	}
 }
@@ -648,13 +652,9 @@ func (b *shardBucket) boltBucketFor(key vault.Key) (*bolt.Bucket, error) {
 }
 
 func (b *shardBucket) Get(key vault.Key) []byte {
-	bucket, err := b.boltBucketFor(key)
+	value, _, err := b.ReadValue(key)
 	if err != nil {
 		b.txn.latchAccessError(err)
-		return nil
-	}
-	value, err := decodeValue(bucket.Get(key))
-	if err != nil {
 		return nil
 	}
 

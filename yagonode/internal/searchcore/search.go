@@ -63,6 +63,8 @@ type Request struct {
 	ContentDomain    ContentDomain
 	Language         string
 	SiteHost         string
+	IncludeDomains   []string
+	ExcludeDomains   []string
 	InURL            string
 	TLD              string
 	FileType         string

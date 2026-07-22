@@ -10,11 +10,10 @@ import (
 
 type scriptedOverviewPeerType struct {
 	peerType yagomodel.PeerType
-	current  bool
 }
 
-func (s scriptedOverviewPeerType) PeerType(context.Context) (yagomodel.PeerType, bool) {
-	return s.peerType, s.current
+func (s scriptedOverviewPeerType) PublishedPeerType(context.Context) yagomodel.PeerType {
+	return s.peerType
 }
 
 func TestOverviewDefaultsToUnknownWithoutExternalClassification(t *testing.T) {
@@ -24,14 +23,14 @@ func TestOverviewDefaultsToUnknownWithoutExternalClassification(t *testing.T) {
 	}
 }
 
-func TestOverviewUsesCurrentExternalClassification(t *testing.T) {
+func TestOverviewUsesPublishedExternalClassification(t *testing.T) {
 	for _, peerType := range []yagomodel.PeerType{
 		yagomodel.PeerSenior,
 		yagomodel.PeerPrincipal,
 	} {
 		t.Run(peerType.String(), func(t *testing.T) {
 			overview := newOverviewSource(stubReport{}).
-				withPeerType(scriptedOverviewPeerType{peerType: peerType, current: true}).
+				withPeerType(scriptedOverviewPeerType{peerType: peerType}).
 				Overview(t.Context())
 			if overview.PeerType != yagomodel.PeerSenior.String() {
 				t.Fatalf("peer type = %q, want senior", overview.PeerType)
@@ -40,24 +39,24 @@ func TestOverviewUsesCurrentExternalClassification(t *testing.T) {
 	}
 }
 
-func TestOverviewIgnoresExpiredExternalClassification(t *testing.T) {
+func TestOverviewShowsPublishedVirginAtStartup(t *testing.T) {
 	overview := newOverviewSource(stubReport{}).
-		withPeerType(scriptedOverviewPeerType{peerType: yagomodel.PeerSenior}).
+		withPeerType(scriptedOverviewPeerType{peerType: yagomodel.PeerVirgin}).
 		Overview(t.Context())
-	if overview.PeerType != "unknown" {
-		t.Fatalf("peer type = %q, want unknown", overview.PeerType)
+	if overview.PeerType != yagomodel.PeerVirgin.String() {
+		t.Fatalf("peer type = %q, want virgin", overview.PeerType)
 	}
 }
 
-func TestOverviewUsesJuniorAndRejectsInvalidCurrentClassification(t *testing.T) {
+func TestOverviewUsesJuniorAndRejectsInvalidPublishedClassification(t *testing.T) {
 	junior := newOverviewSource(stubReport{}).
-		withPeerType(scriptedOverviewPeerType{peerType: yagomodel.PeerJunior, current: true}).
+		withPeerType(scriptedOverviewPeerType{peerType: yagomodel.PeerJunior}).
 		Overview(t.Context())
 	if junior.PeerType != yagomodel.PeerJunior.String() {
 		t.Fatalf("junior peer type = %q", junior.PeerType)
 	}
 	invalid := newOverviewSource(stubReport{}).
-		withPeerType(scriptedOverviewPeerType{peerType: yagomodel.PeerType("mentor"), current: true}).
+		withPeerType(scriptedOverviewPeerType{peerType: yagomodel.PeerType("mentor")}).
 		Overview(t.Context())
 	if invalid.PeerType != "unknown" {
 		t.Fatalf("invalid peer type = %q", invalid.PeerType)
@@ -67,9 +66,14 @@ func TestOverviewUsesJuniorAndRejectsInvalidCurrentClassification(t *testing.T) 
 func TestOverviewTracksExternalHelloClassification(t *testing.T) {
 	evidence := peerannouncement.NewExternalReachabilityEvidence()
 	observer := yagomodel.Hash("ABCDEFGHIJKL")
-	evidence.Observe(observer, yagomodel.PeerSenior)
 
 	overview := newOverviewSource(stubReport{}).withPeerType(evidence).Overview(t.Context())
+	if overview.PeerType != yagomodel.PeerVirgin.String() {
+		t.Fatalf("initial peer type = %q, want virgin", overview.PeerType)
+	}
+	evidence.Observe(observer, yagomodel.PeerSenior)
+
+	overview = newOverviewSource(stubReport{}).withPeerType(evidence).Overview(t.Context())
 	if overview.PeerType != yagomodel.PeerSenior.String() {
 		t.Fatalf("peer type = %q, want senior", overview.PeerType)
 	}

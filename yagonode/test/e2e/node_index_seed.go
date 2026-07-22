@@ -25,6 +25,7 @@ func seedNodeIndex(
 	pageURL string,
 ) {
 	t.Helper()
+	announceIndexTransferSender(t, ctx, probe, nodeURL)
 	urlHash, err := yagomodel.HashURL(pageURL)
 	if err != nil {
 		t.Fatalf("HashURL: %v", err)

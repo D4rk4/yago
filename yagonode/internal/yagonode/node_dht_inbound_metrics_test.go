@@ -158,17 +158,29 @@ func assertWireTransfersCountDHT(
 	registry *prometheus.Registry,
 ) {
 	t.Helper()
+	remoteHash := yagomodel.Hash("REMOTEPEER01")
+	remoteHost, err := yagomodel.ParseHost("203.0.113.41")
+	if err != nil {
+		t.Fatalf("parse remote host: %v", err)
+	}
+	assembled.roster.Discover(t.Context(), yagomodel.Seed{
+		Hash:     remoteHash,
+		Name:     yagomodel.Some("remote-peer"),
+		IP:       yagomodel.Some(remoteHost),
+		Port:     yagomodel.Some(yagomodel.Port(8090)),
+		PeerType: yagomodel.Some(yagomodel.PeerSenior),
+	})
 	wireURL := yagomodel.Hash("WIREURL00001")
 	serveWireTransfer(t, assembled.peerMux, yagoproto.PathTransferURL, yagoproto.TransferURLRequest{
 		NetworkName: assembled.identity.NetworkName,
-		Iam:         yagomodel.Hash("REMOTEPEER01"),
+		Iam:         remoteHash,
 		YouAre:      assembled.identity.Hash,
 		URLCount:    1,
 		URLs:        []yagomodel.URIMetadataRow{dhtOutboundURLRow(wireURL)},
 	}.Form().Encode())
 	serveWireTransfer(t, assembled.peerMux, yagoproto.PathTransferRWI, yagoproto.TransferRWIRequest{
 		NetworkName: assembled.identity.NetworkName,
-		Iam:         yagomodel.Hash("REMOTEPEER01"),
+		Iam:         remoteHash,
 		YouAre:      assembled.identity.Hash,
 		WordCount:   1,
 		EntryCount:  1,

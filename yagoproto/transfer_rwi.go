@@ -2,6 +2,7 @@ package yagoproto
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -10,14 +11,15 @@ import (
 )
 
 type TransferRWIRequest struct {
-	NetworkName string
-	Iam         yagomodel.Hash
-	YouAre      yagomodel.Hash
-	WordCount   int
-	EntryCount  int
-	Indexes     []yagomodel.RWIPosting
-	Key         string
-	MagicMD5    string
+	NetworkName        string
+	NetworkNamePresent bool
+	Iam                yagomodel.Hash
+	YouAre             yagomodel.Hash
+	WordCount          int
+	EntryCount         int
+	Indexes            []yagomodel.RWIPosting
+	Key                string
+	MagicMD5           string
 
 	wordCountPresent  bool
 	entryCountPresent bool
@@ -27,15 +29,16 @@ type TransferRWIRequest struct {
 
 type TransferRWIResponse struct {
 	ResponseHeader
-	Result     TransferRWIResult
-	Pause      int
-	UnknownURL []yagomodel.Hash
-	ErrorURL   []yagomodel.Hash
+	Result                 TransferRWIResult
+	Pause                  int
+	UnknownURL             []yagomodel.Hash
+	ErrorURL               []yagomodel.Hash
+	UnknownURLFieldPresent bool
 }
 
 func (r TransferRWIRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldYouAre, r.YouAre.String())
 	putInt(form, FieldWordCount, r.WordCount)
@@ -58,12 +61,14 @@ func ParseTransferRWIRequest(ctx context.Context, form url.Values) (TransferRWIR
 		return TransferRWIRequest{}, err
 	}
 
+	networkName, networkNamePresent := parseNetworkName(form)
 	req := TransferRWIRequest{
-		NetworkName: form.Get(FieldNetworkName),
-		WordCount:   wordCount,
-		EntryCount:  entryCount,
-		Key:         form.Get(FieldKey),
-		MagicMD5:    form.Get(FieldMagicMD5),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		WordCount:          wordCount,
+		EntryCount:         entryCount,
+		Key:                form.Get(FieldKey),
+		MagicMD5:           form.Get(FieldMagicMD5),
 	}
 	_, req.wordCountPresent = form[FieldWordCount]
 	_, req.entryCountPresent = form[FieldEntryCount]
@@ -123,7 +128,20 @@ func ParseTransferRWIResponse(m yagomodel.Message) (TransferRWIResponse, error) 
 		return TransferRWIResponse{}, err
 	}
 
-	unknown, err := splitHashes("transferRWI response", FieldUnknownURL, m[FieldUnknownURL])
+	result, err := parseTransferRWIResult(m[FieldResult])
+	if err != nil {
+		return TransferRWIResponse{}, err
+	}
+
+	unknownRaw, unknownURLFieldPresent := m[FieldUnknownURL]
+	if result == TransferRWIResult(ResultOK) && !unknownURLFieldPresent {
+		return TransferRWIResponse{}, fmt.Errorf(
+			"%w: transferRWI response missing %s",
+			ErrBadField,
+			FieldUnknownURL,
+		)
+	}
+	unknown, err := splitHashes("transferRWI response", FieldUnknownURL, unknownRaw)
 	if err != nil {
 		return TransferRWIResponse{}, err
 	}
@@ -133,17 +151,13 @@ func ParseTransferRWIResponse(m yagomodel.Message) (TransferRWIResponse, error) 
 		return TransferRWIResponse{}, err
 	}
 
-	result, err := parseTransferRWIResult(m[FieldResult])
-	if err != nil {
-		return TransferRWIResponse{}, err
-	}
-
 	return TransferRWIResponse{
-		ResponseHeader: header,
-		Result:         result,
-		Pause:          pause,
-		UnknownURL:     unknown,
-		ErrorURL:       errorURL,
+		ResponseHeader:         header,
+		Result:                 result,
+		Pause:                  pause,
+		UnknownURL:             unknown,
+		ErrorURL:               errorURL,
+		UnknownURLFieldPresent: unknownURLFieldPresent,
 	}, nil
 }
 

@@ -30,6 +30,32 @@ func TestAnnounceRecordsExternalSeniorClassification(t *testing.T) {
 	}
 }
 
+func TestAnnounceUsesWinningIPv6ObserverAddress(t *testing.T) {
+	peer := callerSeed(t, "peer", "192.0.2.7")
+	alternatives, err := yagomodel.ParseIP6("2001:4860:4860::8888")
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer.IP6 = yagomodel.Some(alternatives)
+	evidence := NewExternalReachabilityEvidence()
+	announcer := &announcer{
+		self:   stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		roster: &stubRoster{rounds: [][]yagomodel.Seed{{peer}}},
+		greeter: &stubGreeter{result: greetResult{
+			ContactedHost: yagomodel.Some(alternatives[0]),
+			YourType:      yagomodel.PeerSenior,
+		}},
+		externalReachabilityEvidence: evidence,
+		admitExternalObserverAddress: admitObserverAddresses("2001:4860:4860::8888"),
+	}
+
+	announcer.Announce(t.Context())
+
+	if !evidence.Reachable(t.Context()) {
+		t.Fatal("winning IPv6 address did not produce external evidence")
+	}
+}
+
 func TestAnnounceRecordsExternalJuniorInvalidation(t *testing.T) {
 	peer := callerSeed(t, "peer", "1.1.1.1")
 	evidence := NewExternalReachabilityEvidence()

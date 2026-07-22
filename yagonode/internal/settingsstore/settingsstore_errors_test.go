@@ -18,6 +18,7 @@ import (
 // branches that a healthy backend never triggers.
 type fakeEngine struct {
 	buckets  map[vault.Name]map[string][]byte
+	failRead bool
 	failPut  bool
 	failDel  bool
 	failScan bool
@@ -78,6 +79,15 @@ type fakeBucket struct {
 }
 
 func (b *fakeBucket) Get(key vault.Key) []byte { return b.entries[string(key)] }
+
+func (b *fakeBucket) ReadValue(key vault.Key) ([]byte, bool, error) {
+	if b.engine.failRead {
+		return nil, false, errors.New("read failed")
+	}
+	value, found := b.entries[string(key)]
+
+	return value, found, nil
+}
 
 func (b *fakeBucket) Put(key vault.Key, val []byte) error {
 	if b.engine.failPut {
@@ -157,6 +167,15 @@ func TestGetOuterErrorCanceledContext(t *testing.T) {
 	cancel()
 	if _, _, err := store.Get(ctx, "portal.enabled"); err == nil {
 		t.Fatal("Get with a canceled context must fail")
+	}
+}
+
+func TestGetReadError(t *testing.T) {
+	engine := newFakeEngine()
+	engine.failRead = true
+	store := fakeStore(t, engine)
+	if _, _, err := store.Get(context.Background(), "portal.enabled"); err == nil {
+		t.Fatal("Get must fail when the underlying read fails")
 	}
 }
 

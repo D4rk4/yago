@@ -43,22 +43,42 @@ func (r nodeReport) UptimeSeconds(context.Context) int {
 	return r.id.UptimeSeconds(r.now())
 }
 
+func (r nodeReport) PublishedPeerType(ctx context.Context) yagomodel.PeerType {
+	if r.sources.PeerClassification == nil {
+		return yagomodel.PeerVirgin
+	}
+	peerType := r.sources.PeerClassification.PublishedPeerType(ctx)
+	switch peerType {
+	case yagomodel.PeerVirgin,
+		yagomodel.PeerJunior,
+		yagomodel.PeerSenior,
+		yagomodel.PeerPrincipal:
+		return peerType
+	default:
+		return yagomodel.PeerVirgin
+	}
+}
+
 func (r nodeReport) SelfSeed(ctx context.Context) yagomodel.Seed {
 	now := r.now()
 	seed := r.base
+	seed.PeerType = yagomodel.Some(r.PublishedPeerType(ctx))
 	seed.Uptime = yagomodel.Some(r.id.Uptime(now))
 	seed.UTC = yagomodel.Some(yagomodel.SeedUTCOffsetFromTime(now))
 	seed.LastSeen = yagomodel.Some(yagomodel.NewSeedLastSeenUTC(now))
 	seed.RWICount = countSeedStatistic(ctx, r.sources.RWI.RWICount)
 	seed.URLCount = countSeedStatistic(ctx, r.sources.URLs.Count)
-	seed.KnownSeedCount = knownPeerStatistic(ctx, r.sources.Peers)
+	seed.KnownSeedCount = yagomodel.Some(max(0, r.sources.Peers.ReachablePeerCount(ctx)))
 	seed.News = yagomodel.Some(r.sources.News.SeedNews(ctx))
-	seed.NoticedURLCount = yagomodel.Some(0)
-	seed.OfferedURLCount = yagomodel.Some(0)
-	seed.ConnectsPerHour = yagomodel.Some(0)
-	seed.IndexingSpeed = yagomodel.Some(0)
-	seed.RequestSpeed = yagomodel.Some(0)
-	seed.UplinkSpeed = yagomodel.Some(0)
+	if r.sources.Queues != nil {
+		queues := r.sources.Queues.SeedQueueStatistics(ctx)
+		if queues.NoticedKnown {
+			seed.NoticedURLCount = yagomodel.Some(max(0, queues.Noticed))
+		}
+		if queues.OfferedKnown {
+			seed.OfferedURLCount = yagomodel.Some(max(0, queues.Offered))
+		}
+	}
 
 	transfers := r.sources.Transfers.TransferTotals(ctx)
 	if transfers.Known {
@@ -71,35 +91,13 @@ func (r nodeReport) SelfSeed(ctx context.Context) yagomodel.Seed {
 	return seed
 }
 
-type observedKnownPeerCounter interface {
-	ObservedKnownPeerCount(ctx context.Context) (int, error)
-}
-
-func knownPeerStatistic(
-	ctx context.Context,
-	peers KnownPeerCounter,
-) yagomodel.Optional[int] {
-	observed, ok := peers.(observedKnownPeerCounter)
-	if !ok {
-		return yagomodel.Some(max(0, peers.KnownPeerCount(ctx)))
-	}
-	count, err := observed.ObservedKnownPeerCount(ctx)
-	if err != nil {
-		slog.WarnContext(ctx, msgCountUnavailable, slog.Any("error", err))
-
-		return yagomodel.None[int]()
-	}
-
-	return yagomodel.Some(max(0, count))
-}
-
 func baseSeed(id nodeidentity.Identity) yagomodel.Seed {
 	seed := yagomodel.Seed{
 		Hash:     id.Hash,
 		Name:     yagomodel.Some(id.Name),
 		Port:     yagomodel.Some(yagomodel.Port(id.Port)),
 		Flags:    yagomodel.Some(id.Flags),
-		PeerType: yagomodel.Some(yagomodel.PeerSenior),
+		PeerType: yagomodel.Some(yagomodel.PeerVirgin),
 		Version:  yagomodel.Some(yagomodel.YaCyVersion(id.Version)),
 	}
 	if host, err := yagomodel.ParseHost(id.Host); err == nil {

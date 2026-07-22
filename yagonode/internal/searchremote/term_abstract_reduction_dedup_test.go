@@ -1,6 +1,7 @@
 package searchremote
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -23,5 +24,24 @@ func TestTermAbstractReductionCountsDuplicateResourceOnce(t *testing.T) {
 	}})
 	if reduction.retainedEntries != 1 || len(reduction.abstracts[term]) != 1 {
 		t.Fatalf("duplicate abstract reduction = %#v", reduction)
+	}
+}
+
+func TestTermAbstractReductionReportsTransportAndAbstractFailures(t *testing.T) {
+	term := hashFor("failed-abstract-term")
+	peer := searchSeed(t, "failed-abstract-peer")
+	reduction := termAbstractReduction{
+		outcomes: []peerAbstractOutcome{
+			{term: term, peer: peer, responseErr: errors.New("transport")},
+			{term: term, peer: peer, abstractErr: errors.New("abstract"), responded: true},
+		},
+		catalog: termAbstractCatalog{},
+	}
+	_, failures := reduction.finish(
+		[]termPeerTargets{{term: term, peers: []yagomodel.Seed{peer}}},
+		nil,
+	)
+	if len(failures) != 2 {
+		t.Fatalf("failures = %#v", failures)
 	}
 }

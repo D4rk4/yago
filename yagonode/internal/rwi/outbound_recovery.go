@@ -42,22 +42,17 @@ func (d postingDirectory) ConfirmOutbound(
 }
 
 func (d postingDirectory) RecoverOutbound(ctx context.Context) (int, error) {
-	recovered := 0
-	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
-		recovered = 0
-		pending, err := d.pendingOutboundSelections(ctx, tx)
-		if err != nil {
-			return err
-		}
-		for _, posting := range pending {
-			if err := d.restoreOutboundPosting(ctx, tx, posting.word, posting.row); err != nil {
-				return err
-			}
-			recovered++
-		}
+	var pending []selectedPosting
+	err := d.vault.View(ctx, func(tx *vault.Txn) error {
+		var err error
+		pending, err = d.pendingOutboundSelections(ctx, tx)
 
-		return nil
+		return err
 	})
+	if err != nil {
+		return 0, fmt.Errorf("recover outbound rwi: %w", err)
+	}
+	recovered, err := d.restoreOutboundPostings(ctx, pending)
 	if err != nil {
 		return 0, fmt.Errorf("recover outbound rwi: %w", err)
 	}

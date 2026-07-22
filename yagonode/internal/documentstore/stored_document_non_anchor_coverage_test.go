@@ -16,6 +16,7 @@ type documentStorageFaultEngine struct {
 	viewError     error
 	updateError   error
 	putErrors     map[vault.Name]error
+	readErrors    map[vault.Name]error
 	deleteErrors  map[vault.Name]error
 	pageErrors    map[vault.Name]error
 	lastKeyErrors map[vault.Name]error
@@ -39,6 +40,7 @@ func newDocumentStorageFaultEngine() *documentStorageFaultEngine {
 	return &documentStorageFaultEngine{
 		base:          newPagedDocumentEngine(),
 		putErrors:     make(map[vault.Name]error),
+		readErrors:    make(map[vault.Name]error),
 		deleteErrors:  make(map[vault.Name]error),
 		pageErrors:    make(map[vault.Name]error),
 		lastKeyErrors: make(map[vault.Name]error),
@@ -114,6 +116,15 @@ type documentStorageFaultBucket struct {
 	vault.EngineBucket
 	engine *documentStorageFaultEngine
 	name   vault.Name
+}
+
+func (b documentStorageFaultBucket) ReadValue(key vault.Key) ([]byte, bool, error) {
+	if err := b.engine.readErrors[b.name]; err != nil {
+		return nil, false, err
+	}
+	value := b.Get(key)
+
+	return value, value != nil, nil
 }
 
 func (b documentStorageFaultBucket) Put(key vault.Key, value []byte) error {
@@ -678,6 +689,40 @@ func TestStoredDocumentLocationReportsMalformedAndMismatchedValues(t *testing.T)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStoredDocumentReadsPropagateOperationalErrors(t *testing.T) {
+	storage, documents, engine := openDocumentStorageFaultVault(t)
+	legacyURL := "https://location.example/legacy-read-error"
+	engine.putRaw(bucketName, vault.Key(legacyURL), []byte("{}"))
+	engine.readErrors[bucketName] = errors.New("legacy read")
+	if err := storage.View(t.Context(), func(tx *vault.Txn) error {
+		_, _, _, err := documents.readStoredDocument(tx, legacyURL)
+
+		return err
+	}); err == nil {
+		t.Fatal("legacy read failure was ignored")
+	}
+	delete(engine.readErrors, bucketName)
+	orderedURL := "https://location.example/ordered-read-error"
+	orderedAdmission, err := encodeOrderedDocumentAdmission(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.putRaw(documentLocationBucketName, vault.Key(orderedURL), orderedAdmission)
+	orderedKey, err := orderedDocumentKey(3, orderedURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.putRaw(orderedDocumentBucketName, orderedKey, []byte("{}"))
+	engine.readErrors[orderedDocumentBucketName] = errors.New("ordered read")
+	if err := storage.View(t.Context(), func(tx *vault.Txn) error {
+		_, _, _, err := documents.readStoredDocument(tx, orderedURL)
+
+		return err
+	}); err == nil {
+		t.Fatal("ordered read failure was ignored")
 	}
 }
 

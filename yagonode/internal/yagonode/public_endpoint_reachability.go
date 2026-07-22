@@ -114,7 +114,7 @@ func (p publicEndpointSelfTest) queryURL() (url.URL, error) {
 	target.Path = joinPublicSelfTestPath(p.base.Path, yagoproto.PathQuery)
 	form := yagoproto.QueryRequest{
 		NetworkName: p.networkName,
-		YouAre:      p.self,
+		YouAre:      p.self.String(),
 		Object:      yagoproto.ObjectRWICount,
 	}.Form()
 	if p.access.Mode == yagoproto.NetworkAuthenticationSaltedMagic {

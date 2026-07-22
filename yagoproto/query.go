@@ -7,31 +7,36 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 )
 
-const QueryResponseRejected = -1
+const (
+	QueryResponseRejected   = -1
+	QueryResponseUnresolved = "-UNRESOLVED_PATTERN-"
+)
 
 type QueryRequest struct {
-	NetworkName string
-	YouAre      yagomodel.Hash
-	Iam         yagomodel.Hash
-	Object      QueryObject
-	Env         string
-	Key         string
-	MagicMD5    string
-	MyTime      string
+	NetworkName        string
+	NetworkNamePresent bool
+	YouAre             string
+	Iam                string
+	Object             QueryObject
+	Env                string
+	Key                string
+	MagicMD5           string
+	MyTime             string
 }
 
 type QueryResponse struct {
 	ResponseHeader
-	Response int
-	MyTime   string
-	Magic    string
+	Response           int
+	MyTime             string
+	Magic              string
+	UnresolvedResponse bool
 }
 
 func (r QueryRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
-	putString(form, FieldYouAre, r.YouAre.String())
-	putString(form, FieldIam, r.Iam.String())
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
+	putString(form, FieldYouAre, r.YouAre)
+	putString(form, FieldIam, r.Iam)
 	putString(form, FieldObject, string(r.Object))
 	putString(form, FieldEnv, r.Env)
 	putString(form, FieldKey, r.Key)
@@ -42,40 +47,35 @@ func (r QueryRequest) Form() url.Values {
 }
 
 func ParseQueryRequest(_ context.Context, form url.Values) (QueryRequest, error) {
+	networkName, networkNamePresent := parseNetworkName(form)
 	req := QueryRequest{
-		NetworkName: form.Get(FieldNetworkName),
-		Env:         form.Get(FieldEnv),
-		Key:         form.Get(FieldKey),
-		MagicMD5:    form.Get(FieldMagicMD5),
-		MyTime:      form.Get(FieldMyTime),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		YouAre:             form.Get(FieldYouAre),
+		Iam:                form.Get(FieldIam),
+		Env:                form.Get(FieldEnv),
+		Key:                form.Get(FieldKey),
+		MagicMD5:           form.Get(FieldMagicMD5),
+		MyTime:             form.Get(FieldMyTime),
 	}
 
-	var err error
-
-	req.Object, err = parseQueryObject(form.Get(FieldObject))
-	if err != nil {
-		return QueryRequest{}, err
-	}
-
-	req.YouAre, err = parseHashField("query request", FieldYouAre, form.Get(FieldYouAre))
-	if err != nil {
-		return QueryRequest{}, err
-	}
-
-	if raw := form.Get(FieldIam); raw != "" {
-		req.Iam, err = parseHashField("query request", FieldIam, raw)
-		if err != nil {
-			return QueryRequest{}, err
-		}
-	}
+	req.Object = parseQueryObject(form.Get(FieldObject))
 
 	return req, nil
 }
 
 func (r QueryResponse) Encode() yagomodel.Message {
 	msg := yagomodel.Message{}
-	setInt(msg, FieldResponse, r.Response)
-	setString(msg, FieldMyTime, r.MyTime)
+	if r.UnresolvedResponse {
+		setString(msg, FieldResponse, QueryResponseUnresolved)
+	} else {
+		setInt(msg, FieldResponse, r.Response)
+	}
+	myTime := r.MyTime
+	if myTime == "" {
+		myTime = QueryResponseUnresolved
+	}
+	setString(msg, FieldMyTime, myTime)
 	setString(msg, FieldMagic, r.Magic)
 
 	return msg
@@ -85,6 +85,16 @@ func ParseQueryResponse(m yagomodel.Message) (QueryResponse, error) {
 	header, err := parseResponseHeader(m)
 	if err != nil {
 		return QueryResponse{}, err
+	}
+
+	if m[FieldResponse] == QueryResponseUnresolved {
+		return QueryResponse{
+			ResponseHeader:     header,
+			Response:           QueryResponseRejected,
+			MyTime:             m[FieldMyTime],
+			Magic:              m[FieldMagic],
+			UnresolvedResponse: true,
+		}, nil
 	}
 
 	response, err := readInt(FieldResponse, m[FieldResponse])

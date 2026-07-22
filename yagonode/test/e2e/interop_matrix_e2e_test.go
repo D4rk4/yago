@@ -38,16 +38,25 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 	ctx := context.Background()
 	probe := newHTTPProbe(t)
 
-	network := newHermeticNetwork(t, ctx)
+	probeNetwork := newHermeticNetwork(t, ctx)
+	observerNetwork := newExternalObserverNetwork(t, ctx)
 
-	_, yacyURL := startYaCy(t, ctx, probe, network.Name, outboundYaCyAlias)
+	_, yacyURL := startYaCyWithObserverNetwork(
+		t,
+		ctx,
+		probe,
+		probeNetwork.Name,
+		observerNetwork.Name,
+		outboundYaCyAlias,
+	)
 	yacyHash := resolveYaCyHash(t, ctx, probe, yacyURL)
 
 	_, nodeURL := startNode(t, ctx, probe, nodeConfig{
-		networkName: network.Name,
-		alias:       outboundNodeAlias,
-		hash:        outboundNodeHash,
-		seedlistURL: "http://" + outboundYaCyAlias + ":8090/yacy/seedlist.html",
+		networkName:         probeNetwork.Name,
+		observerNetworkName: observerNetwork.Name,
+		alias:               outboundNodeAlias,
+		hash:                outboundNodeHash,
+		seedlistURL:         "http://" + outboundYaCyAlias + ":8090/yacy/seedlist.html",
 		extraEnv: map[string]string{
 			"YAGO_DHT_MINIMUM_PEER_AGE_DAYS":   "-1",
 			"YAGO_DHT_MINIMUM_CONNECTED_PEERS": "1",
@@ -56,7 +65,7 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 			"YAGO_PUBLIC_SELF_TEST_URL":        "http://" + outboundNodeAlias + ":8090",
 		},
 	})
-	announceFleetToYaCy(t, ctx, probe, yacyURL, []fleetNode{{
+	admitYaCyToFleetNodes(t, ctx, probe, yacyURL, []fleetNode{{
 		alias: outboundNodeAlias,
 		hash:  outboundNodeHash,
 		url:   nodeURL,
@@ -86,7 +95,7 @@ func TestNodeDistributesRWIToRealYaCy(t *testing.T) {
 		}
 	}
 
-	received := waitFor(180*time.Second, func() bool {
+	received := waitForEvery(180*time.Second, time.Second, func() bool {
 		postings, postingsOK := peerQueryCountWithEnv(
 			ctx,
 			probe,
@@ -126,7 +135,7 @@ func TestGlobalSearchFindsRealYaCyResults(t *testing.T) {
 	pushDocument(t, ctx, probe, yacyURL, tokens)
 	waitYaCyLocalRWIs(t, ctx, probe, yacyURL, yacyHash, 30*time.Second)
 
-	nodeContainer, _ := startNode(t, ctx, probe, nodeConfig{
+	nodeContainer, nodeURL := startNode(t, ctx, probe, nodeConfig{
 		networkName: network.Name,
 		alias:       searchNodeAlias,
 		hash:        searchNodeHash,
@@ -135,6 +144,7 @@ func TestGlobalSearchFindsRealYaCyResults(t *testing.T) {
 			"YAGO_DHT_MINIMUM_PEER_AGE_DAYS": "-1",
 		},
 	})
+	announceYaCySelfSeedToNode(t, ctx, probe, yacyURL, nodeURL)
 
 	// The client search surfaces now live on the dedicated public listener, not
 	// the peer port that carries the /yacy/* wire protocol.

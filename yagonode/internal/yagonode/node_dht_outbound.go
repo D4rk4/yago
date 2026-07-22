@@ -28,6 +28,7 @@ type dhtGateStateSource struct {
 	roster       peerroster.Roster
 	crawl        crawlQueueDepthSource
 	index        indexQueueDepthSource
+	report       nodestatus.Report
 }
 
 type dhtOutboundRuntimeAssembly struct {
@@ -57,6 +58,7 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		roster:       assembly.roster,
 		crawl:        assembly.crawl,
 		index:        assembly.index,
+		report:       assembly.report,
 	}
 	writer := indextransfer.NewHTTPPeerWriter(
 		assembly.client,
@@ -66,9 +68,10 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 		access,
 	)
 	queue := dhtexchange.NewOutboundQueue()
+	outboundWords := dhtOutboundRWIWords{postings: assembly.nodeStorage.outboundPostings}
 	feeder := dhtexchange.NewOutboundFeeder(
 		queue,
-		dhtOutboundRWIWords{postings: assembly.nodeStorage.outboundPostings},
+		outboundWords,
 		assembly.nodeStorage.urlDirectory,
 		assembly.roster.ReachablePeers,
 		dhtexchange.OutboundFeederConfig{
@@ -81,15 +84,9 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 	)
 	distributor := dhtexchange.NewConfirmingOutboundDistributor(
 		queue,
-		indextransfer.NewRemoteRWICountProbe(
-			assembly.client,
-			assembly.config.NetworkName,
-			self,
-			assembly.config.PeerHTTPSPreferred,
-			access,
-		),
 		indextransfer.NewHandoff(writer, assembly.nodeStorage.urlDirectory),
-		dhtOutboundRWIWords{postings: assembly.nodeStorage.outboundPostings},
+		outboundWords,
+		outboundWords,
 	)
 	scheduler := dhtexchange.NewOutboundScheduler(
 		distributor,
@@ -116,14 +113,22 @@ func buildDHTOutboundRuntime(assembly dhtOutboundRuntimeAssembly) dhtOutboundPro
 }
 
 func (s dhtGateStateSource) Snapshot(ctx context.Context) dhtexchange.GateState {
-	state, _ := s.snapshot(ctx)
-
-	return state
+	return s.gateState(ctx)
 }
 
 func (s dhtGateStateSource) snapshot(
 	ctx context.Context,
 ) (dhtexchange.GateState, publicReachabilitySnapshot) {
+	state := s.gateState(ctx)
+	reachability := publicReachabilitySnapshot{}
+	if s.reachability != nil {
+		reachability = s.reachability.Snapshot(ctx)
+	}
+
+	return state, reachability
+}
+
+func (s dhtGateStateSource) gateState(ctx context.Context) dhtexchange.GateState {
 	words, err := s.postings.RWICount(ctx)
 	localRWIKnown := err == nil
 	if err != nil {
@@ -137,16 +142,12 @@ func (s dhtGateStateSource) snapshot(
 		slog.WarnContext(ctx, dhtStorageCapacityUnavailableMessage, slog.Any("error", err))
 	}
 
-	reachability := publicReachabilitySnapshot{}
-	if s.reachability != nil {
-		reachability = s.reachability.Snapshot(ctx)
-	}
 	crawlQueueSize, crawlQueueKnown := s.crawl.observation(ctx)
 	indexQueueSize, indexQueueKnown := s.index.observation(ctx)
 
 	return dhtexchange.GateState{
-		PublicReachable:  reachability.state == publicReachabilityReachable,
-		LocalPeerKnown:   true,
+		LocalPeerKnown:   s.report != nil,
+		LocalPeerVirgin:  localPeerIsVirgin(ctx, s.report),
 		ConnectedPeers:   len(s.roster.ReachablePeers(ctx)),
 		LocalRWIWords:    words,
 		LocalRWIKnown:    localRWIKnown,
@@ -156,5 +157,5 @@ func (s dhtGateStateSource) snapshot(
 		IndexQueueKnown:  indexQueueKnown,
 		StorageAvailable: storageAvailable,
 		StorageKnown:     storageKnown,
-	}, reachability
+	}
 }

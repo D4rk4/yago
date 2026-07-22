@@ -59,12 +59,15 @@ func TestNetworkSourcesUseLocalRosterObservation(t *testing.T) {
 		t.Fatalf("memvault.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = storage.Close() })
-	roster, err := peerroster.Open(storage, func() time.Time { return observedAt }, 8, 4)
+	roster, err := peerroster.Open(
+		t.Context(), storage, yagomodel.Hash("LLLLLLLLLLLL"),
+		func() time.Time { return observedAt }, peerroster.Capacity{Reservoir: 8, Active: 4},
+	)
 	if err != nil {
 		t.Fatalf("peerroster.Open: %v", err)
 	}
 	seed := networkTestSeed(t)
-	seed.LastSeen = yagomodel.Some(yagomodel.NewSeedLastSeenUTC(observedAt.Add(24 * time.Hour)))
+	seed.LastSeen = yagomodel.None[yagomodel.SeedLastSeenUTC]()
 	roster.Discover(t.Context(), seed)
 
 	network := newNetworkSource(dhtGateStatusSource{}, roster, nil, nil, nil)
@@ -93,7 +96,10 @@ func TestNetworkSourceRendersLocallyObservedJuniorCaller(t *testing.T) {
 		t.Fatalf("memvault.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = storage.Close() })
-	roster, err := peerroster.Open(storage, func() time.Time { return observedAt }, 8, 4)
+	roster, err := peerroster.Open(
+		t.Context(), storage, yagomodel.Hash("LLLLLLLLLLLL"),
+		func() time.Time { return observedAt }, peerroster.Capacity{Reservoir: 8, Active: 4},
+	)
 	if err != nil {
 		t.Fatalf("peerroster.Open: %v", err)
 	}
@@ -121,7 +127,10 @@ func TestNetworkSourceKeepsBlockedActivePeerVisibleButNotReachable(t *testing.T)
 		t.Fatalf("memvault.Open: %v", err)
 	}
 	t.Cleanup(func() { _ = storage.Close() })
-	roster, err := peerroster.Open(storage, func() time.Time { return observedAt }, 8, 4)
+	roster, err := peerroster.Open(
+		t.Context(), storage, yagomodel.Hash("LLLLLLLLLLLL"),
+		func() time.Time { return observedAt }, peerroster.Capacity{Reservoir: 8, Active: 4},
+	)
 	if err != nil {
 		t.Fatalf("peerroster.Open: %v", err)
 	}
@@ -145,7 +154,10 @@ func TestNetworkSourcesKeepClosedRosterUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("memvault.Open: %v", err)
 	}
-	roster, err := peerroster.Open(storage, time.Now, 8, 4)
+	roster, err := peerroster.Open(
+		t.Context(), storage, yagomodel.Hash("LLLLLLLLLLLL"), time.Now,
+		peerroster.Capacity{Reservoir: 8, Active: 4},
+	)
 	if err != nil {
 		t.Fatalf("peerroster.Open: %v", err)
 	}

@@ -31,11 +31,14 @@ type peerBlockStore interface {
 // and unblocked.
 type blockingRoster struct {
 	peerroster.Roster
-	blocks peerBlockStore
+	directory peerroster.Directory
+	blocks    peerBlockStore
 }
 
 func newBlockingRoster(inner peerroster.Roster, blocks peerBlockStore) peerroster.Roster {
-	return blockingRoster{Roster: inner, blocks: blocks}
+	directory, _ := inner.(peerroster.Directory)
+
+	return blockingRoster{Roster: inner, directory: directory, blocks: blocks}
 }
 
 func (r blockingRoster) ReachablePeers(ctx context.Context) []yagomodel.Seed {
@@ -70,6 +73,49 @@ func (r blockingRoster) ReachablePeers(ctx context.Context) []yagomodel.Seed {
 
 func (r blockingRoster) ReachablePeerCount(ctx context.Context) int {
 	return len(r.ReachablePeers(ctx))
+}
+
+func (r blockingRoster) PeerByHash(
+	ctx context.Context,
+	peer yagomodel.Hash,
+) (yagomodel.Seed, bool) {
+	seed, found := r.Roster.PeerByHash(ctx, peer)
+
+	return r.visiblePeer(ctx, seed, found)
+}
+
+func (r blockingRoster) visiblePeer(
+	ctx context.Context,
+	peer yagomodel.Seed,
+	found bool,
+) (yagomodel.Seed, bool) {
+	if !found {
+		return yagomodel.Seed{}, false
+	}
+	blocked, err := r.blocks.IsBlocked(ctx, peer.Hash)
+	if err != nil {
+		slog.WarnContext(ctx, peerBlockFanoutReadFailedMessage, slog.Any("error", err))
+
+		return peer, true
+	}
+	if blocked {
+		return yagomodel.Seed{}, false
+	}
+
+	return peer, true
+}
+
+func (r blockingRoster) ObservePotential(
+	ctx context.Context,
+	potential yagomodel.Seed,
+) {
+	observer, ok := r.Roster.(interface {
+		ObservePotential(context.Context, yagomodel.Seed)
+	})
+	if !ok {
+		return
+	}
+	observer.ObservePotential(ctx, potential)
 }
 
 // peerBlockController adapts the durable blocklist to the console, validating the

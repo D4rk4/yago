@@ -43,7 +43,8 @@ type strictStockMorphologyPeer struct {
 
 func (peer *strictStockMorphologyPeer) serve(w http.ResponseWriter, request *http.Request) {
 	form := request.URL.Query()
-	if abstract := form.Get(yagoproto.FieldAbstracts); abstract != "" {
+	if abstract := form.Get(yagoproto.FieldAbstracts); abstract != "" &&
+		abstract != string(yagoproto.SearchAbstractsAuto) {
 		peer.writeAbstract(w, yagomodel.Hash(abstract))
 		return
 	}
@@ -83,7 +84,7 @@ func (peer *strictStockMorphologyPeer) writeMetadata(
 	query string,
 	urls string,
 ) {
-	if query != peer.firstSibling.String() && query != peer.secondSibling.String() {
+	if !sameQueryHashMultiset(query, peer.firstSibling, peer.secondSibling) {
 		peer.testing.Errorf("metadata query hash = %q", query)
 	}
 	if urls != peer.document.String() {
@@ -97,8 +98,35 @@ func (peer *strictStockMorphologyPeer) writeMetadata(
 				"https://example.test/emergency-powers",
 			),
 			yagomodel.URLMetaColDescription: yagomodel.EncodeBase64WireForm(peer.description),
+			yagomodel.URLMetaWordReference: yagomodel.Encode([]byte(
+				yagomodel.WordReferencePropertyForm(
+					yagomodel.RWIPosting{Properties: map[string]string{
+						yagomodel.ColURLHash:  peer.document.String(),
+						yagomodel.ColLanguage: "en",
+					}},
+				),
+			)),
 		}}},
 	})
+}
+
+func sameQueryHashMultiset(query string, expected ...yagomodel.Hash) bool {
+	if len(query) != len(expected)*yagomodel.HashLength {
+		return false
+	}
+	remaining := make(map[yagomodel.Hash]int, len(expected))
+	for _, hash := range expected {
+		remaining[hash]++
+	}
+	for offset := 0; offset < len(query); offset += yagomodel.HashLength {
+		hash := yagomodel.Hash(query[offset : offset+yagomodel.HashLength])
+		if remaining[hash] == 0 {
+			return false
+		}
+		remaining[hash]--
+	}
+
+	return true
 }
 
 func (peer *strictStockMorphologyPeer) writeResponse(

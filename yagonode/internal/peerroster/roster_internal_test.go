@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,19 +19,26 @@ import (
 const internalHashFiller = "AAAAAAAAAAAA"
 
 type scriptedEngine struct {
-	buckets      map[vault.Name]map[string][]byte
-	putErrors    map[vault.Name]error
-	deleteErrors map[vault.Name]error
-	scanErrors   map[vault.Name]error
-	scanObserver func(vault.Name)
+	buckets         map[vault.Name]map[string][]byte
+	provisionErrors map[vault.Name]error
+	putErrors       map[vault.Name]error
+	deleteErrors    map[vault.Name]error
+	scanErrors      map[vault.Name]error
+	keyPageError    error
+	scanObserver    func(vault.Name)
+	updates         atomic.Int32
+	keyPages        atomic.Int32
+	updateStarted   chan<- struct{}
+	updateBlock     <-chan struct{}
 }
 
 func newScriptedEngine() *scriptedEngine {
 	return &scriptedEngine{
-		buckets:      map[vault.Name]map[string][]byte{},
-		putErrors:    map[vault.Name]error{},
-		deleteErrors: map[vault.Name]error{},
-		scanErrors:   map[vault.Name]error{},
+		buckets:         map[vault.Name]map[string][]byte{},
+		provisionErrors: map[vault.Name]error{},
+		putErrors:       map[vault.Name]error{},
+		deleteErrors:    map[vault.Name]error{},
+		scanErrors:      map[vault.Name]error{},
 	}
 }
 
@@ -37,6 +46,20 @@ func (e *scriptedEngine) Update(ctx context.Context, fn func(vault.EngineTxn) er
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
+	if e.updateBlock != nil {
+		if e.updateStarted != nil {
+			select {
+			case e.updateStarted <- struct{}{}:
+			default:
+			}
+		}
+		select {
+		case <-e.updateBlock:
+		case <-ctx.Done():
+			return fmt.Errorf("context: %w", ctx.Err())
+		}
+	}
+	e.updates.Add(1)
 	return fn(scriptedTxn{engine: e, writable: true})
 }
 
@@ -48,6 +71,9 @@ func (e *scriptedEngine) View(ctx context.Context, fn func(vault.EngineTxn) erro
 }
 
 func (e *scriptedEngine) Provision(name vault.Name) error {
+	if err := e.provisionErrors[name]; err != nil {
+		return err
+	}
 	if e.buckets[name] == nil {
 		e.buckets[name] = map[string][]byte{}
 	}
@@ -124,6 +150,31 @@ func (b scriptedBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool,
 	return nil
 }
 
+func (b scriptedBucket) ReadKeyPageAfter(
+	after vault.Key,
+	limit int,
+) (vault.BucketKeyPage, error) {
+	if b.engine.keyPageError != nil {
+		return vault.BucketKeyPage{}, b.engine.keyPageError
+	}
+	b.engine.keyPages.Add(1)
+	keys := make([]string, 0, len(b.engine.buckets[b.name]))
+	for key := range b.engine.buckets[b.name] {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	start := sort.Search(len(keys), func(position int) bool {
+		return keys[position] > string(after)
+	})
+	end := min(start+limit, len(keys))
+	page := make([]vault.Key, 0, end-start)
+	for _, key := range keys[start:end] {
+		page = append(page, vault.Key(key))
+	}
+
+	return vault.BucketKeyPage{Keys: page, More: end < len(keys)}, nil
+}
+
 func internalHashFor(base string) yagomodel.Hash {
 	if len(base) >= yagomodel.HashLength {
 		return yagomodel.Hash(base[:yagomodel.HashLength])
@@ -152,10 +203,11 @@ func openScriptedRoster(t *testing.T, reservoirCap, activeCap int) (*roster, *sc
 		t.Fatalf("vault.New: %v", err)
 	}
 	opened, err := Open(
+		t.Context(),
 		storage,
+		internalHashFor("local"),
 		func() time.Time { return time.Unix(100, 0) },
-		reservoirCap,
-		activeCap,
+		Capacity{Reservoir: reservoirCap, Active: activeCap},
 	)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -171,7 +223,8 @@ func corruptPeerRecord(t *testing.T, r *roster, engine *scriptedEngine, peer yag
 func corruptPeerCount(t *testing.T, engine *scriptedEngine) {
 	t.Helper()
 	for name, bucket := range engine.buckets {
-		if name != peersBucket {
+		if name != peersBucket && name != peerLifecyclesBucket &&
+			name != peerLifecycleCleanupCursorBucket {
 			bucket[string(peersBucket)] = []byte("bad")
 			return
 		}
@@ -180,8 +233,197 @@ func corruptPeerCount(t *testing.T, engine *scriptedEngine) {
 }
 
 func TestOpenReturnsRegisterError(t *testing.T) {
-	if _, err := Open(nil, time.Now, 1, 1); err == nil {
+	if _, err := Open(
+		t.Context(), nil, internalHashFor("local"), time.Now,
+		Capacity{Reservoir: 1, Active: 1},
+	); err == nil {
 		t.Fatal("expected register error")
+	}
+}
+
+func TestOpenRemovesPersistedSelfForEveryClassification(t *testing.T) {
+	for _, classification := range []yagomodel.PeerType{
+		yagomodel.PeerJunior,
+		yagomodel.PeerSenior,
+	} {
+		t.Run(classification.String(), func(t *testing.T) {
+			engine := newScriptedEngine()
+			firstStorage, err := vault.New(engine)
+			if err != nil {
+				t.Fatalf("vault.New first: %v", err)
+			}
+			first, err := Open(
+				t.Context(), firstStorage, internalHashFor("former-local"), time.Now,
+				Capacity{Reservoir: 8, Active: 4},
+			)
+			if err != nil {
+				t.Fatalf("Open first: %v", err)
+			}
+			self := internalSeed(t, "current-local", "203.0.113.1")
+			first.ObserveCaller(t.Context(), self, classification)
+			if first.KnownPeerCount(t.Context()) != 1 {
+				t.Fatal("persisted self fixture was not stored")
+			}
+
+			secondStorage, err := vault.New(engine)
+			if err != nil {
+				t.Fatalf("vault.New second: %v", err)
+			}
+			second, err := Open(
+				t.Context(), secondStorage, self.Hash, time.Now,
+				Capacity{Reservoir: 8, Active: 4},
+			)
+			if err != nil {
+				t.Fatalf("Open second: %v", err)
+			}
+			if second.KnownPeerCount(t.Context()) != 0 {
+				t.Fatalf("persisted %s self survived reopen", classification)
+			}
+		})
+	}
+}
+
+func TestOpenFailsWhenPersistedSelfCannotBeRemoved(t *testing.T) {
+	engine := newScriptedEngine()
+	firstStorage, err := vault.New(engine)
+	if err != nil {
+		t.Fatalf("vault.New first: %v", err)
+	}
+	first, err := Open(
+		t.Context(), firstStorage, internalHashFor("former-local"), time.Now,
+		Capacity{Reservoir: 8, Active: 4},
+	)
+	if err != nil {
+		t.Fatalf("Open first: %v", err)
+	}
+	self := internalSeed(t, "current-local", "203.0.113.1")
+	first.ObserveCaller(t.Context(), self, yagomodel.PeerSenior)
+
+	deleteFailure := errors.New("delete failed")
+	engine.deleteErrors[peersBucket] = deleteFailure
+	secondStorage, err := vault.New(engine)
+	if err != nil {
+		t.Fatalf("vault.New second: %v", err)
+	}
+	if _, err := Open(
+		t.Context(), secondStorage, self.Hash, time.Now,
+		Capacity{Reservoir: 8, Active: 4},
+	); !errors.Is(
+		err,
+		deleteFailure,
+	) {
+		t.Fatalf("Open error = %v, want %v", err, deleteFailure)
+	}
+}
+
+func TestSelfIsFilteredFromInjectedPersistentAndActiveState(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	self := internalSeed(t, "local", "203.0.113.1")
+	if err := r.vault.Update(t.Context(), func(tx *vault.Txn) error {
+		return r.putRosterEntry(tx, r.key(self.Hash), rosterEntry{
+			seed: self, lastSeen: time.Now(),
+		})
+	}); err != nil {
+		t.Fatalf("inject persisted self: %v", err)
+	}
+	r.mu.Lock()
+	r.active[self.Hash] = rosterEntry{seed: self}
+	r.mu.Unlock()
+	r.invalidateCandidateSnapshot()
+
+	if r.KnownPeerCount(t.Context()) != 0 || r.ReachablePeerCount(t.Context()) != 0 {
+		t.Fatalf(
+			"injected self counts = known %d reachable %d",
+			r.KnownPeerCount(t.Context()),
+			r.ReachablePeerCount(t.Context()),
+		)
+	}
+	if _, found := r.PeerByHash(t.Context(), self.Hash); found {
+		t.Fatal("injected self resolved by hash")
+	}
+	if peers := r.ReachablePeers(t.Context()); len(peers) != 0 {
+		t.Fatalf("injected reachable self = %#v", peers)
+	}
+	if peers := r.FreshestPeers(t.Context(), 8); len(peers) != 0 {
+		t.Fatalf("injected candidate self = %#v", peers)
+	}
+	observations, known, reachable, err := r.PeerObservations(t.Context())
+	if err != nil || len(observations) != 0 || known != 0 || reachable != 0 {
+		t.Fatalf(
+			"injected self observations = %#v known/reachable %d/%d error %v",
+			observations,
+			known,
+			reachable,
+			err,
+		)
+	}
+	if _, found, err := r.PeerObservation(t.Context(), self.Hash); err != nil || found {
+		t.Fatalf("injected self observation = found %v error %v", found, err)
+	}
+	selected := r.selectInactive(
+		t.Context(),
+		map[yagomodel.Hash]struct{}{},
+		1,
+		func(left, right rosterEntry) bool { return left.lastSeen.Before(right.lastSeen) },
+	)
+	if len(selected) != 0 {
+		t.Fatalf("selected injected self = %#v", selected)
+	}
+}
+
+func TestPrivateRosterMutationsRejectSelf(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	self := internalSeed(t, "local", "203.0.113.1")
+
+	if stored, err := r.discoverOne(t.Context(), self); err != nil || stored {
+		t.Fatalf("discoverOne self = stored %v error %v", stored, err)
+	}
+	if entry, _, found := r.touch(t.Context(), self.Hash); found || entry.seed.Hash != "" {
+		t.Fatalf("touch self = %#v found %v", entry, found)
+	}
+	if _, err := r.persistCallerObservation(t.Context(), rosterEntry{seed: self}); err != nil {
+		t.Fatalf("persist caller self: %v", err)
+	}
+	if _, err := r.persistResponderObservation(t.Context(), rosterEntry{seed: self}); err != nil {
+		t.Fatalf("persist responder self: %v", err)
+	}
+}
+
+func TestObserveResponderRejectsAddresslessAndRetainsJuniorInactive(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	addressless := yagomodel.Seed{Hash: internalHashFor("addressless")}
+	r.ObserveResponder(t.Context(), addressless)
+
+	junior := internalSeed(t, "junior", "203.0.113.2")
+	junior.PeerType = yagomodel.Some(yagomodel.PeerJunior)
+	r.ObserveResponder(t.Context(), junior)
+
+	stored, found := r.PeerByHash(t.Context(), junior.Hash)
+	classification, classified := stored.PeerType.Get()
+	if !found || !classified || classification != yagomodel.PeerJunior ||
+		r.KnownPeerCount(t.Context()) != 1 || r.ReachablePeerCount(t.Context()) != 0 {
+		t.Fatalf(
+			"junior responder = %#v found %v known/reachable %d/%d",
+			stored,
+			found,
+			r.KnownPeerCount(t.Context()),
+			r.ReachablePeerCount(t.Context()),
+		)
+	}
+}
+
+func TestObserveResponderDiscardsPersistenceFailure(t *testing.T) {
+	r, engine := openScriptedRoster(t, 8, 4)
+	engine.putErrors[peersBucket] = errors.New("put failed")
+
+	r.ObserveResponder(t.Context(), internalSeed(t, "peer", "203.0.113.1"))
+
+	if r.KnownPeerCount(t.Context()) != 0 || r.ReachablePeerCount(t.Context()) != 0 {
+		t.Fatalf(
+			"failed responder counts = known %d reachable %d",
+			r.KnownPeerCount(t.Context()),
+			r.ReachablePeerCount(t.Context()),
+		)
 	}
 }
 
@@ -295,6 +537,27 @@ func TestFreshestPeersLimitsActiveSnapshot(t *testing.T) {
 
 	if got := len(r.FreshestPeers(t.Context(), 1)); got != 1 {
 		t.Fatalf("freshest peers = %d, want 1", got)
+	}
+}
+
+func TestReachablePeersSortNewestFirstWithHashTieBreak(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	now := time.Unix(100, 0)
+	r.now = func() time.Time { return now }
+	second := internalSeed(t, "BBBBBBBBBBBB", "203.0.113.2")
+	first := internalSeed(t, "AAAAAAAAAAAA", "203.0.113.1")
+	newest := internalSeed(t, "CCCCCCCCCCCC", "203.0.113.3")
+	r.ObserveResponder(t.Context(), second)
+	r.ObserveResponder(t.Context(), first)
+	now = now.Add(time.Second)
+	r.ObserveResponder(t.Context(), newest)
+
+	peers := r.ReachablePeers(t.Context())
+	if len(peers) != 3 ||
+		peers[0].Hash != newest.Hash ||
+		peers[1].Hash != first.Hash ||
+		peers[2].Hash != second.Hash {
+		t.Fatalf("reachable peers = %#v, want newest then hash order", peers)
 	}
 }
 
@@ -507,7 +770,10 @@ func TestPeerObservationsSurfaceClosedVault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vault.New: %v", err)
 	}
-	opened, err := Open(storage, time.Now, 8, 4)
+	opened, err := Open(
+		t.Context(), storage, internalHashFor("local"), time.Now,
+		Capacity{Reservoir: 8, Active: 4},
+	)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

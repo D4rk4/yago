@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	DefaultMaxPeers   = 8
+	DefaultMaxPeers   = 16
 	DefaultRedundancy = 3
 	// DefaultConcurrency caps the peer fan-out workers. YaCy queries every
 	// selected target at once (RemoteSearch.java starts one thread per peer),
@@ -52,6 +52,11 @@ type PeerSource interface {
 	SearchTargetPeers(ctx context.Context) []yagomodel.Seed
 }
 
+type PeerReachability interface {
+	ConfirmReachable(context.Context, yagomodel.Hash)
+	ConfirmUnreachable(context.Context, yagomodel.Hash)
+}
+
 type Config struct {
 	Client                       *http.Client
 	NetworkName                  string
@@ -76,6 +81,7 @@ type Config struct {
 	ExpandWord                   func(string) []string
 	NetworkAccess                yagoproto.NetworkAccess
 	ObserveReceivedResources     func(context.Context, int)
+	Reachability                 PeerReachability
 }
 
 type searcher struct {
@@ -105,6 +111,8 @@ type searcher struct {
 	observeReceivedResources     func(context.Context, int)
 	fetchAdmission               chan struct{}
 	morphologyAdmission          chan struct{}
+	lifecycle                    *peerLifecycleSession
+	reachability                 PeerReachability
 }
 
 type peerSearchResult struct {
@@ -125,6 +133,7 @@ type peerSearchJob struct {
 	evidenceBinding     queryMatchEvidenceBinding
 	morphology          bool
 	peerCalls           *outboundCallBudget
+	transportAttempts   *outboundCallBudget
 	morphologyCalls     *outboundCallBudget
 	responseBodyLimit   int
 	responseBodyLimited bool
@@ -170,6 +179,7 @@ func NewSearcher(config Config) searchcore.Searcher {
 		access:                   config.NetworkAccess,
 		signNetworkForm:          yagoproto.NetworkAccess.Sign,
 		observeReceivedResources: config.ObserveReceivedResources,
+		reachability:             config.Reachability,
 	}
 }
 
@@ -177,6 +187,9 @@ func (s searcher) Search(
 	ctx context.Context,
 	req searchcore.Request,
 ) (searchcore.Response, error) {
+	s.lifecycle = newPeerLifecycleSession(s.reachability)
+	lifecycleContext := ctx
+	defer s.lifecycle.flush(context.WithoutCancel(lifecycleContext))
 	ctx, cancel := s.overallContext(ctx)
 	defer cancel()
 	s = s.withSelfSeedSnapshot(ctx)
@@ -241,10 +254,11 @@ func (s searcher) searchExact(
 			ctx,
 			req,
 			secondaryRetrievalPlan{
-				exactTerms:    hashes,
-				evidenceTerms: evidenceBinding.wireRequirements,
-				reputation:    reputation,
-				budget:        budget,
+				exactTerms:     hashes,
+				evidenceTerms:  evidenceBinding.wireRequirements,
+				primaryResults: results,
+				reputation:     reputation,
+				budget:         budget,
 			},
 		)
 		resp := s.responseWithinBudget(
@@ -417,9 +431,11 @@ func (s searcher) queryPeerJob(
 		peerCtx,
 		job.peer,
 		job.request,
-		responseBodyLimit,
-		job.morphologyCalls,
-		job.peerCalls,
+		remoteSearchRequestLimits{
+			responseBodyLimit: responseBodyLimit,
+			transportAttempts: job.transportAttempts,
+			callBudgets:       []*outboundCallBudget{job.morphologyCalls, job.peerCalls},
+		},
 	)
 	return peerSearchResult{
 		term:            job.term,
@@ -429,55 +445,6 @@ func (s searcher) queryPeerJob(
 		err:             err,
 		responseBytes:   responseBytes,
 	}
-}
-
-// secondaryAbstractSearch runs YaCy's two-phase index-abstract search as a
-// best-effort enhancement for multi-word queries: it asks each word's peers for
-// the URL-hash abstract of that word, intersects the abstracts to find URLs that
-// contain every word across the network, then fetches those URLs' metadata. It
-// returns the secondary peer results to merge with the primary search plus any
-// partial failures gathered along the way. A word with no reachable target, an
-// empty abstract, or an empty intersection simply yields no secondary results;
-// the primary search still stands.
-type secondaryAbstractPlan struct {
-	terms         []yagomodel.Hash
-	evidenceTerms []string
-	reputation    *reputationSession
-	budget        *remoteQueryBudget
-}
-
-func (s searcher) secondaryAbstractSearch(
-	ctx context.Context,
-	req searchcore.Request,
-	plan secondaryAbstractPlan,
-) ([]peerSearchResult, []searchcore.PartialFailure) {
-	targets, failures := s.termTargets(ctx, plan.terms)
-
-	abstracts, abstractFailures := s.termAbstractCatalogWithinBudget(
-		ctx,
-		req,
-		targets,
-		plan.reputation,
-		plan.budget,
-	)
-	failures = append(failures, abstractFailures...)
-	urls := intersectTermAbstracts(plan.terms, abstracts.terms)
-	if len(urls) == 0 {
-		return nil, failures
-	}
-
-	results := s.queryPeerJobsWithinBudget(ctx, secondarySearchJobs(secondarySearchPlan{
-		request:       req,
-		targets:       targets,
-		urls:          limitSecondaryURLs(req, urls),
-		evidenceTerms: plan.evidenceTerms,
-		abstracts:     abstracts,
-	},
-		s.networkName,
-		s.perPeerTimeout,
-	), plan.budget)
-
-	return results, failures
 }
 
 func (s searcher) termTargets(
@@ -842,6 +809,10 @@ func searchResultWithinBudget(
 	row yagomodel.URIMetadataRow,
 	budget *remoteQueryBudget,
 ) (searchcore.Result, error) {
+	hash, err := validatedRemoteResourceURLHash(row)
+	if err != nil {
+		return searchcore.Result{}, fmt.Errorf("%w: %w", errRemoteSearchInvalidResult, err)
+	}
 	rawURL, err := decodedMetadataPropertyWithinBudget(
 		ctx,
 		row,
@@ -861,10 +832,6 @@ func searchResultWithinBudget(
 	)
 	if err != nil {
 		return searchcore.Result{}, err
-	}
-	hash, err := row.URLHash()
-	if err != nil {
-		return searchcore.Result{}, fmt.Errorf("url metadata hash: %w", err)
 	}
 	parsed, _ := url.Parse(rawURL)
 	host, pathValue, file := parsedURLParts(parsed)

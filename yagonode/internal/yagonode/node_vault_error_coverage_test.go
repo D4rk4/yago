@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/events"
 	"github.com/D4rk4/yago/yagonode/internal/recrawlfrontier"
@@ -183,7 +184,9 @@ func TestOpenPeerStoresPeerBlockOpenError(t *testing.T) {
 	engine.failProvision["peerblock"] = true
 	v := ctrlVault(t, engine)
 
-	_, _, _, _, err := openPeerStores(v, nil)
+	_, _, _, _, err := openPeerStores(
+		t.Context(), v, yagomodel.Hash("LLLLLLLLLLLL"), nil,
+	)
 	if err == nil || !strings.Contains(err.Error(), "open peer blocklist") {
 		t.Fatalf("openPeerStores error = %v, want peer blocklist open error", err)
 	}

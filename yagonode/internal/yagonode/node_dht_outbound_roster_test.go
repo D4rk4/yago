@@ -167,7 +167,7 @@ func TestDHTOutboundRosterCycleQuarantinesPeerOnRepeatedFailure(t *testing.T) {
 		cycle: &scriptedDHTOutboundCycle{
 			receipt: dhtexchange.ScheduledDistributionReceipt{
 				Distribution: dhtexchange.DistributionReceipt{
-					State: dhtexchange.DistributionCapacityFailed,
+					State: dhtexchange.DistributionHandoffFailed,
 					Peer:  peer,
 				},
 				Retry: dhtexchange.OutboundRetryDecision{
@@ -202,7 +202,7 @@ func TestDHTOutboundRosterCycleQuarantinesPeerOnRepeatedFailure(t *testing.T) {
 	}
 }
 
-func TestDHTOutboundRosterCyclePreservesAdvertisedCapabilityOnRejectedHandoff(t *testing.T) {
+func TestDHTOutboundRosterCycleRejectsExactFailedEndpointCapability(t *testing.T) {
 	t.Parallel()
 
 	target := dhtOutboundPeer(t)
@@ -233,7 +233,9 @@ func TestDHTOutboundRosterCyclePreservesAdvertisedCapabilityOnRejectedHandoff(t 
 				t.Fatalf("RunOnce: %v", err)
 			}
 			if receipt.Distribution.Handoff.State != test.handoff.State ||
-				len(roster.remoteIndexRejected) != 0 ||
+				len(roster.remoteIndexRejected) != 1 ||
+				roster.remoteIndexRejected[0].Hash != target.Hash ||
+				!roster.remoteIndexRejected[0].SharesAddress(target) ||
 				len(roster.unreachable) != 0 ||
 				len(roster.reachable) != 0 {
 				t.Fatalf("receipt/roster = %#v/%#v", receipt, roster)
@@ -251,7 +253,7 @@ func TestDHTOutboundRosterCycleIgnoresPeerlessAndDelayedReceipts(t *testing.T) {
 	cycle.observe(context.Background(), dhtexchange.ScheduledDistributionReceipt{})
 	cycle.observe(context.Background(), dhtexchange.ScheduledDistributionReceipt{
 		Distribution: dhtexchange.DistributionReceipt{
-			State: dhtexchange.DistributionCapacityFailed,
+			State: dhtexchange.DistributionHandoffFailed,
 			Peer:  peer,
 		},
 		Retry: dhtexchange.OutboundRetryDecision{

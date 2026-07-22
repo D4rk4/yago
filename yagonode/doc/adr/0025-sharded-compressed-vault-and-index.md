@@ -63,6 +63,8 @@ module graph as indirect dependencies of bleve:
    Cross-shard atomicity is relaxed by design. A feature that spans shards
    writes durable rows before a separate visibility marker, or retains its
    prior identity as a replay marker until dependent index work completes.
+   Outbound RWI selection commits its restart journal before deleting live
+   postings, while restore commits live postings before releasing that journal.
    Retries reconcile partial state from the same crawl observation. Content
    clustering also uses a retained published URL fingerprint as point-repair
    evidence: a later replacement or deletion restores or clears a missing or
@@ -75,7 +77,12 @@ module graph as indirect dependencies of bleve:
    values; values under 64 bytes or saving less than one eighth stay raw with
    a crc32c (stdlib Castagnoli) checksum. Decompression verifies the zstd
    frame checksum. Keys are never compressed, preserving B+tree ordering and
-   prefix scans.
+   prefix scans. Checksum, frame, and codec failures carry an explicit stored-
+   value-corruption classification. Retention and recovery callers may repair
+   only that class. Operational inspection and read failures abort the current
+   transaction and do not authorize deletion of an unread value. Earlier page
+   commits remain durable; multi-shard callers persist bounded recovery evidence
+   before destructive mutation and reconcile partial commits idempotently.
 3. **Index sharding**: M shard indexes (a power of two derived from the same
    quota, minimum 4) at `index/xx/zz/yy/xxzzyy.idx`, each opened with
    `scorchMergePlanOptions` tuned so zap files stay under 1 GB

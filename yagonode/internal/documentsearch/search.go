@@ -22,6 +22,7 @@ type SearchConfig struct {
 	Evidence       QueryMatchEvidenceAnalyzer
 	MatchesPerTerm int
 	Gate           *httpguard.IntakeGate
+	PotentialPeers PotentialPeerObserver
 }
 
 func MountSearch(
@@ -36,7 +37,8 @@ func MountSearch(
 			documents:      config.Documents,
 			matchesPerTerm: config.MatchesPerTerm,
 		},
-		gate: config.Gate,
+		gate:           config.Gate,
+		potentialPeers: config.PotentialPeers,
 		analyzerRecall: negotiatedAnalyzerRecallSource{
 			searcher:  config.AnalyzerSearch,
 			documents: config.Documents,

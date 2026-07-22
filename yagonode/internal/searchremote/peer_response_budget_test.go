@@ -247,11 +247,10 @@ func TestRemoteSearchAdmissionIsSharedAndCancellationAware(t *testing.T) {
 	firstDone := make(chan error, 1)
 	go func() {
 		firstTarget := *target
-		_, _, err := first.sendRemoteSearchToWithinLimit(
+		err := sendEmptyRemoteSearchWithinLimit(
+			first,
 			context.Background(),
 			&firstTarget,
-			yagoproto.SearchRequest{},
-			remoteSearchBodyCap,
 		)
 		firstDone <- err
 	}()
@@ -259,11 +258,10 @@ func TestRemoteSearchAdmissionIsSharedAndCancellationAware(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	secondTarget := *target
-	_, _, err = second.sendRemoteSearchToWithinLimit(
+	err = sendEmptyRemoteSearchWithinLimit(
+		second,
 		ctx,
 		&secondTarget,
-		yagoproto.SearchRequest{},
-		remoteSearchBodyCap,
 	)
 	if !errors.Is(err, errRemoteSearchAdmissionCanceled) ||
 		!errors.Is(err, context.DeadlineExceeded) || secondAttempts.Load() != 0 {

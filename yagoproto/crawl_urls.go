@@ -20,21 +20,22 @@ const (
 )
 
 type CrawlURLRequest struct {
-	NetworkName string
-	Iam         string
-	YouAre      string
-	Key         string
-	MagicMD5    string
-	MyTime      string
-	Call        CrawlURLCall
-	Count       yagomodel.Optional[int]
-	Time        yagomodel.Optional[int]
-	Hashes      string
+	NetworkName        string
+	NetworkNamePresent bool
+	Iam                string
+	YouAre             string
+	Key                string
+	MagicMD5           string
+	MyTime             string
+	Call               CrawlURLCall
+	Count              yagomodel.Optional[int]
+	Time               yagomodel.Optional[int]
+	Hashes             string
 }
 
 func (r CrawlURLRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
 	putString(form, FieldIam, r.Iam)
 	putString(form, FieldYouAre, r.YouAre)
 	putString(form, FieldKey, r.Key)
@@ -53,15 +54,17 @@ func (r CrawlURLRequest) Form() url.Values {
 }
 
 func ParseCrawlURLRequest(_ context.Context, form url.Values) (CrawlURLRequest, error) {
+	networkName, networkNamePresent := parseNetworkName(form)
 	req := CrawlURLRequest{
-		NetworkName: form.Get(FieldNetworkName),
-		Iam:         form.Get(FieldIam),
-		YouAre:      form.Get(FieldYouAre),
-		Key:         form.Get(FieldKey),
-		MagicMD5:    form.Get(FieldMagicMD5),
-		MyTime:      form.Get(FieldMyTime),
-		Call:        CrawlURLCall(form.Get(FieldCall)),
-		Hashes:      form.Get(FieldHashes),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		Iam:                form.Get(FieldIam),
+		YouAre:             form.Get(FieldYouAre),
+		Key:                form.Get(FieldKey),
+		MagicMD5:           form.Get(FieldMagicMD5),
+		MyTime:             form.Get(FieldMyTime),
+		Call:               CrawlURLCall(form.Get(FieldCall)),
+		Hashes:             form.Get(FieldHashes),
 	}
 
 	if raw := form.Get(FieldCount); raw != "" {

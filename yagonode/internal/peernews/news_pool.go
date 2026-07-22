@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -12,9 +15,11 @@ import (
 )
 
 const (
-	queueBucket  vault.Name = "peernews-queue"
-	knownBucket  vault.Name = "peernews-known"
-	cursorBucket vault.Name = "peernews-cursor"
+	queueBucket         vault.Name = "peernews-queue"
+	knownBucket         vault.Name = "peernews-known"
+	knownCategoryBucket vault.Name = "peernews-known-category"
+	cursorBucket        vault.Name = "peernews-cursor"
+	cleanupBucket       vault.Name = "peernews-cleanup"
 
 	distributionLimit = 30
 )
@@ -37,7 +42,13 @@ func (wireCodec) Decode(raw []byte) (string, error)   { return string(raw), nil 
 
 type knownCodec struct{}
 
-func (knownCodec) Encode(value string) ([]byte, error) { return []byte(value), nil }
+func (knownCodec) Encode(value string) ([]byte, error) {
+	if value != knownMarker {
+		return nil, fmt.Errorf("%w: known news marker %q", ErrBadNewsRecord, value)
+	}
+
+	return []byte(knownMarker), nil
+}
 
 func (knownCodec) Decode(raw []byte) (string, error) {
 	if string(raw) != knownMarker {
@@ -63,12 +74,20 @@ func (cursorCodec) Decode(raw []byte) (uint64, error) {
 }
 
 type Pool struct {
-	queue      *vault.Collection[string]
-	known      *vault.Collection[string]
-	cursor     *vault.Collection[uint64]
-	vault      *vault.Vault
-	now        func() time.Time
-	attachment seedAttachment
+	writePermit                  newsWritePermit
+	queue                        *vault.Collection[string]
+	known                        *vault.Collection[string]
+	knownCategories              *vault.Keyspace[string]
+	cursor                       *vault.Collection[uint64]
+	cleanup                      *vault.Keyspace[string]
+	vault                        *vault.Vault
+	now                          func() time.Time
+	attachment                   seedAttachment
+	retention                    newsRetention
+	stored                       newsStoredState
+	knownNewsRetention           *boundedNewestNews
+	queuedNewsRetention          *boundedNewestNews
+	retentionNeedsReconciliation bool
 }
 
 func Open(v *vault.Vault, now func() time.Time) (*Pool, error) {
@@ -80,12 +99,48 @@ func Open(v *vault.Vault, now func() time.Time) (*Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("register known news: %w", err)
 	}
+	knownCategories, err := vault.RegisterKeyspace(v, knownCategoryBucket, knownCategoryCodec{})
+	if err != nil {
+		return nil, fmt.Errorf("register known news categories: %w", err)
+	}
 	cursor, err := vault.Register(v, cursorBucket, cursorCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register news cursor: %w", err)
 	}
+	cleanup, err := vault.RegisterKeyspace(v, cleanupBucket, newsCleanupCodec{})
+	if err != nil {
+		return nil, fmt.Errorf("register news cleanup: %w", err)
+	}
 
-	return &Pool{queue: queue, known: known, cursor: cursor, vault: v, now: now}, nil
+	pool := &Pool{
+		writePermit: newNewsWritePermit(),
+		queue:       queue, known: known, knownCategories: knownCategories,
+		cursor: cursor, cleanup: cleanup, vault: v, now: now,
+		retention: newsRetention{
+			queueRecords: maximumNewsQueueRecords,
+			queueBytes:   maximumNewsQueueBytes,
+			knownRecords: maximumKnownNewsRecords,
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), newsRetentionTimeout)
+	defer cancel()
+	if err := pool.prune(ctx); err != nil {
+		return nil, fmt.Errorf("prune peer news: %w", err)
+	}
+	if err := pool.loadStoredState(ctx); err != nil {
+		return nil, fmt.Errorf("load peer news retention: %w", err)
+	}
+	if err := pool.recoverNewsRotation(ctx); err != nil {
+		return nil, fmt.Errorf("recover peer news publication: %w", err)
+	}
+	if err := pool.recoverNewsAdmission(ctx); err != nil {
+		return nil, fmt.Errorf("recover peer news admission: %w", err)
+	}
+	if err := pool.clearCleanupCursors(ctx); err != nil {
+		return nil, fmt.Errorf("finish peer news cleanup: %w", err)
+	}
+
+	return pool, nil
 }
 
 func (p *Pool) PublishOwnNews(
@@ -94,12 +149,18 @@ func (p *Pool) PublishOwnNews(
 	category string,
 	attributes map[string]string,
 ) error {
+	if err := p.writePermit.Acquire(ctx); err != nil {
+		return fmt.Errorf("publish own news: %w", err)
+	}
+	defer p.writePermit.Release()
+
 	if len(category) > categoryMaxLength {
 		return fmt.Errorf("%w: category %q too long", ErrBadNewsRecord, category)
 	}
+	now := p.now().UTC().Truncate(time.Second)
 	record := Record{
 		Originator: originator,
-		Created:    p.now().UTC().Truncate(time.Second),
+		Created:    now,
 		Category:   category,
 		Attributes: map[string]string{},
 	}
@@ -112,24 +173,11 @@ func (p *Pool) PublishOwnNews(
 		}
 		record.Attributes[key] = value
 	}
+	if !newsRecordAdmitted(record) || !newsPublicationAdmitted(record) {
+		return fmt.Errorf("%w: record exceeds %d bytes", ErrBadNewsRecord, maximumNewsRecordBytes)
+	}
 
-	err := p.vault.Update(ctx, func(tx *vault.Txn) error {
-		_, exists, err := p.known.Get(tx, vault.Key(record.ID()))
-		if err != nil {
-			return fmt.Errorf("check known news: %w", err)
-		}
-		if exists {
-			return nil
-		}
-		if err := p.known.Put(tx, vault.Key(record.ID()), knownMarker); err != nil {
-			return fmt.Errorf("remember news: %w", err)
-		}
-		if err := p.push(tx, Incoming, record); err != nil {
-			return err
-		}
-
-		return p.push(tx, Outgoing, record)
-	})
+	_, err := p.storeNewsRecord(ctx, record, now, []Queue{Incoming, Outgoing})
 	if err != nil {
 		return fmt.Errorf("publish own news: %w", err)
 	}
@@ -138,60 +186,53 @@ func (p *Pool) PublishOwnNews(
 }
 
 func (p *Pool) NextPublication(ctx context.Context) (Record, bool, error) {
-	var (
-		record Record
-		found  bool
-	)
-	err := p.vault.Update(ctx, func(tx *vault.Txn) error {
-		record = Record{}
-		found = false
-		key, wire, ok, err := p.popHead(tx, Outgoing)
-		if err != nil || !ok {
-			return err
-		}
-		record, err = parseRecord(wire, time.Time{})
-		if err != nil {
-			return fmt.Errorf("stored news record %q: %w", key, err)
-		}
-		record.Distributed++
-		found = true
-
-		destination := Outgoing
-		if record.Distributed >= distributionLimit {
-			destination = Published
-		}
-
-		return p.push(tx, destination, record)
-	})
-	if err != nil {
+	if err := p.writePermit.Acquire(ctx); err != nil {
+		return Record{}, false, fmt.Errorf("next news publication: %w", err)
+	}
+	defer p.writePermit.Release()
+	if err := p.recoverNewsRotation(ctx); err != nil {
+		return Record{}, false, fmt.Errorf("next news publication: %w", err)
+	}
+	if err := p.recoverNewsAdmission(ctx); err != nil {
 		return Record{}, false, fmt.Errorf("next news publication: %w", err)
 	}
 
-	return record, found, nil
+	now := p.now().UTC()
+	for {
+		if err := ctx.Err(); err != nil {
+			return Record{}, false, fmt.Errorf("next news publication: %w", err)
+		}
+		key, record, found, valid, err := p.nextPublicationCandidate(ctx, now)
+		if err != nil {
+			return Record{}, false, fmt.Errorf("next news publication: %w", err)
+		}
+		if !found {
+			return Record{}, false, nil
+		}
+		record, found, err = p.rotatePublication(ctx, key, record, valid)
+		if err != nil {
+			return Record{}, false, fmt.Errorf("next news publication: %w", err)
+		}
+		if found {
+			return record, true, nil
+		}
+	}
 }
 
 func (p *Pool) EnqueueIncomingNews(ctx context.Context, record Record) (bool, error) {
-	if record.Created.IsZero() || !knownNewsCategories[record.Category] {
+	if err := p.writePermit.Acquire(ctx); err != nil {
+		return false, fmt.Errorf("enqueue incoming news: %w", err)
+	}
+	defer p.writePermit.Release()
+
+	now := p.now().UTC()
+	if record.Created.IsZero() || !knownNewsCategories[record.Category] ||
+		!newsRecordAdmitted(record) ||
+		!newsCreationAdmitted(record.Created, now, record.Category) {
 		return false, nil
 	}
 
-	stored := false
-	err := p.vault.Update(ctx, func(tx *vault.Txn) error {
-		stored = false
-		_, exists, err := p.known.Get(tx, vault.Key(record.ID()))
-		if err != nil {
-			return fmt.Errorf("check known news: %w", err)
-		}
-		if exists {
-			return nil
-		}
-		if err := p.known.Put(tx, vault.Key(record.ID()), knownMarker); err != nil {
-			return fmt.Errorf("remember news: %w", err)
-		}
-		stored = true
-
-		return p.push(tx, Incoming, record)
-	})
+	stored, err := p.storeNewsRecord(ctx, record, now, []Queue{Incoming})
 	if err != nil {
 		return false, fmt.Errorf("enqueue incoming news: %w", err)
 	}
@@ -204,6 +245,7 @@ func (p *Pool) ByID(ctx context.Context, queue Queue, id string) (Record, bool, 
 		record Record
 		found  bool
 	)
+	now := p.now().UTC()
 	err := p.vault.View(ctx, func(tx *vault.Txn) error {
 		return p.queue.Scan(tx, queuePrefix(queue), func(_ vault.Key, wire string) (bool, error) {
 			candidate, err := parseRecord(wire, time.Time{})
@@ -211,6 +253,13 @@ func (p *Pool) ByID(ctx context.Context, queue Queue, id string) (Record, bool, 
 				return false, fmt.Errorf("stored news record: %w", err)
 			}
 			if candidate.ID() != id {
+				return true, nil
+			}
+			matches, err := p.knownRecordMatches(tx, candidate)
+			if err != nil {
+				return false, err
+			}
+			if !newsCreationAdmitted(candidate.Created, now, candidate.Category) || !matches {
 				return true, nil
 			}
 			record = candidate
@@ -234,11 +283,19 @@ func (p *Pool) Recent(ctx context.Context, queue Queue, limit int) ([]Record, er
 	}
 
 	var records []Record
+	now := p.now().UTC()
 	err := p.vault.View(ctx, func(tx *vault.Txn) error {
 		return p.queue.Scan(tx, queuePrefix(queue), func(_ vault.Key, wire string) (bool, error) {
 			record, err := parseRecord(wire, time.Time{})
 			if err != nil {
 				return false, fmt.Errorf("stored news record: %w", err)
+			}
+			matches, err := p.knownRecordMatches(tx, record)
+			if err != nil {
+				return false, err
+			}
+			if !newsCreationAdmitted(record.Created, now, record.Category) || !matches {
+				return true, nil
 			}
 			records = append(records, record)
 
@@ -249,8 +306,13 @@ func (p *Pool) Recent(ctx context.Context, queue Queue, limit int) ([]Record, er
 		return nil, fmt.Errorf("recent %s news: %w", queue, err)
 	}
 
-	// Scan yields oldest-first by sequence; reverse and cap to the newest limit.
-	reverseRecords(records)
+	slices.SortFunc(records, func(left, right Record) int {
+		if comparison := right.Created.Compare(left.Created); comparison != 0 {
+			return comparison
+		}
+
+		return strings.Compare(left.ID(), right.ID())
+	})
 	if len(records) > limit {
 		records = records[:limit]
 	}
@@ -258,58 +320,67 @@ func (p *Pool) Recent(ctx context.Context, queue Queue, limit int) ([]Record, er
 	return records, nil
 }
 
-func reverseRecords(records []Record) {
-	for i, j := 0, len(records)-1; i < j; i, j = i+1, j-1 {
-		records[i], records[j] = records[j], records[i]
-	}
-}
-
-func (p *Pool) push(tx *vault.Txn, queue Queue, record Record) error {
+func (p *Pool) push(tx *vault.Txn, queue Queue, record Record) (vault.Key, error) {
 	sequence, err := p.nextSequence(tx, queue)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := p.queue.Put(tx, queueKey(queue, sequence), record.WireForm()); err != nil {
-		return fmt.Errorf("push %s news: %w", queue, err)
-	}
-
-	return nil
-}
-
-func (p *Pool) popHead(tx *vault.Txn, queue Queue) (vault.Key, string, bool, error) {
-	var (
-		key  vault.Key
-		wire string
-		ok   bool
-	)
-	err := p.queue.Scan(tx, queuePrefix(queue), func(k vault.Key, value string) (bool, error) {
-		key = append(vault.Key(nil), k...)
-		wire = value
-		ok = true
-
-		return false, nil
-	})
-	if err != nil {
-		return nil, "", false, fmt.Errorf("scan %s news: %w", queue, err)
-	}
-	if !ok {
-		return nil, "", false, nil
-	}
-	if _, err := p.queue.Delete(tx, key); err != nil {
-		return nil, "", false, fmt.Errorf("pop %s news: %w", queue, err)
+	key := queueKey(queue, sequence)
+	if err := p.queue.Put(tx, key, record.WireForm()); err != nil {
+		return nil, fmt.Errorf("push %s news: %w", queue, err)
 	}
 
-	return key, wire, true, nil
+	return key, nil
 }
 
 func (p *Pool) nextSequence(tx *vault.Txn, queue Queue) (uint64, error) {
-	sequence, _, err := p.cursor.Get(tx, vault.Key(queue))
+	sequence, err := p.storedQueueSequence(tx, queue)
 	if err != nil {
 		return 0, fmt.Errorf("read %s news cursor: %w", queue, err)
+	}
+	if sequence == math.MaxUint64 {
+		return 0, fmt.Errorf("%s news cursor exhausted", queue)
 	}
 	sequence++
 	if err := p.cursor.Put(tx, vault.Key(queue), sequence); err != nil {
 		return 0, fmt.Errorf("advance %s news cursor: %w", queue, err)
+	}
+
+	return sequence, nil
+}
+
+func (p *Pool) storedQueueSequence(
+	tx *vault.Txn,
+	queue Queue,
+) (uint64, error) {
+	key := vault.Key(queue)
+	size, found, err := p.cursor.EncodedSize(tx, key)
+	if err != nil {
+		return 0, fmt.Errorf("inspect %s news cursor: %w", queue, err)
+	}
+	if !found {
+		return 0, nil
+	}
+	if size > 20 {
+		return 0, fmt.Errorf(
+			"%w: %w: %s news cursor size %d",
+			vault.ErrCorruptValue,
+			ErrBadNewsRecord,
+			queue,
+			size,
+		)
+	}
+
+	sequence, present, err := p.cursor.Get(tx, key)
+	if err != nil {
+		return 0, fmt.Errorf("read %s news cursor: %w", queue, err)
+	}
+	if !present {
+		return 0, fmt.Errorf(
+			"%w: %s news cursor disappeared during read",
+			vault.ErrCorruptValue,
+			queue,
+		)
 	}
 
 	return sequence, nil

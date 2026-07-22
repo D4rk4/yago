@@ -73,15 +73,76 @@ it is not an assumed deployment dependency.
   fails, it SHALL close the listeners already opened and SHALL NOT start those
   presence loops.
 * The node SHALL announce itself through configured YaCy seedlists.
+* One configured-seedlist refresh SHALL share one ten-second aggregate deadline,
+  run at most eight source fetches concurrently, retain completed sources when
+  another source reaches that deadline, and retain at most 4,096 unique seeds
+  and 16 MiB across the complete refresh. It SHALL reject advertised future
+  observations and observations older than 24 hours, retain the freshest
+  duplicate hash, and return a deterministic freshness/hash order.
 * The node SHALL serve YaCy seedlists with upstream-compatible request filters,
   including minimum peer version filtering.
+* Seed-list request numbers SHALL follow Java's signed 32-bit integer and
+  binary32 `Float.parseFloat` behavior. Malformed request numbers SHALL use the
+  upstream defaults, and `node`, `me`, and `address` SHALL recognize only
+  `true`, `on`, and `1` as true values.
+* Plain seed-list rows SHALL use the shorter YaCy `b|` or `z|` compact seed
+  representation. Address projection SHALL preserve the primary advertised
+  host before unique alternatives. HTML seed-list routes SHALL retain the
+  extension-derived `text/html` type, while JSONP SHALL retain `application/json`.
 * The node SHALL parse YaCy seed wire forms from configured seedlists without discarding otherwise valid peers over documented or observed `UTC` field variants.
+* The YaCy hello endpoint SHALL preserve `iam` as an opaque wire value for exact
+  authentication. Its optional `count` SHALL use Java signed-decimal int32
+  parsing with BMP `Character.digit(char, 10)` values and ASCII signs, reject
+  supplementary digits, and fall back to zero when absent, malformed, or
+  outside that range. Seed-list `maxcount` SHALL use the same integer parser and
+  its upstream default after invalid input. The raw hello seed SHALL contain at
+  most 16,000 Java `String.length()` UTF-16 units before generic seed decoding.
+* Every authenticated YaCy request adapter SHALL preserve whether the remote
+  network field was absent or explicitly empty. A missing field SHALL default
+  to `freeworld`; a present empty field SHALL remain empty and fail
+  authentication against `freeworld`; an empty local configuration SHALL still
+  denote `freeworld`.
+* The YaCy query endpoint SHALL treat `iam` and `youare` as opaque wire values,
+  authenticate against the exact `iam`, and require an exact local-hash target.
+  It SHALL return the stock constant `1` for `lurlcount`, the unresolved template
+  marker for an authenticated unknown object or failed per-word RWI read, and
+  the rejected response with an unresolved template time before authentication.
+  Its HTML route SHALL retain the extension-derived `text/html` type without
+  changing other key-value protocol routes.
 * The node SHALL allow operators to configure a proxy for outbound connections.
 * The node SHALL be reachable through one stable public endpoint.
 * The node SHALL support peer discovery and peer liveness exchange.
 * The node SHALL rotate its next peer news publication into the advertised seed news attribute once per announcement cycle and SHALL accept valid same-network news attachments from arriving peer seeds into its incoming news queue.
+* A decoded peer-news record SHALL NOT exceed 1 KiB and SHALL carry an exact
+  second-resolution creation time. Ordinary records SHALL expire after 24 hours;
+  profile-update and crawl-start records SHALL expire after 72 hours. The durable
+  queue SHALL retain at most 4,096 rows and 4 MiB, and duplicate history SHALL
+  retain at most 4,096 identities. Retention SHALL keep the newest creation times
+  under out-of-order intake, persist across restart, make cleanup progress in
+  bounded commits, and SHALL NOT serve or publish corrupt, expired, orphaned, or
+  category-mismatched rows. Only a stored-value error explicitly classified as
+  corruption MAY authorize repair or removal. An operational inspection or read
+  error SHALL be returned, SHALL NOT authorize repair of the unread value, and
+  SHALL roll back the current atomic page; earlier committed pages SHALL remain
+  durable and cleanup SHALL resume from its last durable cursor. Admission and
+  rotation SHALL persist recovery evidence before cross-shard mutation and clear
+  it only after replay or rollback and idempotent reconciliation complete.
+* The YaCy peer-message endpoint SHALL bound the wire-decoded subject to 100
+  bytes and body to 10,240 bytes. Its durable mailbox SHALL retain at most 1,024
+  records and 8 MiB, evict oldest records deterministically, check stored encoded
+  size before decoding legacy values, and commit bounded startup-cleanup progress.
+  Ordinary writes SHALL maintain exact retained record and byte state without a
+  full mailbox scan. Only a stored-value error explicitly classified as
+  corruption MAY authorize repair or removal. An operational inspection or read
+  error SHALL be returned, SHALL NOT authorize repair of the unread value, and
+  SHALL roll back the current atomic page; earlier committed pages SHALL remain
+  durable and cleanup SHALL resume from its last durable cursor. Admission SHALL
+  persist recovery evidence before cross-shard mutation and clear it only after
+  replay or rollback and idempotent reconciliation complete.
 * The node SHALL report cumulative counts of words and URLs sent to and received from peers in its advertised seed statistics. Each resource in a successful outbound remote-search response SHALL increment both received totals once; a failed or empty response SHALL change neither total. Current values SHALL include unflushed observations. A periodic worker SHALL attempt persistence on a one-second cadence, with each changed counter using an independent single-record transaction. A failed counter update SHALL retain that counter and every not-yet-attempted counter without replaying a committed counter. A graceful stop SHALL drain after HTTP and background transfer producers quiesce, using a fresh bounded context. Persisted totals SHALL survive restart. A process or host crash MAY lose every pending observation since the last successful counter flush, including observations retained across repeated storage failures.
-* The node SHALL reject peer-liveness callers that present this node's peer hash or advertised endpoint as their own identity.
+* The node SHALL reject peer-liveness callers that present this node's immutable
+  peer hash as their own identity. A distinct hash sharing the advertised
+  endpoint SHALL remain a distinct peer.
 * After network authentication, the node MAY retain an inbound peer-liveness
   caller only when its seed contains a usable advertised endpoint, or an
   advertised port can be combined with the trusted transport address. It SHALL
@@ -100,9 +161,13 @@ it is not an assumed deployment dependency.
   exported seed lists, search candidate selection, or DHT target selection.
   Locally observed `senior` peers MAY enter those surfaces under the existing
   active-set, freshness, capability, blocking, and routing gates.
-* The node SHALL honor the requested peer count in peer-liveness requests and select the announced
-  peers at random.
+* The node SHALL honor the requested peer count in peer-liveness requests and
+  select the freshest eligible peers with a stable hash tie-break.
 * The node SHALL receive inbound DHT RWI postings.
+* Inbound RWI and URL-metadata DHT transfers SHALL require the authenticated
+  sender hash to resolve in the persistent peer roster before storage. A known
+  inactive or junior sender SHALL remain eligible; an unknown sender SHALL be
+  rejected.
 * The node SHALL receive URL metadata associated with RWI postings.
 * The node SHALL preserve YaCy network-unit authentication behavior for the
   default `freeworld` unit and peers configured with the same network name.
@@ -127,23 +192,62 @@ it is not an assumed deployment dependency.
   increment, and a rejected identity SHALL remain pending for retry. Eviction or
   restart MAY omit a correlation increment but SHALL NOT affect accepted storage.
 * The node SHALL distribute stored RWI postings and URL metadata to compatible peers when configured.
-* The node SHALL verify its DHT reachability before outbound distribution by
-  accepting a current external YaCy hello classification from an eligible
-  observer. At least one current `senior` or `principal` classification SHALL
-  report reachable; an all-`junior` current set SHALL report unreachable. Only
-  when no current observer classification exists MAY an explicitly configured
-  public YaCy-compatible RWI-capacity self-test provide the state. An
-  automatically derived local or loopback query SHALL NOT establish public
-  reachability.
+* The node SHALL track public reachability independently from outbound DHT
+  distribution, matching YaCy's client-side sender behavior. At least one
+  current `senior` or `principal` external hello classification SHALL report
+  reachable; an all-`junior` current set SHALL report unreachable. Only when no
+  current observer classification exists MAY an explicitly configured public
+  YaCy-compatible RWI-capacity self-test provide the state. An automatically
+  derived local or loopback query SHALL NOT establish public reachability.
+  Unknown or unreachable inbound status SHALL NOT close outbound distribution.
 * External hello classifications SHALL be process-local, keyed by observer peer,
   limited to 1,024 observers, and expired after 15 minutes. `senior` and
   `principal` SHALL confirm external reachability; `junior` SHALL invalidate only
   that observer's positive classification. Only an observer whose primary
   advertised address is a public IP literal SHALL contribute evidence. A greet
   transport failure SHALL contribute no classification.
+* The persistent peer roster SHALL exclude the immutable local peer hash from
+  every admission, lookup, candidate, count, and Admin projection. A successful
+  direct hello SHALL refresh the responder's advertised metadata while retaining
+  the endpoint that was actually contacted; indirect gossip SHALL NOT overwrite
+  that direct observation.
+* The persistent peer roster SHALL serialize membership mutations through a
+  cancellation-aware permit. A transport failure SHALL move a retained peer out
+  of reachable membership for a ten-minute retry interval without deleting it;
+  successful contact SHALL promote it again, and retained observations SHALL
+  expire after 24 hours. A successful response in one search session SHALL take
+  precedence over another transport failure for the same peer. Invalid protocol
+  data SHALL affect reputation without changing transport reachability.
+* A persisted peer's primary row SHALL retain the v0.0.20 timestamp-plus-seed
+  encoding. Retry, expiry, and verification evidence SHALL use additive internal
+  metadata bound to that complete row and to its own lifecycle fields. Missing,
+  malformed, corrupted, orphaned, or stale metadata SHALL fall back to
+  conservative legacy lifecycle state. Startup SHALL inspect at most 4,096
+  metadata rows and persist its cleanup cursor so repeated starts eventually
+  cover the complete keyspace without an unbounded scan.
+* Exact normalized advertised host and port pairs SHALL have one routable owner.
+  A verified observation SHALL displace an unverified claimant without treating
+  endpoint equality as peer identity. Startup SHALL reduce a legacy oversized
+  roster to its bounded verification-prioritized fresh working set in one value
+  scan followed by bounded key-only deletion pages, evict expired rows first,
+  and rebuild endpoint ownership from the retained set before serving directory
+  lookups.
+* Peer protocol transport SHALL derive at most five unique advertised hosts in
+  deterministic order: the seed's primary `IP` host followed by `IP6` entries in
+  their wire order. IPv6 literals SHALL use bracketed URI authorities, and a seed
+  with only `IP6` SHALL remain addressable. Hello and callback attempts SHALL
+  share one operation deadline rather than multiplying it per host. A successful
+  alternate host SHALL become the stored primary host only after peer-hash
+  verification; DNS aliases SHALL NOT merge peer identities. Outbound RWI and
+  URL metadata transfers SHALL divide the earlier caller or HTTP-client
+  deadline across those candidates rather than restarting it for each address.
 * The node SHALL choose outbound DHT transfer targets using YaCy DHT ring ordering and advertised remote-index capability.
-* The node SHALL recover outbound RWI postings selected for DHT handoff after restart when they have not been confirmed as accepted by a compatible peer.
-* The node SHALL treat a peer's advertised remote-index capability as authoritative because YaCy transfer rejection values also represent transient load, discovery, and admission states. A protocol rejection SHALL retain peer reachability and use bounded retry readiness instead of rewriting the advertised capability.
+* The node SHALL recover outbound RWI postings selected for DHT handoff after restart when they have not been confirmed as accepted by every queued redundancy target. A successful copy SHALL NOT clear the recovery record while another in-memory copy remains.
+* Outbound RWI selection SHALL commit its complete recovery journal before a separate update removes live postings. Restoration SHALL commit live postings before a separate update releases their recovery entries. A failed cross-shard phase MAY retain duplicate live and recovery rows, but after reopen every affected posting SHALL remain present in at least one location and recovery SHALL converge idempotently.
+* An `ok` transfer response carrying `errorURL` SHALL be applied per URL hash. Before a reported posting is restored, every queued redundancy sibling for that posting SHALL be cancelled. Postings for reported hashes SHALL remain recoverable for retargeting, while unaffected postings MAY complete after their final queued redundancy copy succeeds. A failed local restore SHALL remain local-only and SHALL be retried before another network handoff.
+* After the final accepted redundancy copy, a failed local recovery-journal confirmation SHALL retain the complete confirmation batch for a local-only retry before another network handoff. The retry SHALL NOT resend the accepted postings or contribute peer-failure evidence, and the batch SHALL clear only after the complete local confirmation transaction succeeds.
+* A selected posting whose local URL metadata is known missing SHALL be finalized without transfer so its recovery record cannot survive indefinitely. A metadata-backed posting with no eligible target SHALL be restored to the local RWI index.
+* A non-`ok` DHT transfer response SHALL restore the selected postings for retargeting and clear the failed endpoint's advertised remote-index capability only while its persisted address still matches the attempted seed. A response pause SHALL be a minimum endpoint cooldown. Transport failures MAY retry the same endpoint only for a bounded number of attempts before restoring the postings for retargeting.
 * The node SHALL serve remote RWI search requests with receiver-side ceilings of
   10 results and 3,000 milliseconds. When that endpoint-owned deadline expires,
   it SHALL return HTTP 200 with a measured `searchtime`, an empty result set, and
@@ -154,9 +258,45 @@ it is not an assumed deployment dependency.
   returned resource copy SHALL carry an enhanced-base64 `wi` containing the
   complete fixed-order 20-column YaCy `WordReferenceRow` property form. The
   node SHALL NOT persist that response-only field into URL metadata.
+* A remote RWI search SHALL apply a requested author as case-insensitive stored
+  metadata containment and SHALL apply requested URL-regex, file-extension, and
+  protocol constraints from the decoded URL before top-k selection. The joined
+  candidate set SHALL remain bounded by the existing per-term posting cap. A URL
+  pattern SHALL contain at most 2,048 bytes and SHALL use Go RE2 full-match
+  semantics; URL and author metadata decoding SHALL remain independently
+  bounded. `prefer`, `profile`, `collection`, and `timezoneOffset` MAY remain
+  accepted without changing RWI ranking when no trustworthy local signal exists.
+* Every outbound remote search that has a current self seed SHALL send the same
+  hash in `iam` and the compact seed in `myseed`, including on an open network,
+  and SHALL carry every directly representable language, site-host, author,
+  file-type, URL-filter, and preference value. An authenticated inbound search
+  MAY retain a valid `myseed` only as one bounded potential peer when its hash
+  equals `iam`. Such an observation SHALL replace every advertised host with the
+  trusted transport IP, retain only the peer hash and port, force the local type
+  to `virgin`, never overwrite a known peer, and never enter reachable membership.
+  A later ordinary hello SHALL remain responsible for verification and promotion.
+* An outbound remote search SHALL reject a peer response before resource
+  observation or result conversion when any resource lacks `wi`, its decoded
+  value is not the complete fixed-order 20-column YaCy `WordReferenceRow`, or
+  the attached URL hash differs from the resource URL hash. Rejected resources
+  SHALL NOT reach ranking, cache, or crawl sinks, and the peer SHALL receive an
+  invalid-result reputation observation.
+* One outbound remote query SHALL start at most 32 physical peer HTTP attempts,
+  independently of logical peer-call and morphology budgets. Alternate addresses
+  SHALL divide the remaining peer deadline. A response-body I/O failure after
+  headers SHALL be a transport failure eligible for the next advertised address;
+  oversized, malformed, or WordReference-invalid responses SHALL NOT be retried
+  as transport failures. Resource, index-abstract, and secondary response
+  outcomes SHALL feed the same request-scoped peer lifecycle reduction.
+* Validated remote-search metadata MAY enter the operator-controlled asynchronous
+  document and full-text cache without overwriting locally crawled content. A
+  peer-attached response RWI SHALL NOT be copied into the local exchange vault
+  without durable provenance and expiry. Peer `references` SHALL NOT alter
+  ranking or query expansion; locally generated response topics MAY remain.
 * The node SHALL serve local search requests through YaCy-compatible search surfaces.
 * The node SHALL expose YaCy-compatible public search JSON, RSS, HTML, OpenSearch description, and suggestion subsets backed by local full-text search and DHT-selected reachable-peer search where applicable.
-* The node SHALL support federated search across local and DHT-selected reachable peer results, using YaCy index abstracts for multi-term remote result conjunctions, filtering remote targets by advertised RWI inventory, and balancing redundant DHT candidates randomly. Global peer-query hashing SHALL preserve every nonblank parsed term because the wire boundary has no reliable document language for language-specific function-word decisions. When swarm morphology is enabled, a multiword query SHALL retain one exact conjunctive primary request. Its bounded abstract recovery MAY address corpus-observed forms and regular forms verified by supported Snowball-rule analyzers, SHALL union forms within each original query requirement, SHALL intersect across every original requirement, and SHALL use the original query for evidence and ranking. It SHALL retain at most 12 forms per requirement, 20 forms across the request, and two peers per form. Candidate generation SHALL NOT claim to identify a single query language. It SHALL retain every applicable rule-backed analyzer identity even when its stem is unchanged or equal to another analyzer's stem, SHALL round-robin proposals across those identities under a 2,048-attempt cap, and SHALL retain a proposal only when its proposing analyzer maps it back to that analyzer's query stem. Duplicate surfaces SHALL collect their distinct verifying analyzer identities. One global order SHALL prefer distinct-analyzer agreement, shorter edit distance and length difference, greater retained prefix and rule support, analyzer priority, and lexical order; the original form SHALL remain first and the result SHALL contain no more than 12 surfaces in total. Rule-based generation SHALL accept only terms from four through 32 Unicode runes and SHALL return only the normalized base form outside that range. After intersection, each peer's metadata requests SHALL use a deterministic greedy cover of terms proven by that peer's own abstract to admit the selected URL set; disjoint term-to-URL sets MAY require more than one request to that peer, and every request SHALL carry only URLs admitted under its exact sent term hash. Primary, abstract, and metadata work SHALL share the existing aggregate remote deadline, actual-attempt ceiling, and response, metadata-row, and abstract-entry budgets. A resource-producing request to a cooperating Yago peer MAY additionally use its negotiated wire requirements, whose hash multiset SHALL match that exact primary wire request, for one strict analyzer-backed candidate search inside the same peer request. A requester MAY map a validated single-word variant ordinal back to its original ranking requirement only through its own one-to-one morphology plan; a peer SHALL NOT supply remapping data. That search SHALL retain at most 32 candidates, SHALL stop after 100 milliseconds, SHALL preserve every wire requirement, and SHALL NOT add a variant request or network round. Stock YaCy peers SHALL retain exact RWI behavior. The rule-derived supplement can address common regular siblings absent from the requester's corpus, but a suppletive or analyzer-unconnected form remains undiscoverable unless it was observed or a cooperating peer supplies analyzer recall.
+* A local full-text `site:` constraint SHALL admit only the exact normalized host and its counterpart with one leading `www.` label. No other host, including arbitrary subdomains and suffix-confusion hosts, SHALL be admitted. A request containing only operators SHALL remain keyword-seeded and SHALL NOT trigger a full-corpus match-all scan.
+* The node SHALL support federated search across local and DHT-selected reachable peer results. Remote targets SHALL pass advertised RWI-inventory gates, balance redundant candidates randomly within each vertical partition, and retain partition coverage before redundancy. With the default exponent 4 and an eligible candidate in every partition, a one-word request SHALL query all 16 vertical partitions within the fixed 32-attempt budget. Global peer-query hashing SHALL preserve every nonblank parsed term because the wire boundary has no reliable document language for language-specific function-word decisions. Every multiword primary request SHALL carry stock YaCy `abstracts=auto`, and exact secondary recovery SHALL consume only the index abstracts returned by those primary requests without separate per-term abstract probes. When swarm morphology is enabled, a multiword query SHALL retain one exact conjunctive primary request. Its bounded abstract recovery MAY address corpus-observed forms and regular forms verified by supported Snowball-rule analyzers, SHALL union forms within each original query requirement, SHALL intersect across every original requirement, and SHALL use the original query for evidence and ranking. It SHALL retain at most 12 forms per requirement, 20 forms across the request, and two peers per form. Candidate generation SHALL NOT claim to identify a single query language. It SHALL retain every applicable rule-backed analyzer identity even when its stem is unchanged or equal to another analyzer's stem, SHALL round-robin proposals across those identities under a 2,048-attempt cap, and SHALL retain a proposal only when its proposing analyzer maps it back to that analyzer's query stem. Duplicate surfaces SHALL collect their distinct verifying analyzer identities. One global order SHALL prefer distinct-analyzer agreement, shorter edit distance and length difference, greater retained prefix and rule support, analyzer priority, and lexical order; the original form SHALL remain first and the result SHALL contain no more than 12 surfaces in total. Rule-based generation SHALL accept only terms from four through 32 Unicode runes and SHALL return only the normalized base form outside that range. After intersection, each peer SHALL receive at most one stock-compatible secondary metadata request. That request SHALL carry the union of term hashes and selected URL hashes that the peer proved through its own abstracts, matching Java YaCy's `SecondarySearchSuperviser` rather than a Yago-only extension. Primary, abstract, and metadata work SHALL share the existing aggregate remote deadline, actual-attempt ceiling, and response, metadata-row, and abstract-entry budgets. A resource-producing request to a cooperating Yago peer MAY additionally use its negotiated wire requirements, whose hash multiset SHALL match that exact primary wire request, for one strict analyzer-backed candidate search inside the same peer request. A requester MAY map a validated single-word variant ordinal back to its original ranking requirement only through its own one-to-one morphology plan; a peer SHALL NOT supply remapping data. That search SHALL retain at most 32 candidates, SHALL stop after 100 milliseconds, SHALL preserve every wire requirement, and SHALL NOT add a variant request or network round. Stock YaCy peers SHALL retain exact RWI behavior. The rule-derived supplement can address common regular siblings absent from the requester's corpus, but a suppletive or analyzer-unconnected form remains undiscoverable unless it was observed or a cooperating peer supplies analyzer recall.
 * Exact local retrieval SHALL build a required-term conjunction for each candidate language analyzer and exempt a word only inside a branch whose analyzer folds it away; every analyzer-position component group of one source term SHALL remain required. Latin-script queries SHALL reach every registered Latin-language analyzer. Ambiguous function words SHALL be verified against the stored document analyzer before admission. Chinese, Japanese, and Korean branches SHALL index mandatory source-offset-preserving character unigrams and overlapping bigrams, so a one-character query and a shorter sequence inside a longer unsegmented run remain searchable. Chinese and Japanese document analyzers MAY add optional dictionary segments as ranking evidence, and Chinese indexing/querying MAY canonicalize only mappings that preserve the original code-point count and byte-span correspondence. Query recall SHALL NOT depend on optional dictionary segments. Pseudo-relevance terms SHALL only reorder exact matches. Fuzzy recovery SHALL run only after a true miss, use the same analyzer-specific conjunction rule, require every retained parsed term through bounded analyzer-consistent edit distance with a shared-prefix floor, disable fuzzy matching for tokens above 64 Unicode runes, and SHALL NOT use document-wide character-gram conjunctions. Distance-two recovery SHALL preserve the first four Unicode runes. Local snippets SHALL use a bounded stored-document evidence scan to center on the matched literal, morphological, or bounded fuzzy surface; a heading-only or trusted-anchor-only match SHALL render evidence from that field. Human search surfaces SHALL mark validated query-match offsets obtained by applying that result's indexed language analyzer to its bounded final snippet. A hydrated local result SHALL retain at most 128 absolute stored-body query spans from the same evidence pass. A local result with body evidence SHALL link the public cached-copy surface to `GET /cached` with exactly one `u`, `analyzer`, `start`, and `end` value and one to 32 repeated `terms` values. The analyzer SHALL contain at most 64 lowercase ASCII letters, digits, underscores, or hyphens; each term SHALL contain at most 256 UTF-8 bytes and all terms at most 4 KiB; `start` and `end` SHALL be decimal byte-offset anchors with `0 <= start < end <= 2^30` and an at-most-8-KiB requested range. The stored anchor SHALL exist and preserve UTF-8 boundaries. The cached passage SHALL expand it by at most 256 source runes on each available side without crossing the 2,048-rune result cap, then return at most 128 analyzer spans relative to the expanded passage. Invalid passage parameters, analyzer identities, or stored ranges SHALL return HTTP 400; an absent passage source or document SHALL return HTTP 404; a backend failure SHALL return HTTP 500. A request carrying only `u` SHALL retain the ordinary full cached-copy behavior. Before lexical ranking, up to the first 500 peer, web, and legacy-RWI candidates without authoritative evidence SHALL analyze only their bounded visible title, snippet, and decoded URL in memory while the request context remains live. A compatible row language hint SHALL select its registered analyzer; a conflicting, absent, or unregistered hint SHALL use script routing, and a script without a registered candidate SHALL use the Unicode-normalizing standard analyzer. Position keys SHALL preserve at most 32 raw query requirements, each field SHALL retain at most 64 positions per requirement, and the snippet SHALL retain at most 128 validated byte spans. Analyzer evidence is authoritative even when it contains no span. Invalid or empty visible text, unavailable analyzer infrastructure, and rows not completed before cancellation or deadline SHALL retain bounded Unicode word-form matching, boundary-aware literal identifiers, and intra-token matching for scripts that do not conventionally delimit every word with whitespace.
 * Public search SHALL reject queries above 512 Unicode runes or 32 combined required and excluded parsed terms before retrieval. The interactive search pipeline SHALL enforce a 1.8-second end-to-end processing deadline and preserve completed local results when peer work reaches its deadline. One remote fan-out SHALL resolve one immutable self-seed snapshot for all selected peers. YaCy `resource=local` and admin `scope=local` SHALL never use swarm or external web search. Only Tavily `advanced` search MAY permit web search according to the effective fallback policy; `basic`, `fast`, and `ultra-fast` SHALL remain local-only and SHALL NOT send a query to a web provider. Privacy-permitted `enabled` web search SHALL use an ordered miss cascade: exact/morphological local retrieval with any selected swarm search; one bounded local-exact rescue when that exact stage is incomplete and carries no primary result, or bounded local fuzzy recovery when it completes with an honest miss; then web search if the selected local path also misses. The rescue and fuzzy paths SHALL be mutually exclusive. The `always` mode SHALL start web work alongside local and peer work on every eligible query and SHALL rank-fuse and deduplicate completed primary and web rankings. The complete exact local-plus-swarm and peer-evidence stage SHALL receive at most 600 milliseconds before a sequential fallback or 1,400 milliseconds when web search is already running in parallel; local-exact rescue SHALL receive at most 150 milliseconds except when exact-stage capacity exhaustion selects a capacity-only budget of at most 500 milliseconds; fuzzy recovery SHALL receive at most 150 milliseconds. The complete hedged web stage SHALL receive 900 milliseconds after a miss or 1,500 milliseconds when it starts in parallel. Engine fetch-and-parse work SHALL admit at most eight attempts process-wide. An unavailable engine set SHALL be exposed as a recoverable web partial failure rather than an indistinguishable honest miss. Provider diagnostics SHALL use stable failure categories and SHALL NOT log the submitted query or provider request URL.
 * Interactive retrieval SHALL cancel cooperative work before its hard response deadlines so completed partial results can survive. A contended storage view SHALL stop waiting for the global storage gate when its request context ends. Conflicting multi-shard updates SHALL stop new fast-path writer admission and serialize with context-aware writer preference while retaining shared layout access, so ordinary Views continue against committed snapshots; compaction and layout mutation SHALL retain exclusive quiescence. The immutable served-result denylist snapshot SHALL remain available after a completed search stage's context ends. Public search surfaces SHALL admit at most 16 concurrent requests. At most four interactive retrieval pipelines, four retained exact local-plus-peer stages, four local-exact rescue stages, and four retained fuzzy local stages SHALL execute process-wide. An admitted request SHALL wait for an outer pipeline slot only within the existing 1.75-second cooperative context. Exact-stage capacity rescue SHALL wait for its rescue slot only within its 500-millisecond stage context. Other inner admissions SHALL remain nonblocking. A separate nonblocking four-slot admission SHALL bound remote branches and SHALL remain held until remote search itself returns, including after federated retrieval releases an exact-stage slot with a completed local answer. Each outer or inner stage SHALL retain its own admission until its directly wrapped call exits. Only cancellation or a deadline inherited from the caller SHALL return an infrastructure error. Endpoint-owned outer deadline, capacity, and operational failures SHALL preserve any completed response and become classified partial failures; inner exact, local-exact-rescue, fuzzy, remote-stage-admission, and web-provider failures SHALL follow the same recoverable rule so later stages can recover. A page-one or extension refresh classified as incomplete by an outer, exact, local-recovery, remote-stage-admission, or provider infrastructure failure MAY reuse an unexpired nonempty session even when a degraded web-only branch returned rows; a global request MAY also use an equivalent unexpired local session when no exact global session exists. The returned request SHALL retain its requested scope, no synthetic global session SHALL be stored, and reused sessions SHALL carry the current partial failures without replacement, truncation, or TTL extension. A genuine zero-result local answer carrying only ordinary peer failures SHALL remain an honest miss and SHALL replace the session, as SHALL an empty response without failures. Query logging and search metrics SHALL observe the bounded response returned to the caller rather than a late inner completion. When query logging is enabled, incomplete responses SHALL additionally record the total partial-failure count and at most eight ordered unique failure sources; aggregate mode SHALL NOT record query text.
@@ -204,7 +344,7 @@ it is not an assumed deployment dependency.
 * The node SHALL coalesce at most 64 ready crawl-ingest deliveries and 64 MiB of their encoded JSON in arrival order for grouped document, index, metadata, posting, stale-sweep, and recrawl work. A partial group SHALL wait no longer than ten milliseconds and SHALL stop waiting when its context is cancelled.
 * One grouped crawl ingest SHALL replace outbound-anchor sources in ordered groups of at most 16. Each replacement SHALL aggregate all changed-source contributions once, project affected stored documents in sorted pages of at most 16 exact target URLs, and SHALL hold no unrelated URL boundary. A target mutation transaction SHALL contain at most 32 physical rows and 8 MiB of encoded keys and values; byte pressure MAY split one target page across transactions. After every target page has been stored and its documents offered to the index, the at-most-16 sorted final publication rows SHALL be divided into deterministic subtransactions whose conservative encoded ceiling is at most 64 MiB; one source row above that ceiling SHALL fail before target projection. A storage-capacity, page, or index failure SHALL leave every prior publication authoritative. A later publication-subtransaction failure MAY leave earlier source rows committed and later rows unchanged. Either failure SHALL redeliver the original ingest group before later metadata, postings, or acknowledgements advance; replay SHALL recompute the remaining aggregate and converge idempotently.
 * Safety filtering, persistent cluster consolidation, diversity, host crowding, requested date ordering, and paging SHALL run once after learned scoring.
-* Peer-supplied results SHALL be capped at the requested row count, and reported remote totals SHALL count deduplicated rows in hand rather than peer-claimed join counts. One federated query SHALL retain at most 8 MiB of peer response data, 1,024 metadata rows, and 8,192 index-abstract hashes across all exact and morphology passes; it SHALL start at most 32 peer HTTP attempts in total. Ordinary peer fetches SHALL additionally admit at most 32 attempts process-wide. Multiword speculative abstract jobs SHALL consume at most 20 of the per-query attempts and additionally share eight process-wide morphology slots inside the ordinary ceiling, so one expanded query cannot occupy every ordinary slot; single-word variant and metadata-cover calls use the total and ordinary process ceilings. Peer response work SHALL reduce through a bounded stream. Local admission or response-budget exhaustion SHALL NOT lower peer reputation. Every emitted peer row SHALL visibly contain exact or single-analyzer morphological evidence for every content term in its title, snippet, or decoded URL. Up to three otherwise-unmatched peer URLs MAY gain visible evidence from bounded cached or fetched page text; matching pages SHALL receive an excerpt containing the complete evidence span. Confirmed mismatches, fetch failures without visible evidence, disabled-fetch rows, and unmatched rows beyond the rescue cap SHALL be removed before zero-result recovery and before web-result fusion, and reported totals SHALL be adjusted; in `always` mode the provider request MAY already be in flight concurrently. Content/script evidence SHALL take precedence over an untrusted peer language label, and all terms SHALL match within one analyzer branch. Fetch concurrency and fetched-text cache memory SHALL be process-wide and bounded. `verify=false` SHALL skip network rescue but SHALL NOT bypass visible-evidence admission; `verify=cacheonly` SHALL never initiate a fetch.
+* Peer-supplied results SHALL be capped at the requested row count, and reported remote totals SHALL count deduplicated rows in hand rather than peer-claimed join counts. One federated query SHALL retain at most 8 MiB of peer response data, 1,024 metadata rows, and 8,192 index-abstract hashes across all exact and morphology passes; it SHALL start at most 32 peer HTTP attempts in total. Ordinary peer fetches SHALL additionally admit at most 32 attempts process-wide. Multiword speculative abstract jobs SHALL consume at most 20 of the per-query attempts and additionally share eight process-wide morphology slots inside the ordinary ceiling, so one expanded query cannot occupy every ordinary slot; single-word variant and secondary metadata calls use the total and ordinary process ceilings. Peer response work SHALL reduce through a bounded stream. Local admission or response-budget exhaustion SHALL NOT lower peer reputation. Every emitted peer row SHALL visibly contain exact or single-analyzer morphological evidence for every content term in its title, snippet, or decoded URL. Up to three otherwise-unmatched peer URLs MAY gain visible evidence from bounded cached or fetched page text; matching pages SHALL receive an excerpt containing the complete evidence span. Confirmed mismatches, fetch failures without visible evidence, disabled-fetch rows, and unmatched rows beyond the rescue cap SHALL be removed before zero-result recovery and before web-result fusion, and reported totals SHALL be adjusted; in `always` mode the provider request MAY already be in flight concurrently. Content/script evidence SHALL take precedence over an untrusted peer language label, and all terms SHALL match within one analyzer branch. Fetch concurrency and fetched-text cache memory SHALL be process-wide and bounded. `verify=false` SHALL skip network rescue but SHALL NOT bypass visible-evidence admission; `verify=cacheonly` SHALL never initiate a fetch.
 * A resource-producing `/yacy/search.html` request to a Yago peer MAY negotiate namespaced query-match evidence version 1 and SHALL carry the exact normalized wire requirements used to interpret response ordinals. An index-abstract-only request SHALL NOT negotiate evidence. A cooperating peer SHALL derive evidence only from a locally stored document and SHALL key it by the returned resource hash. One request SHALL inspect at most 32 resource candidates, 2 MiB of stored source, 128 KiB of retained base64 wire values, and 100 milliseconds; one document SHALL inspect at most 512 KiB. One resource SHALL retain at most a 2 KiB snippet, 128 snippet ranges, 128 absolute body ranges, five named fields, 32 requirement entries per field, 64 positions per requirement, 256 positions in total, and 16 KiB of JSON before base64 encoding. The receiver SHALL independently validate the registered analyzer, visible-script compatibility, resource identity, exact request ordinals, UTF-8 boundaries, monotonic ranges and positions, allowed fields, and every bound before ranking. A missing, unsupported, malformed, or incompatible extension SHALL leave the existing bounded visible-field analyzer available. For a primary request without a URL allowlist, the serving peer SHALL enable analyzer-backed recall only when the exact query-hash multiset equals the word hashes of those wire requirements; a URL-bounded secondary request SHALL remain confined to its explicit resource allowlist. The serving peer MAY then use the validated wire requirements for its bounded analyzer-backed candidate search, merge analyzer-ranked metadata before deduplicated legacy RWI rows under the ordinary result cap, and then derive evidence independently for the merged rows. Only the requester MAY subsequently apply its local one-to-one single-word ordinal mapping to the original ranking requirement. Unsupported constraints or analyzer-search failure SHALL leave the exact RWI response intact. When duplicate peer rows identify the same URL, rank and reputation contributions SHALL remain fused independently while the retained row upgrades to the strongest authoritative analyzer, snippet, body-range, and field-position payload before final ranking. Stock YaCy requests and responses SHALL remain unchanged.
 * Every negotiated query-match evidence item SHALL explicitly list the complete analyzer-relevant ordinal set and the subset absent from all analyzed fields. The position allocator SHALL retain at least one witness for every present relevant ordinal before additional positions. The receiver SHALL reproduce the analyzer-relevant set locally and reject any item whose present and absent ordinals do not form its exact non-overlapping partition.
 * The node SHALL expose a Tavily-compatible `POST /search` endpoint backed by exact/morphological local search, YaCy/yago peers where its requested depth includes federation, mutually exclusive bounded local-exact rescue after an empty incomplete exact stage or local fuzzy recovery after an honest miss, and the optional DDGS provider. DDGS SHALL run after the selected local recovery also misses in `enabled` mode or alongside local and peer retrieval in `always` mode. It SHALL be a drop-in Tavily Search API surface: it SHALL return only Tavily-shaped fields, SHALL NOT carry yago-specific provenance markers, and SHALL be search-only, not browsing result pages.

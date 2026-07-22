@@ -36,6 +36,10 @@ func TestSeedNetworkAddressRequiresHostAndPort(t *testing.T) {
 	if address, ok := (Seed{}).NetworkAddress(); ok || address != "" {
 		t.Fatalf("empty seed NetworkAddress = %q, %v", address, ok)
 	}
+	if address, ok := (Seed{IP: Some(Host{}), Port: Some(Port(8090))}).NetworkAddress(); ok ||
+		address != "" {
+		t.Fatalf("empty host NetworkAddress = %q, %v", address, ok)
+	}
 
 	host, err := ParseHost("192.0.2.1")
 	if err != nil {

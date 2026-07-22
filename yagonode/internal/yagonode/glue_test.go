@@ -84,6 +84,15 @@ func (s stubReport) UptimeSeconds(context.Context) int { return 315 }
 
 func (s stubReport) SelfSeed(context.Context) yagomodel.Seed { return s.seed }
 
+func (s stubReport) PublishedPeerType(context.Context) yagomodel.PeerType {
+	peerType, known := s.seed.PeerType.Get()
+	if !known {
+		return yagomodel.PeerVirgin
+	}
+
+	return peerType
+}
+
 var _ nodestatus.Report = stubReport{}
 
 func TestRuntimeStatusAdapters(t *testing.T) {

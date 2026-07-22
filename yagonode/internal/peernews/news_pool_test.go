@@ -171,7 +171,7 @@ func TestRecentReturnsNewestFirstCapped(t *testing.T) {
 	if len(recent) != 2 {
 		t.Fatalf("recent = %d, want 2 (capped)", len(recent))
 	}
-	if recent[0].Attributes["startURL"] != "http://example.test/2" ||
+	if recent[0].Attributes["startURL"] != "http://example.test/0" ||
 		recent[1].Attributes["startURL"] != "http://example.test/1" {
 		t.Fatalf("recent order = %q, %q; want newest first",
 			recent[0].Attributes["startURL"], recent[1].Attributes["startURL"])

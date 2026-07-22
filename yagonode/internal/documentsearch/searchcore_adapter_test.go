@@ -409,7 +409,7 @@ func TestCoreCriteriaCoversContentKindsAndSiteHash(t *testing.T) {
 		if err != nil {
 			t.Fatalf("searchCoreCriteria(%s): %v", domain, err)
 		}
-		if got.contentKind != want || got.siteHash == "" {
+		if got.contentKind != want || len(got.siteHashes) != 2 {
 			t.Fatalf("criteria(%s) = %#v, want kind %d and site hash", domain, got, want)
 		}
 	}

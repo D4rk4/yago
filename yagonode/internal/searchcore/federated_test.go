@@ -73,6 +73,39 @@ func TestFederatedSearcherMergesDeduplicatesAndOffsets(t *testing.T) {
 	}
 }
 
+func TestFederatedSearcherAppliesDomainConstraintsBeforeFusionAndTruncation(t *testing.T) {
+	blocked := Result{
+		URL: "https://blocked.example/duplicate", URLHash: "blocked", Score: 10,
+	}
+	allowed := Result{
+		URL: "https://docs.allowed.example/result", URLHash: "allowed", Score: 5,
+	}
+	local := &fakeCoreSearcher{response: Response{
+		TotalResults: 2,
+		Results:      []Result{blocked, allowed},
+	}}
+	remote := &fakeCoreSearcher{response: Response{
+		TotalResults: 1,
+		Results:      []Result{blocked},
+	}}
+
+	response, err := NewFederatedSearcher(local, remote).Search(
+		t.Context(),
+		Request{
+			Source: SourceGlobal, Limit: 1,
+			IncludeDomains: []string{"allowed.example"},
+			ExcludeDomains: []string{"blocked.example"},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.TotalResults != 1 || len(response.Results) != 1 ||
+		response.Results[0].URL != allowed.URL {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
 func TestFederatedSearcherReportsRemoteErrorAsPartialFailure(t *testing.T) {
 	local := &fakeCoreSearcher{response: Response{Results: []Result{{URL: "local"}}}}
 	remote := &fakeCoreSearcher{err: errors.New("remote down")}

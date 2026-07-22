@@ -30,6 +30,9 @@ func (r *roster) ObservedKnownPeerCount(ctx context.Context) (int, error) {
 		if err != nil {
 			return fmt.Errorf("count observed peers: %w", err)
 		}
+		if r.peers.Contains(tx, r.key(r.self)) {
+			observed--
+		}
 		count = observed
 
 		return nil
@@ -45,9 +48,12 @@ func (r *roster) PeerObservations(
 ) ([]PeerObservation, int, int, error) {
 	observations := make([]PeerObservation, 0, max(r.reservoirCap, 0))
 	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
-		return r.peers.Scan(tx, nil, func(_ vault.Key, entry rosterEntry) (bool, error) {
+		return r.scanRosterEntries(tx, func(_ vault.Key, entry rosterEntry) (bool, error) {
 			if err := ctx.Err(); err != nil {
 				return false, fmt.Errorf("read peer observations: %w", err)
+			}
+			if r.isSelf(entry.seed.Hash) {
+				return true, nil
 			}
 			observations = append(observations, PeerObservation{
 				Seed:     detachCandidateSeed(entry.seed),
@@ -77,12 +83,15 @@ func (r *roster) PeerObservation(
 	ctx context.Context,
 	peer yagomodel.Hash,
 ) (PeerObservation, bool, error) {
+	if r.isSelf(peer) {
+		return PeerObservation{}, false, nil
+	}
 	var (
 		observation PeerObservation
 		found       bool
 	)
 	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
-		entry, known, err := r.peers.Get(tx, r.key(peer))
+		entry, known, err := r.getRosterEntry(tx, r.key(peer))
 		if err != nil {
 			return fmt.Errorf("read peer observation: %w", err)
 		}

@@ -13,31 +13,25 @@ func TestSiteHashFromRequestHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("searchCriteriaFromRequest: %v", err)
 	}
-	if criteria.siteHash != "ABCDEF" {
-		t.Fatalf("siteHash = %q, want ABCDEF", criteria.siteHash)
-	}
+	requireSiteHashes(t, criteria.siteHashes, "ABCDEF")
 }
 
 func TestSiteHashFromOperatorBeforeStructuredHost(t *testing.T) {
 	criteria, err := searchCriteriaFromRequest(yagoproto.SearchRequest{
 		Modifier: "site:example.com",
 		SiteHost: "ignored.example",
+		SiteHash: "ABCDEF",
 	})
 	if err != nil {
 		t.Fatalf("searchCriteriaFromRequest: %v", err)
 	}
 
-	hash, err := yagomodel.HashURLHost("example.com")
-	if err != nil {
-		t.Fatalf("HashURLHost: %v", err)
-	}
-	want, err := hash.HostHash()
-	if err != nil {
-		t.Fatalf("HostHash: %v", err)
-	}
-	if criteria.siteHash != want {
-		t.Fatalf("siteHash = %q, want %q", criteria.siteHash, want)
-	}
+	requireSiteHashes(
+		t,
+		criteria.siteHashes,
+		siteHostHash(t, "example.com"),
+		siteHostHash(t, "www.example.com"),
+	)
 }
 
 func TestSiteHashFromStructuredHostFallback(t *testing.T) {
@@ -46,16 +40,37 @@ func TestSiteHashFromStructuredHostFallback(t *testing.T) {
 		t.Fatalf("searchCriteriaFromRequest: %v", err)
 	}
 
-	hash, err := yagomodel.HashURLHost("example.com")
+	requireSiteHashes(
+		t,
+		criteria.siteHashes,
+		siteHostHash(t, "example.com"),
+		siteHostHash(t, "www.example.com"),
+	)
+}
+
+func siteHostHash(t *testing.T, host string) string {
+	t.Helper()
+	hash, err := yagomodel.HashURLHost(host)
 	if err != nil {
-		t.Fatalf("HashURLHost: %v", err)
+		t.Fatalf("HashURLHost(%q): %v", host, err)
 	}
-	want, err := hash.HostHash()
+	hostHash, err := hash.HostHash()
 	if err != nil {
-		t.Fatalf("HostHash: %v", err)
+		t.Fatalf("HostHash(%q): %v", host, err)
 	}
-	if criteria.siteHash != want {
-		t.Fatalf("siteHash = %q, want %q", criteria.siteHash, want)
+
+	return hostHash
+}
+
+func requireSiteHashes(t *testing.T, got []string, want ...string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("siteHashes = %v, want %v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("siteHashes = %v, want %v", got, want)
+		}
 	}
 }
 

@@ -10,13 +10,14 @@ import (
 )
 
 type TransferURLRequest struct {
-	NetworkName string
-	Iam         yagomodel.Hash
-	YouAre      yagomodel.Hash
-	URLCount    int
-	URLs        []yagomodel.URIMetadataRow
-	Key         string
-	MagicMD5    string
+	NetworkName        string
+	NetworkNamePresent bool
+	Iam                yagomodel.Hash
+	YouAre             yagomodel.Hash
+	URLCount           int
+	URLs               []yagomodel.URIMetadataRow
+	Key                string
+	MagicMD5           string
 }
 
 type TransferURLResponse struct {
@@ -28,7 +29,7 @@ type TransferURLResponse struct {
 
 func (r TransferURLRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldYouAre, r.YouAre.String())
 	putInt(form, FieldURLCount, r.URLCount)
@@ -56,11 +57,13 @@ func ParseTransferURLRequest(ctx context.Context, form url.Values) (TransferURLR
 		)
 	}
 
+	networkName, networkNamePresent := parseNetworkName(form)
 	req := TransferURLRequest{
-		NetworkName: form.Get(FieldNetworkName),
-		URLCount:    urlCount,
-		Key:         form.Get(FieldKey),
-		MagicMD5:    form.Get(FieldMagicMD5),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		URLCount:           urlCount,
+		Key:                form.Get(FieldKey),
+		MagicMD5:           form.Get(FieldMagicMD5),
 	}
 
 	req.Iam, err = parseHashField("transferURL request", FieldIam, form.Get(FieldIam))

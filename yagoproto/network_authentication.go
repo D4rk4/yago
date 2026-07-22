@@ -42,7 +42,11 @@ func MagicMD5(key, iam, essentials string) string {
 }
 
 func (a NetworkAccess) Authorizes(form url.Values) bool {
-	if NetworkUnit(form.Get(FieldNetworkName)) != NetworkUnit(a.NetworkName) {
+	requestNetwork := DefaultNetwork
+	if form.Has(FieldNetworkName) {
+		requestNetwork = form.Get(FieldNetworkName)
+	}
+	if requestNetwork != NetworkUnit(a.NetworkName) {
 		return false
 	}
 	if a.Mode == "" || a.Mode == NetworkAuthenticationUncontrolled {

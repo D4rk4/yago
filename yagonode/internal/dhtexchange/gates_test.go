@@ -4,7 +4,6 @@ import "testing"
 
 func openGateState() GateState {
 	return GateState{
-		PublicReachable:  true,
 		LocalPeerKnown:   true,
 		ConnectedPeers:   DefaultMinimumConnectedPeers,
 		LocalRWIWords:    DefaultMinimumRWIWords,
@@ -58,7 +57,6 @@ func TestEvaluateGatesReportsEveryClosedGateReason(t *testing.T) {
 	config.AllowWhileIndexing = false
 	state := GateState{
 		OnlineCaution:    "proxy",
-		PublicReachable:  false,
 		LocalPeerKnown:   false,
 		LocalPeerVirgin:  true,
 		ConnectedPeers:   DefaultMinimumConnectedPeers - 1,
@@ -80,7 +78,6 @@ func TestEvaluateGatesReportsEveryClosedGateReason(t *testing.T) {
 		t.Fatalf("BlockingReason = %q, want %q", report.BlockingReason, GateOnlineCautionReason)
 	}
 	assertClosed(t, report, GateOnlineCaution, GateOnlineCautionReason)
-	assertClosed(t, report, GatePublicReachability, GatePublicReachabilityReason)
 	assertClosed(t, report, GateLocalPeer, GateLocalPeerMissingReason)
 	assertClosed(t, report, GateLocalPeerMature, GateLocalPeerVirginReason)
 	assertClosed(t, report, GateNetworkSize, GateNetworkTooSmallReason)

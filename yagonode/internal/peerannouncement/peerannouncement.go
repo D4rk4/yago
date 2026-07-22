@@ -69,5 +69,9 @@ func New(
 		news:                         cfg.News,
 		externalReachabilityEvidence: cfg.ExternalReachabilityEvidence,
 		admitExternalObserverAddress: cfg.AdmitExternalObserverAddress,
+		bootstrap: bootstrapRefresh{
+			now:      time.Now,
+			cooldown: bootstrapRetryCooldown,
+		},
 	}
 }

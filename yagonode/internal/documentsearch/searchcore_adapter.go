@@ -75,7 +75,7 @@ func (s coreLocalSearcher) Search(
 }
 
 func searchCoreCriteria(req searchcore.Request) (searchCriteria, error) {
-	siteHash, err := siteHashFromCoreRequest(req)
+	siteHashes, err := siteHashesFromCoreRequest(req)
 	if err != nil {
 		return searchCriteria{}, err
 	}
@@ -87,7 +87,7 @@ func searchCoreCriteria(req searchcore.Request) (searchCriteria, error) {
 		reporting:         matchReporting{mode: reportTermWithMostMatches},
 		contentKind:       contentKindFromCoreDomain(req.ContentDomain),
 		language:          strings.ToLower(req.Language),
-		siteHash:          siteHash,
+		siteHashes:        siteHashes,
 		strictContentKind: req.ContentDomain != searchcore.ContentDomainAll,
 		// The searchcore response reports only the join total, never per-term
 		// counts, so each scan may stop at the cap.
@@ -95,17 +95,12 @@ func searchCoreCriteria(req searchcore.Request) (searchCriteria, error) {
 	}, nil
 }
 
-func siteHashFromCoreRequest(req searchcore.Request) (string, error) {
+func siteHashesFromCoreRequest(req searchcore.Request) ([]string, error) {
 	if req.SiteHost == "" {
-		return "", nil
+		return nil, nil
 	}
-	hash, err := yagomodel.HashURLHost(req.SiteHost)
-	if err != nil {
-		return "", fmt.Errorf("site hash: %w", err)
-	}
-	hostHash, _ := hash.HostHash()
 
-	return hostHash, nil
+	return hashesForSiteHost(req.SiteHost)
 }
 
 func termHashes(terms []string) []yagomodel.Hash {

@@ -49,7 +49,8 @@ func (f *groupedMorphologyFixture) serve(w http.ResponseWriter, r *http.Request)
 	f.requests = append(f.requests, form)
 	f.requestsMu.Unlock()
 
-	if abstract := form.Get(yagoproto.FieldAbstracts); abstract != "" {
+	if abstract := form.Get(yagoproto.FieldAbstracts); abstract != "" &&
+		abstract != string(yagoproto.SearchAbstractsAuto) {
 		f.writeAbstract(w, yagomodel.Hash(abstract))
 		return
 	}
@@ -90,7 +91,7 @@ func (f *groupedMorphologyFixture) writeMetadata(
 	if urls != f.sharedDocument.String() {
 		f.tb.Errorf("secondary URL set = %q, want only %q", urls, f.sharedDocument)
 	}
-	if query != f.alphaSibling.String() && query != f.beta.String() {
+	if query != f.beta.String()+f.alphaSibling.String() {
 		writeFixtureResponse(f.tb, w, yagoproto.SearchResponse{}.Encode().Encode())
 		return
 	}
@@ -185,7 +186,7 @@ func TestGroupedMorphologyFindsSiblingFormWithoutRelaxingOtherRequirements(t *te
 	}
 	primaryRequests := 0
 	for _, request := range recorded {
-		if request.Get(yagoproto.FieldAbstracts) == "" &&
+		if request.Get(yagoproto.FieldAbstracts) == string(yagoproto.SearchAbstractsAuto) &&
 			request.Get(yagoproto.FieldURLs) == "" {
 			primaryRequests++
 			if request.Get(yagoproto.FieldQuery) != fixture.alpha.String()+fixture.beta.String() {
@@ -254,7 +255,8 @@ func testGroupedMorphologySurfaceCap(t *testing.T) {
 	primary := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		form := r.URL.Query()
-		if abstract := form.Get(yagoproto.FieldAbstracts); abstract != "" {
+		if abstract := form.Get(yagoproto.FieldAbstracts); abstract != "" &&
+			abstract != string(yagoproto.SearchAbstractsAuto) {
 			requestsMu.Lock()
 			abstracts[abstract] = true
 			requestsMu.Unlock()
@@ -322,7 +324,8 @@ func testGroupedMorphologyPeerCap(t *testing.T) {
 	var requestsMu sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		form := r.URL.Query()
-		if abstract := form.Get(yagoproto.FieldAbstracts); abstract != "" {
+		if abstract := form.Get(yagoproto.FieldAbstracts); abstract != "" &&
+			abstract != string(yagoproto.SearchAbstractsAuto) {
 			requestsMu.Lock()
 			abstractRequests++
 			requestsMu.Unlock()

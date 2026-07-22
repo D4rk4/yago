@@ -39,7 +39,7 @@ func startNodeFleet(
 			hash:        hash,
 			seedlistURL: seedlistURL,
 			extraEnv: map[string]string{
-				"YAGO_ANNOUNCE_INTERVAL": "1h",
+				"YAGO_ANNOUNCE_INTERVAL": "30s",
 				"YAGO_GREETS_PER_CYCLE":  "1",
 			},
 		})

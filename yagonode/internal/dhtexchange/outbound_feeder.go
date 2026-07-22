@@ -20,12 +20,13 @@ const (
 )
 
 type OutboundWordSource interface {
+	OutboundWordRestorer
+	OutboundPostingFinalizer
 	SelectOutboundWords(
 		ctx context.Context,
 		maxWords int,
 		maxPostings int,
 	) ([]yagomodel.WordPostings, error)
-	RestoreOutboundWords(ctx context.Context, words []yagomodel.WordPostings) (int, error)
 }
 
 type PeerSnapshot func(context.Context) []yagomodel.Seed
@@ -44,10 +45,11 @@ type OutboundFeederConfig struct {
 }
 
 type OutboundFeedReceipt struct {
-	State            OutboundFeedState
-	SelectedPostings int
-	RestoredPostings int
-	Enqueue          EnqueueReceipt
+	State             OutboundFeedState
+	SelectedPostings  int
+	FinalizedPostings int
+	RestoredPostings  int
+	Enqueue           EnqueueReceipt
 }
 
 type OutboundFeeder struct {
@@ -126,6 +128,18 @@ func (f OutboundFeeder) Feed(ctx context.Context) (OutboundFeedReceipt, error) {
 		}
 		restorable = appendOutboundRestorable(restorable, word.WordHash, enqueued.acceptedRows)
 	}
+	if len(receipt.Enqueue.missingRows) != 0 {
+		finalized, err := f.source.FinalizeOutboundPostings(ctx, receipt.Enqueue.missingRows)
+		receipt.FinalizedPostings = finalized
+		if err != nil {
+			return f.restore(
+				ctx,
+				words,
+				receipt,
+				fmt.Errorf("finalize outbound orphan rwi: %w", err),
+			)
+		}
+	}
 
 	if receipt.Enqueue.TargetCopies > 0 && receipt.Enqueue.OverflowCopies == 0 {
 		receipt.State = OutboundFeedEnqueued
@@ -167,6 +181,7 @@ func addEnqueueReceipts(a, b EnqueueReceipt) EnqueueReceipt {
 		OverflowCopies:   a.OverflowCopies + b.OverflowCopies,
 		TouchedChunks:    a.TouchedChunks + b.TouchedChunks,
 		acceptedRows:     append(a.acceptedRows, b.acceptedRows...),
+		missingRows:      append(a.missingRows, b.missingRows...),
 	}
 }
 

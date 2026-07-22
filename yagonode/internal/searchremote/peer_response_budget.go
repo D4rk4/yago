@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ type remoteQueryBudget struct {
 	resultEntriesRemaining   int
 	abstractEntriesRemaining int
 	peerCalls                *outboundCallBudget
+	transportAttempts        *outboundCallBudget
 	morphologyCalls          *outboundCallBudget
 }
 
@@ -66,6 +68,7 @@ func newRemoteQueryBudget() *remoteQueryBudget {
 		resultEntriesRemaining:   remoteQueryResultEntryBudget,
 		abstractEntriesRemaining: remoteQueryAbstractEntryBudget,
 		peerCalls:                newOutboundCallBudget(remoteQueryPeerCallBudget),
+		transportAttempts:        newOutboundCallBudget(remoteQueryPeerCallBudget),
 		morphologyCalls:          newOutboundCallBudget(remoteMorphologyPeerCallBudget),
 	}
 }
@@ -182,6 +185,7 @@ func (s searcher) queryPeerJobsWithinBudget(
 		),
 	}
 	s.reducePeerJobs(ctx, limited, reduction.accept)
+	s.lifecycle.observe(reduction.results)
 	budget.responseBytesRemaining -= reduction.responseBytes
 	budget.resultEntriesRemaining -= reduction.retainedEntries
 
@@ -205,8 +209,9 @@ func retainedResourceResponse(
 	retained int,
 ) yagoproto.SearchResponse {
 	return yagoproto.SearchResponse{
-		Count:     response.Count,
-		Resources: detachedMetadataRows(response.Resources[:retained]),
+		Count:         response.Count,
+		Resources:     detachedMetadataRows(response.Resources[:retained]),
+		IndexAbstract: maps.Clone(response.IndexAbstract),
 		ResourceEvidence: retainedQueryMatchEvidence(
 			response.ResourceEvidence,
 			response.Resources[:retained],
@@ -270,6 +275,7 @@ func (s searcher) termAbstractCatalogWithinBudget(
 		},
 	}
 	s.reducePeerJobs(ctx, limited, reduction.accept)
+	s.observeTermAbstractPeerLifecycle(reduction.outcomes)
 	budget.responseBytesRemaining -= reduction.responseBytes
 	budget.abstractEntriesRemaining -= reduction.retainedEntries
 

@@ -291,9 +291,9 @@ func TestMalformedDeclaredPeerRowsRecordInvalidOutcome(t *testing.T) {
 			return "network"
 		},
 	}).(searcher)
-	parsed, err := readRemoteSearchResponse(strings.NewReader("count=1\nresource0=bad\n"))
-	if err != nil || parsed.Count != 1 || len(parsed.Resources) != 0 {
-		t.Fatalf("malformed parsed response = %#v, %v", parsed, err)
+	_, readErr := readRemoteSearchResponse(strings.NewReader("count=1\nresource0=bad\n"))
+	if !errors.Is(readErr, errRemoteSearchInvalidResult) {
+		t.Fatalf("malformed response error = %v", readErr)
 	}
 	session, err := remote.beginReputation(t.Context())
 	if err != nil {
@@ -303,11 +303,12 @@ func TestMalformedDeclaredPeerRowsRecordInvalidOutcome(t *testing.T) {
 	response := remote.response(
 		t.Context(),
 		searchcore.Request{Limit: 10},
-		[]peerSearchResult{{peer: peer, response: parsed}},
+		[]peerSearchResult{{peer: peer, err: readErr}},
 		session,
 	)
 	session.flush(t.Context())
-	if len(response.Results) != 0 || len(sink.batches) != 1 || len(sink.batches[0]) != 1 ||
+	if len(response.Results) != 0 || len(response.PartialFailures) != 1 ||
+		len(sink.batches) != 1 || len(sink.batches[0]) != 1 ||
 		sink.batches[0][0].Outcome != peerreputation.OutcomeInvalidResult {
 		t.Fatalf("malformed peer observation = %#v, %#v", response, sink.batches)
 	}

@@ -9,13 +9,14 @@ import (
 )
 
 type HelloRequest struct {
-	NetworkName string
-	Key         string
-	Seed        yagomodel.Seed
-	Count       int
-	Iam         yagomodel.Hash
-	MagicMD5    string
-	MyTime      string
+	NetworkName        string
+	NetworkNamePresent bool
+	Key                string
+	Seed               yagomodel.Seed
+	Count              int
+	Iam                string
+	MagicMD5           string
+	MyTime             string
 }
 
 type HelloResponse struct {
@@ -45,11 +46,11 @@ func (r HelloResponse) KnownSeeds() []yagomodel.Seed {
 
 func (r HelloRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
 	putString(form, FieldKey, r.Key)
 	putString(form, FieldSeed, yagomodel.EncodeCompactWireForm(r.Seed.String()))
 	putInt(form, FieldCount, r.Count)
-	putString(form, FieldIam, r.Iam.String())
+	putString(form, FieldIam, r.Iam)
 	putString(form, FieldMagicMD5, r.MagicMD5)
 	putString(form, FieldMyTime, r.MyTime)
 
@@ -57,34 +58,38 @@ func (r HelloRequest) Form() url.Values {
 }
 
 func ParseHelloRequest(ctx context.Context, form url.Values) (HelloRequest, error) {
-	count, err := optionalInt(FieldCount, form.Get(FieldCount))
-	if err != nil {
-		return HelloRequest{}, err
+	count := 0
+	if parsed, valid := parseJavaSignedDecimalInt32(form.Get(FieldCount)); valid {
+		count = parsed
 	}
 
+	networkName, networkNamePresent := parseNetworkName(form)
 	req := HelloRequest{
-		NetworkName: form.Get(FieldNetworkName),
-		Key:         form.Get(FieldKey),
-		Count:       count,
-		MagicMD5:    form.Get(FieldMagicMD5),
-		MyTime:      form.Get(FieldMyTime),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		Key:                form.Get(FieldKey),
+		Count:              count,
+		Iam:                form.Get(FieldIam),
+		MagicMD5:           form.Get(FieldMagicMD5),
+		MyTime:             form.Get(FieldMyTime),
 	}
 
 	raw := form.Get(FieldSeed)
 	if raw == "" {
 		return HelloRequest{}, fmt.Errorf("hello request: missing %s", FieldSeed)
 	}
-	req.Seed, err = decodeSeed(ctx, raw)
+	if !helloSeedWithinWireBoundary(raw) {
+		return HelloRequest{}, fmt.Errorf(
+			"hello request: %s exceeds %d UTF-16 units",
+			FieldSeed,
+			HelloSeedMaximumUTF16Units,
+		)
+	}
+	seed, err := decodeSeed(ctx, raw)
 	if err != nil {
 		return HelloRequest{}, err
 	}
-
-	if raw := form.Get(FieldIam); raw != "" {
-		req.Iam, err = yagomodel.ParseHash(raw)
-		if err != nil {
-			return HelloRequest{}, fmt.Errorf("hello request %s: %w", FieldIam, err)
-		}
-	}
+	req.Seed = seed
 
 	return req, nil
 }
@@ -149,7 +154,14 @@ func decodeSeeds(ctx context.Context, m yagomodel.Message) ([]yagomodel.Seed, er
 
 		seed, err := decodeSeed(ctx, raw)
 		if err != nil {
-			return nil, err
+			if i == 0 {
+				return nil, err
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, fmt.Errorf("decode seeds: %w", err)
+			}
+
+			continue
 		}
 
 		seeds = append(seeds, seed)

@@ -37,7 +37,6 @@ func TestDHTOutboundMetricsCountsSuccessfulTransfer(t *testing.T) {
 func TestDHTOutboundMetricsCountsFailures(t *testing.T) {
 	observer := NewDHTOutboundMetrics(prometheus.NewRegistry())
 
-	observer.Observe(dhtexchange.DistributionReceipt{State: dhtexchange.DistributionCapacityFailed})
 	observer.Observe(dhtexchange.DistributionReceipt{State: dhtexchange.DistributionHandoffFailed})
 	observer.Observe(
 		dhtexchange.DistributionReceipt{State: dhtexchange.DistributionHandoffRejected},
@@ -45,8 +44,8 @@ func TestDHTOutboundMetricsCountsFailures(t *testing.T) {
 	observer.Observe(dhtexchange.DistributionReceipt{State: dhtexchange.DistributionGateClosed})
 	observer.Observe(dhtexchange.DistributionReceipt{State: dhtexchange.DistributionQueueEmpty})
 
-	if got := testutil.ToFloat64(observer.failures); got != 3 {
-		t.Fatalf("failures = %v, want 3", got)
+	if got := testutil.ToFloat64(observer.failures); got != 2 {
+		t.Fatalf("failures = %v, want 2", got)
 	}
 	if got := testutil.ToFloat64(observer.batches); got != 0 {
 		t.Fatalf("batches = %v, want 0", got)

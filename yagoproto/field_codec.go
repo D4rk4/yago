@@ -3,7 +3,6 @@ package yagoproto
 import (
 	"errors"
 	"fmt"
-	"math"
 	"net/url"
 	"strconv"
 	"strings"
@@ -52,15 +51,6 @@ func setInt(dst yagomodel.Message, key string, value int) {
 func readInt(key, value string) (int, error) {
 	n, err := strconv.Atoi(value)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s=%q", ErrBadField, key, value)
-	}
-
-	return n, nil
-}
-
-func readFloat(key, value string) (float64, error) {
-	n, err := strconv.ParseFloat(value, 64)
-	if err != nil || math.IsInf(n, 0) || math.IsNaN(n) {
 		return 0, fmt.Errorf("%w: %s=%q", ErrBadField, key, value)
 	}
 

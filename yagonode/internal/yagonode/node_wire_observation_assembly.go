@@ -3,10 +3,12 @@ package yagonode
 import (
 	"net/http"
 
+	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
 	"github.com/D4rk4/yago/yagonode/internal/nodestatus"
+	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 	"github.com/D4rk4/yago/yagonode/internal/remotecrawl"
 	"github.com/D4rk4/yago/yagonode/internal/transfertally"
 )
@@ -17,21 +19,25 @@ type nodeWireObservation struct {
 }
 
 type dhtObservedNodeWireInput struct {
-	config      nodeConfig
-	identity    nodeidentity.Identity
-	storage     nodeStorage
-	telemetry   nodeTelemetry
-	observation nodeWireObservation
-	remoteCrawl *remotecrawl.Broker
+	config        nodeConfig
+	identity      nodeidentity.Identity
+	storage       nodeStorage
+	peers         peerroster.Roster
+	telemetry     nodeTelemetry
+	observation   nodeWireObservation
+	remoteCrawl   *remotecrawl.Broker
+	peerLifecycle documentsearch.PotentialPeerObserver
 }
 
 type nodeWireHandlerAssembly struct {
-	router      httpguard.WireRouter
-	identity    nodeidentity.Identity
-	storage     nodeStorage
-	saturation  *metrics.SaturationMetrics
-	config      nodeConfig
-	remoteCrawl *remotecrawl.Broker
+	router        httpguard.WireRouter
+	identity      nodeidentity.Identity
+	storage       nodeStorage
+	peers         peerroster.Roster
+	saturation    *metrics.SaturationMetrics
+	config        nodeConfig
+	remoteCrawl   *remotecrawl.Broker
+	peerLifecycle documentsearch.PotentialPeerObserver
 }
 
 func mountDHTObservedNodeWire(
@@ -45,7 +51,8 @@ func mountDHTObservedNodeWire(
 	mux, router := newNodeWireMux(in.config, in.observation.report)
 	mountNodeWireHandlers(nodeWireHandlerAssembly{
 		router: router, identity: in.identity, storage: wireStorage,
-		saturation: in.telemetry.saturation, config: in.config, remoteCrawl: in.remoteCrawl,
+		peers: in.peers, saturation: in.telemetry.saturation, config: in.config,
+		remoteCrawl: in.remoteCrawl, peerLifecycle: in.peerLifecycle,
 	})
 
 	return mux, router

@@ -38,13 +38,14 @@ func TestRemoteSearcherNegotiatesEvidenceOnPrimaryAndSecondaryRequests(t *testin
 		t.Fatalf("Search: %v", err)
 	}
 	requests := fixture.recordedRequests()
-	if len(requests) != 4 {
+	if len(requests) != 2 {
 		t.Fatalf("request count = %d", len(requests))
 	}
 	for _, request := range requests {
 		version := request.Get(yagoproto.FieldQueryEvidenceVersion)
 		terms := request[yagoproto.FieldQueryEvidenceTerm]
-		if request.Get(yagoproto.FieldAbstracts) != "" {
+		if abstracts := request.Get(yagoproto.FieldAbstracts); abstracts != "" &&
+			abstracts != string(yagoproto.SearchAbstractsAuto) {
 			if version != "" || terms != nil {
 				t.Fatalf("abstract request negotiated evidence: %v", request)
 			}

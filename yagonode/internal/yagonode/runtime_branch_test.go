@@ -670,7 +670,7 @@ func TestDHTOutboundLoopAndCycleBranches(t *testing.T) {
 			&scriptedDHTOutboundCycle{
 				receipt: dhtexchange.ScheduledDistributionReceipt{
 					Distribution: dhtexchange.DistributionReceipt{
-						State: dhtexchange.DistributionCapacityFailed,
+						State: dhtexchange.DistributionHandoffFailed,
 						Peer:  yagomodel.Hash("AAAAAAAAAAAA"),
 					},
 				},
@@ -701,6 +701,9 @@ func TestDHTGateStateSnapshot(t *testing.T) {
 		reachability: reachability,
 		storage:      capacityProbe{},
 		postings:     rwiCounter{count: 123},
+		report: stubReport{seed: yagomodel.Seed{
+			PeerType: yagomodel.Some(yagomodel.PeerSenior),
+		}},
 		roster: reachableRoster{peers: []yagomodel.Seed{
 			{Hash: yagomodel.Hash("AAAAAAAAAAAA")},
 			{Hash: yagomodel.Hash("BBBBBBBBBBBB")},
@@ -708,16 +711,19 @@ func TestDHTGateStateSnapshot(t *testing.T) {
 	}
 
 	state := source.Snapshot(context.Background())
-	if !state.PublicReachable ||
-		!state.LocalPeerKnown ||
+	if !state.LocalPeerKnown ||
 		state.LocalPeerVirgin ||
 		state.ConnectedPeers != 2 ||
 		state.LocalRWIWords != 123 ||
 		!state.StorageAvailable {
 		t.Fatalf("state = %#v", state)
 	}
-	if reachability.calls.Load() != 1 {
-		t.Fatalf("reachability calls = %d, want 1", reachability.calls.Load())
+	if reachability.calls.Load() != 0 {
+		t.Fatalf("outbound gate reachability calls = %d, want 0", reachability.calls.Load())
+	}
+	_, observation := source.snapshot(context.Background())
+	if observation.state != publicReachabilityReachable || reachability.calls.Load() != 1 {
+		t.Fatalf("admin reachability = %+v, calls = %d", observation, reachability.calls.Load())
 	}
 
 	source.storage = capacityProbe{atCapacity: true}
@@ -734,9 +740,9 @@ func TestDHTGateStateSnapshot(t *testing.T) {
 	}
 
 	source.reachability = nil
-	state = source.Snapshot(context.Background())
-	if state.PublicReachable {
-		t.Fatalf("nil reachability state = %#v", state)
+	_, observation = source.snapshot(context.Background())
+	if observation.state != publicReachabilityUnknown {
+		t.Fatalf("nil reachability observation = %#v", observation)
 	}
 }
 
@@ -1039,7 +1045,13 @@ func TestPeerExchangeReturnsOpenErrors(t *testing.T) {
 
 	t.Run("roster", func(t *testing.T) {
 		restorePeerExchangeSeams(t)
-		openPeerRoster = func(*vault.Vault, func() time.Time, int, int) (peerroster.Roster, error) {
+		openPeerRoster = func(
+			context.Context,
+			*vault.Vault,
+			yagomodel.Hash,
+			func() time.Time,
+			peerroster.Capacity,
+		) (peerroster.Roster, error) {
 			return nil, sentinel
 		}
 		_, err := assembleNode(

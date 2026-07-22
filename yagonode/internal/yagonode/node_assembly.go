@@ -103,6 +103,7 @@ type node struct {
 	identity        nodeidentity.Identity
 	theme           *portaltheme.Theme
 	peerEvents      *peerReputationObserver
+	peerLifecycle   *nodePeerLifecycle
 	storagePressure *yagocrawlcontract.StoragePressureGate
 	transferTally   *transfertally.Tally
 	peerType        localPeerClassification
@@ -176,59 +177,73 @@ func assembleNode(
 		return node{}, err
 	}
 	storage = storageWithGrowthAdmission(storage, telemetry.storagePressure)
-	remoteCrawl, err := remotecrawl.Open(
-		config.RemoteCrawl.brokerConfig(),
-		vault,
-		storage.urlReceiver,
-		telemetry.remoteCrawl,
-		remoteCrawlEventObserver{recorder: telemetry.recorder},
-	)
-	if err != nil {
-		return node{}, fmt.Errorf("open remote crawl delegation: %w", err)
-	}
-	roster, news, tally, blocks, err := openPeerStores(vault, telemetry.peer)
+	remoteCrawl, err := openNodeRemoteCrawlBroker(config, vault, storage, telemetry)
 	if err != nil {
 		return node{}, err
 	}
-	report := newNodeStatusReport(identity, storage, roster, news, tally)
-	wireObservation := nodeWireObservation{report: report, tally: tally}
-	mux, router := mountDHTObservedNodeWire(dhtObservedNodeWireInput{
-		config: config, identity: identity, storage: storage,
-		telemetry: telemetry, observation: wireObservation, remoteCrawl: remoteCrawl,
+	peerWire, err := assembleNodePeerWire(nodePeerWireInput{
+		ctx: ctx, config: config, vault: vault, identity: identity,
+		storage: storage, telemetry: telemetry, remoteCrawl: remoteCrawl,
 	})
+	if err != nil {
+		return node{}, err
+	}
+	assembledLifecycle := false
+	defer func() {
+		if !assembledLifecycle {
+			peerWire.lifecycle.Close()
+		}
+	}()
 	peerClient := nodePeerClient(config, client)
 	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
-		router:   router,
-		identity: identity,
-		report:   report,
-		config:   config,
-		vault:    vault,
-		client:   peerClient,
-		peer:     telemetry.peer,
-		host:     hostLinkSnapshot,
-		roster:   roster,
-		news:     news,
+		router:                       peerWire.router,
+		identity:                     identity,
+		report:                       peerWire.report,
+		config:                       config,
+		vault:                        vault,
+		client:                       peerClient,
+		peer:                         telemetry.peer,
+		host:                         hostLinkSnapshot,
+		roster:                       peerWire.roster,
+		news:                         peerWire.news,
+		externalReachabilityEvidence: peerWire.reachability,
 	})
 	if err != nil {
 		return node{}, err
 	}
+	exchange.externalReachabilityEvidence = peerWire.reachability
 	surfaces, err := assembleNodeSurfaces(assembleSurfacesInput{
-		ctx: ctx, config: config, vault: vault, client: client,
-		peerClient: peerClient, storage: storage, roster: roster, identity: identity,
-		report: report, tally: tally, telemetry: telemetry, toggles: telemetry.toggles,
+		ctx:                          ctx,
+		config:                       config,
+		vault:                        vault,
+		client:                       client,
+		peerClient:                   peerClient,
+		storage:                      storage,
+		roster:                       peerWire.roster,
+		identity:                     identity,
+		report:                       peerWire.report,
+		tally:                        peerWire.tally,
+		telemetry:                    telemetry,
+		toggles:                      telemetry.toggles,
 		hostLinks:                    hostLinkSnapshot,
 		remoteCrawl:                  remoteCrawl,
+		peerLifecycle:                peerWire.lifecycle,
 		externalReachabilityEvidence: exchange.externalReachabilityEvidence,
 	})
 	if err != nil {
 		return node{}, err
 	}
-	return completeNodeAssembly(nodeAssemblyCompletion{
+	peerWire.queues.bindCrawl(surfaces.crawl)
+	assembled := completeNodeAssembly(nodeAssemblyCompletion{
 		config: config, telemetry: telemetry, identity: identity, storage: storage,
-		mux: mux, exchange: exchange, surfaces: surfaces, report: report,
-		roster: roster, news: news, blocks: blocks, vault: vault, client: client, tally: tally,
-	}), nil
+		mux: peerWire.mux, exchange: exchange, surfaces: surfaces, report: peerWire.report,
+		roster: peerWire.roster, news: peerWire.news, blocks: peerWire.blocks,
+		vault: vault, client: client, tally: peerWire.tally, peerLifecycle: peerWire.lifecycle,
+	})
+	assembledLifecycle = true
+
+	return assembled, nil
 }
 
 // nodePeerClient picks the client for peer-protocol calls: a client tolerant
@@ -257,6 +272,7 @@ type assembleSurfacesInput struct {
 	toggles                      *runtimeToggles
 	hostLinks                    *hostlinks.SnapshotHolder
 	remoteCrawl                  *remotecrawl.Broker
+	peerLifecycle                *nodePeerLifecycle
 	externalReachabilityEvidence *peerannouncement.ExternalReachabilityEvidence
 }
 
@@ -425,6 +441,7 @@ func newPublicSearchAssembly(
 		learnedRanker:          parts.models.Ranker(),
 		peerReputation:         parts.reputation,
 		peerObservations:       parts.peerEvents,
+		peerReachability:       in.peerLifecycle,
 		peerNetworkGroup:       peerReputationNetworkGroup,
 		selfSeed:               in.report.SelfSeed,
 		observeRemoteResources: remoteSearchResourceTally(in.tally),
@@ -433,42 +450,43 @@ func newPublicSearchAssembly(
 }
 
 type nodeParts struct {
-	mux         *http.ServeMux
-	publicMux   http.Handler
-	storage     nodeStorage
-	announcer   peerannouncement.Announcer
-	lanBeacon   *landiscovery.Beacon
-	crawl       crawlProcess
-	dht         dhtOutboundProcess
-	report      nodestatus.Report
-	searcher    searchcore.Searcher
-	suggest     searchcore.Searcher
-	explanation searchcore.Searcher
-	roster      peerroster.Roster
-	news        *peernews.Pool
-	vault       *vault.Vault
-	client      *http.Client
-	peerBlock   *peerblock.Store
-	denylist    *urldenylist.Store
-	activity    *searchactivity.Tracker
-	schedules   *crawlschedule.Store
-	identity    nodeidentity.Identity
-	ranking     *rankingprofile.Holder
-	hostRank    *hostrank.Holder
-	hostTrust   *hosttrust.Catalog
-	spell       *spellcheck.Holder
-	wordForms   *wordforms.Holder
-	judgments   *judgments.Store
-	clicks      *clickcapture.Store
-	models      *rankingmodel.Catalog
-	safety      *safetymodel.Catalog
-	swarmMorph  bool
-	theme       *portaltheme.Theme
-	peerEvents  *peerReputationObserver
-	corpusPass  *corpusSignalRefresh
-	tally       *transfertally.Tally
-	events      *events.Recorder
-	peerType    localPeerClassification
+	mux           *http.ServeMux
+	publicMux     http.Handler
+	storage       nodeStorage
+	announcer     peerannouncement.Announcer
+	lanBeacon     *landiscovery.Beacon
+	crawl         crawlProcess
+	dht           dhtOutboundProcess
+	report        nodestatus.Report
+	searcher      searchcore.Searcher
+	suggest       searchcore.Searcher
+	explanation   searchcore.Searcher
+	roster        peerroster.Roster
+	news          *peernews.Pool
+	vault         *vault.Vault
+	client        *http.Client
+	peerBlock     *peerblock.Store
+	denylist      *urldenylist.Store
+	activity      *searchactivity.Tracker
+	schedules     *crawlschedule.Store
+	identity      nodeidentity.Identity
+	ranking       *rankingprofile.Holder
+	hostRank      *hostrank.Holder
+	hostTrust     *hosttrust.Catalog
+	spell         *spellcheck.Holder
+	wordForms     *wordforms.Holder
+	judgments     *judgments.Store
+	clicks        *clickcapture.Store
+	models        *rankingmodel.Catalog
+	safety        *safetymodel.Catalog
+	swarmMorph    bool
+	theme         *portaltheme.Theme
+	peerEvents    *peerReputationObserver
+	peerLifecycle *nodePeerLifecycle
+	corpusPass    *corpusSignalRefresh
+	tally         *transfertally.Tally
+	events        *events.Recorder
+	peerType      localPeerClassification
 }
 
 func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
@@ -536,6 +554,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		identity:      parts.identity,
 		theme:         parts.theme,
 		peerEvents:    parts.peerEvents,
+		peerLifecycle: parts.peerLifecycle,
 		transferTally: parts.tally,
 		peerType:      parts.peerType,
 	}
@@ -562,13 +581,11 @@ func newRuntimeWireGate(
 func mountNodeWireHandlers(
 	in nodeWireHandlerAssembly,
 ) {
-	mountNodeProtocol(
-		in.router,
-		in.identity,
-		in.storage,
-		in.saturation,
-		in.config.AdvertiseRemoteIndex,
-	)
+	mountNodeProtocol(nodeProtocolAssembly{
+		router: in.router, identity: in.identity, storage: in.storage,
+		peers: in.peers, potentialPeers: in.peerLifecycle, saturation: in.saturation,
+		acceptRemoteIndex: in.config.AdvertiseRemoteIndex,
+	})
 	mountNodeCrawlCompatibility(in.router, in.identity, in.storage, in.remoteCrawl)
 }
 
@@ -588,52 +605,62 @@ func mountNodeCrawlCompatibility(
 	crawlurls.Mount(router, identity, storage.urlDirectory, remoteCrawl)
 }
 
-func mountNodeProtocol(
-	router httpguard.WireRouter,
-	identity nodeidentity.Identity,
-	storage nodeStorage,
-	saturation *metrics.SaturationMetrics,
-	acceptRemoteIndex bool,
-) {
+type nodeProtocolAssembly struct {
+	router            httpguard.WireRouter
+	identity          nodeidentity.Identity
+	storage           nodeStorage
+	peers             peerroster.Roster
+	potentialPeers    documentsearch.PotentialPeerObserver
+	saturation        *metrics.SaturationMetrics
+	acceptRemoteIndex bool
+}
+
+func mountNodeProtocol(in nodeProtocolAssembly) {
 	// One admission gate covers both DHT-in transfer endpoints (YaCy 1.6
 	// load-limits the whole DHT intake), a separate one bounds concurrent
 	// inbound remote searches (YaCy 1.0 distributed-search DoS protection).
 	// Each shed request counts as a saturation event (USE method, OPS-07).
 	transferGate := httpguard.NewObservedIntakeGate(
 		dhtInboundTransferSlots,
-		saturation.RejectionObserver(metrics.GateDHTTransfer),
+		in.saturation.RejectionObserver(metrics.GateDHTTransfer),
 	)
-	urlmeta.MountTransferURL(
-		router, identity, storage.urlReceiver, transferGate, acceptRemoteIndex,
-	)
-	rwi.MountTransferRWI(
-		router,
-		identity,
-		storage.postingReceiver,
-		transferGate,
-		rwi.Config{
+	urlmeta.MountTransferURL(urlmeta.TransferURLRoute{
+		Router:   in.router,
+		Identity: in.identity,
+		Receiver: in.storage.urlReceiver,
+		Senders:  in.peers,
+		Gate:     transferGate,
+		Accept:   in.acceptRemoteIndex,
+	})
+	rwi.MountTransferRWI(rwi.TransferRWIRoute{
+		Router:   in.router,
+		Identity: in.identity,
+		Receiver: in.storage.postingReceiver,
+		Senders:  in.peers,
+		Gate:     transferGate,
+		Config: rwi.Config{
 			BatchCap:          receiveBatchCap,
 			PauseMilliseconds: receiveBusyPauseMilliseconds,
-			AcceptRemoteIndex: acceptRemoteIndex,
+			AcceptRemoteIndex: in.acceptRemoteIndex,
 		},
-	)
+	})
 	nodestatus.MountQuery(
-		router,
-		identity,
-		storage.postings,
-		storage.urlDirectory,
+		in.router,
+		in.identity,
+		in.storage.postings,
 	)
-	documentsearch.MountSearch(router, identity, documentsearch.SearchConfig{
-		Index:          storage.postings,
-		Documents:      storage.urlDirectory,
-		DocumentStore:  storage.documentDirectory,
-		AnalyzerSearch: searchlocal.NewSearcher(storage.searchIndex),
+	documentsearch.MountSearch(in.router, in.identity, documentsearch.SearchConfig{
+		Index:          in.storage.postings,
+		Documents:      in.storage.urlDirectory,
+		DocumentStore:  in.storage.documentDirectory,
+		AnalyzerSearch: searchlocal.NewSearcher(in.storage.searchIndex),
 		Evidence:       searchIndexQueryMatchEvidenceAnalyzer{},
 		MatchesPerTerm: searchPostingsPerWord,
 		Gate: httpguard.NewObservedIntakeGate(
 			inboundRemoteSearchSlots,
-			saturation.RejectionObserver(metrics.GateRemoteSearch),
+			in.saturation.RejectionObserver(metrics.GateRemoteSearch),
 		),
+		PotentialPeers: in.potentialPeers,
 	})
 }
 

@@ -116,6 +116,7 @@ func TestOutboundQueueEnqueuesEligiblePostingsForTargets(t *testing.T) {
 	if receipt.AcceptedPostings != 2 ||
 		receipt.MissingURL != 1 ||
 		receipt.BadPostings != 1 ||
+		len(receipt.missingRows) != 1 ||
 		receipt.TargetCopies != 4 ||
 		receipt.OverflowCopies != 0 ||
 		receipt.TouchedChunks != 2 {

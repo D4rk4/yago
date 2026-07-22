@@ -42,16 +42,17 @@ func TestCrawlURLRequestParsesFields(t *testing.T) {
 
 func TestCrawlURLRequestFormRoundTrip(t *testing.T) {
 	original := yagoproto.CrawlURLRequest{
-		NetworkName: "freeworld",
-		Iam:         "sender-hash",
-		YouAre:      "self-hash",
-		Key:         "key",
-		MagicMD5:    "magic",
-		MyTime:      "20260101000000",
-		Call:        yagoproto.CrawlURLCallURLHashList,
-		Count:       yagomodel.Some(4),
-		Time:        yagomodel.Some(2000),
-		Hashes:      "ABCDEFGHIJKLMNOPQRSTUVWX",
+		NetworkName:        "freeworld",
+		NetworkNamePresent: true,
+		Iam:                "sender-hash",
+		YouAre:             "self-hash",
+		Key:                "key",
+		MagicMD5:           "magic",
+		MyTime:             "20260101000000",
+		Call:               yagoproto.CrawlURLCallURLHashList,
+		Count:              yagomodel.Some(4),
+		Time:               yagomodel.Some(2000),
+		Hashes:             "ABCDEFGHIJKLMNOPQRSTUVWX",
 	}
 
 	parsed, err := yagoproto.ParseCrawlURLRequest(t.Context(), original.Form())

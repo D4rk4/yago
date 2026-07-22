@@ -21,13 +21,16 @@ func RegisterKeyspace[V any](
 
 func (k *Keyspace[V]) Get(tx *Txn, key Key) (V, bool, error) {
 	var zero V
-	raw := tx.etx.Bucket(k.name).Get(key)
-	if raw == nil {
+	raw, found, err := readEncodedValue(tx, k.name, key)
+	if err != nil {
+		return zero, found, fmt.Errorf("read %s: %w", k.name, err)
+	}
+	if !found {
 		return zero, false, nil
 	}
 	value, err := k.codec.Decode(raw)
 	if err != nil {
-		return zero, false, fmt.Errorf("decode %s: %w", k.name, err)
+		return zero, true, corruptValueDecodeError(k.name, err)
 	}
 
 	return value, true, nil
@@ -61,10 +64,10 @@ func (k *Keyspace[V]) Delete(tx *Txn, key Key) (bool, error) {
 	if !tx.etx.Writable() {
 		return false, errReadOnly
 	}
-	bucket := tx.etx.Bucket(k.name)
-	if bucket.Get(key) == nil {
+	if !k.Contains(tx, key) {
 		return false, nil
 	}
+	bucket := tx.etx.Bucket(k.name)
 	if err := bucket.Delete(key); err != nil {
 		return false, fmt.Errorf("delete %s: %w", k.name, err)
 	}

@@ -322,10 +322,10 @@ func TestPublicSearchPreservesStructuredQueryForWebFallback(t *testing.T) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body: io.NopCloser(strings.NewReader(`<ul>
-<li><h2><a href="https://docs.example.org/guides/golang-tools.pdf">Golang tools handbook</a></h2><p>Reference</p></li>
+<li><h2><a href="https://www.example.org/guides/golang-tools.pdf">Golang tools handbook</a></h2><p>Reference</p></li>
 <li><h2><a href="https://other.test/golang-tools.pdf">Golang tools mirror</a></h2><p>Reference</p></li>
-<li><h2><a href="https://docs.example.org/guides/golang-tools.html">Golang tools page</a></h2><p>Reference</p></li>
-<li><h2><a href="https://docs.example.org/guides/java-tools.pdf">Golang and Java tools</a></h2><p>Reference</p></li>
+<li><h2><a href="https://www.example.org/guides/golang-tools.html">Golang tools page</a></h2><p>Reference</p></li>
+<li><h2><a href="https://www.example.org/guides/java-tools.pdf">Golang and Java tools</a></h2><p>Reference</p></li>
 </ul>`)),
 				Header: make(http.Header),
 			}, nil
@@ -363,7 +363,7 @@ func TestPublicSearchPreservesStructuredQueryForWebFallback(t *testing.T) {
 		}
 	}
 	if len(response.Results) != 1 ||
-		response.Results[0].URL != "https://docs.example.org/guides/golang-tools.pdf" {
+		response.Results[0].URL != "https://www.example.org/guides/golang-tools.pdf" {
 		t.Fatalf("results = %#v", response.Results)
 	}
 }

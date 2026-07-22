@@ -50,10 +50,6 @@ func waitFleetActiveConnected(
 	timeout time.Duration,
 ) {
 	t.Helper()
-	hashes := make(map[string]struct{}, len(fleet))
-	for _, node := range fleet {
-		hashes[node.hash.String()] = struct{}{}
-	}
 	if waitFor(timeout, func() bool {
 		result := probe.Get(ctx, yacyURL+"/Network.xml?page=1&maxCount=1000")
 		if !result.ok {
@@ -63,14 +59,48 @@ func waitFleetActiveConnected(
 		if err != nil {
 			return false
 		}
-		for hash := range active {
-			if _, ok := hashes[hash]; ok {
-				return true
+		for _, node := range fleet {
+			if _, ok := active[node.hash.String()]; !ok {
+				return false
 			}
 		}
-		return false
+
+		return true
 	}) {
 		return
 	}
-	t.Fatal("YaCy has no active connected fleet node; DHT dispatcher may remain nil after restart")
+	if result := probe.Get(ctx, yacyURL+"/Network.xml?page=1&maxCount=1000"); result.ok {
+		t.Logf("final real YaCy network view:\n%s", result.body)
+	}
+	t.Fatalf("YaCy never retained all %d fleet hashes as active connected peers", len(fleet))
+}
+
+func waitYaCySelfSenior(
+	t *testing.T,
+	ctx context.Context,
+	probe *httpProbe,
+	yacyURL string,
+	yacyHash string,
+	timeout time.Duration,
+) {
+	t.Helper()
+	if waitFor(timeout, func() bool {
+		result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml?my")
+		if !result.ok {
+			return false
+		}
+		seniors, err := seedlistSeniorHashes([]byte(result.body))
+		if err != nil {
+			return false
+		}
+		_, senior := seniors[yacyHash]
+
+		return senior
+	}) {
+		return
+	}
+	if result := probe.Get(ctx, yacyURL+"/yacy/seedlist.xml?my"); result.ok {
+		t.Logf("final YaCy self seed:\n%s", result.body)
+	}
+	t.Fatalf("YaCy self seed %s never became PeerType=senior", yacyHash)
 }

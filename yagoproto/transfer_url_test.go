@@ -17,10 +17,11 @@ func TestTransferURLRequestRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	req := yagoproto.TransferURLRequest{
-		NetworkName: yagoproto.DefaultNetwork,
-		Iam:         sampleHash(t, "alpha"),
-		YouAre:      sampleHash(t, "beta"),
-		URLCount:    2,
+		NetworkName:        yagoproto.DefaultNetwork,
+		NetworkNamePresent: true,
+		Iam:                sampleHash(t, "alpha"),
+		YouAre:             sampleHash(t, "beta"),
+		URLCount:           2,
 		URLs: []yagomodel.URIMetadataRow{
 			sampleURLRow(t, "url-a"),
 			sampleURLRow(t, "url-b"),

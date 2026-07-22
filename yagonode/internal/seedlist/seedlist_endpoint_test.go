@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,11 +27,61 @@ func (s seedStatus) SelfSeed(context.Context) yagomodel.Seed {
 }
 
 type seedReachability struct {
-	seeds []yagomodel.Seed
+	seeds  []yagomodel.Seed
+	active []yagomodel.Seed
 }
 
 func (s seedReachability) ReachablePeers(context.Context) []yagomodel.Seed {
+	if s.active != nil {
+		return s.active
+	}
+
 	return s.seeds
+}
+
+func (s seedReachability) SeedlistPeers(_ context.Context, limit int) []yagomodel.Seed {
+	if limit < len(s.seeds) {
+		return s.seeds[:max(limit, 0)]
+	}
+
+	return s.seeds
+}
+
+func (s seedReachability) PeerByHash(
+	_ context.Context,
+	peer yagomodel.Hash,
+) (yagomodel.Seed, bool) {
+	for _, seed := range s.seeds {
+		if seed.Hash == peer {
+			return seed, true
+		}
+	}
+
+	return yagomodel.Seed{}, false
+}
+
+func (s seedReachability) PeerByName(
+	_ context.Context,
+	name string,
+) (yagomodel.Seed, bool) {
+	for _, seed := range s.seeds {
+		seedName, known := seed.Name.Get()
+		if known && yagomodel.NormalizeSeedName(seedName) == yagomodel.NormalizeSeedName(name) {
+			return seed, true
+		}
+	}
+
+	return yagomodel.Seed{}, false
+}
+
+func TestSelfSeedNameKeepsRawAngleVocabulary(t *testing.T) {
+	self := yagomodel.Seed{Name: yagomodel.Some("self_peer")}
+	if selfSeedNameMatches(self, "self<peer") {
+		t.Fatal("angle-normalized query matched self")
+	}
+	if !selfSeedNameMatches(self, "SELF_PEER") {
+		t.Fatal("case-insensitive self name did not match")
+	}
 }
 
 func seedEndpoint(tb testing.TB) endpoint {
@@ -37,7 +89,7 @@ func seedEndpoint(tb testing.TB) endpoint {
 
 	return endpoint{
 		status: seedStatus{seed: seed(tb, "self", "self-peer", "192.0.2.10")},
-		reachability: seedReachability{seeds: []yagomodel.Seed{
+		peers: seedReachability{seeds: []yagomodel.Seed{
 			seed(tb, "alpha", "alpha-peer", "192.0.2.11"),
 			seed(tb, "beta", "beta-peer", "192.0.2.12"),
 		}},
@@ -104,9 +156,9 @@ func responseLines(t testing.TB, body string) []yagomodel.Seed {
 	rawLines := strings.Split(strings.TrimSuffix(body, seedlistLineBreak), seedlistLineBreak)
 	seeds := make([]yagomodel.Seed, 0, len(rawLines))
 	for _, raw := range rawLines {
-		seed, err := yagomodel.ParseSeed(t.Context(), raw)
+		seed, err := yagomodel.ParseSeedWireForm(t.Context(), raw)
 		if err != nil {
-			t.Fatalf("ParseSeed(%q): %v", raw, err)
+			t.Fatalf("ParseSeedWireForm(%q): %v", raw, err)
 		}
 		seeds = append(seeds, seed)
 	}
@@ -126,23 +178,29 @@ func TestMountServesSeedlistRoutes(t *testing.T) {
 	Mount(
 		httpguard.NewWireRouter(mux, seedlistGate()),
 		seedEndpoint(t).status,
-		seedEndpoint(t).reachability,
+		seedEndpoint(t).peers,
 	)
 
-	for _, path := range []string{
-		yagoproto.PathSeedlist,
-		yagoproto.PathSeedlistJSON,
-		yagoproto.PathSeedlistXML,
-		yagoproto.PathP2PSeeds,
-		yagoproto.PathP2PSeedsJSON,
+	for _, route := range []struct {
+		path        string
+		contentType string
+	}{
+		{path: yagoproto.PathSeedlist, contentType: "text/html; charset=UTF-8"},
+		{path: yagoproto.PathSeedlistJSON, contentType: "application/json; charset=UTF-8"},
+		{path: yagoproto.PathSeedlistXML, contentType: "application/xml; charset=UTF-8"},
+		{path: yagoproto.PathP2PSeeds, contentType: "text/html; charset=UTF-8"},
+		{path: yagoproto.PathP2PSeedsJSON, contentType: "application/json; charset=UTF-8"},
 	} {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, route.path, nil)
 
 		mux.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("%s status = %d, want 200", path, rec.Code)
+			t.Fatalf("%s status = %d, want 200", route.path, rec.Code)
+		}
+		if rec.Header().Get("Content-Type") != route.contentType {
+			t.Fatalf("%s content type = %q", route.path, rec.Header().Get("Content-Type"))
 		}
 	}
 }
@@ -155,11 +213,14 @@ func TestSeedlistIncludesSelfAndReachablePeersByDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resp.ContentType != seedlistHTMLContentType {
+	if resp.ContentType != "text/html; charset=UTF-8" {
 		t.Fatalf("ContentType = %q", resp.ContentType)
 	}
 	if !strings.HasSuffix(resp.Body, seedlistLineBreak) {
 		t.Fatalf("response does not end with CRLF: %q", resp.Body)
+	}
+	if !strings.HasPrefix(resp.Body, "b|") && !strings.HasPrefix(resp.Body, "z|") {
+		t.Fatalf("response does not use a compact seed wire form: %q", resp.Body)
 	}
 
 	seeds := responseLines(t, resp.Body)
@@ -230,6 +291,40 @@ func TestSeedlistFiltersByIDAndName(t *testing.T) {
 	}
 }
 
+func TestSeedlistMalformedIDReturnsAnEmptyLookup(t *testing.T) {
+	request, err := yagoproto.ParseSeedlistRequest(
+		t.Context(),
+		url.Values{yagoproto.FieldSeedlistID: {"short"}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := seedEndpoint(t).ServeHTML(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Body != "" {
+		t.Fatalf("body = %q, want empty lookup", response.Body)
+	}
+}
+
+func TestSeedlistBareNameReturnsAnEmptyLookup(t *testing.T) {
+	request, err := yagoproto.ParseSeedlistRequest(
+		t.Context(),
+		url.Values{yagoproto.FieldSeedlistName: {""}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := seedEndpoint(t).ServeHTML(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Body != "" {
+		t.Fatalf("body = %q, want empty lookup", response.Body)
+	}
+}
+
 func TestSeedlistMaxCountCapsOutput(t *testing.T) {
 	resp, err := seedEndpoint(t).ServeHTML(
 		t.Context(),
@@ -266,7 +361,7 @@ func TestSeedlistMaxCountAboveProtocolLimitKeepsAvailableSeeds(t *testing.T) {
 	}
 }
 
-func TestSeedlistNegativeMaxCountReturnsNoSeeds(t *testing.T) {
+func TestSeedlistNegativeMaxCountStillReturnsSelf(t *testing.T) {
 	resp, err := seedEndpoint(t).ServeHTML(
 		t.Context(),
 		yagoproto.SeedlistRequest{
@@ -278,8 +373,9 @@ func TestSeedlistNegativeMaxCountReturnsNoSeeds(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resp.Body != "" {
-		t.Fatalf("body = %q, want empty", resp.Body)
+	seeds := responseLines(t, resp.Body)
+	if len(seeds) != 1 || seeds[0].Hash != yagomodel.WordHash("self") {
+		t.Fatalf("seeds = %#v, want self", seeds)
 	}
 }
 
@@ -290,7 +386,7 @@ func TestSeedlistFiltersByMinimumVersion(t *testing.T) {
 		status: seedStatus{
 			seed: versionedSeed(t, "self", "self-peer", "192.0.2.10", "1.82"),
 		},
-		reachability: seedReachability{seeds: []yagomodel.Seed{
+		peers: seedReachability{seeds: []yagomodel.Seed{
 			versionedSeed(t, "alpha", "alpha-peer", "192.0.2.11", "1.83"),
 			versionedSeed(t, "beta", "beta-peer", "192.0.2.12", "1.91"),
 			seed(t, "missing", "missing-peer", "192.0.2.13"),
@@ -310,19 +406,24 @@ func TestSeedlistFiltersByMinimumVersion(t *testing.T) {
 	}
 
 	seeds := responseLines(t, resp.Body)
-	if got := len(seeds); got != 1 {
-		t.Fatalf("seed count = %d, want 1", got)
+	if got := len(seeds); got != 4 {
+		t.Fatalf("seed count = %d, want 4", got)
 	}
-	if seeds[0].Hash != yagomodel.WordHash("beta") {
-		t.Fatalf("seed = %q, want beta", seeds[0].Hash)
+	if seeds[0].Hash != yagomodel.WordHash("self") ||
+		seeds[1].Hash != yagomodel.WordHash("beta") ||
+		seeds[2].Hash != yagomodel.WordHash("missing") ||
+		seeds[3].Hash != yagomodel.WordHash("badversion") {
+		t.Fatalf("seeds = %#v, want self/beta/missing/badversion", seeds)
 	}
 }
 
-func TestSeedlistNodeOnlyFiltersAddresslessSeeds(t *testing.T) {
+func TestSeedlistNodeOnlyFiltersPeersWithoutRootFlag(t *testing.T) {
 	endpoint := seedEndpoint(t)
-	endpoint.reachability = seedReachability{seeds: []yagomodel.Seed{
-		{Hash: yagomodel.WordHash("addressless"), Name: yagomodel.Some("addressless")},
-		seed(t, "alpha", "alpha-peer", "192.0.2.11"),
+	root := seed(t, "alpha", "alpha-peer", "192.0.2.11")
+	root.Flags = yagomodel.Some(yagomodel.ZeroFlags().Set(yagomodel.FlagRootNode, true))
+	endpoint.peers = seedReachability{seeds: []yagomodel.Seed{
+		seed(t, "nonroot", "nonroot-peer", "192.0.2.12"),
+		root,
 	}}
 
 	resp, err := endpoint.ServeHTML(
@@ -342,7 +443,7 @@ func TestSeedlistNodeOnlyFiltersAddresslessSeeds(t *testing.T) {
 	}
 }
 
-func TestSeedlistFiltersByPeerName(t *testing.T) {
+func TestSeedlistClearTextIgnoresPeerName(t *testing.T) {
 	resp, err := seedEndpoint(t).ServeHTML(
 		t.Context(),
 		yagoproto.SeedlistRequest{
@@ -355,12 +456,201 @@ func TestSeedlistFiltersByPeerName(t *testing.T) {
 	}
 
 	seeds := responseLines(t, resp.Body)
-	if got := len(seeds); got != 1 {
-		t.Fatalf("seed count = %d, want 1", got)
+	if got := len(seeds); got != 3 {
+		t.Fatalf("seed count = %d, want 3", got)
 	}
-	if seeds[0].Hash != yagomodel.WordHash("beta") {
-		t.Fatalf("seed = %q, want beta", seeds[0].Hash)
+}
+
+func TestSeedlistStructuredFormatsFilterByPeerName(t *testing.T) {
+	req := yagoproto.SeedlistRequest{IncludeSelf: true, PeerName: "beta-peer"}
+	jsonResponse, err := seedEndpoint(t).ServeJSON(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if !strings.Contains(jsonResponse.Body, yagomodel.WordHash("beta").String()) ||
+		strings.Contains(jsonResponse.Body, yagomodel.WordHash("self").String()) {
+		t.Fatalf("JSON peername response = %s", jsonResponse.Body)
+	}
+	xmlResponse, err := seedEndpoint(t).ServeXML(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(xmlResponse.Body, yagomodel.WordHash("beta").String()) ||
+		strings.Contains(xmlResponse.Body, yagomodel.WordHash("self").String()) {
+		t.Fatalf("XML peername response = %s", xmlResponse.Body)
+	}
+}
+
+func TestYaCySeedlistRequestMatrixFixtures(t *testing.T) {
+	self := yagomodel.WordHash("self")
+	alpha := yagomodel.WordHash("alpha")
+	beta := yagomodel.WordHash("beta")
+	tests := []struct {
+		name string
+		req  yagoproto.SeedlistRequest
+		want []yagomodel.Hash
+	}{
+		{
+			name: "my precedes every selector",
+			req: yagoproto.SeedlistRequest{
+				OwnSeedOnly: true, ID: yagomodel.Some(alpha), Name: "beta-peer",
+				NodeOnly: true, MaxCount: yagomodel.Some(0), MinVersion: yagomodel.Some(999.0),
+			},
+			want: []yagomodel.Hash{self},
+		},
+		{
+			name: "id precedes name and regular filters",
+			req: yagoproto.SeedlistRequest{
+				ID: yagomodel.Some(alpha), Name: "beta-peer", NodeOnly: true,
+				IncludeSelf: false, MaxCount: yagomodel.Some(0), MinVersion: yagomodel.Some(999.0),
+			},
+			want: []yagomodel.Hash{alpha},
+		},
+		{
+			name: "name precedes regular filters",
+			req: yagoproto.SeedlistRequest{
+				Name: "beta-peer", NodeOnly: true, IncludeSelf: false,
+				MaxCount: yagomodel.Some(0), MinVersion: yagomodel.Some(999.0),
+			},
+			want: []yagomodel.Hash{beta},
+		},
+		{
+			name: "zero maximum preserves self",
+			req:  yagoproto.SeedlistRequest{IncludeSelf: true, MaxCount: yagomodel.Some(0)},
+			want: []yagomodel.Hash{self},
+		},
+		{
+			name: "zero maximum without self is empty",
+			req:  yagoproto.SeedlistRequest{IncludeSelf: false, MaxCount: yagomodel.Some(0)},
+		},
+		{
+			name: "node filter preserves self",
+			req:  yagoproto.SeedlistRequest{IncludeSelf: true, NodeOnly: true},
+			want: []yagomodel.Hash{self},
+		},
+		{
+			name: "self id lookup",
+			req:  yagoproto.SeedlistRequest{ID: yagomodel.Some(self), IncludeSelf: false},
+			want: []yagomodel.Hash{self},
+		},
+		{
+			name: "self name lookup is case insensitive",
+			req:  yagoproto.SeedlistRequest{Name: "SELF-PEER", IncludeSelf: false},
+			want: []yagomodel.Hash{self},
+		},
+		{
+			name: "self name lookup preserves whitespace",
+			req:  yagoproto.SeedlistRequest{Name: " SELF-PEER ", IncludeSelf: false},
+		},
+		{
+			name: "localpeer alias resolves self",
+			req:  yagoproto.SeedlistRequest{Name: "localpeer", IncludeSelf: false},
+			want: []yagomodel.Hash{self},
+		},
+		{
+			name: "yacy suffix resolves remote name",
+			req:  yagoproto.SeedlistRequest{Name: "alpha-peer.yacy", IncludeSelf: false},
+			want: []yagomodel.Hash{alpha},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := seedEndpoint(t).selectSeeds(t.Context(), test.req)
+			if !slices.Equal(seedHashes(got), test.want) {
+				t.Fatalf("hashes = %v, want %v", seedHashes(got), test.want)
+			}
+		})
+	}
+}
+
+func TestSeedlistUnknownIDReturnsNoSeeds(t *testing.T) {
+	got := seedEndpoint(t).selectSeeds(t.Context(), yagoproto.SeedlistRequest{
+		ID: yagomodel.Some(yagomodel.WordHash("unknown")),
+	})
+	if got != nil {
+		t.Fatalf("seeds = %v, want nil", got)
+	}
+}
+
+func TestSeedlistMinimumVersionAppliesOnlyToActivePeers(t *testing.T) {
+	activeOld := versionedSeed(t, "active-old", "active-old", "192.0.2.20", "1.0")
+	activeNew := versionedSeed(t, "active-new", "active-new", "192.0.2.21", "2.0")
+	passiveOld := versionedSeed(t, "passive-old", "passive-old", "192.0.2.22", "1.0")
+	directory := seedReachability{
+		seeds:  []yagomodel.Seed{activeOld, activeNew, passiveOld},
+		active: []yagomodel.Seed{activeOld, activeNew},
+	}
+	endpoint := endpoint{
+		status: seedStatus{seed: seed(t, "self", "self-peer", "192.0.2.10")},
+		peers:  directory,
+	}
+	got := endpoint.selectSeeds(t.Context(), yagoproto.SeedlistRequest{
+		IncludeSelf: false, MinVersion: yagomodel.Some(1.5),
+	})
+	want := []yagomodel.Hash{activeNew.Hash, passiveOld.Hash}
+	if !slices.Equal(seedHashes(got), want) {
+		t.Fatalf("hashes = %v, want %v", seedHashes(got), want)
+	}
+}
+
+func TestSeedlistDefaultVersionFloorExcludesNegativeActivePeer(t *testing.T) {
+	activeNegative := versionedSeed(
+		t,
+		"active-negative",
+		"active-negative",
+		"192.0.2.20",
+		"-1.0",
+	)
+	activeZero := versionedSeed(t, "active-zero", "active-zero", "192.0.2.21", "0")
+	passiveNegative := versionedSeed(
+		t,
+		"passive-negative",
+		"passive-negative",
+		"192.0.2.22",
+		"-1.0",
+	)
+	directory := seedReachability{
+		seeds:  []yagomodel.Seed{activeNegative, activeZero, passiveNegative},
+		active: []yagomodel.Seed{activeNegative, activeZero},
+	}
+	endpoint := endpoint{
+		status: seedStatus{seed: seed(t, "self", "self-peer", "192.0.2.10")},
+		peers:  directory,
+	}
+	got := endpoint.selectSeeds(t.Context(), yagoproto.SeedlistRequest{IncludeSelf: false})
+	want := []yagomodel.Hash{activeZero.Hash, passiveNegative.Hash}
+	if !slices.Equal(seedHashes(got), want) {
+		t.Fatalf("hashes = %v, want %v", seedHashes(got), want)
+	}
+}
+
+func TestSeedlistOwnSeedStructuredOutputIgnoresPeerName(t *testing.T) {
+	req := yagoproto.SeedlistRequest{
+		OwnSeedOnly: true, PeerName: "different-peer", MaxCount: yagomodel.Some(0),
+	}
+	response, err := seedEndpoint(t).ServeJSON(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(response.Body, yagomodel.WordHash("self").String()) {
+		t.Fatalf("own seed missing: %s", response.Body)
+	}
+	response, err = seedEndpoint(t).ServeXML(t.Context(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(response.Body, yagomodel.WordHash("self").String()) {
+		t.Fatalf("own seed missing: %s", response.Body)
+	}
+}
+
+func seedHashes(seeds []yagomodel.Seed) []yagomodel.Hash {
+	hashes := make([]yagomodel.Hash, 0, len(seeds))
+	for _, seed := range seeds {
+		hashes = append(hashes, seed.Hash)
+	}
+
+	return hashes
 }
 
 func TestSeedlistJSONReturnsClearTextPeerMaps(t *testing.T) {
@@ -415,6 +705,33 @@ func TestSeedlistJSONReturnsEncodingError(t *testing.T) {
 	}
 }
 
+func TestSeedlistPresentEmptyPeerNameAndCallbackKeepUpstreamSemantics(t *testing.T) {
+	request, err := yagoproto.ParseSeedlistRequest(
+		t.Context(),
+		url.Values{
+			yagoproto.FieldSeedlistPeerName: {""},
+			yagoproto.FieldSeedlistCallback: {""},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := seedEndpoint(t).ServeJSON(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.ContentType != "application/json; charset=UTF-8" {
+		t.Fatalf("ContentType = %q", response.ContentType)
+	}
+	if !strings.HasPrefix(response.Body, "([") || !strings.HasSuffix(response.Body, "]);") {
+		t.Fatalf("JSONP body = %q", response.Body)
+	}
+	if strings.Contains(response.Body, yagomodel.WordHash("alpha").String()) ||
+		strings.Contains(response.Body, yagomodel.WordHash("beta").String()) {
+		t.Fatalf("present-empty peername did not filter peers: %s", response.Body)
+	}
+}
+
 func TestSeedlistJSONAddressOnlyOmitsSeedProperties(t *testing.T) {
 	resp, err := seedEndpoint(t).ServeJSON(
 		t.Context(),
@@ -454,7 +771,7 @@ func TestSeedlistJSONPSupportsUpstreamCallbackShape(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resp.ContentType != seedlistJavaScriptContentType {
+	if resp.ContentType != "application/json; charset=UTF-8" {
 		t.Fatalf("ContentType = %q", resp.ContentType)
 	}
 	if !strings.HasPrefix(resp.Body, "seedlist([{") {
@@ -525,7 +842,7 @@ func TestSeedlistXMLAddressOnlyOmitsSeedProperties(t *testing.T) {
 
 func TestSeedlistXMLSkipsAddresslessSeeds(t *testing.T) {
 	endpoint := seedEndpoint(t)
-	endpoint.reachability = seedReachability{seeds: []yagomodel.Seed{
+	endpoint.peers = seedReachability{seeds: []yagomodel.Seed{
 		{Hash: yagomodel.WordHash("addressless"), Name: yagomodel.Some("addressless")},
 	}}
 
@@ -543,7 +860,7 @@ func TestSeedlistXMLSkipsAddresslessSeeds(t *testing.T) {
 
 func TestSeedlistIncludesIPv6Addresses(t *testing.T) {
 	endpoint := seedEndpoint(t)
-	endpoint.reachability = seedReachability{seeds: []yagomodel.Seed{
+	endpoint.peers = seedReachability{seeds: []yagomodel.Seed{
 		seedWithIPv6(t, "ipv6", "ipv6-peer", "2001:db8::1"),
 	}}
 
@@ -559,9 +876,25 @@ func TestSeedlistIncludesIPv6Addresses(t *testing.T) {
 	}
 }
 
+func TestSeedlistAddressesPreserveOrderWithoutDuplicates(t *testing.T) {
+	seed := seed(t, "deduplicated", "deduplicated-peer", "192.0.2.10")
+	primary, _ := seed.IP.Get()
+	ipv6, err := yagomodel.ParseHost("2001:db8::1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed.IP6 = yagomodel.Some([]yagomodel.Host{primary, ipv6, ipv6})
+
+	addresses := seedAddresses(seed)
+	want := []string{"192.0.2.10:8090", "[2001:db8::1]:8090"}
+	if !slices.Equal(addresses, want) {
+		t.Fatalf("addresses = %#v, want %#v", addresses, want)
+	}
+}
+
 func TestSeedlistClearTextSkipsAddresslessSeeds(t *testing.T) {
 	endpoint := seedEndpoint(t)
-	endpoint.reachability = seedReachability{seeds: []yagomodel.Seed{
+	endpoint.peers = seedReachability{seeds: []yagomodel.Seed{
 		{Hash: yagomodel.WordHash("addressless"), Name: yagomodel.Some("addressless")},
 	}}
 

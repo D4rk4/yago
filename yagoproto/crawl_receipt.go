@@ -25,14 +25,15 @@ const (
 )
 
 type CrawlReceiptRequest struct {
-	NetworkName string
-	Iam         yagomodel.Hash
-	YouAre      yagomodel.Hash
-	Key         string
-	MagicMD5    string
-	Result      string
-	Reason      string
-	LURLEntry   string
+	NetworkName        string
+	NetworkNamePresent bool
+	Iam                yagomodel.Hash
+	YouAre             yagomodel.Hash
+	Key                string
+	MagicMD5           string
+	Result             string
+	Reason             string
+	LURLEntry          string
 }
 
 type CrawlReceiptResponse struct {
@@ -42,7 +43,7 @@ type CrawlReceiptResponse struct {
 
 func (r CrawlReceiptRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
 	putString(form, FieldIam, r.Iam.String())
 	putString(form, FieldYouAre, r.YouAre.String())
 	putString(form, FieldKey, r.Key)
@@ -64,13 +65,15 @@ func ParseCrawlReceiptRequest(_ context.Context, form url.Values) (CrawlReceiptR
 	if len(form.Get(FieldLURLEntry)) > MaximumCrawlReceiptMetadataBytes {
 		return CrawlReceiptRequest{}, fmt.Errorf("%s exceeds maximum length", FieldLURLEntry)
 	}
+	networkName, networkNamePresent := parseNetworkName(form)
 	req := CrawlReceiptRequest{
-		NetworkName: form.Get(FieldNetworkName),
-		Key:         form.Get(FieldKey),
-		MagicMD5:    form.Get(FieldMagicMD5),
-		Result:      form.Get(FieldResult),
-		Reason:      form.Get(FieldReason),
-		LURLEntry:   form.Get(FieldLURLEntry),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		Key:                form.Get(FieldKey),
+		MagicMD5:           form.Get(FieldMagicMD5),
+		Result:             form.Get(FieldResult),
+		Reason:             form.Get(FieldReason),
+		LURLEntry:          form.Get(FieldLURLEntry),
 	}
 
 	if raw := form.Get(FieldIam); raw != "" {

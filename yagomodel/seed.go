@@ -42,15 +42,15 @@ type Seed struct {
 }
 
 func (s Seed) NetworkAddress() (string, bool) {
-	host, ok := s.IP.Get()
-	if !ok {
+	hosts := s.AdvertisedHosts()
+	if len(hosts) == 0 {
 		return "", false
 	}
 	port, ok := s.Port.Get()
 	if !ok {
 		return "", false
 	}
-	return net.JoinHostPort(host.String(), port.String()), true
+	return net.JoinHostPort(hosts[0].String(), port.String()), true
 }
 
 func (s Seed) HTTPEndpoint(path string) (*url.URL, error) {
@@ -92,28 +92,35 @@ func (s Seed) SSLAvailable() bool {
 	return ok
 }
 
-// ProtocolEndpoints returns the peer-protocol endpoint candidates for a path
-// in preference order. With preferHTTPS and an advertised HTTPS endpoint the
-// TLS URL comes first (YaCy Seed.getPublicMultiprotocolURL), followed by the
-// plain HTTP URL as the YaCy-style retry fallback; otherwise only the plain
-// HTTP URL is returned.
 func (s Seed) ProtocolEndpoints(path string, preferHTTPS bool) ([]*url.URL, error) {
-	plain, err := s.HTTPEndpoint(path)
-	if err != nil {
-		return nil, err
+	hosts := s.AdvertisedHosts()
+	plainPort, plainPortKnown := s.Port.Get()
+	if len(hosts) == 0 || !plainPortKnown {
+		return nil, fmt.Errorf("%w: no reachable address", ErrBadSeed)
 	}
-	if !preferHTTPS || !s.SSLAvailable() {
-		return []*url.URL{plain}, nil
+	secureAvailable := preferHTTPS && s.SSLAvailable()
+	securePort, _ := s.PortSSL.Get()
+	capacity := len(hosts)
+	if secureAvailable {
+		capacity *= 2
 	}
-	host, _ := s.IP.Get()
-	port, _ := s.PortSSL.Get()
-	secure := &url.URL{
-		Scheme: "https",
-		Host:   net.JoinHostPort(host.String(), port.String()),
-		Path:   path,
+	endpoints := make([]*url.URL, 0, capacity)
+	for _, host := range hosts {
+		if secureAvailable {
+			endpoints = append(endpoints, &url.URL{
+				Scheme: "https",
+				Host:   net.JoinHostPort(host.String(), securePort.String()),
+				Path:   path,
+			})
+		}
+		endpoints = append(endpoints, &url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(host.String(), plainPort.String()),
+			Path:   path,
+		})
 	}
 
-	return []*url.URL{secure, plain}, nil
+	return endpoints, nil
 }
 
 func (s Seed) AgeDays(now time.Time) int {

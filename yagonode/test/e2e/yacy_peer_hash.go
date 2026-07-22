@@ -22,7 +22,7 @@ func resolveYaCyHash(
 	t.Helper()
 	req := yagoproto.HelloRequest{
 		NetworkName: yagoproto.DefaultNetwork,
-		Iam:         yagomodel.Hash(helloProbeHash),
+		Iam:         helloProbeHash,
 		Seed:        helloProbeSeed(),
 	}
 	result := probe.Get(ctx, yacyURL+"/yacy/hello.html?"+req.Form().Encode())

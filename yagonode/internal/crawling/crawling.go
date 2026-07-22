@@ -11,8 +11,13 @@ import (
 )
 
 type LocalPeer interface {
-	NetworkMatches(network string) bool
-	AuthenticatesAddress(network string, youare yagomodel.Hash, key, iam, magic string) bool
+	Authenticates(
+		network string,
+		networkPresent bool,
+		key string,
+		iam string,
+		magic string,
+	) bool
 	Addresses(network string, youare yagomodel.Hash) bool
 }
 

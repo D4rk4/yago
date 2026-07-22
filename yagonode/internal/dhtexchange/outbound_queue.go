@@ -34,6 +34,7 @@ type EnqueueReceipt struct {
 	OverflowCopies   int
 	TouchedChunks    int
 	acceptedRows     []yagomodel.RWIPosting
+	missingRows      []yagomodel.RWIPosting
 }
 
 type OutboundChunk struct {
@@ -42,7 +43,9 @@ type OutboundChunk struct {
 }
 
 type OutboundQueue struct {
-	chunks map[yagomodel.Hash]*OutboundChunk
+	chunks                       map[yagomodel.Hash]*OutboundChunk
+	pendingRestores              []yagomodel.RWIPosting
+	pendingTransferConfirmations []yagomodel.RWIPosting
 }
 
 type acceptedPosting struct {
@@ -164,6 +167,7 @@ func acceptedPostings(
 	for _, candidate := range candidates {
 		if _, ok := missingSet[candidate.url]; ok {
 			receipt.MissingURL++
+			receipt.missingRows = append(receipt.missingRows, candidate.entry)
 			continue
 		}
 		receipt.AcceptedPostings++

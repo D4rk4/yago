@@ -10,7 +10,10 @@ import (
 	"github.com/D4rk4/yago/yagoproto"
 )
 
-const transferYaCyAlias = "yacy-tr-e2e"
+const (
+	transferYaCyAlias             = "yacy-tr-e2e"
+	realYaCyFleetReadinessTimeout = 120 * time.Second
+)
 
 func TestRealYaCyTransfersRWIToFleet(t *testing.T) {
 	ctx := context.Background()
@@ -24,15 +27,18 @@ func TestRealYaCyTransfersRWIToFleet(t *testing.T) {
 
 	seedlistURL := "http://" + transferYaCyAlias + ":" + nodeContainerPort + "/yacy/seedlist.html"
 	fleet := startNodeFleet(t, ctx, probe, network.Name, seedlistURL, dhtMinConnectedPeers)
-	announceFleetToYaCy(t, ctx, probe, yacyURL, fleet)
+	admitYaCyToFleetNodes(t, ctx, probe, yacyURL, fleet)
 
 	pushDocument(t, ctx, probe, yacyURL, buildTransferTokens())
 
 	waitYaCyLocalRWIs(t, ctx, probe, yacyURL, yacyHash, 30*time.Second)
 	waitFleetSenior(t, ctx, probe, yacyURL, fleet, 180*time.Second)
-	waitFleetActiveConnected(t, ctx, probe, yacyURL, fleet, 15*time.Second)
+	waitYaCySelfSenior(t, ctx, probe, yacyURL, yacyHash.String(), realYaCyFleetReadinessTimeout)
+	waitFleetActiveConnected(t, ctx, probe, yacyURL, fleet, realYaCyFleetReadinessTimeout)
 
 	yacyURL = restartYaCy(t, ctx, probe, yacyContainer)
+	waitYaCySelfSenior(t, ctx, probe, yacyURL, yacyHash.String(), realYaCyFleetReadinessTimeout)
+	waitFleetActiveConnected(t, ctx, probe, yacyURL, fleet, realYaCyFleetReadinessTimeout)
 
 	received := waitFor(360*time.Second, func() bool {
 		for _, node := range fleet {

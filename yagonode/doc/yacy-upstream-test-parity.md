@@ -23,8 +23,8 @@ Statuses:
 
 | Upstream test | Status | Where / why |
 | --- | --- | --- |
-| `peers/NewsPoolTest` | ported (pool level) | `yagonode/internal/peernews/news_pool_test.go` ports the publication fixture: three published records are each offered thirty times through the outgoing queue and then rest in the published queue with the full distribution count; the record wire form, id composition (creation second plus originator hash with the `#` offset), category whitelist for incoming news, and duplicate suppression follow upstream `NewsDB`/`NewsPool`. The next publication rotates into the advertised seed `news` DNA attribute once per announcement cycle in the YaCy `b\|` wire form, and attachments arriving on hello callers and greeted peers' seeds are decoded into the incoming queue. Upstream's redundant creation-date reparse check in `PeerActions.processPeerArrival` is not replicated because the Go codec parses the creation date once. |
-| `peers/operation/yacyVersionTest` | ported (filter subset) | `yagonode/internal/seedlist/minversion_yacy_fixture_test.go` ports the combined-version vectors against seedlist `minversion` filtering: valid `d.dddSVVV` values order numerically, malformed values never pass. The upstream `combined2prettyVersion` display split has no Go counterpart because this node never renders pretty version strings. |
+| `peers/NewsPoolTest` | ported (pool level) | `yagonode/internal/peernews/news_pool_test.go` ports the publication fixture: three published records are each offered thirty times through the outgoing queue and then rest in the published queue with the full distribution count; the record wire form, id composition (exact creation second plus originator hash with the `#` offset), category whitelist for incoming news, and duplicate suppression follow upstream `NewsDB`/`NewsPool`. `news_retention_test.go` additionally pins upstream's 1 KiB record ceiling and 24-hour default versus 72-hour profile-update/crawl-start lifetime, with bounded newest-created retention, restart persistence, legacy-marker migration, and invalid/orphan suppression. The next publication rotates into the advertised seed `news` DNA attribute once per announcement cycle in the YaCy `b\|` wire form, and attachments arriving on hello callers and greeted peers' seeds are decoded into the incoming queue. Upstream's redundant creation-date reparse check in `PeerActions.processPeerArrival` is not replicated because the Go codec parses the creation date once. |
+| `peers/operation/yacyVersionTest` | ported (filter subset) | `yagonode/internal/seedlist/minversion_yacy_fixture_test.go` ports the combined-version vectors against seedlist `minversion` filtering: valid `d.dddSVVV` values order numerically, while missing, malformed, and numeric-zero peer versions remain eligible as upstream developer-version values. Request floors use Java `Float.parseFloat` syntax and binary32 rounding; stored seed versions use Java `Double.parseDouble` syntax and binary64 rounding. The upstream `combined2prettyVersion` display split has no Go counterpart because this node never renders pretty version strings. |
 | `peers/graphics/WebStructureGraphTest` | ported | `yagonode/internal/yagonode/host_link_source_test.go`: the incoming host graph is counted from stored document outlinks per source host and keyed by YaCy host hashes, so several links from one document to the same target host accumulate into one reference count, matching the upstream host-structure facts. Like upstream, only locally parsed documents feed the structure; DHT-received metadata does not. |
 | `peers/graphics/ProfilingGraphTest` | not applicable | Server-side UI graphics rendering. |
 | `cora/document/id/DigestURLTest` | pre-existing | `yagomodel/url_hash_test.go`: `TestYaCyDigestURLDefaultPortNormalformFixtures` (identPort), `TestYaCyDigestURLHostHashFixtures` (hosthash equality and inequality), `TestYaCyDigestURLFileHashFixtures` (file URL slash variants). |
@@ -83,9 +83,33 @@ Functional end-to-end compatibility is proven by the live interop matrix in
   enhanced-base64, fixed-order 20-column `wi` row required by the stock Java
   consumer without modifying stored URL metadata.
 
+Focused hello and roster regressions additionally pin behavior that upstream
+implements in `hello.java`, `Protocol.hello`, `PeerActions.connectPeer`, and
+`SeedDB.removeMySeed`: a successful callback may report the caller's advertised
+hostname in `yourip`; direct `seed0` refreshes peer metadata at the contacted
+endpoint; the primary `IP` host and ordered `IP6` entries form a deduplicated
+five-host transport bound, IPv6-only seeds remain callable, all attempts share
+one operation deadline, and an alternate host becomes primary only after the
+responder hash matches; the immutable local hash is rejected and removed from
+every peer collection; another peer sharing the same address is not mistaken for self;
+authentication failure and self identity return a virgin response without
+seeds; a reachable principal remains principal; and the known-peer request is
+bounded to the 100 currently reachable rows ordered by local last-seen time and
+hash, with Java BMP decimal digits and ASCII signs accepted for `count`, invalid
+or overflowing values defaulting to zero, and a nonpositive count returning
+none. The raw seed accepts at most 16,000 Java `String.length()` UTF-16 units.
+Across every authenticated request adapter, missing network names default to
+`freeworld` and explicitly empty names are not defaulted. The hello path selects
+from the bounded in-memory reachable set rather than scanning the persistent
+roster.
+Process-local self classification starts virgin, follows the strongest
+current authenticated hello evidence, and retains its last published type when
+the current evidence window becomes empty.
+
 The matrix covers the default `freeworld` unit and same-name peers. Controlled
-private networks requiring Java YaCy's `salted-magic-sim` calculation remain
-unsupported.
+private networks can select Java YaCy's `salted-magic-sim` calculation with one
+nonempty shared secret; focused outbound and inbound protocol tests cover that
+mode even though the stock-container matrix remains on `freeworld`.
 
 Yago computes URL hashes without DNS. Stock Java YaCy can classify an
 unresolvable hostname under an unrecognized top-level domain as local and

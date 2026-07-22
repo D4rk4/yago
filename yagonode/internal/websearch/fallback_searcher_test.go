@@ -112,6 +112,26 @@ func TestFallbackRunsOnMiss(t *testing.T) {
 	}
 }
 
+func TestFallbackKeepsIncludedDomainWithExplicitPort(t *testing.T) {
+	provider := &stubProvider{results: []Result{{
+		Title: "allowed", URL: "https://allowed.example:8443/result", Snippet: "result",
+	}}}
+	request := searchcore.Request{
+		Query: "result", Limit: 1, IncludeDomains: []string{"allowed.example"},
+	}
+	response, err := NewFallbackSearcher(&stubSearcher{}, provider, enabled).Search(
+		t.Context(),
+		request,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Results) != 1 || response.Results[0].Host != "allowed.example" ||
+		!searchcore.ResultSatisfiesDomainConstraints(request, response.Results[0]) {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
 func TestFallbackSkippedWhenDisabled(t *testing.T) {
 	primary := &stubSearcher{}
 	provider := &stubProvider{results: []Result{{Title: "web"}}}

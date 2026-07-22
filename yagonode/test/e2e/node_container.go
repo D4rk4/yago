@@ -24,11 +24,12 @@ const (
 )
 
 type nodeConfig struct {
-	networkName string
-	alias       string
-	hash        yagomodel.Hash
-	seedlistURL string
-	extraEnv    map[string]string
+	networkName         string
+	observerNetworkName string
+	alias               string
+	hash                yagomodel.Hash
+	seedlistURL         string
+	extraEnv            map[string]string
 }
 
 func startNode(
@@ -59,6 +60,11 @@ func startNode(
 	for key, value := range cfg.extraEnv {
 		env[key] = value
 	}
+	networks, networkAliases := containerNetworks(
+		cfg.networkName,
+		cfg.observerNetworkName,
+		cfg.alias,
+	)
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -66,8 +72,8 @@ func startNode(
 			Name:           cfg.alias,
 			ExposedPorts:   []string{httpPort, nodePublicHTTPPort},
 			Env:            env,
-			Networks:       []string{cfg.networkName},
-			NetworkAliases: map[string][]string{cfg.networkName: {cfg.alias}},
+			Networks:       networks,
+			NetworkAliases: networkAliases,
 			Tmpfs:          map[string]string{"/tmp": "rw,mode=1777"},
 			HostConfigModifier: func(hostConfig *dockercontainer.HostConfig) {
 				hostConfig.ReadonlyRootfs = true

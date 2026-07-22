@@ -13,17 +13,23 @@ import (
 	"github.com/D4rk4/yago/yagoproto"
 )
 
+type remoteSearchRequestLimits struct {
+	responseBodyLimit int
+	transportAttempts *outboundCallBudget
+	callBudgets       []*outboundCallBudget
+}
+
 func (s searcher) sendRemoteSearchWithinLimit(
 	ctx context.Context,
 	peer yagomodel.Seed,
 	searchReq yagoproto.SearchRequest,
-	responseBodyLimit int,
-	callBudgets ...*outboundCallBudget,
+	limits remoteSearchRequestLimits,
 ) (yagoproto.SearchResponse, int, error) {
 	var self yagomodel.Seed
 	if s.selfSeed != nil {
 		self = s.selfSeed(ctx)
 		searchReq.MySeed = yagomodel.Some(self)
+		searchReq.Iam = self.Hash.String()
 	}
 	if s.access.Mode == yagoproto.NetworkAuthenticationSaltedMagic {
 		if self.Hash == "" {
@@ -57,14 +63,22 @@ func (s searcher) sendRemoteSearchWithinLimit(
 
 	var lastErr error
 	responseBytes := 0
-	for _, target := range targets {
-		response, readBytes, err := s.sendRemoteSearchToWithinLimit(
+	if !acquireOutboundCall(limits.callBudgets...) {
+		return yagoproto.SearchResponse{}, 0, errRemoteSearchBudgetExhausted
+	}
+	for position, target := range targets {
+		attemptContext, cancel := remoteSearchEndpointAttemptContext(
 			ctx,
+			len(targets)-position,
+		)
+		response, readBytes, err := s.sendRemoteSearchToWithoutCallBudget(
+			attemptContext,
 			target,
 			searchReq,
-			responseBodyLimit-responseBytes,
-			callBudgets...,
+			limits.responseBodyLimit-responseBytes,
+			limits.transportAttempts,
 		)
+		cancel()
 		responseBytes += readBytes
 		if err == nil {
 			s.observeReceivedResponse(ctx, response)
@@ -79,12 +93,12 @@ func (s searcher) sendRemoteSearchWithinLimit(
 	return yagoproto.SearchResponse{}, responseBytes, lastErr
 }
 
-func (s searcher) sendRemoteSearchToWithinLimit(
+func (s searcher) sendRemoteSearchToWithoutCallBudget(
 	ctx context.Context,
 	target *url.URL,
 	searchReq yagoproto.SearchRequest,
 	responseBodyLimit int,
-	callBudgets ...*outboundCallBudget,
+	transportAttempts ...*outboundCallBudget,
 ) (yagoproto.SearchResponse, int, error) {
 	target.RawQuery = searchReq.Form().Encode()
 
@@ -99,9 +113,6 @@ func (s searcher) sendRemoteSearchToWithinLimit(
 	if trace, ok := tracectx.FromContext(ctx); ok {
 		httpReq.Header.Set(tracectx.Header, trace.Child().Header())
 	}
-	if !acquireOutboundCall(callBudgets...) {
-		return yagoproto.SearchResponse{}, 0, errRemoteSearchBudgetExhausted
-	}
 	release, err := enterRemoteSearchAdmission(ctx, s.remoteSearchAdmission())
 	if err != nil {
 		return yagoproto.SearchResponse{}, 0, fmt.Errorf(
@@ -111,6 +122,9 @@ func (s searcher) sendRemoteSearchToWithinLimit(
 		)
 	}
 	defer release()
+	if !acquireOutboundCall(transportAttempts...) {
+		return yagoproto.SearchResponse{}, 0, errRemoteSearchBudgetExhausted
+	}
 	httpResp, err := s.client.Do(httpReq)
 	if err != nil {
 		return yagoproto.SearchResponse{}, 0, fmt.Errorf(
@@ -140,8 +154,9 @@ func readRemoteSearchResponseWithinLimit(
 	responseBytes := min(len(raw), responseBodyLimit)
 	if err != nil {
 		return yagoproto.SearchResponse{}, responseBytes, fmt.Errorf(
-			"%w: read response: %w",
+			"%w: %w: read response: %w",
 			errRemoteSearchFailed,
+			errRemoteSearchTransport,
 			err,
 		)
 	}
@@ -159,6 +174,22 @@ func readRemoteSearchResponseWithinLimit(
 	msg, _ := yagomodel.ParseMessage(string(raw))
 	parsed, err := yagoproto.ParseSearchResponse(msg)
 	if err != nil {
+		return yagoproto.SearchResponse{}, responseBytes, fmt.Errorf(
+			"%w: %w: search response: %w",
+			errRemoteSearchFailed,
+			errRemoteSearchInvalidResult,
+			err,
+		)
+	}
+	if err := validateRemoteResourceIntegrity(parsed); err != nil {
+		return yagoproto.SearchResponse{}, responseBytes, fmt.Errorf(
+			"%w: %w: search response: %w",
+			errRemoteSearchFailed,
+			errRemoteSearchInvalidResult,
+			err,
+		)
+	}
+	if err := validateRemoteResourceWordReferences(parsed.Resources); err != nil {
 		return yagoproto.SearchResponse{}, responseBytes, fmt.Errorf(
 			"%w: %w: search response: %w",
 			errRemoteSearchFailed,

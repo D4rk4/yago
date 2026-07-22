@@ -5,7 +5,19 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/indextransfer"
 )
+
+func rejectedDistributionReceipt(peer yagomodel.Hash, pause int) DistributionReceipt {
+	handoff := indextransfer.HandoffReceipt{State: indextransfer.HandoffRWIRejected}
+	handoff.RWI.Pause = pause
+
+	return DistributionReceipt{
+		State:   DistributionHandoffRejected,
+		Peer:    peer,
+		Handoff: handoff,
+	}
+}
 
 func TestOutboundRetryPolicyIgnoresNonWorkStatesAndUsesZeroConfigDefaults(t *testing.T) {
 	t.Parallel()
@@ -26,15 +38,15 @@ func TestOutboundRetryPolicyIgnoresNonWorkStatesAndUsesZeroConfigDefaults(t *tes
 	}
 
 	first := policy.Observe(
-		DistributionReceipt{State: DistributionCapacityFailed, Peer: peer},
+		DistributionReceipt{State: DistributionHandoffFailed, Peer: peer},
 		at,
 	)
 	second := policy.Observe(
-		DistributionReceipt{State: DistributionCapacityFailed, Peer: peer},
+		DistributionReceipt{State: DistributionHandoffFailed, Peer: peer},
 		at,
 	)
 	third := policy.Observe(
-		DistributionReceipt{State: DistributionCapacityFailed, Peer: peer},
+		DistributionReceipt{State: DistributionHandoffFailed, Peer: peer},
 		at,
 	)
 	if first.Delay != time.Minute ||
@@ -60,7 +72,7 @@ func TestOutboundRetryPolicyDelaysFailuresWithJitter(t *testing.T) {
 	policy := NewOutboundRetryPolicy(config)
 
 	first := policy.Observe(
-		DistributionReceipt{State: DistributionCapacityFailed, Peer: peer},
+		DistributionReceipt{State: DistributionHandoffFailed, Peer: peer},
 		at,
 	)
 	second := policy.Observe(
@@ -101,7 +113,7 @@ func TestOutboundRetryPolicyQuarantinesAfterRepeatedFailures(t *testing.T) {
 	})
 
 	delayed := policy.Observe(
-		DistributionReceipt{State: DistributionCapacityFailed, Peer: peer},
+		DistributionReceipt{State: DistributionHandoffFailed, Peer: peer},
 		at,
 	)
 	quarantined := policy.Observe(
@@ -134,7 +146,7 @@ func TestOutboundRetryPolicyClearsPeerAfterSuccess(t *testing.T) {
 		QuarantineDuration: time.Hour,
 		DelayFraction:      func(yagomodel.Hash, int) float64 { return 0.5 },
 	})
-	policy.Observe(DistributionReceipt{State: DistributionCapacityFailed, Peer: peer}, at)
+	policy.Observe(DistributionReceipt{State: DistributionHandoffFailed, Peer: peer}, at)
 	if policy.Ready(peer, at) {
 		t.Fatal("peer should be delayed before success")
 	}
@@ -165,10 +177,10 @@ func TestOutboundRetryPolicyCapsDelayAndClampsFractions(t *testing.T) {
 		DelayFraction:      func(yagomodel.Hash, int) float64 { return 2 },
 	})
 
-	policy.Observe(DistributionReceipt{State: DistributionCapacityFailed, Peer: peer}, at)
-	policy.Observe(DistributionReceipt{State: DistributionCapacityFailed, Peer: peer}, at)
+	policy.Observe(DistributionReceipt{State: DistributionHandoffFailed, Peer: peer}, at)
+	policy.Observe(DistributionReceipt{State: DistributionHandoffFailed, Peer: peer}, at)
 	third := policy.Observe(
-		DistributionReceipt{State: DistributionCapacityFailed, Peer: peer},
+		DistributionReceipt{State: DistributionHandoffFailed, Peer: peer},
 		at,
 	)
 	if third.Delay != 3*time.Minute || third.Status != OutboundRetryDelayed {
@@ -191,10 +203,58 @@ func TestOutboundRetryPolicyClampsNegativeConfig(t *testing.T) {
 	})
 
 	decision := policy.Observe(
-		DistributionReceipt{State: DistributionCapacityFailed, Peer: peer},
+		DistributionReceipt{State: DistributionHandoffFailed, Peer: peer},
 		at,
 	)
 	if decision.Delay != time.Hour || !decision.RetryAfter.Equal(at.Add(time.Hour)) {
+		t.Fatalf("decision = %#v", decision)
+	}
+}
+
+func TestOutboundRetryPolicyHonorsLongerPeerPauseAndLocalDelay(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	peerPause := NewOutboundRetryPolicy(OutboundRetryConfig{
+		BaseDelay:          time.Minute,
+		MaxDelay:           time.Hour,
+		QuarantineFailures: 3,
+		QuarantineDuration: time.Hour,
+	})
+	paused := peerPause.Observe(
+		rejectedDistributionReceipt(queueHash(t, "GGGGGGGGGGGG"), 120_000),
+		at,
+	)
+	if paused.Delay != 2*time.Minute || !paused.RetryAfter.Equal(at.Add(2*time.Minute)) {
+		t.Fatalf("peer pause decision = %#v", paused)
+	}
+
+	localDelay := NewOutboundRetryPolicy(OutboundRetryConfig{
+		BaseDelay:          3 * time.Minute,
+		MaxDelay:           time.Hour,
+		QuarantineFailures: 3,
+		QuarantineDuration: time.Hour,
+	})
+	delayed := localDelay.Observe(
+		rejectedDistributionReceipt(queueHash(t, "HHHHHHHHHHHH"), 120_000),
+		at,
+	)
+	if delayed.Delay != 3*time.Minute || !delayed.RetryAfter.Equal(at.Add(3*time.Minute)) {
+		t.Fatalf("local delay decision = %#v", delayed)
+	}
+}
+
+func TestOutboundRetryPolicySafelyRepresentsMaximumPeerPause(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
+	maximumMilliseconds := int64(1<<63-1) / int64(time.Millisecond)
+	peer := queueHash(t, "IIIIIIIIIIII")
+	decision := NewOutboundRetryPolicy(OutboundRetryConfig{}).Observe(
+		rejectedDistributionReceipt(peer, int(maximumMilliseconds+1)),
+		at,
+	)
+	if decision.Delay != time.Duration(1<<63-1) {
 		t.Fatalf("decision = %#v", decision)
 	}
 }

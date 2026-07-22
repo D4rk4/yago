@@ -17,8 +17,9 @@ func TestSearchRequestRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	req := yagoproto.SearchRequest{
-		NetworkName: yagoproto.DefaultNetwork,
-		MySeed:      yagomodel.Some(sampleSeed(t, "alpha", "peer-a")),
+		NetworkName:        yagoproto.DefaultNetwork,
+		NetworkNamePresent: true,
+		MySeed:             yagomodel.Some(sampleSeed(t, "alpha", "peer-a")),
 		Query: []yagomodel.Hash{
 			sampleHash(t, "alpha"),
 			sampleHash(t, "beta"),
@@ -141,6 +142,16 @@ func TestParseSearchRequestRejectsUnknownStrictContentDom(t *testing.T) {
 	form := url.Values{yagoproto.FieldStrictContentDom: {"yes"}}
 	if _, err := yagoproto.ParseSearchRequest(t.Context(), form); err == nil {
 		t.Fatal("expected error for unknown boolean token")
+	}
+}
+
+func TestParseSearchRequestAcceptsFalseStrictContentDom(t *testing.T) {
+	t.Parallel()
+
+	form := url.Values{yagoproto.FieldStrictContentDom: {"false"}}
+	request, err := yagoproto.ParseSearchRequest(t.Context(), form)
+	if err != nil || request.StrictContentDom {
+		t.Fatalf("ParseSearchRequest = %#v, %v", request, err)
 	}
 }
 
@@ -297,8 +308,8 @@ func TestParseSearchResponseSkipsMissingAndBadResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseSearchResponse: %v", err)
 	}
-	if len(got.Resources) != 1 {
-		t.Fatalf("resources = %d, want 1", len(got.Resources))
+	if len(got.Resources) != 1 || got.InvalidResources != 1 {
+		t.Fatalf("resources = %d invalid = %d", len(got.Resources), got.InvalidResources)
 	}
 	if !reflect.DeepEqual(got.Resources[0], valid) {
 		t.Fatalf("resource = %#v, want %#v", got.Resources[0], valid)
@@ -317,7 +328,8 @@ func TestParseSearchResponseReadsOpenEndedResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseSearchResponse: %v", err)
 	}
-	if len(got.Resources) != 1 || !reflect.DeepEqual(got.Resources[0], valid) {
+	if len(got.Resources) != 1 || got.InvalidResources != 1 ||
+		!reflect.DeepEqual(got.Resources[0], valid) {
 		t.Fatalf("resources = %+v", got.Resources)
 	}
 }

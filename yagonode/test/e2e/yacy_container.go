@@ -21,6 +21,22 @@ func startYaCy(
 	probe *httpProbe,
 	networkName, alias string,
 ) (testcontainers.Container, string) {
+	return startYaCyWithObserverNetwork(
+		t,
+		ctx,
+		probe,
+		networkName,
+		"",
+		alias,
+	)
+}
+
+func startYaCyWithObserverNetwork(
+	t *testing.T,
+	ctx context.Context,
+	probe *httpProbe,
+	probeNetworkName, observerNetworkName, alias string,
+) (testcontainers.Container, string) {
 	t.Helper()
 	image := os.Getenv("YAGO_YACY_IMAGE")
 	if image == "" {
@@ -28,11 +44,17 @@ func startYaCy(
 	}
 	const defaults = "/opt/yacy_search_server/defaults/"
 	const unitFile = defaults + "yacy.network.freeworld.unit"
+	staticIP := "sed -i 's#^staticIP=.*#staticIP=" + alias + "#' " + defaults + "yacy.init"
+	if observerNetworkName != "" {
+		staticIP = "advertised_host=$(getent ahostsv4 " + alias + " | awk 'NR == 1 {print $1}')" +
+			" && test -n \"$advertised_host\"" +
+			" && sed -i \"s#^staticIP=.*#staticIP=$advertised_host#\" " + defaults + "yacy.init"
+	}
 	setup := strings.Join([]string{
 		"sed -i 's#<auth-method>DIGEST</auth-method>#<auth-method>BASIC</auth-method>#' " + defaults + "web.xml",
 		"sed -i '/^network.unit.bootstrap.seedlist/d' " + unitFile,
 		"sed -i 's#^network.unit.domain.*#network.unit.domain = any#' " + unitFile,
-		"sed -i 's#^staticIP=.*#staticIP=" + alias + "#' " + defaults + "yacy.init",
+		staticIP,
 		"sed -i 's#^allowReceiveIndex=.*#allowReceiveIndex=true#' " + defaults + "yacy.init",
 		"sed -i 's#^allowDistributeIndex=.*#allowDistributeIndex=true#' " + defaults + "yacy.init",
 		"sed -i 's#^allowDistributeIndexWhileCrawling=.*#allowDistributeIndexWhileCrawling=true#' " + defaults + "yacy.init",
@@ -40,18 +62,22 @@ func startYaCy(
 		"sed -i 's#^20_dhtdistribution_loadprereq=.*#20_dhtdistribution_loadprereq=999.0#' " + defaults + "yacy.init",
 		"sed -i 's#^20_dhtreceive_loadprereq=.*#20_dhtreceive_loadprereq=999.0#' " + defaults + "yacy.init",
 		"sed -i 's#^30_peerping_loadprereq=.*#30_peerping_loadprereq=999.0#' " + defaults + "yacy.init",
-		"sed -i 's#^30_peerping_busysleep=.*#30_peerping_busysleep=10000#' " + defaults + "yacy.init",
 		"sed -i 's#^20_dhtdistribution_idlesleep=.*#20_dhtdistribution_idlesleep=1000#' " + defaults + "yacy.init",
 		"sed -i 's#^20_dhtdistribution_busysleep=.*#20_dhtdistribution_busysleep=0#' " + defaults + "yacy.init",
 		"sed -i 's#^.level=.*#.level=FINE#' " + defaults + "yacy.logging",
 	}, " && ")
+	networks, networkAliases := containerNetworks(
+		probeNetworkName,
+		observerNetworkName,
+		alias,
+	)
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          image,
 			ExposedPorts:   []string{httpPort},
-			Networks:       []string{networkName},
-			NetworkAliases: map[string][]string{networkName: {alias}},
+			Networks:       networks,
+			NetworkAliases: networkAliases,
 			WaitingFor:     wait.ForExec([]string{"true"}).WithStartupTimeout(2 * time.Minute),
 			Cmd: []string{
 				"/bin/sh", "-c",

@@ -5,12 +5,27 @@ truth. `/yacy/*` endpoints use plain HTTP form fields. Most peer responses are
 `key=value` lines; compatibility endpoints may return YaCy seed text, JSON, or
 XML when original YaCy uses those formats.
 
+Every authenticated YaCy request adapter retains whether `network.unit.name`
+was absent or explicitly empty. An absent field defaults to `freeworld`; a
+present empty value is not rewritten and therefore fails authentication
+against `freeworld` in both open and salted modes. An empty local network
+configuration still means `freeworld`.
+
+The hello request preserves `iam` as an opaque form value for exact salted
+authentication. Its optional `count` uses Java signed-decimal int32 parsing:
+BMP decimal digits have their `Character.digit(char, 10)` values, only ASCII
+`+` and `-` signs are accepted, and supplementary digits are invalid. The value
+falls back to zero when absent, malformed, or outside the signed int32 range.
+The raw hello `seed` field is accepted through 16,000 Java `String.length()`
+UTF-16 units and rejected above that boundary before generic seed decoding.
+
 The bootstrap seed-list endpoints are exceptions: `/yacy/seedlist.html`
 returns plain YaCy seed lines, one per CRLF-terminated line, while
 `/yacy/seedlist.json` and `/yacy/seedlist.xml` return clear-text peer maps.
 The seed-list request supports YaCy filters for count, peer type, self
 inclusion, own seed selection, peer hash, peer name, address-only output,
 JSONP callback, and minimum peer version.
+`maxcount` uses the same Java signed-decimal int32 parser as hello `count`.
 Seed import accepts the documented signed `UTC` offset form and the timestamp
 form observed in current freeworld seedlists, preserving whichever value the
 remote seed carries.

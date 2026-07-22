@@ -15,11 +15,12 @@ func TestTransferRWIRequestRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	req := yagoproto.TransferRWIRequest{
-		NetworkName: yagoproto.DefaultNetwork,
-		Iam:         sampleHash(t, "alpha"),
-		YouAre:      sampleHash(t, "beta"),
-		WordCount:   2,
-		EntryCount:  2,
+		NetworkName:        yagoproto.DefaultNetwork,
+		NetworkNamePresent: true,
+		Iam:                sampleHash(t, "alpha"),
+		YouAre:             sampleHash(t, "beta"),
+		WordCount:          2,
+		EntryCount:         2,
 		Indexes: []yagomodel.RWIPosting{
 			sampleRWIPosting(t, "alpha", "url-a"),
 			sampleRWIPosting(t, "beta", "url-b"),
@@ -69,9 +70,10 @@ func TestTransferRWIResponseRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	resp := yagoproto.TransferRWIResponse{
-		ResponseHeader: yagoproto.ResponseHeader{Version: "1.0", Uptime: 7},
-		Result:         yagoproto.ResultOK,
-		Pause:          1500,
+		ResponseHeader:         yagoproto.ResponseHeader{Version: "1.0", Uptime: 7},
+		Result:                 yagoproto.ResultOK,
+		Pause:                  1500,
+		UnknownURLFieldPresent: true,
 		UnknownURL: []yagomodel.Hash{
 			sampleHash(t, "url-a"),
 			sampleHash(t, "url-b"),
@@ -104,6 +106,34 @@ func TestTransferRWIResponseIncludesEmptyURLFields(t *testing.T) {
 	}
 	if _, ok := msg[yagoproto.FieldErrorURL]; !ok {
 		t.Fatal("missing empty errorURL field")
+	}
+}
+
+func TestParseTransferRWIResponseRequiresUnknownURLForOK(t *testing.T) {
+	t.Parallel()
+
+	missing := yagomodel.Message{yagoproto.FieldResult: yagoproto.ResultOK}
+	if _, err := yagoproto.ParseTransferRWIResponse(missing); err == nil {
+		t.Fatal("expected missing unknownURL error")
+	}
+
+	present := yagomodel.Message{
+		yagoproto.FieldResult:     yagoproto.ResultOK,
+		yagoproto.FieldUnknownURL: "",
+	}
+	response, err := yagoproto.ParseTransferRWIResponse(present)
+	if err != nil {
+		t.Fatalf("ParseTransferRWIResponse: %v", err)
+	}
+	if !response.UnknownURLFieldPresent || len(response.UnknownURL) != 0 {
+		t.Fatalf("response = %#v", response)
+	}
+
+	rejected, err := yagoproto.ParseTransferRWIResponse(
+		yagomodel.Message{yagoproto.FieldResult: string(yagoproto.ResultBusy)},
+	)
+	if err != nil || rejected.UnknownURLFieldPresent {
+		t.Fatalf("rejected response = %#v error=%v", rejected, err)
 	}
 }
 
@@ -158,9 +188,10 @@ func TestTransferRWIRequestFormIncludesEmptyIndexesField(t *testing.T) {
 	req, err := yagoproto.ParseTransferRWIRequest(
 		context.Background(),
 		yagoproto.TransferRWIRequest{
-			NetworkName: yagoproto.DefaultNetwork,
-			WordCount:   0,
-			EntryCount:  0,
+			NetworkName:        yagoproto.DefaultNetwork,
+			NetworkNamePresent: true,
+			WordCount:          0,
+			EntryCount:         0,
 		}.Form(),
 	)
 	if err != nil {
@@ -238,8 +269,15 @@ func TestParseTransferRWIResponseRejectsBadFields(t *testing.T) {
 
 	cases := []yagomodel.Message{
 		{yagoproto.FieldUptime: "soon"},
-		{yagoproto.FieldUnknownURL: "short"},
-		{yagoproto.FieldErrorURL: "short"},
+		{
+			yagoproto.FieldResult:     yagoproto.ResultOK,
+			yagoproto.FieldUnknownURL: "short",
+		},
+		{
+			yagoproto.FieldResult:     yagoproto.ResultOK,
+			yagoproto.FieldUnknownURL: "",
+			yagoproto.FieldErrorURL:   "short",
+		},
 	}
 	for _, msg := range cases {
 		if _, err := yagoproto.ParseTransferRWIResponse(msg); err == nil {

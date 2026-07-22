@@ -9,9 +9,10 @@ import (
 
 func TestListRequestFormRoundTrip(t *testing.T) {
 	req := yagoproto.ListRequest{
-		NetworkName: yagoproto.DefaultNetwork,
-		Column:      yagoproto.ListColumnBlack,
-		Name:        "url.default.black",
+		NetworkName:        yagoproto.DefaultNetwork,
+		NetworkNamePresent: true,
+		Column:             yagoproto.ListColumnBlack,
+		Name:               "url.default.black",
 	}
 
 	got, err := yagoproto.ParseListRequest(t.Context(), req.Form())

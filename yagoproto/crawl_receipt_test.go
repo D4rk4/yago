@@ -15,12 +15,13 @@ func TestCrawlReceiptRequestRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	req := yagoproto.CrawlReceiptRequest{
-		NetworkName: yagoproto.DefaultNetwork,
-		Iam:         sampleHash(t, "alpha"),
-		YouAre:      sampleHash(t, "beta"),
-		Result:      "fill",
-		Reason:      "ok",
-		LURLEntry:   "encoded-entry",
+		NetworkName:        yagoproto.DefaultNetwork,
+		NetworkNamePresent: true,
+		Iam:                sampleHash(t, "alpha"),
+		YouAre:             sampleHash(t, "beta"),
+		Result:             "fill",
+		Reason:             "ok",
+		LURLEntry:          "encoded-entry",
 	}
 
 	got, err := yagoproto.ParseCrawlReceiptRequest(context.Background(), req.Form())

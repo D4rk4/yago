@@ -6,15 +6,16 @@ import (
 )
 
 type ProfileRequest struct {
-	NetworkName string
-	Iam         string
-	Key         string
-	MagicMD5    string
+	NetworkName        string
+	NetworkNamePresent bool
+	Iam                string
+	Key                string
+	MagicMD5           string
 }
 
 func (r ProfileRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
 	putString(form, FieldIam, r.Iam)
 	putString(form, FieldKey, r.Key)
 	putString(form, FieldMagicMD5, r.MagicMD5)
@@ -23,10 +24,12 @@ func (r ProfileRequest) Form() url.Values {
 }
 
 func ParseProfileRequest(_ context.Context, form url.Values) (ProfileRequest, error) {
+	networkName, networkNamePresent := parseNetworkName(form)
 	return ProfileRequest{
-		NetworkName: form.Get(FieldNetworkName),
-		Iam:         form.Get(FieldIam),
-		Key:         form.Get(FieldKey),
-		MagicMD5:    form.Get(FieldMagicMD5),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		Iam:                form.Get(FieldIam),
+		Key:                form.Get(FieldKey),
+		MagicMD5:           form.Get(FieldMagicMD5),
 	}, nil
 }

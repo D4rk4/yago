@@ -33,6 +33,9 @@ func (r *rankedRosterEntries) Pop() any {
 }
 
 func (r *rankedRosterEntries) retain(entry rosterEntry, limit int) {
+	if limit <= 0 {
+		return
+	}
 	if len(r.entries) < limit {
 		heap.Push(r, entry)
 

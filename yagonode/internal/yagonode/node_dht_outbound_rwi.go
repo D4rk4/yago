@@ -51,3 +51,15 @@ func (w dhtOutboundRWIWords) ConfirmTransferred(
 
 	return confirmed, nil
 }
+
+func (w dhtOutboundRWIWords) FinalizeOutboundPostings(
+	ctx context.Context,
+	postings []yagomodel.RWIPosting,
+) (int, error) {
+	finalized, err := w.postings.ConfirmOutbound(ctx, postings)
+	if err != nil {
+		return 0, fmt.Errorf("finalize outbound rwi postings: %w", err)
+	}
+
+	return finalized, nil
+}

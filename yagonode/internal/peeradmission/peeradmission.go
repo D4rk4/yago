@@ -1,6 +1,5 @@
 // Package peeradmission answers inbound hello requests: it classifies the calling
-// peer as senior or junior by probing it back, and returns a random sample of the
-// reachable peers it reads from the roster.
+// peer by probing it back, and returns a bounded freshest set of reachable peers.
 package peeradmission
 
 import (
@@ -36,19 +35,20 @@ func MountHello(
 	identity nodeidentity.Identity,
 	exchange HelloExchange,
 ) {
+	endpoint := helloEndpoint{
+		identity: identity,
+		status:   exchange.Status,
+		probe: newCallerBackPing(
+			exchange.Client, exchange.PreferHTTPS, exchange.NetworkAccess,
+		),
+		reachability: exchange.Reachability,
+		news:         exchange.News,
+	}
 	httpguard.Mount(
 		router,
 		yagoproto.PathHello,
 		yagoproto.HelloEndpointMethods,
-		yagoproto.ParseHelloRequest,
-		helloEndpoint{
-			identity: identity,
-			status:   exchange.Status,
-			probe: newCallerBackPing(
-				exchange.Client, exchange.PreferHTTPS, exchange.NetworkAccess,
-			),
-			reachability: exchange.Reachability,
-			news:         exchange.News,
-		}.Serve,
+		parseHelloRequestEnvelope,
+		endpoint.ServeEnvelope,
 	)
 }

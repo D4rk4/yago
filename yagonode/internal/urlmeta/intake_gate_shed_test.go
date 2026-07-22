@@ -15,6 +15,7 @@ func TestTransferURLShedsWhenAllIntakeSlotsBusy(t *testing.T) {
 	endpoint := transferURLEndpoint{
 		identity: localIdentity(),
 		intake:   okURLReceiver{},
+		senders:  acceptingSenderDirectory{},
 		gate:     gate,
 		accept:   true,
 	}

@@ -58,27 +58,51 @@ func decodeValue(stored []byte) ([]byte, error) {
 		return nil, nil
 	}
 	if len(stored) == 0 {
-		return nil, errValueFormat
+		return nil, storedValueCorruption(errValueFormat)
 	}
 	switch stored[0] {
 	case tagRaw:
 		if len(stored) < 5 {
-			return nil, errValueFormat
+			return nil, storedValueCorruption(errValueFormat)
 		}
 		value := stored[5:]
 		if crc32.Checksum(value, crcTable) != binary.BigEndian.Uint32(stored[1:5]) {
-			return nil, errValueChecksum
+			return nil, storedValueCorruption(errValueChecksum)
 		}
 
 		return value, nil
 	case tagZstd:
 		value, err := zstdDecoder.DecodeAll(stored[1:], nil)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", errValueChecksum, err)
+			return nil, storedValueCorruption(fmt.Errorf("%w: %w", errValueChecksum, err))
 		}
 
 		return value, nil
 	default:
-		return nil, errValueFormat
+		return nil, storedValueCorruption(errValueFormat)
+	}
+}
+
+func storedValueSize(stored []byte) (int, error) {
+	if len(stored) == 0 {
+		return 0, storedValueCorruption(errValueFormat)
+	}
+	switch stored[0] {
+	case tagRaw:
+		if len(stored) < 5 {
+			return 0, storedValueCorruption(errValueFormat)
+		}
+
+		return len(stored) - 5, nil
+	case tagZstd:
+		var header zstd.Header
+		if err := header.Decode(stored[1:]); err != nil || !header.HasFCS ||
+			header.FrameContentSize > uint64(^uint(0)>>1) {
+			return 0, storedValueCorruption(errValueFormat)
+		}
+
+		return int(header.FrameContentSize), nil
+	default:
+		return 0, storedValueCorruption(errValueFormat)
 	}
 }

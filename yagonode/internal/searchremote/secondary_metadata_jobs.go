@@ -16,9 +16,9 @@ type secondarySearchPlan struct {
 }
 
 type secondaryMetadataRoute struct {
-	term yagomodel.Hash
-	peer yagomodel.Seed
-	urls []yagomodel.Hash
+	terms []yagomodel.Hash
+	peer  yagomodel.Seed
+	urls  []yagomodel.Hash
 }
 
 func secondarySearchJobs(
@@ -31,7 +31,7 @@ func secondarySearchJobs(
 	for _, route := range routes {
 		searchRequest := secondaryRemoteSearchRequest(
 			plan.request,
-			route.term,
+			route.terms,
 			route.urls,
 			networkName,
 			perPeerTimeout,
@@ -39,7 +39,7 @@ func secondarySearchJobs(
 		evidenceBinding := identityQueryMatchEvidenceBinding(plan.evidenceTerms)
 		evidenceBinding.request(&searchRequest)
 		jobs = append(jobs, peerSearchJob{
-			term:            route.term,
+			term:            route.terms[0],
 			peer:            route.peer,
 			request:         searchRequest,
 			evidenceBinding: evidenceBinding,
@@ -53,16 +53,15 @@ func secondaryMetadataRoutes(plan secondarySearchPlan) []secondaryMetadataRoute 
 	peers, terms := distinctSecondaryPeersAndTerms(plan.targets)
 	routes := make([]secondaryMetadataRoute, 0, len(peers))
 	for _, peer := range peers {
-		remaining := admittedSecondaryURLs(plan.urls, peer, terms, plan.abstracts)
-		for len(remaining) > 0 {
-			term, covered := broadestSecondaryTerm(peer, terms, remaining, plan.abstracts)
-			routes = append(routes, secondaryMetadataRoute{
-				term: term,
-				peer: peer,
-				urls: covered,
-			})
-			remaining = subtractSecondaryURLs(remaining, covered)
+		urls := admittedSecondaryURLs(plan.urls, peer, terms, plan.abstracts)
+		if len(urls) == 0 {
+			continue
 		}
+		routes = append(routes, secondaryMetadataRoute{
+			terms: admittedSecondaryTerms(peer, terms, urls, plan.abstracts),
+			peer:  peer,
+			urls:  urls,
+		})
 	}
 
 	return routes
@@ -112,44 +111,21 @@ func admittedSecondaryURLs(
 	return admitted
 }
 
-func broadestSecondaryTerm(
+func admittedSecondaryTerms(
 	peer yagomodel.Seed,
 	terms []yagomodel.Hash,
 	urls []yagomodel.Hash,
 	abstracts termAbstractCatalog,
-) (yagomodel.Hash, []yagomodel.Hash) {
-	var selected yagomodel.Hash
-	var covered []yagomodel.Hash
+) []yagomodel.Hash {
+	admitted := make([]yagomodel.Hash, 0, len(terms))
 	for _, term := range terms {
-		candidate := make([]yagomodel.Hash, 0, len(urls))
 		for _, url := range urls {
 			if abstracts.peerAdmitted(peer, term, url) {
-				candidate = append(candidate, url)
+				admitted = append(admitted, term)
+				break
 			}
 		}
-		if len(candidate) > len(covered) {
-			selected = term
-			covered = candidate
-		}
 	}
 
-	return selected, covered
-}
-
-func subtractSecondaryURLs(
-	remaining []yagomodel.Hash,
-	covered []yagomodel.Hash,
-) []yagomodel.Hash {
-	removed := make(map[yagomodel.Hash]struct{}, len(covered))
-	for _, url := range covered {
-		removed[url] = struct{}{}
-	}
-	pending := make([]yagomodel.Hash, 0, len(remaining)-len(covered))
-	for _, url := range remaining {
-		if _, found := removed[url]; !found {
-			pending = append(pending, url)
-		}
-	}
-
-	return pending
+	return admitted
 }

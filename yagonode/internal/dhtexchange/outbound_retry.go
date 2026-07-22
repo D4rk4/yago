@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/indextransfer"
 )
 
 const (
@@ -89,6 +90,9 @@ func (p *OutboundRetryPolicy) Observe(
 	state := p.peerStates[receipt.Peer]
 	state.Failures++
 	delay := p.failureDelay(receipt.Peer, state.Failures)
+	if minimum := outboundRetryMinimumDelay(receipt); minimum > delay {
+		delay = minimum
+	}
 	state.RetryAfter = at.Add(delay)
 	decision := OutboundRetryDecision{
 		Status:     OutboundRetryDelayed,
@@ -170,9 +174,24 @@ func normalizeOutboundRetryConfig(config OutboundRetryConfig) OutboundRetryConfi
 }
 
 func outboundRetryFailure(state DistributionState) bool {
-	return state == DistributionCapacityFailed ||
-		state == DistributionHandoffFailed ||
+	return state == DistributionHandoffFailed ||
 		state == DistributionHandoffRejected
+}
+
+func outboundRetryMinimumDelay(receipt DistributionReceipt) time.Duration {
+	if receipt.State != DistributionHandoffRejected ||
+		receipt.Handoff.State != indextransfer.HandoffRWIRejected ||
+		receipt.Handoff.RWI.Pause <= 0 {
+		return 0
+	}
+
+	pause := int64(receipt.Handoff.RWI.Pause)
+	const maximumMilliseconds = int64(1<<63-1) / int64(time.Millisecond)
+	if pause > maximumMilliseconds {
+		return time.Duration(1<<63 - 1)
+	}
+
+	return time.Duration(pause) * time.Millisecond
 }
 
 func outboundRetryFraction(value float64) float64 {

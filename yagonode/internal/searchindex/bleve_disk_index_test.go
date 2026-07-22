@@ -252,12 +252,12 @@ func TestBleveDiskIndexUpdatesDeletesAndFilters(t *testing.T) {
 	}
 
 	results, err := index.Search(t.Context(), SearchRequest{
-		Query:         "needle",
-		MaxResults:    1,
-		IncludeDomain: []string{"example"},
-		Language:      "en",
-		Since:         time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
-		Until:         time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+		Query:      "needle",
+		MaxResults: 1,
+		SiteHost:   "www.fallback.example",
+		Language:   "en",
+		Since:      time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		Until:      time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)

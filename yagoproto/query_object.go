@@ -1,7 +1,5 @@
 package yagoproto
 
-import "fmt"
-
 type QueryObject string
 
 const (
@@ -15,19 +13,6 @@ const (
 	ObjectWantedSeeds QueryObject = "wantedseeds"
 )
 
-func parseQueryObject(raw string) (QueryObject, error) {
-	obj := QueryObject(raw)
-	switch obj {
-	case ObjectRWICount,
-		ObjectRWIURLCount,
-		ObjectLURLCount,
-		ObjectWantedLURLs,
-		ObjectWantedPURLs,
-		ObjectWantedWord,
-		ObjectWantedRWI,
-		ObjectWantedSeeds:
-		return obj, nil
-	default:
-		return "", fmt.Errorf("%w: %s=%q", ErrBadField, FieldObject, raw)
-	}
+func parseQueryObject(raw string) QueryObject {
+	return QueryObject(raw)
 }

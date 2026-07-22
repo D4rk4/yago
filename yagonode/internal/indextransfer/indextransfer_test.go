@@ -148,8 +148,8 @@ func TestTransferRWIHandlesEmptyPostingBatchLocally(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TransferRWI: %v", err)
 	}
-	if resp.Result != yagoproto.ResultOK {
-		t.Fatalf("Result = %q, want ok", resp.Result)
+	if resp.Result != yagoproto.ResultOK || !resp.UnknownURLFieldPresent {
+		t.Fatalf("response = %#v, want ok with present unknownURL", resp)
 	}
 }
 

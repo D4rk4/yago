@@ -22,6 +22,7 @@ const (
 type dhtOutboundPeerRoster interface {
 	ConfirmReachable(context.Context, yagomodel.Hash)
 	ConfirmUnreachable(context.Context, yagomodel.Hash)
+	RejectRemoteIndex(context.Context, yagomodel.Seed)
 }
 
 type dhtOutboundRosterCycle struct {
@@ -61,6 +62,7 @@ func (c dhtOutboundRosterCycle) observe(
 		return
 	}
 	if receipt.Distribution.State == dhtexchange.DistributionHandoffRejected {
+		c.roster.RejectRemoteIndex(ctx, receipt.Distribution.Target)
 		logDHTOutboundHandoffRejection(ctx, peer, receipt.Distribution.Handoff)
 
 		return

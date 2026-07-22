@@ -19,6 +19,7 @@ type ExternalReachabilityEvidence struct {
 	observerLimit int
 	now           func() time.Time
 	observations  map[yagomodel.Hash]externalReachabilityObservation
+	published     yagomodel.PeerType
 }
 
 type externalReachabilityObservation struct {
@@ -48,6 +49,7 @@ func newExternalReachabilityEvidence(
 		observerLimit: observerLimit,
 		now:           now,
 		observations:  make(map[yagomodel.Hash]externalReachabilityObservation, observerLimit),
+		published:     yagomodel.PeerVirgin,
 	}
 }
 
@@ -70,6 +72,7 @@ func (e *ExternalReachabilityEvidence) Observe(
 		classification: classification,
 		observedAt:     observedAt,
 	}
+	e.publishCurrentClassification()
 }
 
 func (e *ExternalReachabilityEvidence) Reachable(ctx context.Context) bool {
@@ -83,6 +86,11 @@ func (e *ExternalReachabilityEvidence) Snapshot(context.Context) ExternalReachab
 	defer e.mu.Unlock()
 
 	e.removeExpired(e.now())
+
+	return e.publishCurrentClassification()
+}
+
+func (e *ExternalReachabilityEvidence) currentSnapshot() ExternalReachabilitySnapshot {
 	snapshot := ExternalReachabilitySnapshot{PeerType: yagomodel.PeerJunior}
 	for _, observation := range e.observations {
 		positive := observation.classification == yagomodel.PeerSenior ||
@@ -96,6 +104,24 @@ func (e *ExternalReachabilityEvidence) Snapshot(context.Context) ExternalReachab
 		}
 	}
 	snapshot.Known = len(e.observations) != 0
+
+	return snapshot
+}
+
+func (e *ExternalReachabilityEvidence) PublishedPeerType(context.Context) yagomodel.PeerType {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.removeExpired(e.now())
+	e.publishCurrentClassification()
+
+	return e.published
+}
+
+func (e *ExternalReachabilityEvidence) publishCurrentClassification() ExternalReachabilitySnapshot {
+	snapshot := e.currentSnapshot()
+	if snapshot.Known {
+		e.published = snapshot.PeerType
+	}
 
 	return snapshot
 }

@@ -30,6 +30,39 @@ func (s *feedScript) Feed(context.Context) (OutboundFeedReceipt, error) {
 	return s.receipt, s.err
 }
 
+type queueFeedScript struct {
+	queue    *OutboundQueue
+	peer     yagomodel.Seed
+	postings []yagomodel.RWIPosting
+	calls    int
+}
+
+func (s *queueFeedScript) Feed(context.Context) (OutboundFeedReceipt, error) {
+	s.calls++
+	if s.queue.Len() != 0 {
+		return OutboundFeedReceipt{State: OutboundFeedSkipped}, nil
+	}
+
+	s.queue.add(s.peer, s.postings)
+
+	return OutboundFeedReceipt{State: OutboundFeedEnqueued}, nil
+}
+
+type peerHandoffScript struct {
+	receipts map[yagomodel.Hash]indextransfer.HandoffReceipt
+	peers    []yagomodel.Hash
+}
+
+func (s *peerHandoffScript) Send(
+	_ context.Context,
+	peer yagomodel.Seed,
+	_ []yagomodel.RWIPosting,
+) (indextransfer.HandoffReceipt, error) {
+	s.peers = append(s.peers, peer.Hash)
+
+	return s.receipts[peer.Hash], nil
+}
+
 func TestOutboundSchedulerSendsReadyChunkAndObservesSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -43,8 +76,8 @@ func TestOutboundSchedulerSendsReadyChunkAndObservesSuccess(t *testing.T) {
 	scheduler := NewOutboundScheduler(
 		NewOutboundDistributor(
 			queue,
-			&capacityScript{count: 11},
 			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+			&wordRestorerScript{},
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
 		observer,
@@ -83,12 +116,11 @@ func TestOutboundSchedulerDefersDelayedPeers(t *testing.T) {
 		QuarantineDuration: time.Hour,
 		DelayFraction:      func(yagomodel.Hash, int) float64 { return 0.5 },
 	})
-	retry.Observe(DistributionReceipt{State: DistributionCapacityFailed, Peer: peer.Hash}, at)
-	probe := &capacityScript{count: 11}
+	retry.Observe(DistributionReceipt{State: DistributionHandoffFailed, Peer: peer.Hash}, at)
 	handoff := &handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)}
 	observer := &observedDistributions{}
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(queue, probe, handoff),
+		NewOutboundDistributor(queue, handoff, &wordRestorerScript{}),
 		retry,
 		observer,
 		func(context.Context) GateState { return openGateState() },
@@ -106,63 +138,156 @@ func TestOutboundSchedulerDefersDelayedPeers(t *testing.T) {
 		receipt.Retry.Status != OutboundRetryIgnored {
 		t.Fatalf("receipt = %#v", receipt)
 	}
-	if queue.PostingCount() != 1 || probe.calls != 0 || handoff.calls != 0 {
-		t.Fatalf(
-			"queue/probe/handoff = %d/%d/%d",
-			queue.PostingCount(),
-			probe.calls,
-			handoff.calls,
-		)
+	if queue.PostingCount() != 1 || handoff.calls != 0 {
+		t.Fatalf("queue/handoff = %d/%d", queue.PostingCount(), handoff.calls)
 	}
 	if len(observer.receipts) != 1 || observer.receipts[0].State != DistributionRetryDeferred {
 		t.Fatalf("observed = %#v", observer.receipts)
 	}
 }
 
-func TestOutboundSchedulerObservesFailureAndRetryDecision(t *testing.T) {
+func TestOutboundSchedulerRestoresAfterBoundedTransportFailures(t *testing.T) {
 	t.Parallel()
 
-	at := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
-	word := queueHash(t, "WWWWWWWWWWWW")
+	current := time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC)
 	peer := queueSeed(t, "CCCCCCCCCCCC")
 	queue := NewOutboundQueue()
 	queue.add(peer, []yagomodel.RWIPosting{
-		queuePosting(word, yagomodel.WordHash("url-a")),
+		queuePosting(queueHash(t, "WWWWWWWWWWWW"), yagomodel.WordHash("url-a")),
 	})
+	restorer := &wordRestorerScript{restored: 1}
 	observer := &observedDistributions{}
 	scheduler := NewOutboundScheduler(
 		NewOutboundDistributor(
 			queue,
-			&capacityScript{err: errors.New("capacity failed")},
-			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+			&handoffScript{err: errors.New("transport failed")},
+			restorer,
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{
-			BaseDelay:          time.Minute,
-			MaxDelay:           time.Hour,
-			QuarantineFailures: 3,
-			QuarantineDuration: time.Hour,
-			DelayFraction:      func(yagomodel.Hash, int) float64 { return 0.5 },
+			BaseDelay:          time.Second,
+			MaxDelay:           time.Minute,
+			QuarantineFailures: 2,
+			QuarantineDuration: time.Minute,
+			DelayFraction:      func(yagomodel.Hash, int) float64 { return 1 },
 		}),
 		observer,
 		func(context.Context) GateState { return openGateState() },
 		OutboundSchedulerConfig{
 			Gates: DefaultGateConfig(),
-			Now:   func() time.Time { return at },
+			Now:   func() time.Time { return current },
 		},
 	)
 
-	receipt, err := scheduler.RunOnce(context.Background())
-	if err == nil {
-		t.Fatal("expected capacity error")
+	first, err := scheduler.RunOnce(context.Background())
+	if err == nil || first.Retry.Status != OutboundRetryDelayed || queue.PostingCount() != 1 {
+		t.Fatalf("first = %#v error=%v queue=%d", first, err, queue.PostingCount())
 	}
-	if receipt.Distribution.State != DistributionCapacityFailed ||
-		receipt.Retry.Status != OutboundRetryDelayed ||
-		receipt.Retry.Delay != time.Minute ||
-		queue.PostingCount() != 1 {
-		t.Fatalf("receipt = %#v queue=%d", receipt, queue.PostingCount())
+	current = first.Retry.RetryAfter
+	second, err := scheduler.RunOnce(context.Background())
+	if err == nil ||
+		second.Retry.Status != OutboundRetryQuarantined ||
+		second.Distribution.RequeuedPostings != 0 ||
+		second.Distribution.RestoredPostings != 1 ||
+		queue.PostingCount() != 0 ||
+		restorer.calls != 1 {
+		t.Fatalf(
+			"second = %#v error=%v queue=%d restore=%#v",
+			second,
+			err,
+			queue.PostingCount(),
+			restorer,
+		)
 	}
-	if len(observer.receipts) != 1 || observer.receipts[0].State != DistributionCapacityFailed {
+	if len(observer.receipts) != 2 || observer.receipts[1].RestoredPostings != 1 {
 		t.Fatalf("observed = %#v", observer.receipts)
+	}
+}
+
+func TestOutboundSchedulerRetainsChunkWhenBoundedRestoreFails(t *testing.T) {
+	t.Parallel()
+
+	peer := queueSeed(t, "DDDDDDDDDDDD")
+	queue := NewOutboundQueue()
+	queue.add(peer, []yagomodel.RWIPosting{
+		queuePosting(queueHash(t, "WWWWWWWWWWWW"), yagomodel.WordHash("url-a")),
+	})
+	transportErr := errors.New("transport failed")
+	restoreErr := errors.New("restore failed")
+	scheduler := NewOutboundScheduler(
+		NewOutboundDistributor(
+			queue,
+			&handoffScript{err: transportErr},
+			&wordRestorerScript{err: restoreErr},
+		),
+		NewOutboundRetryPolicy(OutboundRetryConfig{
+			BaseDelay:          time.Second,
+			MaxDelay:           time.Minute,
+			QuarantineFailures: 1,
+			QuarantineDuration: time.Minute,
+		}),
+		&observedDistributions{},
+		func(context.Context) GateState { return openGateState() },
+		OutboundSchedulerConfig{Gates: DefaultGateConfig()},
+	)
+
+	receipt, err := scheduler.RunOnce(context.Background())
+	if !errors.Is(err, transportErr) ||
+		!errors.Is(err, restoreErr) ||
+		receipt.Distribution.RequeuedPostings != 1 ||
+		receipt.Distribution.RestoredPostings != 0 ||
+		queue.PostingCount() != 1 {
+		t.Fatalf("receipt/error/queue = %#v/%v/%d", receipt, err, queue.PostingCount())
+	}
+}
+
+func TestOutboundSchedulerRejectedPeerDoesNotPinFreshFeed(t *testing.T) {
+	t.Parallel()
+
+	bad := queueSeed(t, "AAAAAAAAAAAA")
+	good := queueSeed(t, "BBBBBBBBBBBB")
+	postings := []yagomodel.RWIPosting{
+		queuePosting(queueHash(t, "WWWWWWWWWWWW"), yagomodel.WordHash("url-a")),
+	}
+	queue := NewOutboundQueue()
+	queue.add(bad, postings)
+	restorer := &wordRestorerScript{restored: 1}
+	handoff := &peerHandoffScript{receipts: map[yagomodel.Hash]indextransfer.HandoffReceipt{
+		bad.Hash:  {State: indextransfer.HandoffRWIRejected},
+		good.Hash: acceptedHandoff(indextransfer.HandoffRWIOnly),
+	}}
+	feed := &queueFeedScript{queue: queue, peer: good, postings: postings}
+	scheduler := NewOutboundScheduler(
+		NewOutboundDistributor(queue, handoff, restorer),
+		NewOutboundRetryPolicy(OutboundRetryConfig{}),
+		&observedDistributions{},
+		func(context.Context) GateState { return openGateState() },
+		OutboundSchedulerConfig{Gates: DefaultGateConfig(), Feed: feed},
+	)
+
+	first, err := scheduler.RunOnce(context.Background())
+	if err != nil ||
+		first.Feed.State != OutboundFeedSkipped ||
+		first.Distribution.State != DistributionHandoffRejected ||
+		first.Distribution.RestoredPostings != 1 ||
+		queue.PostingCount() != 0 {
+		t.Fatalf("first = %#v error=%v queue=%d", first, err, queue.PostingCount())
+	}
+	second, err := scheduler.RunOnce(context.Background())
+	if err != nil ||
+		second.Feed.State != OutboundFeedEnqueued ||
+		second.Distribution.State != DistributionSent ||
+		second.Distribution.Peer != good.Hash ||
+		queue.PostingCount() != 0 ||
+		len(handoff.peers) != 2 ||
+		handoff.peers[0] != bad.Hash ||
+		handoff.peers[1] != good.Hash {
+		t.Fatalf(
+			"second = %#v error=%v queue=%d handoff=%#v",
+			second,
+			err,
+			queue.PostingCount(),
+			handoff,
+		)
 	}
 }
 
@@ -174,16 +299,13 @@ func TestOutboundSchedulerRunsFeederBeforeDistribution(t *testing.T) {
 	scheduler := NewOutboundScheduler(
 		NewOutboundDistributor(
 			NewOutboundQueue(),
-			&capacityScript{count: 11},
 			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+			&wordRestorerScript{},
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
 		observer,
 		func(context.Context) GateState { return openGateState() },
-		OutboundSchedulerConfig{
-			Gates: DefaultGateConfig(),
-			Feed:  feed,
-		},
+		OutboundSchedulerConfig{Gates: DefaultGateConfig(), Feed: feed},
 	)
 
 	receipt, err := scheduler.RunOnce(context.Background())
@@ -201,22 +323,18 @@ func TestOutboundSchedulerDoesNotFeedWhenGatesAreClosed(t *testing.T) {
 	t.Parallel()
 
 	feed := &feedScript{receipt: OutboundFeedReceipt{State: OutboundFeedEnqueued}}
-	observer := &observedDistributions{}
 	closed := openGateState()
-	closed.PublicReachable = false
+	closed.OnlineCaution = "proxy"
 	scheduler := NewOutboundScheduler(
 		NewOutboundDistributor(
 			NewOutboundQueue(),
-			&capacityScript{count: 11},
 			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+			&wordRestorerScript{},
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
-		observer,
+		&observedDistributions{},
 		func(context.Context) GateState { return closed },
-		OutboundSchedulerConfig{
-			Gates: DefaultGateConfig(),
-			Feed:  feed,
-		},
+		OutboundSchedulerConfig{Gates: DefaultGateConfig(), Feed: feed},
 	)
 
 	receipt, err := scheduler.RunOnce(context.Background())
@@ -242,16 +360,13 @@ func TestOutboundSchedulerReturnsFeederErrorBeforeDistribution(t *testing.T) {
 	scheduler := NewOutboundScheduler(
 		NewOutboundDistributor(
 			NewOutboundQueue(),
-			&capacityScript{count: 11},
 			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
+			&wordRestorerScript{},
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
 		observer,
 		func(context.Context) GateState { return openGateState() },
-		OutboundSchedulerConfig{
-			Gates: DefaultGateConfig(),
-			Feed:  feed,
-		},
+		OutboundSchedulerConfig{Gates: DefaultGateConfig(), Feed: feed},
 	)
 
 	receipt, err := scheduler.RunOnce(context.Background())

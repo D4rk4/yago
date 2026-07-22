@@ -26,23 +26,25 @@ type dhtGateStatusResponse struct {
 	State          dhtGateStateResponse    `json:"state"`
 	Config         dhtGateConfigResponse   `json:"config"`
 	Gates          []dhtGateResultResponse `json:"gates"`
-	reachability   publicReachabilitySnapshot
 }
 
 type dhtGateStateResponse struct {
-	OnlineCaution    string `json:"onlineCaution,omitempty"`
-	PublicReachable  bool   `json:"publicReachable"`
-	LocalPeerKnown   bool   `json:"localPeerKnown"`
-	LocalPeerVirgin  bool   `json:"localPeerVirgin"`
-	ConnectedPeers   int    `json:"connectedPeers"`
-	LocalRWIWords    int    `json:"localRWIWords"`
-	LocalRWIKnown    bool   `json:"localRWIKnown"`
-	CrawlQueueSize   int    `json:"crawlQueueSize"`
-	CrawlQueueKnown  bool   `json:"crawlQueueKnown"`
-	IndexQueueSize   int    `json:"indexQueueSize"`
-	IndexQueueKnown  bool   `json:"indexQueueKnown"`
-	StorageAvailable bool   `json:"storageAvailable"`
-	StorageKnown     bool   `json:"storageKnown"`
+	OnlineCaution                string `json:"onlineCaution,omitempty"`
+	PublicReachable              bool   `json:"publicReachable"`
+	PublicReachabilityKnown      bool   `json:"publicReachabilityKnown"`
+	PublicReachabilitySource     string `json:"publicReachabilitySource,omitempty"`
+	PublicReachabilityObservedAt string `json:"publicReachabilityObservedAt,omitempty"`
+	LocalPeerKnown               bool   `json:"localPeerKnown"`
+	LocalPeerVirgin              bool   `json:"localPeerVirgin"`
+	ConnectedPeers               int    `json:"connectedPeers"`
+	LocalRWIWords                int    `json:"localRWIWords"`
+	LocalRWIKnown                bool   `json:"localRWIKnown"`
+	CrawlQueueSize               int    `json:"crawlQueueSize"`
+	CrawlQueueKnown              bool   `json:"crawlQueueKnown"`
+	IndexQueueSize               int    `json:"indexQueueSize"`
+	IndexQueueKnown              bool   `json:"indexQueueKnown"`
+	StorageAvailable             bool   `json:"storageAvailable"`
+	StorageKnown                 bool   `json:"storageKnown"`
 }
 
 type dhtGateConfigResponse struct {
@@ -83,38 +85,39 @@ func (s dhtGateStatusSource) response(ctx context.Context) dhtGateStatusResponse
 		state, reachability = s.snapshotWithReachability(ctx)
 	} else if s.snapshot != nil {
 		state = s.snapshot(ctx)
-		reachability.state = publicReachabilityUnreachable
-		if state.PublicReachable {
-			reachability.state = publicReachabilityReachable
-		}
 	}
 	report := dhtexchange.EvaluateGates(state, s.config)
 
 	return dhtGateStatusResponse{
 		Open:           report.Open,
 		BlockingReason: report.BlockingReason,
-		State:          dhtGateState(state),
+		State:          dhtGateState(state, reachability),
 		Config:         dhtGateConfig(s.config),
 		Gates:          dhtGateResults(report.Results),
-		reachability:   reachability,
 	}
 }
 
-func dhtGateState(state dhtexchange.GateState) dhtGateStateResponse {
+func dhtGateState(
+	state dhtexchange.GateState,
+	reachability publicReachabilitySnapshot,
+) dhtGateStateResponse {
 	return dhtGateStateResponse{
-		OnlineCaution:    state.OnlineCaution,
-		PublicReachable:  state.PublicReachable,
-		LocalPeerKnown:   state.LocalPeerKnown,
-		LocalPeerVirgin:  state.LocalPeerVirgin,
-		ConnectedPeers:   state.ConnectedPeers,
-		LocalRWIWords:    state.LocalRWIWords,
-		LocalRWIKnown:    state.LocalRWIKnown,
-		CrawlQueueSize:   state.CrawlQueueSize,
-		CrawlQueueKnown:  state.CrawlQueueKnown,
-		IndexQueueSize:   state.IndexQueueSize,
-		IndexQueueKnown:  state.IndexQueueKnown,
-		StorageAvailable: state.StorageAvailable,
-		StorageKnown:     state.StorageKnown,
+		OnlineCaution:                state.OnlineCaution,
+		PublicReachable:              reachability.state == publicReachabilityReachable,
+		PublicReachabilityKnown:      reachability.state != publicReachabilityUnknown,
+		PublicReachabilitySource:     adminReachabilitySource(reachability.source),
+		PublicReachabilityObservedAt: adminReachabilityObservedAt(reachability.observedAt),
+		LocalPeerKnown:               state.LocalPeerKnown,
+		LocalPeerVirgin:              state.LocalPeerVirgin,
+		ConnectedPeers:               state.ConnectedPeers,
+		LocalRWIWords:                state.LocalRWIWords,
+		LocalRWIKnown:                state.LocalRWIKnown,
+		CrawlQueueSize:               state.CrawlQueueSize,
+		CrawlQueueKnown:              state.CrawlQueueKnown,
+		IndexQueueSize:               state.IndexQueueSize,
+		IndexQueueKnown:              state.IndexQueueKnown,
+		StorageAvailable:             state.StorageAvailable,
+		StorageKnown:                 state.StorageKnown,
 	}
 }
 

@@ -2,6 +2,7 @@ package dhtexchange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -60,7 +61,8 @@ func (s OutboundScheduler) RunOnce(
 	at := s.config.Now()
 	state := s.gates(ctx)
 	var feed OutboundFeedReceipt
-	if s.config.Feed != nil && EvaluateGates(state, s.config.Gates).Open {
+	if s.config.Feed != nil && EvaluateGates(state, s.config.Gates).Open &&
+		!s.distributor.queue.localCompletionPending() {
 		var err error
 		feed, err = s.config.Feed.Feed(ctx)
 		if err != nil {
@@ -76,8 +78,20 @@ func (s OutboundScheduler) RunOnce(
 		s.config.Gates,
 		func(peer yagomodel.Hash) bool { return s.retry.Ready(peer, at) },
 	)
-	s.observer.Observe(receipt)
 	retry := s.retry.Observe(receipt, at)
+	if receipt.State == DistributionHandoffFailed &&
+		retry.Status == OutboundRetryQuarantined {
+		restored, requeued, restoreErr := s.distributor.RestoreRequeuedPeer(ctx, receipt.Peer)
+		receipt.RestoredPostings = restored
+		receipt.RequeuedPostings = requeued
+		if restoreErr != nil {
+			err = errors.Join(
+				err,
+				fmt.Errorf("restore repeatedly failed dht chunk: %w", restoreErr),
+			)
+		}
+	}
+	s.observer.Observe(receipt)
 
 	return ScheduledDistributionReceipt{Feed: feed, Distribution: receipt, Retry: retry}, err
 }

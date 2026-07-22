@@ -91,6 +91,66 @@ func TestExternalReachabilityEvidenceReportsStrongestPeerType(t *testing.T) {
 	}
 }
 
+func TestExternalReachabilityEvidencePublishesYaCyPeerType(t *testing.T) {
+	now := time.Unix(1, 0)
+	evidence := newExternalReachabilityEvidence(4, func() time.Time { return now })
+	first := yagomodel.Hash("AAAAAAAAAAAA")
+	second := yagomodel.Hash("BBBBBBBBBBBB")
+
+	if got := evidence.PublishedPeerType(t.Context()); got != yagomodel.PeerVirgin {
+		t.Fatalf("initial published peer type = %q, want virgin", got)
+	}
+	evidence.Observe(first, yagomodel.PeerJunior)
+	if got := evidence.PublishedPeerType(t.Context()); got != yagomodel.PeerJunior {
+		t.Fatalf("failure-only published peer type = %q, want junior", got)
+	}
+	evidence.Observe(second, yagomodel.PeerPrincipal)
+	if got := evidence.PublishedPeerType(t.Context()); got != yagomodel.PeerSenior {
+		t.Fatalf("positive published peer type = %q, want senior", got)
+	}
+	evidence.Observe(second, yagomodel.PeerJunior)
+	if got := evidence.PublishedPeerType(t.Context()); got != yagomodel.PeerJunior {
+		t.Fatalf("all-junior published peer type = %q, want junior", got)
+	}
+}
+
+func TestExternalReachabilityEvidenceRetainsPublishedTypeWithoutCurrentEvidence(t *testing.T) {
+	now := time.Unix(1, 0)
+	evidence := newExternalReachabilityEvidence(2, func() time.Time { return now })
+	evidence.Observe(yagomodel.Hash("AAAAAAAAAAAA"), yagomodel.PeerSenior)
+
+	now = now.Add(externalReachabilityLifetime)
+	if snapshot := evidence.Snapshot(t.Context()); snapshot.Known {
+		t.Fatalf("expired current snapshot = %+v", snapshot)
+	}
+	if got := evidence.PublishedPeerType(t.Context()); got != yagomodel.PeerSenior {
+		t.Fatalf("expired published peer type = %q, want retained senior", got)
+	}
+
+	evidence.Observe(yagomodel.Hash("BBBBBBBBBBBB"), yagomodel.PeerJunior)
+	if got := evidence.PublishedPeerType(t.Context()); got != yagomodel.PeerJunior {
+		t.Fatalf("new failure-only published peer type = %q, want junior", got)
+	}
+}
+
+func TestExternalReachabilityEvidencePublishesRemainingCurrentFailures(t *testing.T) {
+	started := time.Unix(1, 0)
+	now := started
+	evidence := newExternalReachabilityEvidence(2, func() time.Time { return now })
+	evidence.Observe(yagomodel.Hash("AAAAAAAAAAAA"), yagomodel.PeerSenior)
+	now = now.Add(time.Minute)
+	evidence.Observe(yagomodel.Hash("BBBBBBBBBBBB"), yagomodel.PeerJunior)
+
+	now = started.Add(externalReachabilityLifetime)
+	if got := evidence.PublishedPeerType(t.Context()); got != yagomodel.PeerJunior {
+		t.Fatalf("remaining failure-only peer type = %q, want junior", got)
+	}
+	snapshot := evidence.Snapshot(t.Context())
+	if !snapshot.Known || snapshot.PeerType != yagomodel.PeerJunior {
+		t.Fatalf("remaining failure-only snapshot = %+v", snapshot)
+	}
+}
+
 func TestExternalReachabilitySnapshotCarriesSelectedObservationTime(t *testing.T) {
 	now := time.Unix(1, 0)
 	evidence := newExternalReachabilityEvidence(
@@ -185,6 +245,7 @@ func TestExternalReachabilityEvidenceCoordinatesConcurrentObserversAndReaders(t 
 			defer group.Done()
 			_ = evidence.Reachable(t.Context())
 			_, _ = evidence.PeerType(t.Context())
+			_ = evidence.PublishedPeerType(t.Context())
 		}()
 	}
 	group.Wait()

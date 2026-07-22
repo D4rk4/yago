@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagoegress"
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/bootstrap"
 	"github.com/D4rk4/yago/yagonode/internal/hostlinks"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
@@ -27,16 +28,17 @@ import (
 )
 
 type peerExchange struct {
-	router   httpguard.WireRouter
-	identity nodeidentity.Identity
-	report   nodestatus.Report
-	config   nodeConfig
-	vault    *vault.Vault
-	client   *http.Client
-	peer     *metrics.PeerMetrics
-	host     hostlinks.IncomingHostLinks
-	roster   peerroster.Roster
-	news     *peernews.Pool
+	router                       httpguard.WireRouter
+	identity                     nodeidentity.Identity
+	report                       nodestatus.Report
+	config                       nodeConfig
+	vault                        *vault.Vault
+	client                       *http.Client
+	peer                         *metrics.PeerMetrics
+	host                         hostlinks.IncomingHostLinks
+	roster                       peerroster.Roster
+	news                         *peernews.Pool
+	externalReachabilityEvidence *peerannouncement.ExternalReachabilityEvidence
 }
 
 type peerExchangeRuntime struct {
@@ -50,10 +52,15 @@ var (
 )
 
 func openObservedPeerRoster(
+	ctx context.Context,
 	vault *vault.Vault,
+	self yagomodel.Hash,
 	peer *metrics.PeerMetrics,
 ) (peerroster.Roster, error) {
-	roster, err := openPeerRoster(vault, time.Now, reservoirCapacity, activeSetCapacity)
+	roster, err := openPeerRoster(
+		ctx, vault, self, time.Now,
+		peerroster.Capacity{Reservoir: reservoirCapacity, Active: activeSetCapacity},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("open peer roster: %w", err)
 	}
@@ -62,30 +69,40 @@ func openObservedPeerRoster(
 		observer = peer
 	}
 
-	return observePeerRoster(context.Background(), roster, observer), nil
+	return observePeerRoster(ctx, roster, observer), nil
+}
+
+type nodeStatusSources struct {
+	storage        nodeStorage
+	roster         peerroster.Roster
+	news           *peernews.Pool
+	tally          *transfertally.Tally
+	classification nodestatus.PublishedPeerClassification
+	queues         nodestatus.SeedQueueStatisticsSource
 }
 
 func newNodeStatusReport(
 	identity nodeidentity.Identity,
-	storage nodeStorage,
-	roster peerroster.Roster,
-	news *peernews.Pool,
-	tally *transfertally.Tally,
+	sources nodeStatusSources,
 ) nodestatus.Report {
 	return nodestatus.NewReport(identity, nodestatus.ReportSources{
-		RWI:       storage.postings,
-		URLs:      storage.urlDirectory,
-		Peers:     roster,
-		News:      news,
-		Transfers: reportedTransferTally{tally: tally},
+		RWI:                sources.storage.postings,
+		URLs:               sources.storage.urlDirectory,
+		Peers:              sources.roster,
+		News:               sources.news,
+		Transfers:          reportedTransferTally{tally: sources.tally},
+		PeerClassification: sources.classification,
+		Queues:             sources.queues,
 	})
 }
 
 func openPeerStores(
+	ctx context.Context,
 	vault *vault.Vault,
+	self yagomodel.Hash,
 	peer *metrics.PeerMetrics,
 ) (peerroster.Roster, *peernews.Pool, *transfertally.Tally, *peerblock.Store, error) {
-	roster, err := openObservedPeerRoster(vault, peer)
+	roster, err := openObservedPeerRoster(ctx, vault, self, peer)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -118,21 +135,19 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 	if err != nil {
 		return peerExchangeRuntime{}, fmt.Errorf("open peer message mailbox: %w", err)
 	}
-	externalReachabilityEvidence := peerannouncement.NewExternalReachabilityEvidence()
-
 	peeradmission.MountHello(
 		p.router,
 		p.identity,
 		peeradmission.HelloExchange{
 			Status:        peeringStatus{report: p.report, networkName: p.config.NetworkName},
-			Reachability:  p.roster,
+			Reachability:  helloPeerRoster{roster: p.roster},
 			Client:        p.client,
 			News:          p.news,
 			PreferHTTPS:   p.config.PeerHTTPSPreferred,
 			NetworkAccess: p.identity.NetworkAccess(),
 		},
 	)
-	seedlist.Mount(p.router, p.report, p.roster)
+	seedlist.Mount(p.router, p.report, newNodeSeedlistDirectory(p.roster))
 	hostlinks.Mount(p.router, p.identity, p.report, p.host)
 	peermessage.Mount(p.router, p.identity, mailbox)
 	peerprofile.Mount(p.router, p.identity, peerprofile.NewProfileFile(p.config.DataDir))
@@ -153,13 +168,13 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 				News:                         p.news,
 				PreferHTTPS:                  p.config.PeerHTTPSPreferred,
 				NetworkAccess:                p.identity.NetworkAccess(),
-				ExternalReachabilityEvidence: externalReachabilityEvidence,
+				ExternalReachabilityEvidence: p.externalReachabilityEvidence,
 				AdmitExternalObserverAddress: yagoegress.NewGuard(false).AdmitAddr,
 			},
 			p.report,
 			bootstrap.NewObserved(p.client, p.config.SeedlistURLs, seedObserver),
 			p.roster,
 		),
-		externalReachabilityEvidence: externalReachabilityEvidence,
+		externalReachabilityEvidence: p.externalReachabilityEvidence,
 	}, nil
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 )
 
 func TestDiscoverKeepsSeniorsAndDropsJuniors(t *testing.T) {
@@ -31,7 +32,116 @@ func TestDiscoverKeepsSeniorsAndDropsJuniors(t *testing.T) {
 	}
 }
 
-func TestCallerObservationRetainsPromotesAndDemotesPeer(t *testing.T) {
+func TestRosterRejectsSelfAcrossMutationAndProjectionPaths(t *testing.T) {
+	ctx := t.Context()
+	roster := openRoster(t, 8, 4)
+	self := seniorSeed(t, "local", "203.0.113.1", 8090)
+	self.Flags = yagomodel.Some(
+		yagomodel.ZeroFlags().Set(yagomodel.FlagAcceptRemoteIndex, true),
+	)
+
+	roster.Discover(ctx, self)
+	roster.ObserveCaller(ctx, self, yagomodel.PeerSenior)
+	roster.ObserveResponder(ctx, self)
+	roster.ConfirmReachable(ctx, self.Hash)
+	roster.RejectRemoteIndex(ctx, self)
+	roster.ConfirmUnreachable(ctx, self.Hash)
+
+	if roster.KnownPeerCount(ctx) != 0 || roster.ReachablePeerCount(ctx) != 0 {
+		t.Fatalf(
+			"self counts = known %d reachable %d, want zero",
+			roster.KnownPeerCount(ctx),
+			roster.ReachablePeerCount(ctx),
+		)
+	}
+	if _, found := roster.PeerByHash(ctx, self.Hash); found {
+		t.Fatal("self resolved by hash")
+	}
+	if peers := roster.ReachablePeers(ctx); len(peers) != 0 {
+		t.Fatalf("reachable self peers = %#v, want none", peers)
+	}
+	if peers := roster.FreshestPeers(ctx, 8); len(peers) != 0 {
+		t.Fatalf("freshest self peers = %#v, want none", peers)
+	}
+	reader := roster.(peerroster.ObservationReader)
+	observations, known, reachable, err := reader.PeerObservations(ctx)
+	if err != nil || len(observations) != 0 || known != 0 || reachable != 0 {
+		t.Fatalf(
+			"self observations = %#v known/reachable %d/%d error %v",
+			observations,
+			known,
+			reachable,
+			err,
+		)
+	}
+	if _, found, err := reader.PeerObservation(ctx, self.Hash); err != nil || found {
+		t.Fatalf("self observation = found %v error %v, want absent", found, err)
+	}
+}
+
+func TestRosterDoesNotTreatSharedEndpointAsSelf(t *testing.T) {
+	roster := openRoster(t, 8, 4)
+	peer := seniorSeed(t, "neighbor", "203.0.113.1", 8090)
+
+	roster.Discover(t.Context(), peer)
+
+	stored, found := roster.PeerByHash(t.Context(), peer.Hash)
+	if !found || stored.Hash != peer.Hash || roster.KnownPeerCount(t.Context()) != 1 {
+		t.Fatalf("shared-endpoint peer = %#v found %v", stored, found)
+	}
+}
+
+func TestVerifiedResponderRefreshesMetadataAndResistsIndirectDowngrade(t *testing.T) {
+	roster := openRoster(t, 8, 4)
+	stale := seniorSeed(t, "peer", "203.0.113.1", 8090)
+	stale.Name = yagomodel.Some("stale-peer")
+	stale.RWICount = yagomodel.Some(17)
+	roster.Discover(t.Context(), stale)
+	reader := roster.(peerroster.ObservationReader)
+	before, found, err := reader.PeerObservation(t.Context(), stale.Hash)
+	if err != nil || !found {
+		t.Fatalf("stale observation = %#v found %v error %v", before, found, err)
+	}
+
+	current := stale.Copy()
+	current.Name = yagomodel.Some("current-peer")
+	current.RWICount = yagomodel.Some(8_363_840)
+	roster.ObserveResponder(t.Context(), current)
+	afterResponse, found, err := reader.PeerObservation(t.Context(), current.Hash)
+	if err != nil || !found || !afterResponse.LastSeen.After(before.LastSeen) {
+		t.Fatalf(
+			"responder observation = %#v found %v error %v, want newer than %#v",
+			afterResponse,
+			found,
+			err,
+			before,
+		)
+	}
+	roster.Discover(t.Context(), stale)
+	afterGossip, found, err := reader.PeerObservation(t.Context(), current.Hash)
+	if err != nil || !found || afterGossip.LastSeen != afterResponse.LastSeen {
+		t.Fatalf(
+			"gossip observation = %#v found %v error %v, want unchanged %#v",
+			afterGossip,
+			found,
+			err,
+			afterResponse,
+		)
+	}
+
+	stored, found := roster.PeerByHash(t.Context(), current.Hash)
+	name, _ := stored.Name.Get()
+	rwi, _ := stored.RWICount.Get()
+	if !found || name != "current-peer" || rwi != 8_363_840 {
+		t.Fatalf("refreshed peer = %#v found %v", stored, found)
+	}
+	reachable := roster.ReachablePeers(t.Context())
+	if len(reachable) != 1 || reachable[0].Hash != current.Hash {
+		t.Fatalf("reachable responders = %#v, want refreshed peer", reachable)
+	}
+}
+
+func TestCallerObservationRetainsPromotesAndDoesNotDowngradePeer(t *testing.T) {
 	ctx := t.Context()
 	roster := openRoster(t, 8, 4)
 	caller := seniorSeed(t, "caller", "203.0.113.2", 8090)
@@ -82,10 +192,10 @@ func TestCallerObservationRetainsPromotesAndDemotesPeer(t *testing.T) {
 	roster.ConfirmUnreachable(ctx, caller.Hash)
 	stored, found = roster.PeerByHash(ctx, caller.Hash)
 	classification, classified = stored.PeerType.Get()
-	if !found || !classified || classification != yagomodel.PeerJunior ||
+	if !found || !classified || classification != yagomodel.PeerSenior ||
 		roster.KnownPeerCount(ctx) != 1 || roster.ReachablePeerCount(ctx) != 0 {
 		t.Fatalf(
-			"demoted observation = found %v type %q/%v known/reachable %d/%d",
+			"retained verified observation = found %v type %q/%v known/reachable %d/%d",
 			found,
 			classification,
 			classified,
@@ -94,7 +204,7 @@ func TestCallerObservationRetainsPromotesAndDemotesPeer(t *testing.T) {
 		)
 	}
 	if candidates := roster.FreshestPeers(ctx, 8); len(candidates) != 0 {
-		t.Fatalf("demoted junior candidates = %#v, want none", candidates)
+		t.Fatalf("cooling senior candidates = %#v, want none", candidates)
 	}
 }
 
@@ -140,7 +250,7 @@ func TestCallerObservationRejectsUnclassifiedPeer(t *testing.T) {
 	roster := openRoster(t, 8, 4)
 	caller := seniorSeed(t, "caller", "203.0.113.2", 8090)
 
-	roster.ObserveCaller(t.Context(), caller, yagomodel.PeerPrincipal)
+	roster.ObserveCaller(t.Context(), caller, yagomodel.PeerVirgin)
 
 	if known := roster.KnownPeerCount(t.Context()); known != 0 {
 		t.Fatalf("known callers = %d, want invalid observation ignored", known)
@@ -199,7 +309,7 @@ func TestCallerObservationConcurrentRosterRemainsBounded(t *testing.T) {
 	}
 	stored, found := roster.PeerByHash(ctx, shared.Hash)
 	classification, classified := stored.PeerType.Get()
-	if !found || !classified || classification != yagomodel.PeerJunior {
+	if !found || !classified || classification != yagomodel.PeerSenior {
 		t.Fatalf("final shared caller = %#v/%v", stored, found)
 	}
 }
@@ -268,9 +378,9 @@ func TestPeerCountsFollowRosterState(t *testing.T) {
 	}
 
 	roster.ConfirmUnreachable(ctx, first.Hash)
-	if roster.KnownPeerCount(ctx) != 1 || roster.ReachablePeerCount(ctx) != 0 {
+	if roster.KnownPeerCount(ctx) != 2 || roster.ReachablePeerCount(ctx) != 0 {
 		t.Fatalf(
-			"counts after unreachable = %d/%d, want 1/0",
+			"counts after unreachable = %d/%d, want 2/0",
 			roster.KnownPeerCount(ctx),
 			roster.ReachablePeerCount(ctx),
 		)
@@ -388,7 +498,7 @@ func TestFreshestPeersToppedUpToLimit(t *testing.T) {
 	roster := openRoster(t, 8, 2)
 
 	for _, name := range []string{"a", "b", "c", "d"} {
-		roster.Discover(ctx, seniorSeed(t, name, "203.0.113.9", 8090))
+		roster.Discover(ctx, seniorSeed(t, name, "203.0.113.9", 8090+len(name)+int(name[0])))
 	}
 
 	if got := len(roster.FreshestPeers(ctx, 2)); got != 2 {

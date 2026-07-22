@@ -9,36 +9,37 @@ import (
 )
 
 type SearchRequest struct {
-	NetworkName      string
-	Iam              string
-	Key              string
-	MagicMD5         string
-	MySeed           yagomodel.Optional[yagomodel.Seed]
-	Query            []yagomodel.Hash
-	Exclude          []yagomodel.Hash
-	URLs             []yagomodel.Hash
-	Count            int
-	Time             int
-	MaxDist          int
-	Partitions       int
-	Abstracts        SearchAbstracts
-	ContentDom       SearchContentDomain
-	StrictContentDom bool
-	TimezoneOffset   int
-	Language         string
-	Modifier         string
-	Prefer           string
-	Filter           string
-	Constraint       string
-	Profile          string
-	SiteHost         string
-	SiteHash         string
-	Author           string
-	Collection       string
-	FileType         string
-	Protocol         string
-	EvidenceVersion  int
-	EvidenceTerms    []string
+	NetworkName        string
+	NetworkNamePresent bool
+	Iam                string
+	Key                string
+	MagicMD5           string
+	MySeed             yagomodel.Optional[yagomodel.Seed]
+	Query              []yagomodel.Hash
+	Exclude            []yagomodel.Hash
+	URLs               []yagomodel.Hash
+	Count              int
+	Time               int
+	MaxDist            int
+	Partitions         int
+	Abstracts          SearchAbstracts
+	ContentDom         SearchContentDomain
+	StrictContentDom   bool
+	TimezoneOffset     int
+	Language           string
+	Modifier           string
+	Prefer             string
+	Filter             string
+	Constraint         string
+	Profile            string
+	SiteHost           string
+	SiteHash           string
+	Author             string
+	Collection         string
+	FileType           string
+	Protocol           string
+	EvidenceVersion    int
+	EvidenceTerms      []string
 }
 
 type SearchResponse struct {
@@ -48,6 +49,7 @@ type SearchResponse struct {
 	JoinCount        int
 	Count            int
 	Resources        []yagomodel.URIMetadataRow
+	InvalidResources int
 	IndexCount       map[yagomodel.Hash]int
 	IndexAbstract    map[yagomodel.Hash]string
 	ResourceEvidence map[yagomodel.Hash]QueryMatchEvidence
@@ -57,7 +59,7 @@ const maximumParsedSearchResources = 1024
 
 func (r SearchRequest) Form() url.Values {
 	form := url.Values{}
-	putString(form, FieldNetworkName, r.NetworkName)
+	putNetworkName(form, r.NetworkName, r.NetworkNamePresent)
 	putString(form, FieldIam, r.Iam)
 	putString(form, FieldKey, r.Key)
 	putString(form, FieldMagicMD5, r.MagicMD5)
@@ -98,29 +100,31 @@ func ParseSearchRequest(ctx context.Context, form url.Values) (SearchRequest, er
 		return SearchRequest{}, err
 	}
 
+	networkName, networkNamePresent := parseNetworkName(form)
 	req := SearchRequest{
-		NetworkName:      form.Get(FieldNetworkName),
-		Iam:              form.Get(FieldIam),
-		Key:              form.Get(FieldKey),
-		MagicMD5:         form.Get(FieldMagicMD5),
-		Count:            counts.count,
-		Time:             counts.time,
-		MaxDist:          counts.maxDist,
-		Partitions:       counts.partitions,
-		StrictContentDom: counts.strictContentDom,
-		TimezoneOffset:   counts.timezoneOffset,
-		Language:         form.Get(FieldLanguage),
-		Modifier:         form.Get(FieldModifier),
-		Prefer:           form.Get(FieldPrefer),
-		Filter:           form.Get(FieldFilter),
-		Constraint:       form.Get(FieldConstraint),
-		Profile:          form.Get(FieldProfile),
-		SiteHost:         form.Get(FieldSiteHost),
-		SiteHash:         form.Get(FieldSiteHash),
-		Author:           form.Get(FieldAuthor),
-		Collection:       form.Get(FieldCollection),
-		FileType:         form.Get(FieldFileType),
-		Protocol:         form.Get(FieldProtocol),
+		NetworkName:        networkName,
+		NetworkNamePresent: networkNamePresent,
+		Iam:                form.Get(FieldIam),
+		Key:                form.Get(FieldKey),
+		MagicMD5:           form.Get(FieldMagicMD5),
+		Count:              counts.count,
+		Time:               counts.time,
+		MaxDist:            counts.maxDist,
+		Partitions:         counts.partitions,
+		StrictContentDom:   counts.strictContentDom,
+		TimezoneOffset:     counts.timezoneOffset,
+		Language:           form.Get(FieldLanguage),
+		Modifier:           form.Get(FieldModifier),
+		Prefer:             form.Get(FieldPrefer),
+		Filter:             form.Get(FieldFilter),
+		Constraint:         form.Get(FieldConstraint),
+		Profile:            form.Get(FieldProfile),
+		SiteHost:           form.Get(FieldSiteHost),
+		SiteHash:           form.Get(FieldSiteHash),
+		Author:             form.Get(FieldAuthor),
+		Collection:         form.Get(FieldCollection),
+		FileType:           form.Get(FieldFileType),
+		Protocol:           form.Get(FieldProtocol),
 	}
 	req.EvidenceVersion, req.EvidenceTerms = parseQueryEvidenceRequest(form)
 
@@ -254,7 +258,7 @@ func ParseSearchResponse(m yagomodel.Message) (SearchResponse, error) {
 		return SearchResponse{}, err
 	}
 
-	resp.Resources = parseSearchResources(m, resp.Count)
+	resp.Resources, resp.InvalidResources = parseSearchResources(m, resp.Count)
 	resp.ResourceEvidence = parseResourceEvidence(m, resp.Resources)
 
 	if resp.IndexCount, resp.IndexAbstract, err = parseSearchIndexes(m); err != nil {
@@ -272,8 +276,9 @@ func searchResponseCount(m yagomodel.Message) (int, error) {
 	return optionalInt(FieldLinkCount, m[FieldLinkCount])
 }
 
-func parseSearchResources(m yagomodel.Message, count int) []yagomodel.URIMetadataRow {
+func parseSearchResources(m yagomodel.Message, count int) ([]yagomodel.URIMetadataRow, int) {
 	var rows []yagomodel.URIMetadataRow
+	invalid := 0
 	limit := maximumParsedSearchResources
 	if count > 0 {
 		limit = min(count, maximumParsedSearchResources)
@@ -290,13 +295,14 @@ func parseSearchResources(m yagomodel.Message, count int) []yagomodel.URIMetadat
 
 		row, err := yagomodel.ParseURIMetadataRow(raw)
 		if err != nil {
+			invalid++
 			continue
 		}
 
 		rows = append(rows, row)
 	}
 
-	return rows
+	return rows, invalid
 }
 
 func parseSearchIndexes(

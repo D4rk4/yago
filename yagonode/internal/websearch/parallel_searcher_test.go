@@ -112,6 +112,116 @@ func TestParallelSearcherStartsBothBranchesAndFusesTheirRankings(t *testing.T) {
 	}
 }
 
+func TestParallelSearcherFiltersDomainRowsBeforeWebFusion(t *testing.T) {
+	primary := searchcore.NewFinalRankingSearcher(&stubSearcher{resp: searchcore.Response{
+		TotalResults: 2,
+		Results: []searchcore.Result{
+			{Title: "Blocked local", URL: "https://blocked.example/shared"},
+			{Title: "Allowed local", URL: "https://local.allowed.example/result"},
+		},
+	}})
+	provider := &stubProvider{results: []Result{
+		{Title: "Blocked web", URL: "https://blocked.example/shared"},
+		{Title: "Allowed web", URL: "https://web.allowed.example/result"},
+	}}
+	response, err := NewParallelSearcher(primary, provider, enabled).Search(
+		t.Context(),
+		searchcore.Request{
+			Query: "result", Limit: 2,
+			IncludeDomains: []string{"allowed.example"},
+			ExcludeDomains: []string{"blocked.example"},
+			Verify:         searchcore.VerifyFalse,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.TotalResults != 2 || len(response.Results) != 2 {
+		t.Fatalf("response = %#v", response)
+	}
+	for _, result := range response.Results {
+		if !searchcore.ResultSatisfiesDomainConstraints(response.Request, result) {
+			t.Fatalf("disallowed result reached fusion: %#v", result)
+		}
+	}
+}
+
+func TestParallelSearcherKeepsIncludedWebPortAndRejectsMismatchedHostEvidence(t *testing.T) {
+	provider := &stubProvider{results: []Result{
+		{Title: "Allowed web", URL: "https://allowed.example:8443/result"},
+		{Title: "Blocked web", URL: "https://blocked.example:8443/result"},
+	}}
+	response, err := searchcore.NewFinalRankingSearcher(
+		NewParallelSearcher(&stubSearcher{}, provider, enabled),
+	).Search(t.Context(), searchcore.Request{
+		Query: "result", Limit: 1,
+		IncludeDomains: []string{"allowed.example"},
+		ExcludeDomains: []string{"blocked.example"},
+		Verify:         searchcore.VerifyFalse,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Results) != 1 ||
+		response.Results[0].URL != "https://allowed.example:8443/result" ||
+		response.Results[0].Host != "allowed.example" {
+		t.Fatalf("response = %#v", response)
+	}
+	mutated := response.Results[0]
+	mutated.Host = "blocked.example"
+	if !searchcore.ResultSatisfiesDomainConstraints(response.Request, mutated) {
+		t.Fatalf("canonical URL host lost authority: %#v", mutated)
+	}
+	mutated.URL = "https://blocked.example:8443/result"
+	mutated.Host = "allowed.example"
+	if searchcore.ResultSatisfiesDomainConstraints(response.Request, mutated) {
+		t.Fatalf("mismatched host bypassed exclusion: %#v", mutated)
+	}
+}
+
+func TestFederatedParallelSearchKeepsAllowedLocalAfterDisallowedPeerWebDuplicates(t *testing.T) {
+	blocked := searchcore.Result{
+		Title: "Blocked duplicate", URL: "https://blocked.example/shared",
+		URLHash: "blocked", Score: 10,
+	}
+	allowed := searchcore.Result{
+		Title: "Allowed local", URL: "https://docs.allowed.example/result",
+		URLHash: "allowed", Score: 5,
+	}
+	local := &stubSearcher{resp: searchcore.Response{
+		TotalResults: 2,
+		Results:      []searchcore.Result{blocked, allowed},
+	}}
+	peer := &stubSearcher{resp: searchcore.Response{
+		TotalResults: 1,
+		Results:      []searchcore.Result{blocked},
+	}}
+	provider := &stubProvider{results: []Result{{
+		Title: "Blocked web duplicate", URL: blocked.URL,
+	}}}
+	retrieval := NewParallelSearcher(
+		searchcore.NewFederatedSearcher(local, peer),
+		provider,
+		enabled,
+	)
+	searcher := searchcore.NewFinalRankingSearcher(retrieval)
+	request := searchcore.Request{
+		Query: "result", Source: searchcore.SourceGlobal, Limit: 1,
+		IncludeDomains: []string{"allowed.example"},
+		ExcludeDomains: []string{"blocked.example"},
+		Verify:         searchcore.VerifyFalse,
+	}
+
+	response, err := searcher.Search(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.TotalResults != 1 || len(response.Results) != 1 ||
+		response.Results[0].URL != allowed.URL {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
 func TestParallelSearcherKeepsVerifiedWebAnswerAfterPrimaryFailure(t *testing.T) {
 	response, err := NewParallelSearcher(
 		&stubSearcher{err: errors.New("private primary detail")},

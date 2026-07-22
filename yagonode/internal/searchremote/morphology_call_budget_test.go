@@ -21,7 +21,7 @@ func TestMaximumMorphologyPlanCapsActualCallsAndProcessConcurrency(t *testing.T)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		total.Add(1)
 		abstract := r.URL.Query().Get(yagoproto.FieldAbstracts)
-		if abstract == "" {
+		if abstract == "" || abstract == string(yagoproto.SearchAbstractsAuto) {
 			writeFixtureResponse(t, w, yagoproto.SearchResponse{}.Encode().Encode())
 			return
 		}

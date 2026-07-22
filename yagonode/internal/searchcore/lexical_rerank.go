@@ -83,6 +83,7 @@ func (s finalRankingSearcher) Search(
 	if err != nil {
 		return Response{}, fmt.Errorf("final ranking inner search: %w", err)
 	}
+	response = responseSatisfyingDomainConstraints(req, response)
 	response.Results = DiversifyResults(response.Results, req)
 	OrderByDateWhenRequested(response.Results, req)
 	response.Results = offsetResults(response.Results, req.Offset, rankingResultLimit(req))

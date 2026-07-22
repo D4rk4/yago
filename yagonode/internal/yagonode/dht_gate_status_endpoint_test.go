@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 )
 
@@ -15,7 +16,6 @@ func TestDHTGateStatusEndpointReturnsReport(t *testing.T) {
 	source := dhtGateStatusSource{
 		snapshot: func(context.Context) dhtexchange.GateState {
 			return dhtexchange.GateState{
-				PublicReachable:  false,
 				LocalPeerKnown:   true,
 				ConnectedPeers:   2,
 				LocalRWIWords:    5,
@@ -53,19 +53,20 @@ func TestDHTGateStatusEndpointReturnsReport(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	if got.Open ||
-		got.BlockingReason != dhtexchange.GatePublicReachabilityReason ||
+		got.BlockingReason != dhtexchange.GateNetworkTooSmallReason ||
+		got.State.PublicReachabilityKnown ||
 		got.State.ConnectedPeers != 2 ||
 		got.State.CrawlQueueSize != 7 || !got.State.CrawlQueueKnown ||
 		got.State.IndexQueueSize != 3 || !got.State.IndexQueueKnown ||
 		!got.State.LocalRWIKnown || !got.State.StorageKnown ||
 		got.Config.MinimumConnectedPeer != 3 ||
-		len(got.Gates) != 11 {
+		len(got.Gates) != 10 {
 		t.Fatalf("response = %#v", got)
 	}
-	if got.Gates[1].Name != string(dhtexchange.GatePublicReachability) ||
-		got.Gates[1].Open ||
-		got.Gates[1].Reason != dhtexchange.GatePublicReachabilityReason {
-		t.Fatalf("public reachability gate = %#v", got.Gates[1])
+	for _, gate := range got.Gates {
+		if gate.Name == "public_reachability" {
+			t.Fatalf("public reachability remained an outbound gate: %#v", got.Gates)
+		}
 	}
 }
 
@@ -84,7 +85,8 @@ func TestDHTGateStatusEndpointRejectsNonGET(t *testing.T) {
 
 func TestDHTGateStatusSourceUsesZeroStateWithoutSnapshot(t *testing.T) {
 	got := (dhtGateStatusSource{}).response(t.Context())
-	if got.Open || got.State.PublicReachable || len(got.Gates) != 11 {
+	if got.Open || got.State.PublicReachable || got.State.PublicReachabilityKnown ||
+		len(got.Gates) != 10 {
 		t.Fatalf("response = %#v", got)
 	}
 }
@@ -99,10 +101,76 @@ func TestDHTGateStatusSourceKeepsEnrichedReachabilitySnapshot(t *testing.T) {
 			dhtexchange.GateState,
 			publicReachabilitySnapshot,
 		) {
-			return dhtexchange.GateState{PublicReachable: true}, want
+			return dhtexchange.GateState{}, want
 		},
 	}).response(t.Context())
-	if got.reachability != want || !got.State.PublicReachable {
+	if !got.State.PublicReachable || !got.State.PublicReachabilityKnown ||
+		got.State.PublicReachabilitySource != adminui.PublicReachabilityPeerBackPing ||
+		got.State.PublicReachabilityObservedAt != "1970-01-01T00:00:12Z" {
 		t.Fatalf("enriched reachability = %+v", got)
+	}
+}
+
+func TestDHTGateStatusKeepsPublicReachabilityOutsideOutboundDecision(t *testing.T) {
+	t.Parallel()
+
+	config := dhtexchange.DefaultGateConfig()
+	config.MinimumConnectedPeer = 1
+	config.MinimumRWIWord = 1
+	state := dhtexchange.GateState{
+		LocalPeerKnown:   true,
+		ConnectedPeers:   1,
+		LocalRWIWords:    1,
+		LocalRWIKnown:    true,
+		CrawlQueueKnown:  true,
+		IndexQueueKnown:  true,
+		StorageAvailable: true,
+		StorageKnown:     true,
+	}
+	tests := []struct {
+		name      string
+		snapshot  publicReachabilitySnapshot
+		known     bool
+		reachable bool
+	}{
+		{name: "unconfirmed", snapshot: publicReachabilitySnapshot{}},
+		{
+			name: "unreachable",
+			snapshot: publicReachabilitySnapshot{
+				state: publicReachabilityUnreachable,
+			},
+			known: true,
+		},
+		{
+			name: "reachable",
+			snapshot: publicReachabilitySnapshot{
+				state: publicReachabilityReachable,
+			},
+			known: true, reachable: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got := (dhtGateStatusSource{
+				snapshotWithReachability: func(context.Context) (
+					dhtexchange.GateState,
+					publicReachabilitySnapshot,
+				) {
+					return state, test.snapshot
+				},
+				config: config,
+			}).response(t.Context())
+			if !got.Open || got.BlockingReason != "" ||
+				got.State.PublicReachabilityKnown != test.known ||
+				got.State.PublicReachable != test.reachable {
+				t.Fatalf("status = %+v", got)
+			}
+			for _, gate := range got.Gates {
+				if gate.Name == "public_reachability" {
+					t.Fatalf("public reachability remained an outbound gate: %#v", got.Gates)
+				}
+			}
+		})
 	}
 }

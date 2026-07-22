@@ -8,7 +8,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
-func TestSecondaryMetadataJobsSplitOnlyWhenNoAdmittingTermCoversEveryURL(t *testing.T) {
+func TestSecondaryMetadataJobsSendOneStockRequestPerPeer(t *testing.T) {
 	peer := searchSeed(t, "peer")
 	firstTerm := yagomodel.WordHash("first")
 	secondTerm := yagomodel.WordHash("second")
@@ -29,10 +29,9 @@ func TestSecondaryMetadataJobsSplitOnlyWhenNoAdmittingTermCoversEveryURL(t *test
 		evidenceTerms: []string{"first", "second"},
 		abstracts:     abstracts,
 	}, "freeworld", DefaultPerPeerTimeout)
-	if len(jobs) != 2 || !slices.Equal(jobs[0].request.Query, []yagomodel.Hash{firstTerm}) ||
-		!slices.Equal(jobs[0].request.URLs, []yagomodel.Hash{firstURL}) ||
-		!slices.Equal(jobs[1].request.Query, []yagomodel.Hash{secondTerm}) ||
-		!slices.Equal(jobs[1].request.URLs, []yagomodel.Hash{secondURL}) {
+	if len(jobs) != 1 ||
+		!slices.Equal(jobs[0].request.Query, []yagomodel.Hash{firstTerm, secondTerm}) ||
+		!slices.Equal(jobs[0].request.URLs, []yagomodel.Hash{firstURL, secondURL}) {
 		t.Fatalf("jobs = %#v", jobs)
 	}
 }
@@ -59,7 +58,8 @@ func TestSecondaryMetadataJobsUseOneAdmittingTermForOverlappingURLs(t *testing.T
 		evidenceTerms: []string{"first", "second"},
 		abstracts:     abstracts,
 	}, "freeworld", DefaultPerPeerTimeout)
-	if len(jobs) != 1 || !slices.Equal(jobs[0].request.Query, []yagomodel.Hash{firstTerm}) ||
+	if len(jobs) != 1 ||
+		!slices.Equal(jobs[0].request.Query, []yagomodel.Hash{secondTerm, firstTerm}) ||
 		!slices.Equal(jobs[0].request.URLs, urls) {
 		t.Fatalf("jobs = %#v", jobs)
 	}
@@ -73,5 +73,12 @@ func TestTermAbstractCatalogAdmitsFromZeroValue(t *testing.T) {
 	abstracts.admit(term, peer, []yagomodel.Hash{resource})
 	if !abstracts.peerAdmitted(peer, term, resource) {
 		t.Fatalf("resource was not admitted: %#v", abstracts)
+	}
+	if jobs := secondarySearchJobs(secondarySearchPlan{
+		targets:   []termPeerTargets{{term: term, peers: []yagomodel.Seed{peer}}},
+		urls:      []yagomodel.Hash{hashFor("other")},
+		abstracts: abstracts,
+	}, "freeworld", DefaultPerPeerTimeout); len(jobs) != 0 {
+		t.Fatalf("unadmitted jobs = %#v", jobs)
 	}
 }

@@ -206,14 +206,8 @@ func TestShardBucketContainsDoesNotDecodeStoredValue(t *testing.T) {
 		if err := raw.Put([]byte("corrupt"), []byte{0x7f}); err != nil {
 			return fmt.Errorf("store corrupt value: %w", err)
 		}
-		if !bucket.Contains(vault.Key("corrupt")) || bucket.Get(vault.Key("corrupt")) != nil ||
-			bucket.Contains(vault.Key("missing")) {
+		if !bucket.Contains(vault.Key("corrupt")) || bucket.Contains(vault.Key("missing")) {
 			return errors.New("shard presence mismatch")
-		}
-		if tx.Bucket(vault.Name("unprovisioned")).(*shardBucket).Contains(
-			vault.Key("missing"),
-		) {
-			return errors.New("unprovisioned shard presence mismatch")
 		}
 
 		return nil
@@ -332,6 +326,9 @@ func TestValueEncodingEdges(t *testing.T) {
 	if err != nil || string(decoded) != "tiny" {
 		t.Fatalf("raw roundtrip = %q %v", decoded, err)
 	}
+	if size, err := storedValueSize(raw); err != nil || size != len("tiny") {
+		t.Fatalf("raw stored size = %d %v", size, err)
+	}
 	// Corruption fails the checksum.
 	raw[len(raw)-1] ^= 0xFF
 	if _, err := decodeValue(raw); err == nil {
@@ -340,6 +337,9 @@ func TestValueEncodingEdges(t *testing.T) {
 	compressed := encodeValue(bytes.Repeat([]byte("abcd"), 100))
 	if compressed[0] != tagZstd {
 		t.Fatalf("compressible tag = %d", compressed[0])
+	}
+	if size, err := storedValueSize(compressed); err != nil || size != 400 {
+		t.Fatalf("compressed stored size = %d %v", size, err)
 	}
 	compressed[len(compressed)-1] ^= 0xFF
 	if _, err := decodeValue(compressed); err == nil {
@@ -353,6 +353,11 @@ func TestValueEncodingEdges(t *testing.T) {
 	}
 	if _, err := decodeValue([]byte{tagRaw, 1}); err == nil {
 		t.Fatal("short raw value must fail")
+	}
+	for _, stored := range [][]byte{{}, {tagRaw, 1}, {0x7F}, {tagZstd, 0x00}} {
+		if _, err := storedValueSize(stored); err == nil {
+			t.Fatalf("invalid stored size accepted: %x", stored)
+		}
 	}
 	if got, err := decodeValue(nil); got != nil || err != nil {
 		t.Fatalf("nil stored = %v %v", got, err)
@@ -568,9 +573,6 @@ func assertUnprovisionedBucket(t *testing.T, shardEngine *engine) {
 		if err := bucket.Put(vault.Key("k"), []byte("v")); err == nil {
 			t.Fatal("put into unprovisioned bucket must fail")
 		}
-		if got := bucket.Get(vault.Key("k")); got != nil {
-			t.Fatalf("get from unprovisioned bucket = %v", got)
-		}
 		if err := bucket.Delete(vault.Key("k")); err == nil {
 			t.Fatal("delete from unprovisioned bucket must fail")
 		}
@@ -579,6 +581,14 @@ func assertUnprovisionedBucket(t *testing.T, shardEngine *engine) {
 	})
 	if err != nil {
 		t.Fatalf("update: %v", err)
+	}
+	err = shardEngine.View(context.Background(), func(txn vault.EngineTxn) error {
+		txn.Bucket("ghost").Get(vault.Key("k"))
+
+		return nil
+	})
+	if err == nil || errors.Is(err, vault.ErrCorruptValue) {
+		t.Fatalf("unprovisioned read error = %v", err)
 	}
 }
 
@@ -870,8 +880,8 @@ func assertCorruptAndReadOnly(t *testing.T, multi *engine) {
 
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("view: %v", err)
+	if !errors.Is(err, vault.ErrCorruptValue) {
+		t.Fatalf("corrupt view error = %v", err)
 	}
 	err = multi.View(ctx, func(txn vault.EngineTxn) error {
 		return txn.Bucket("docs").Scan(vault.Key("after"), func(vault.Key, []byte) (bool, error) {

@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	newsTimestampLayout = "20060102150405"
-	categoryMaxLength   = 8
+	newsTimestampLayout    = "20060102150405"
+	categoryMaxLength      = 8
+	maximumNewsRecordBytes = 1024
 
 	attributeOriginator  = "ori"
 	attributeCategory    = "cat"
@@ -83,6 +84,9 @@ func ParseRecord(wire string, now func() time.Time) (Record, error) {
 }
 
 func parseRecord(wire string, receivedFallback time.Time) (Record, error) {
+	if len(wire) == 0 || len(wire) > maximumNewsRecordBytes {
+		return Record{}, fmt.Errorf("%w: record size %d", ErrBadNewsRecord, len(wire))
+	}
 	fields := parseWireFields(wire)
 
 	originator, err := yagomodel.ParseHash(fields[attributeOriginator])
@@ -101,9 +105,13 @@ func parseRecord(wire string, receivedFallback time.Time) (Record, error) {
 		}
 	}
 
+	created, err := exactNewsTime(fields[attributeCreated])
+	if err != nil {
+		return Record{}, fmt.Errorf("%w: created: %w", ErrBadNewsRecord, err)
+	}
 	record := Record{
 		Originator:  originator,
-		Created:     newsTime(fields[attributeCreated], receivedFallback),
+		Created:     created,
 		Category:    category,
 		Distributed: distributed,
 		Attributes:  map[string]string{},
@@ -123,6 +131,15 @@ func parseRecord(wire string, receivedFallback time.Time) (Record, error) {
 	}
 
 	return record, nil
+}
+
+func exactNewsTime(raw string) (time.Time, error) {
+	parsed, err := time.ParseInLocation(newsTimestampLayout, raw, time.UTC)
+	if err != nil || parsed.Format(newsTimestampLayout) != raw {
+		return time.Time{}, fmt.Errorf("invalid timestamp %q", raw)
+	}
+
+	return parsed, nil
 }
 
 func parseWireFields(wire string) map[string]string {

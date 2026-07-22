@@ -56,7 +56,7 @@ func (p *Pool) AcceptNewsAttachment(ctx context.Context, encoded string) {
 		return
 	}
 
-	wire, err := yagomodel.DecodeWireForm(ctx, encoded)
+	wire, err := yagomodel.DecodeWireFormWithLimit(ctx, encoded, maximumNewsRecordBytes)
 	if err != nil {
 		slog.WarnContext(ctx, msgNewsAttachmentBroken, slog.Any("error", err))
 

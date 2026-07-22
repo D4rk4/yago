@@ -141,7 +141,7 @@ func (attempts *productionShapeWebAttempts) roundTrip(
 	case "lite.duckduckgo.com":
 		delay = 795 * time.Millisecond
 		body = `<table>
-<tr><td><a class="result-link" href="https://docs.example.org/needle.pdf">Needle term guide</a></td></tr>
+<tr><td><a class="result-link" href="https://www.example.org/needle.pdf">Needle term guide</a></td></tr>
 <tr><td class="result-snippet">Needle term reference</td></tr>
 </table>`
 	}
@@ -228,7 +228,7 @@ func TestPublicSearchReservesUsableWebWindowAfterSlowSwarmAndFuzzyMiss(t *testin
 	}
 	if len(response.Results) != 1 ||
 		response.Results[0].Source != searchcore.SourceWeb ||
-		response.Results[0].URL != "https://docs.example.org/needle.pdf" {
+		response.Results[0].URL != "https://www.example.org/needle.pdf" {
 		t.Fatalf("response = %#v", response)
 	}
 }

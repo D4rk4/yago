@@ -584,7 +584,10 @@ func (busyURLReceiver) Receive(context.Context, []yagomodel.URIMetadataRow) (Rec
 }
 
 func TestTransferURLReportsReceiveErrorAndBusy(t *testing.T) {
-	_, err := (transferURLEndpoint{identity: localIdentity(), intake: failingURLReceiver{}, accept: true}).Serve(
+	_, err := (transferURLEndpoint{
+		identity: localIdentity(), intake: failingURLReceiver{},
+		senders: acceptingSenderDirectory{}, accept: true,
+	}).Serve(
 		t.Context(),
 		yagoproto.TransferURLRequest{NetworkName: "freeworld", YouAre: localIdentity().Hash},
 	)
@@ -592,7 +595,10 @@ func TestTransferURLReportsReceiveErrorAndBusy(t *testing.T) {
 		t.Fatal("expected receive error")
 	}
 
-	resp, err := (transferURLEndpoint{identity: localIdentity(), intake: busyURLReceiver{}, accept: true}).Serve(
+	resp, err := (transferURLEndpoint{
+		identity: localIdentity(), intake: busyURLReceiver{},
+		senders: acceptingSenderDirectory{}, accept: true,
+	}).Serve(
 		t.Context(),
 		yagoproto.TransferURLRequest{NetworkName: "freeworld", YouAre: localIdentity().Hash},
 	)
@@ -620,17 +626,17 @@ func (okURLReceiver) Receive(context.Context, []yagomodel.URIMetadataRow) (Recei
 
 func TestMountTransferURLServesRoute(t *testing.T) {
 	mux := http.NewServeMux()
-	MountTransferURL(
-		httpguard.NewWireRouter(mux, httpguard.WireGate{
+	MountTransferURL(TransferURLRoute{
+		Router: httpguard.NewWireRouter(mux, httpguard.WireGate{
 			Guard:   httpguard.NewRequestGuard(4096, time.Second),
 			Respond: httpguard.NewWireResponder(urlWireStatus{}),
 			Address: httpguard.NewClientAddressResolver(nil),
 		}),
-		localIdentity(),
-		okURLReceiver{},
-		nil,
-		true,
-	)
+		Identity: localIdentity(),
+		Receiver: okURLReceiver{},
+		Senders:  acceptingSenderDirectory{},
+		Accept:   true,
+	})
 	req := yagoproto.TransferURLRequest{
 		NetworkName: "freeworld",
 		YouAre:      localIdentity().Hash,
@@ -653,17 +659,17 @@ func TestMountTransferURLServesRoute(t *testing.T) {
 
 func TestMountTransferURLRejectsExtremeCountBeforeReceiver(t *testing.T) {
 	mux := http.NewServeMux()
-	MountTransferURL(
-		httpguard.NewWireRouter(mux, httpguard.WireGate{
+	MountTransferURL(TransferURLRoute{
+		Router: httpguard.NewWireRouter(mux, httpguard.WireGate{
 			Guard:   httpguard.NewRequestGuard(4096, time.Second),
 			Respond: httpguard.NewWireResponder(urlWireStatus{}),
 			Address: httpguard.NewClientAddressResolver(nil),
 		}),
-		localIdentity(),
-		failingURLReceiver{},
-		nil,
-		true,
-	)
+		Identity: localIdentity(),
+		Receiver: failingURLReceiver{},
+		Senders:  acceptingSenderDirectory{},
+		Accept:   true,
+	})
 	req := yagoproto.TransferURLRequest{
 		NetworkName: "freeworld",
 		YouAre:      localIdentity().Hash,
@@ -687,17 +693,17 @@ func TestMountTransferURLMapsUncommittedDeadlineToNotGranted(t *testing.T) {
 	_, module, engine := openScriptedModule(t)
 	engine.updateErr = context.DeadlineExceeded
 	mux := http.NewServeMux()
-	MountTransferURL(
-		httpguard.NewWireRouter(mux, httpguard.WireGate{
+	MountTransferURL(TransferURLRoute{
+		Router: httpguard.NewWireRouter(mux, httpguard.WireGate{
 			Guard:   httpguard.NewRequestGuard(4096, time.Second),
 			Respond: httpguard.NewWireResponder(urlWireStatus{}),
 			Address: httpguard.NewClientAddressResolver(nil),
 		}),
-		localIdentity(),
-		module.Receiver,
-		nil,
-		true,
-	)
+		Identity: localIdentity(),
+		Receiver: module.Receiver,
+		Senders:  acceptingSenderDirectory{},
+		Accept:   true,
+	})
 	req := yagoproto.TransferURLRequest{
 		NetworkName: "freeworld",
 		YouAre:      localIdentity().Hash,

@@ -2,7 +2,6 @@ package documentsearch
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -45,12 +44,16 @@ func (s searcher) search(ctx context.Context, criteria searchCriteria) (searchRe
 		),
 		criteria.maxTermSpread,
 	)
-	mostRelevant := mostRelevantDocuments(matchingEveryTerm, criteria.maxResults)
-	resources, err := s.documents.RowsByHash(ctx, mostRelevant)
+	qualified, err := s.qualifyDocuments(ctx, matchingEveryTerm, criteria.metadata)
 	if err != nil {
-		return searchResult{}, fmt.Errorf("rows by hash: %w", err)
+		return searchResult{}, err
 	}
-	resources = resourcesWithWordReferences(resources, matchingEveryTerm)
+	mostRelevant := mostRelevantDocuments(qualified.matches, criteria.maxResults)
+	resources, err := s.resourcesForDocuments(ctx, mostRelevant, qualified.resources)
+	if err != nil {
+		return searchResult{}, err
+	}
+	resources = resourcesWithWordReferences(resources, qualified.matches)
 
 	report, err := s.reportMatches(ctx, criteria, wanted)
 	if err != nil {
@@ -60,7 +63,7 @@ func (s searcher) search(ctx context.Context, criteria searchCriteria) (searchRe
 	return searchResult{
 		resources:                         resources,
 		topics:                            resultTopics(ctx, resources, criteria.terms),
-		totalDocumentsMatchingEveryTerm:   len(matchingEveryTerm),
+		totalDocumentsMatchingEveryTerm:   len(qualified.matches),
 		searchDuration:                    time.Since(start),
 		totalMatchesPerTerm:               report.totalMatchesPerTerm,
 		documentsMatchingEachReportedTerm: report.documents,

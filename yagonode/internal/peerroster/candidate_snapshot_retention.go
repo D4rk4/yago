@@ -11,30 +11,32 @@ type candidateSnapshotBounds struct {
 	byteLimit int
 }
 
-func retainFreshestRosterCandidate(
-	candidates *freshestRosterCandidates,
-	retainedBytes int,
-	entry rosterEntry,
-	active map[yagomodel.Hash]struct{},
-	bounds candidateSnapshotBounds,
-) int {
-	if _, found := active[entry.seed.Hash]; found {
-		return retainedBytes
+type candidateSnapshotRetention struct {
+	candidates    *freshestRosterCandidates
+	retainedBytes int
+	active        map[yagomodel.Hash]struct{}
+	owners        map[string]endpointOwnership
+	bounds        candidateSnapshotBounds
+}
+
+func (r *candidateSnapshotRetention) retain(entry rosterEntry) {
+	if _, found := r.active[entry.seed.Hash]; found {
+		return
 	}
-	if _, addressable := entry.seed.NetworkAddress(); !addressable || locallyJunior(entry.seed) {
-		return retainedBytes
+	if _, addressable := entry.seed.NetworkAddress(); !addressable ||
+		!routingClassificationEligible(entry.seed) ||
+		!entryOwnsAdvertisedEndpoints(r.owners, entry) {
+		return
 	}
 
 	entryBytes := entry.seed.RetainedBytes() + rosterCandidateRetentionBytes
-	if entryBytes > bounds.byteLimit {
-		return retainedBytes
+	if entryBytes > r.bounds.byteLimit {
+		return
 	}
-	heap.Push(candidates, rosterCandidate{entry: entry, retainedBytes: entryBytes})
-	retainedBytes += entryBytes
-	for len(*candidates) > bounds.peerLimit || retainedBytes > bounds.byteLimit {
-		removed := heap.Pop(candidates).(rosterCandidate)
-		retainedBytes -= removed.retainedBytes
+	heap.Push(r.candidates, rosterCandidate{entry: entry, retainedBytes: entryBytes})
+	r.retainedBytes += entryBytes
+	for len(*r.candidates) > r.bounds.peerLimit || r.retainedBytes > r.bounds.byteLimit {
+		removed := heap.Pop(r.candidates).(rosterCandidate)
+		r.retainedBytes -= removed.retainedBytes
 	}
-
-	return retainedBytes
 }

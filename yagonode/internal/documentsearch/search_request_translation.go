@@ -2,48 +2,25 @@ package documentsearch
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/sitehost"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
-const (
-	operatorLanguagePrefix = "/language/"
-	operatorSitePrefix     = "site:"
-	operatorLanguageLength = 2
-)
-
-type queryOperators struct {
-	Language string
-	SiteHost string
-}
-
-func parseQueryOperators(query string) queryOperators {
-	var parsed queryOperators
-	for token := range strings.FieldsSeq(query) {
-		switch {
-		case strings.HasPrefix(token, operatorLanguagePrefix):
-			if code := token[len(operatorLanguagePrefix):]; len(code) == operatorLanguageLength {
-				parsed.Language = strings.ToLower(code)
-			}
-		case strings.HasPrefix(token, operatorSitePrefix):
-			parsed.SiteHost = token[len(operatorSitePrefix):]
-		}
-	}
-
-	return parsed
-}
-
 func searchCriteriaFromRequest(req yagoproto.SearchRequest) (searchCriteria, error) {
 	operators := parseQueryOperators(req.Modifier)
-	siteHash, err := resolveSiteHash(req, operators)
+	siteHashes, err := resolveSiteHashes(req, operators)
 	if err != nil {
 		return searchCriteria{}, err
 	}
 	maxResults := receiverSearchCount(req.Count)
 	timeLimit := receiverSearchTime(req.Time)
 	required, err := requiredProperties(req.Constraint)
+	if err != nil {
+		return searchCriteria{}, err
+	}
+	metadata, err := metadataConstraintsFromRequest(req, operators)
 	if err != nil {
 		return searchCriteria{}, err
 	}
@@ -66,8 +43,9 @@ func searchCriteriaFromRequest(req yagoproto.SearchRequest) (searchCriteria, err
 		allowEarlyTermination: !reporting.reportsTermCounts(),
 		// Deliberate divergence from YaCy: only the /language/ modifier filters; the
 		// plain language field drives YaCy's ranking boost, which this node omits.
-		language: operators.Language,
-		siteHash: siteHash,
+		language:   operators.Language,
+		siteHashes: siteHashes,
+		metadata:   metadata,
 	}, nil
 }
 
@@ -101,20 +79,39 @@ func requiredProperties(encoded string) (yagomodel.Bitfield, error) {
 	return required, nil
 }
 
-func resolveSiteHash(req yagoproto.SearchRequest, operators queryOperators) (string, error) {
+func resolveSiteHashes(req yagoproto.SearchRequest, operators queryOperators) ([]string, error) {
+	if operators.SiteHost != "" {
+		return hashesForSiteHost(operators.SiteHost)
+	}
 	if req.SiteHash != "" {
-		return req.SiteHash, nil
+		return []string{req.SiteHash}, nil
 	}
-	host := firstNonEmpty(operators.SiteHost, req.SiteHost)
+	host := req.SiteHost
 	if host == "" {
-		return "", nil
+		return nil, nil
 	}
-	hash, err := yagomodel.HashURLHost(host)
-	if err != nil {
-		return "", fmt.Errorf("site hash: %w", err)
+
+	return hashesForSiteHost(host)
+}
+
+func hashesForSiteHost(host string) ([]string, error) {
+	equivalents := sitehost.Equivalents(host)
+	if len(equivalents) == 0 {
+		_, err := yagomodel.HashURLHost(host)
+
+		return nil, fmt.Errorf("site hash: %w", err)
 	}
-	hostHash, _ := hash.HostHash()
-	return hostHash, nil
+	hashes := make([]string, 0, len(equivalents))
+	for _, equivalent := range equivalents {
+		hash, err := yagomodel.HashURLHost(equivalent)
+		if err != nil {
+			return nil, fmt.Errorf("site hash: %w", err)
+		}
+		hostHash, _ := hash.HostHash()
+		hashes = append(hashes, hostHash)
+	}
+
+	return hashes, nil
 }
 
 func matchReportingFromRequest(req yagoproto.SearchRequest) matchReporting {

@@ -95,6 +95,7 @@ func peerJobsWithinCallBudget(
 			break
 		}
 		request.peerCalls = budget.peerCalls
+		request.transportAttempts = budget.transportAttempts
 		if request.morphology {
 			if morphologyPlanned == morphologyMaximum {
 				continue

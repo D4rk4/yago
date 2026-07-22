@@ -74,6 +74,109 @@ func TestCallerBackPingConfirmsValidQueryResponse(t *testing.T) {
 	}
 }
 
+func TestCallerBackPingFallsBackAndReturnsWinningAddress(t *testing.T) {
+	caller := callerSeed(t, "peer", "192.0.2.7", 8090)
+	alternatives, err := yagomodel.ParseIP6("2001:db8::7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller.IP6 = yagomodel.Some(alternatives)
+	requestedHosts := make([]string, 0, 2)
+	client := &http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requestedHosts = append(requestedHosts, request.URL.Hostname())
+			if request.URL.Hostname() == "192.0.2.7" {
+				return nil, errors.New("primary unavailable")
+			}
+			response := yagoproto.QueryResponse{Response: 3}.Encode().Encode()
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(response)),
+			}, nil
+		}),
+	}
+
+	verified, reachable := newCallerBackPing(client, false).ReachableCaller(
+		t.Context(),
+		caller,
+		hashFor("self"),
+		"freeworld",
+	)
+	if !reachable {
+		t.Fatal("alternate address was not reachable")
+	}
+	address, ok := verified.NetworkAddress()
+	if !ok || address != "[2001:db8::7]:8090" {
+		t.Fatalf("verified winning address = %q, %v", address, ok)
+	}
+	if len(requestedHosts) != 2 || requestedHosts[0] != "192.0.2.7" ||
+		requestedHosts[1] != "2001:db8::7" {
+		t.Fatalf("requested hosts = %v", requestedHosts)
+	}
+}
+
+func TestCallerBackPingSharesOneDeadlineAcrossAddresses(t *testing.T) {
+	caller := callerSeed(t, "peer", "192.0.2.7", 8090)
+	alternatives, err := yagomodel.ParseIP6("198.51.100.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller.IP6 = yagomodel.Some(alternatives)
+	attempts := 0
+	probe := newCallerBackPing(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			attempts++
+			<-request.Context().Done()
+
+			return nil, request.Context().Err()
+		}),
+	}, false)
+	probe.timeout = 200 * time.Millisecond
+	started := time.Now()
+	if _, reachable := probe.ReachableCaller(
+		t.Context(),
+		caller,
+		hashFor("self"),
+		"freeworld",
+	); reachable {
+		t.Fatal("timed-out caller was reported reachable")
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want both bounded addresses", attempts)
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("shared deadline elapsed = %v", elapsed)
+	}
+}
+
+func TestCallerBackPingStopsFallbackOnCancellation(t *testing.T) {
+	caller := callerSeed(t, "peer", "192.0.2.7", 8090)
+	alternatives, err := yagomodel.ParseIP6("198.51.100.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller.IP6 = yagomodel.Some(alternatives)
+	ctx, cancel := context.WithCancel(t.Context())
+	attempts := 0
+	probe := newCallerBackPing(&http.Client{
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			attempts++
+			cancel()
+			<-request.Context().Done()
+
+			return nil, request.Context().Err()
+		}),
+	}, false)
+
+	if _, reachable := probe.ReachableCaller(ctx, caller, hashFor("self"), "freeworld"); reachable {
+		t.Fatal("canceled caller was reported reachable")
+	}
+	if attempts != 1 || !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatalf("canceled attempts/context = %d/%v", attempts, ctx.Err())
+	}
+}
+
 func TestCallerBackPingSignsControlledNetworkRequest(t *testing.T) {
 	self := hashFor("self")
 	access := yagoproto.NetworkAccess{
@@ -212,6 +315,20 @@ func TestCallerBackPingRejectsBadQueryResponse(t *testing.T) {
 
 	if probe.Reachable(context.Background(), serverSeed(t, srv.URL), hashFor("self"), "freeworld") {
 		t.Fatal("Reachable = true, want false on bad query response")
+	}
+}
+
+func TestCallerBackPingRejectsMissingQueryResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = strings.NewReader(yagomodel.Message{
+			yagoproto.FieldMagic: "123",
+		}.Encode()).WriteTo(w)
+	}))
+	defer srv.Close()
+
+	probe := newCallerBackPing(srv.Client(), false)
+	if probe.Reachable(t.Context(), serverSeed(t, srv.URL), hashFor("self"), "freeworld") {
+		t.Fatal("response without count marked caller reachable")
 	}
 }
 

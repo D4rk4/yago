@@ -60,6 +60,71 @@ func TestEndpointJoinsAndAnswers(t *testing.T) {
 	}
 }
 
+func TestEndpointSiteModifierAcceptsBareAndWWWOnly(t *testing.T) {
+	word := hashFor("w1")
+	bare := mustURLHash(t, "http://example.org/page")
+	www := mustURLHash(t, "http://www.example.org/page")
+	subdomain := mustURLHash(t, "http://docs.example.org/page")
+	index := fakeScanner{postings: map[yagomodel.Hash][]yagomodel.RWIPosting{
+		word: {
+			postingForURLHash(word, bare),
+			postingForURLHash(word, www),
+			postingForURLHash(word, subdomain),
+		},
+	}}
+	documents := fakeDirectory{rows: map[yagomodel.Hash]yagomodel.URIMetadataRow{
+		bare.Hash(): {Properties: map[string]string{
+			yagomodel.URLMetaHash: bare.String(),
+		}},
+		www.Hash(): {Properties: map[string]string{
+			yagomodel.URLMetaHash: www.String(),
+		}},
+		subdomain.Hash(): {Properties: map[string]string{
+			yagomodel.URLMetaHash: subdomain.String(),
+		}},
+	}}
+	endpoint := newEndpoint(index, documents)
+
+	for _, host := range []string{"example.org", "www.example.org"} {
+		resp := serveSearch(t, endpoint, yagoproto.SearchRequest{
+			NetworkName: "freeworld",
+			Query:       []yagomodel.Hash{word},
+			Count:       10,
+			Modifier:    "site:" + host,
+			SiteHash:    siteHostHash(t, host),
+		})
+		if resp.Count != 2 || resp.JoinCount != 2 {
+			t.Fatalf("site:%s count/join = %d/%d, want 2/2", host, resp.Count, resp.JoinCount)
+		}
+		for _, resource := range resp.Resources {
+			if resource.Properties[yagomodel.URLMetaHash] == subdomain.String() {
+				t.Fatalf("site:%s admitted arbitrary subdomain", host)
+			}
+		}
+	}
+}
+
+func mustURLHash(t *testing.T, rawURL string) yagomodel.URLHash {
+	t.Helper()
+	hash, err := yagomodel.HashURL(rawURL)
+	if err != nil {
+		t.Fatalf("HashURL(%q): %v", rawURL, err)
+	}
+
+	return hash
+}
+
+func postingForURLHash(word yagomodel.Hash, location yagomodel.URLHash) yagomodel.RWIPosting {
+	return yagomodel.RWIPosting{
+		WordHash: word,
+		Properties: map[string]string{
+			yagomodel.ColURLHash:      location.String(),
+			yagomodel.ColHitCount:     "1",
+			yagomodel.ColTextPosition: "0",
+		},
+	}
+}
+
 func TestEndpointReportsTermWithMostMatches(t *testing.T) {
 	word1, word2 := hashFor("w1"), hashFor("w2")
 	index := fakeScanner{postings: map[yagomodel.Hash][]yagomodel.RWIPosting{

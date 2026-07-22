@@ -118,13 +118,13 @@ func (s searcher) secondarySearch(
 ) ([]peerSearchResult, []searchcore.PartialFailure) {
 	requirements, expanded := s.groupedMorphologyRequirements(req.Terms)
 	if !expanded {
-		return s.secondaryAbstractSearch(
+		return s.primaryAbstractSecondarySearch(
 			ctx,
 			req,
-			secondaryAbstractPlan{
+			primaryAbstractSecondaryPlan{
 				terms:         plan.exactTerms,
 				evidenceTerms: plan.evidenceTerms,
-				reputation:    plan.reputation,
+				results:       plan.primaryResults,
 				budget:        plan.budget,
 			},
 		)
@@ -139,10 +139,11 @@ func (s searcher) secondarySearch(
 }
 
 type secondaryRetrievalPlan struct {
-	exactTerms    []yagomodel.Hash
-	evidenceTerms []string
-	reputation    *reputationSession
-	budget        *remoteQueryBudget
+	exactTerms     []yagomodel.Hash
+	evidenceTerms  []string
+	primaryResults []peerSearchResult
+	reputation     *reputationSession
+	budget         *remoteQueryBudget
 }
 
 func (s searcher) groupedMorphologyAbstractSearch(

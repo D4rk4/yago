@@ -9,7 +9,6 @@ type GateName string
 
 const (
 	GateOnlineCaution       GateName = "online_caution"
-	GatePublicReachability  GateName = "public_reachability"
 	GateLocalPeer           GateName = "local_peer"
 	GateLocalPeerMature     GateName = "local_peer_mature"
 	GateNetworkSize         GateName = "network_size"
@@ -24,7 +23,6 @@ const (
 const (
 	GateOpenReason                     = "open"
 	GateOnlineCautionReason            = "online caution is active"
-	GatePublicReachabilityReason       = "public endpoint is not reachable"
 	GateLocalPeerMissingReason         = "local peer seed is unavailable"
 	GateLocalPeerVirginReason          = "local peer is virgin"
 	GateNetworkTooSmallReason          = "network is too small"
@@ -51,7 +49,6 @@ type GateConfig struct {
 
 type GateState struct {
 	OnlineCaution    string
-	PublicReachable  bool
 	LocalPeerKnown   bool
 	LocalPeerVirgin  bool
 	ConnectedPeers   int
@@ -98,7 +95,6 @@ func EvaluateGates(state GateState, config GateConfig) GateReport {
 
 	results := []GateResult{
 		gate(GateOnlineCaution, state.OnlineCaution == "", GateOnlineCautionReason),
-		gate(GatePublicReachability, state.PublicReachable, GatePublicReachabilityReason),
 		gate(GateLocalPeer, state.LocalPeerKnown, GateLocalPeerMissingReason),
 		gate(GateLocalPeerMature, !state.LocalPeerVirgin, GateLocalPeerVirginReason),
 		gate(

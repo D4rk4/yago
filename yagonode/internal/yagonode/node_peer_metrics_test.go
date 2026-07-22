@@ -27,6 +27,11 @@ func (r *countingPeerRoster) ObserveCaller(
 	r.known++
 }
 
+func (r *countingPeerRoster) ObserveResponder(context.Context, yagomodel.Seed) {
+	r.known++
+	r.reachable++
+}
+
 func (r *countingPeerRoster) ConfirmReachable(context.Context, yagomodel.Hash) {
 	r.reachable++
 }
@@ -154,6 +159,24 @@ func TestObservedPeerRosterUpdatesCountsForCallerObservation(t *testing.T) {
 	if observer.lastKnown != 1 || observer.lastLive != 0 {
 		t.Fatalf(
 			"observed caller counts = %d/%d, want 1/0",
+			observer.lastKnown,
+			observer.lastLive,
+		)
+	}
+}
+
+func TestObservedPeerRosterUpdatesCountsForResponderObservation(t *testing.T) {
+	observer := &recordingPeerMetrics{}
+	roster := observePeerRoster(t.Context(), &countingPeerRoster{}, observer)
+
+	roster.ObserveResponder(
+		t.Context(),
+		yagomodel.Seed{Hash: yagomodel.Hash("AAAAAAAAAAAA")},
+	)
+
+	if observer.lastKnown != 1 || observer.lastLive != 1 {
+		t.Fatalf(
+			"observed responder counts = %d/%d, want 1/1",
 			observer.lastKnown,
 			observer.lastLive,
 		)

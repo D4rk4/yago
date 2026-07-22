@@ -244,7 +244,7 @@ func TestSelectOutboundReturnsStorageAndObserverErrors(t *testing.T) {
 	if _, err := receiver.Receive(t.Context(), []yagomodel.RWIPosting{entry}); err != nil {
 		t.Fatalf("Receive: %v", err)
 	}
-	engine.putErrors[outboundSelectedBucket] = errors.New("journal failed")
+	engine.putErrors[OutboundSelectionBucket] = errors.New("journal failed")
 	if _, err := outboundStore(t, index).SelectOutbound(
 		t.Context(),
 		OutboundSelectionConfig{},
@@ -292,7 +292,7 @@ func TestConfirmOutboundReturnsPostingAndStorageErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SelectOutbound: %v", err)
 	}
-	engine.deleteErrors[outboundSelectedBucket] = errors.New("confirm failed")
+	engine.deleteErrors[OutboundSelectionBucket] = errors.New("confirm failed")
 	if _, err := outboundStore(t, index).ConfirmOutbound(
 		t.Context(),
 		selection.Words[0].Postings,
@@ -382,7 +382,7 @@ func TestRestoreOutboundReturnsStorageObserverAndPostingErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SelectOutbound: %v", err)
 	}
-	engine.deleteErrors[outboundSelectedBucket] = errors.New("recovery delete failed")
+	engine.deleteErrors[OutboundSelectionBucket] = errors.New("recovery delete failed")
 	if _, err := outboundStore(
 		t,
 		index,
@@ -396,7 +396,6 @@ func TestRestoreOutboundReturnsStorageObserverAndPostingErrors(t *testing.T) {
 	).RestoreOutbound(t.Context(), []yagomodel.WordPostings{bad}); err == nil {
 		t.Fatal("expected bad posting error")
 	}
-
 	ctx := &errAfterContext{Context: context.Background(), remaining: 2, err: context.Canceled}
 	if _, err := outboundStore(
 		t,
@@ -406,6 +405,46 @@ func TestRestoreOutboundReturnsStorageObserverAndPostingErrors(t *testing.T) {
 		context.Canceled,
 	) {
 		t.Fatalf("RestoreOutbound error = %v, want context.Canceled", err)
+	}
+}
+
+func TestRestoreOutboundRejectsBadWordHash(t *testing.T) {
+	t.Parallel()
+
+	_, index, _, _, _ := openScriptedRWI(t, fakeURLDirectory{})
+	word := yagomodel.WordPostings{
+		WordHash: yagomodel.Hash("bad"),
+		Postings: []yagomodel.RWIPosting{
+			postingWithHashes(yagomodel.Hash("AAAAAAAAAAAA"), yagomodel.Hash("CCCCCCCCCCCC")),
+		},
+	}
+	if _, err := outboundStore(
+		t,
+		index,
+	).RestoreOutbound(t.Context(), []yagomodel.WordPostings{word}); err == nil {
+		t.Fatal("expected bad word hash error")
+	}
+}
+
+func TestRestoreOutboundReportsCancellationAfterLiveRestore(t *testing.T) {
+	t.Parallel()
+
+	_, index, _, _, _ := openScriptedRWI(t, fakeURLDirectory{})
+	word := yagomodel.WordPostings{
+		WordHash: yagomodel.Hash("AAAAAAAAAAAA"),
+		Postings: []yagomodel.RWIPosting{
+			postingWithHashes(yagomodel.Hash("AAAAAAAAAAAA"), yagomodel.Hash("CCCCCCCCCCCC")),
+		},
+	}
+	ctx := &errAfterContext{Context: context.Background(), remaining: 5, err: context.Canceled}
+	if _, err := outboundStore(
+		t,
+		index,
+	).RestoreOutbound(ctx, []yagomodel.WordPostings{word}); !errors.Is(
+		err,
+		context.Canceled,
+	) {
+		t.Fatalf("post-restore release error = %v, want context.Canceled", err)
 	}
 }
 
@@ -424,7 +463,7 @@ func TestRecoverOutboundReturnsStoragePostingObserverAndContextErrors(t *testing
 	).SelectOutbound(t.Context(), OutboundSelectionConfig{}); err != nil {
 		t.Fatalf("SelectOutbound: %v", err)
 	}
-	engine.scanErrors[outboundSelectedBucket] = errors.New("scan failed")
+	engine.scanErrors[OutboundSelectionBucket] = errors.New("scan failed")
 	if _, err := outboundStore(t, index).RecoverOutbound(t.Context()); err == nil {
 		t.Fatal("expected recovery scan error")
 	}
@@ -434,7 +473,7 @@ func TestRecoverOutboundReturnsStoragePostingObserverAndContextErrors(t *testing
 	if err != nil {
 		t.Fatalf("Encode: %v", err)
 	}
-	engine.buckets[outboundSelectedBucket]["short"] = raw
+	engine.buckets[OutboundSelectionBucket]["short"] = raw
 	if _, err := outboundStore(t, index).RecoverOutbound(t.Context()); err == nil {
 		t.Fatal("expected malformed pending key error")
 	}
@@ -459,7 +498,7 @@ func TestRecoverOutboundReturnsStoragePostingObserverAndContextErrors(t *testing
 		fakeURLDirectory{},
 		failingObserver{storeErr: errors.New("observer failed")},
 	)
-	engine.buckets[outboundSelectedBucket][string(postingKey(entry.WordHash, referencedHash(t, entry)))] = raw
+	engine.buckets[OutboundSelectionBucket][string(postingKey(entry.WordHash, referencedHash(t, entry)))] = raw
 	if _, err := outboundStore(t, index).RecoverOutbound(t.Context()); err == nil {
 		t.Fatal("expected recovery observer error")
 	}

@@ -22,7 +22,13 @@ func (e endpoint) Serve(
 	ctx context.Context,
 	req yagoproto.ListRequest,
 ) (httpguard.RawResponse, error) {
-	if !e.identity.Authenticates(req.NetworkName, req.Key, req.Iam, req.MagicMD5) {
+	if !e.identity.Authenticates(
+		req.NetworkName,
+		req.NetworkNamePresent,
+		req.Key,
+		req.Iam,
+		req.MagicMD5,
+	) {
 		return httpguard.RawResponse{ContentType: listContentType}, nil
 	}
 

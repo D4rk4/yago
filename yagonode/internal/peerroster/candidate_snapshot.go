@@ -26,7 +26,7 @@ type rosterCandidate struct {
 type freshestRosterCandidates []rosterCandidate
 
 type candidateSnapshotAttempt struct {
-	seeds    []yagomodel.Seed
+	entries  []rosterEntry
 	building chan struct{}
 	revision uint64
 	ready    bool
@@ -68,7 +68,7 @@ func (r *roster) invalidateCandidateSnapshot() {
 	r.candidateMu.Lock()
 	r.candidateRevision++
 	r.candidateReady = false
-	r.candidateSeeds = nil
+	r.candidateEntries = nil
 	r.candidateBytes = 0
 	r.candidateMu.Unlock()
 }
@@ -81,11 +81,19 @@ func (r *roster) freshestCandidateSnapshot(
 		return nil
 	}
 	limit = min(limit, candidateSnapshotMaximumPeers)
+	entries := r.freshestCandidateEntries(ctx)
+	if entries == nil {
+		return nil
+	}
 
+	return r.detachEligibleCandidates(entries, limit)
+}
+
+func (r *roster) freshestCandidateEntries(ctx context.Context) []rosterEntry {
 	for ctx.Err() == nil {
 		attempt := r.beginCandidateSnapshot()
 		if attempt.ready {
-			return detachCandidateSeeds(attempt.seeds, limit)
+			return attempt.entries
 		}
 		if !attempt.builder {
 			if waitForCandidateSnapshot(ctx, attempt.building) {
@@ -94,13 +102,13 @@ func (r *roster) freshestCandidateSnapshot(
 
 			return nil
 		}
-		seeds, retainedBytes, err := r.buildCandidateSnapshot(ctx)
-		stable := r.finishCandidateSnapshot(attempt, seeds, retainedBytes, err)
+		entries, retainedBytes, err := r.buildCandidateEntrySnapshot(ctx)
+		stable := r.finishCandidateSnapshot(attempt, entries, retainedBytes, err)
 		if candidateSnapshotBuildFailed(ctx, err) {
 			return nil
 		}
 		if stable {
-			return detachCandidateSeeds(seeds, limit)
+			return entries
 		}
 	}
 
@@ -112,7 +120,7 @@ func (r *roster) beginCandidateSnapshot() candidateSnapshotAttempt {
 	defer r.candidateMu.Unlock()
 
 	if r.candidateReady {
-		return candidateSnapshotAttempt{seeds: r.candidateSeeds, ready: true}
+		return candidateSnapshotAttempt{entries: r.candidateEntries, ready: true}
 	}
 	if r.candidateBuilding != nil {
 		return candidateSnapshotAttempt{building: r.candidateBuilding}
@@ -139,7 +147,7 @@ func waitForCandidateSnapshot(ctx context.Context, building <-chan struct{}) boo
 
 func (r *roster) finishCandidateSnapshot(
 	attempt candidateSnapshotAttempt,
-	seeds []yagomodel.Seed,
+	entries []rosterEntry,
 	retainedBytes int,
 	err error,
 ) bool {
@@ -148,7 +156,7 @@ func (r *roster) finishCandidateSnapshot(
 
 	stable := attempt.revision == r.candidateRevision
 	if err == nil && stable {
-		r.candidateSeeds = seeds
+		r.candidateEntries = entries
 		r.candidateBytes = retainedBytes
 		r.candidateReady = true
 	}
@@ -171,53 +179,70 @@ func candidateSnapshotBuildFailed(ctx context.Context, err error) bool {
 	return true
 }
 
-func (r *roster) buildCandidateSnapshot(
+func (r *roster) buildCandidateEntrySnapshot(
 	ctx context.Context,
-) ([]yagomodel.Seed, int, error) {
+) ([]rosterEntry, int, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, 0, fmt.Errorf("build peer candidate snapshot: %w", err)
 	}
 	peerLimit := min(max(r.reservoirCap, 0), candidateSnapshotMaximumPeers)
 	byteLimit := min(max(r.candidateByteLimit, 0), candidateSnapshotMaximumBytes)
 	if peerLimit == 0 || byteLimit == 0 {
-		return []yagomodel.Seed{}, 0, nil
+		return []rosterEntry{}, 0, nil
 	}
 
-	activeSeeds, activeHashes := r.activeSnapshot()
-	seeds := make([]yagomodel.Seed, 0, min(peerLimit, len(activeSeeds)))
+	owners := r.endpointOwnershipSnapshot()
+	activeEntries, activeHashes := r.activeSnapshotAgainst(owners)
+	entries := make([]rosterEntry, 0, min(peerLimit, len(activeEntries)))
 	retainedBytes := 0
-	for _, seed := range activeSeeds {
-		if len(seeds) == peerLimit {
+	for _, entry := range activeEntries {
+		if len(entries) == peerLimit {
 			break
 		}
-		owned := seed.Copy()
+		owned := entry.seed.Copy()
 		ownedBytes := owned.RetainedBytes()
 		if ownedBytes > byteLimit-retainedBytes {
 			continue
 		}
-		seeds = append(seeds, owned)
+		entry.seed = owned
+		entries = append(entries, entry)
 		retainedBytes += ownedBytes
 	}
 
 	inactive, inactiveBytes, err := r.scanFreshestCandidates(
 		ctx,
 		activeHashes,
-		peerLimit-len(seeds),
+		owners,
+		peerLimit-len(entries),
 		byteLimit-retainedBytes,
 	)
 	if err != nil {
 		return nil, 0, err
 	}
 	for _, candidate := range inactive {
-		seeds = append(seeds, candidate.entry.seed)
+		entries = append(entries, candidate.entry)
 	}
 
-	return seeds, retainedBytes + inactiveBytes, nil
+	return entries, retainedBytes + inactiveBytes, nil
+}
+
+func (r *roster) buildCandidateSnapshot(ctx context.Context) ([]yagomodel.Seed, int, error) {
+	entries, retained, err := r.buildCandidateEntrySnapshot(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	seeds := make([]yagomodel.Seed, 0, len(entries))
+	for _, entry := range entries {
+		seeds = append(seeds, entry.seed)
+	}
+
+	return seeds, retained, nil
 }
 
 func (r *roster) scanFreshestCandidates(
 	ctx context.Context,
 	active map[yagomodel.Hash]struct{},
+	owners map[string]endpointOwnership,
 	peerLimit int,
 	byteLimit int,
 ) ([]rosterCandidate, int, error) {
@@ -226,20 +251,21 @@ func (r *roster) scanFreshestCandidates(
 	}
 
 	var candidates freshestRosterCandidates
-	retainedBytes := 0
-	bounds := candidateSnapshotBounds{peerLimit: peerLimit, byteLimit: byteLimit}
+	retention := candidateSnapshotRetention{
+		candidates: &candidates,
+		active:     active,
+		owners:     owners,
+		bounds:     candidateSnapshotBounds{peerLimit: peerLimit, byteLimit: byteLimit},
+	}
 	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
-		return r.peers.Scan(tx, nil, func(_ vault.Key, entry rosterEntry) (bool, error) {
+		return r.scanRosterEntries(tx, func(_ vault.Key, entry rosterEntry) (bool, error) {
 			if err := ctx.Err(); err != nil {
 				return false, fmt.Errorf("scan peer candidate context: %w", err)
 			}
-			retainedBytes = retainFreshestRosterCandidate(
-				&candidates,
-				retainedBytes,
-				entry,
-				active,
-				bounds,
-			)
+			if r.isSelf(entry.seed.Hash) {
+				return true, nil
+			}
+			retention.retain(entry)
 
 			return true, nil
 		})
@@ -256,20 +282,7 @@ func (r *roster) scanFreshestCandidates(
 		return candidates[left].entry.seed.Hash.String() < candidates[right].entry.seed.Hash.String()
 	})
 
-	return []rosterCandidate(candidates), retainedBytes, nil
-}
-
-func detachCandidateSeeds(seeds []yagomodel.Seed, limit int) []yagomodel.Seed {
-	limit = min(max(limit, 0), len(seeds))
-	detached := make([]yagomodel.Seed, 0, limit)
-	for _, seed := range seeds {
-		if len(detached) == limit {
-			break
-		}
-		detached = append(detached, detachCandidateSeed(seed))
-	}
-
-	return detached
+	return []rosterCandidate(candidates), retention.retainedBytes, nil
 }
 
 func detachCandidateSeed(seed yagomodel.Seed) yagomodel.Seed {

@@ -97,13 +97,13 @@ func TestMatchesContentKindPassthrough(t *testing.T) {
 func TestMatchesSiteHost(t *testing.T) {
 	ctx := context.Background()
 	const location = yagomodel.URLHash("0123456789AB")
-	if !matchesSiteHost(ctx, location, "") {
+	if !matchesSiteHost(ctx, location, nil) {
 		t.Fatal("empty site hash should match")
 	}
-	if !matchesSiteHost(ctx, location, "6789AB") {
+	if !matchesSiteHost(ctx, location, []string{"000000", "6789AB"}) {
 		t.Fatal("matching host hash should match")
 	}
-	if matchesSiteHost(ctx, location, "000000") {
+	if matchesSiteHost(ctx, location, []string{"000000", "111111"}) {
 		t.Fatal("non-matching host hash should not match")
 	}
 }

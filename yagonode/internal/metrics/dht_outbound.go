@@ -24,7 +24,7 @@ func NewDHTOutboundMetrics(registry prometheus.Registerer) *DHTOutboundMetrics {
 	})
 	failures := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "yacy_dht_outbound_failures_total",
-		Help: "Outbound DHT distribution cycles that ended in capacity, transfer, or protocol failure.",
+		Help: "Outbound DHT distribution cycles that ended in transfer or protocol failure.",
 	})
 	unknownURL := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "yacy_dht_outbound_unknown_url_total",
@@ -49,8 +49,7 @@ func (d *DHTOutboundMetrics) Observe(receipt dhtexchange.DistributionReceipt) {
 	case dhtexchange.DistributionSent:
 		d.batches.Inc()
 		d.postings.Add(float64(receipt.PostingCount))
-	case dhtexchange.DistributionCapacityFailed,
-		dhtexchange.DistributionHandoffFailed,
+	case dhtexchange.DistributionHandoffFailed,
 		dhtexchange.DistributionHandoffRejected:
 		d.failures.Inc()
 	}

@@ -114,5 +114,5 @@ func resultHost(rawURL string) string {
 		return ""
 	}
 
-	return parsed.Host
+	return parsed.Hostname()
 }

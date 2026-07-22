@@ -22,6 +22,7 @@ func publicRemoteSearchConfig(assembly publicSearchAssembly) searchremote.Config
 		SelfSeed:                 assembly.selfSeed,
 		NetworkAccess:            assembly.identity.NetworkAccess(),
 		ObserveReceivedResources: assembly.observeRemoteResources,
+		Reachability:             assembly.peerReachability,
 	}
 }
 

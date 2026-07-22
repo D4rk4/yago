@@ -22,13 +22,13 @@ func (e disabledCrawlReceiptEndpoint) Serve(
 	ctx context.Context,
 	req yagoproto.CrawlReceiptRequest,
 ) (yagoproto.CrawlReceiptResponse, error) {
-	if e.local == nil || !e.local.AuthenticatesAddress(
+	if e.local == nil || !e.local.Authenticates(
 		req.NetworkName,
-		req.YouAre,
+		req.NetworkNamePresent,
 		req.Key,
 		req.Iam.String(),
 		req.MagicMD5,
-	) {
+	) || !e.local.Addresses(req.NetworkName, req.YouAre) {
 		return yagoproto.CrawlReceiptResponse{Delay: disabledCrawlReceiptRetryDelay}, nil
 	}
 

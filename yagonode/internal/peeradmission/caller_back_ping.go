@@ -53,25 +53,25 @@ var _ callerReachabilityProbe = callerBackPing{}
 
 var parseBackPingMessage = yagomodel.ParseMessage
 
-func (p callerBackPing) Reachable(
+func (p callerBackPing) ReachableCaller(
 	ctx context.Context,
 	caller yagomodel.Seed,
 	self yagomodel.Hash,
 	networkName string,
-) bool {
+) (yagomodel.Seed, bool) {
 	probeContext, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 	targets, err := caller.ProtocolEndpoints(yagoproto.PathQuery, p.preferHTTPS)
 	if err != nil {
 		slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
-		return false
+		return caller, false
 	}
 
 	query := yagoproto.QueryRequest{
 		NetworkName: networkName,
-		YouAre:      caller.Hash,
-		Iam:         self,
+		YouAre:      caller.Hash.String(),
+		Iam:         self.String(),
 		Object:      yagoproto.ObjectRWICount,
 	}
 	form := query.Form()
@@ -82,32 +82,43 @@ func (p callerBackPing) Reachable(
 		if err := p.signForm(access, form); err != nil {
 			slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
-			return false
+			return caller, false
 		}
 	}
 	rawQuery := form.Encode()
 
-	// A reachability probe passes when any candidate scheme answers, so walk
-	// the https-first candidates until one connects.
-	for _, target := range targets {
+	for index, target := range targets {
+		if probeContext.Err() != nil {
+			return caller, false
+		}
+		attemptContext, cancelAttempt := backPingAttemptContext(
+			probeContext,
+			len(targets)-index,
+		)
 		target.RawQuery = rawQuery
 		req, _ := http.NewRequestWithContext(
-			probeContext,
+			attemptContext,
 			http.MethodGet,
 			target.String(),
 			nil,
 		)
 		resp, err := p.client.Do(req)
 		if err != nil {
+			cancelAttempt()
 			slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
 			continue
 		}
-
-		return p.confirmClose(ctx, resp)
+		confirmed := p.confirmClose(ctx, resp)
+		cancelAttempt()
+		if !confirmed {
+			continue
+		}
+		contactedHost, _ := yagomodel.ParseHost(target.Hostname())
+		return caller.WithPrimaryHost(contactedHost), true
 	}
 
-	return false
+	return caller, false
 }
 
 func (p callerBackPing) confirmClose(ctx context.Context, resp *http.Response) bool {

@@ -14,6 +14,7 @@ func (h harness) endpoint() transferRWIEndpoint {
 	return transferRWIEndpoint{
 		identity:          localIdentity(),
 		intake:            h.rwi.Receiver,
+		senders:           acceptingSenderDirectory{},
 		batchCap:          h.batchCap,
 		pauseMilliseconds: 5000,
 		accept:            true,
@@ -182,6 +183,53 @@ func TestTransferRWIStoresAndAnswers(t *testing.T) {
 	}
 	if rwiCount != 1 {
 		t.Fatalf("RWICount = %d, want 1", rwiCount)
+	}
+}
+
+func TestTransferRWIRejectsUnknownSender(t *testing.T) {
+	ctx := t.Context()
+	h := openHarness(t, 0, 100)
+	known := yagomodel.Hash("BBBBBBBBBBBB")
+	endpoint := h.endpoint()
+	endpoint.senders = fixedSenderDirectory{peer: yagomodel.Seed{Hash: known}}
+
+	response, err := endpoint.Serve(ctx, yagoproto.TransferRWIRequest{
+		NetworkName: "freeworld",
+		Iam:         yagomodel.Hash("CCCCCCCCCCCC"),
+		YouAre:      localIdentity().Hash,
+		WordCount:   1,
+		EntryCount:  1,
+		Indexes:     []yagomodel.RWIPosting{posting("w1", "u1")},
+	})
+	if err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+	if response.Result != yagoproto.ResultNotGranted ||
+		response.Pause != transferRWIDefaultPause {
+		t.Fatalf("response = %+v, want not_granted", response)
+	}
+	count, err := h.rwi.Index.RWICount(ctx)
+	if err != nil || count != 0 {
+		t.Fatalf("stored rows = %d, %v", count, err)
+	}
+}
+
+func TestTransferRWIAcceptsKnownInactiveSender(t *testing.T) {
+	h := openHarness(t, 0, 100)
+	sender := yagomodel.Seed{Hash: yagomodel.Hash("BBBBBBBBBBBB")}
+	endpoint := h.endpoint()
+	endpoint.senders = fixedSenderDirectory{peer: sender}
+
+	response, err := endpoint.Serve(t.Context(), yagoproto.TransferRWIRequest{
+		NetworkName: "freeworld",
+		Iam:         sender.Hash,
+		YouAre:      localIdentity().Hash,
+		WordCount:   1,
+		EntryCount:  1,
+		Indexes:     []yagomodel.RWIPosting{posting("w1", "u1")},
+	})
+	if err != nil || response.Result != yagoproto.ResultOK {
+		t.Fatalf("response = %+v, error = %v", response, err)
 	}
 }
 

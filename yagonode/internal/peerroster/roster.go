@@ -18,23 +18,30 @@ const (
 	peerRemoteIndexRejectedMessage        = "peer remote index rejected"
 	peerRemoteIndexRejectionFailedMessage = "peer remote index rejection failed"
 	peerDiscoveryMaximumSeeds             = 4096
+	peerPassiveRetryCooldown              = 10 * time.Minute
+	peerPassiveRetention                  = 24 * time.Hour
 )
 
 type roster struct {
-	vault        *vault.Vault
-	peers        *vault.Collection[rosterEntry]
-	now          func() time.Time
-	reservoirCap int
-	activeCap    int
+	vault                  *vault.Vault
+	peers                  *vault.Collection[rosterEntry]
+	lifecycles             *vault.Keyspace[rosterLifecycle]
+	lifecycleCleanupCursor *vault.Keyspace[vault.Key]
+	self                   yagomodel.Hash
+	now                    func() time.Time
+	reservoirCap           int
+	activeCap              int
 
-	membershipMu sync.Mutex
-	mu           sync.Mutex
-	active       map[yagomodel.Hash]yagomodel.Seed
+	membershipPermit chan struct{}
+	mu               sync.Mutex
+	active           map[yagomodel.Hash]rosterEntry
+	endpointMu       sync.RWMutex
+	endpointOwners   map[string]endpointOwnership
 
 	candidateMu        sync.Mutex
 	candidateRevision  uint64
 	candidateReady     bool
-	candidateSeeds     []yagomodel.Seed
+	candidateEntries   []rosterEntry
 	candidateBytes     int
 	candidateBuilding  chan struct{}
 	candidateByteLimit int
@@ -45,25 +52,27 @@ func (r *roster) key(hash yagomodel.Hash) vault.Key {
 }
 
 func (r *roster) Discover(ctx context.Context, seeds ...yagomodel.Seed) {
-	maximumDiscoveries := min(peerDiscoveryMaximumSeeds, len(seeds))
-	changed := false
-	for _, seed := range seeds[:maximumDiscoveries] {
-		if _, reachable := seed.NetworkAddress(); !reachable || locallyJunior(seed) {
-			continue
-		}
-		stored, err := r.discoverOne(ctx, seed)
-		if err != nil {
-			slog.WarnContext(
-				ctx,
-				"peer discovery discarded",
-				slog.String("peer", seed.Hash.String()),
-				slog.Any("error", err),
-			)
-			continue
-		}
-		changed = changed || stored
+	if context.Cause(ctx) != nil {
+		return
 	}
+	if !r.acquireMembership(ctx) {
+		return
+	}
+	defer r.releaseMembership()
 
+	maximumDiscoveries := min(peerDiscoveryMaximumSeeds, len(seeds))
+	prepared := r.prepareDiscoveries(ctx, seeds[:maximumDiscoveries])
+	changed, err := r.persistDiscoveryBatch(
+		ctx,
+		prepared,
+	)
+	if err != nil {
+		if context.Cause(ctx) == nil {
+			slog.WarnContext(ctx, "peer discovery batch discarded", slog.Any("error", err))
+		}
+
+		return
+	}
 	changed = r.evictOverflow(ctx) || changed
 	if changed {
 		r.invalidateCandidateSnapshot()
@@ -71,53 +80,39 @@ func (r *roster) Discover(ctx context.Context, seeds ...yagomodel.Seed) {
 }
 
 func (r *roster) discoverOne(ctx context.Context, seed yagomodel.Seed) (bool, error) {
-	key := r.key(seed.Hash)
-	stored := false
-	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
-		_, known, err := r.peers.Get(tx, key)
-		if err != nil {
-			return fmt.Errorf("read peer: %w", err)
-		}
-		if known {
-			return nil
-		}
-		if err := r.peers.Put(tx, key, rosterEntry{seed: seed, lastSeen: r.now()}); err != nil {
-			return fmt.Errorf("store peer: %w", err)
-		}
-		stored = true
-
-		return nil
-	}); err != nil {
-		return false, fmt.Errorf("discover peer: %w", err)
-	}
-
-	return stored, nil
+	return r.persistDiscoveryBatch(ctx, r.prepareDiscoveries(ctx, []yagomodel.Seed{seed}))
 }
 
 func (r *roster) ConfirmReachable(ctx context.Context, peer yagomodel.Hash) {
-	r.membershipMu.Lock()
-	defer r.membershipMu.Unlock()
+	if r.isSelf(peer) {
+		return
+	}
+	if !r.acquireMembership(ctx) {
+		return
+	}
+	defer r.releaseMembership()
 
-	confirmed, found := r.touch(ctx, peer)
+	confirmed, admission, found := r.touch(ctx, peer)
 	if !found {
 		return
 	}
-
-	r.mu.Lock()
-	if locallyJunior(confirmed) {
-		delete(r.active, peer)
-	} else if _, active := r.active[peer]; active || len(r.active) < r.activeCap {
-		r.active[peer] = confirmed
-	}
-	r.mu.Unlock()
+	r.applyEndpointAdmission(confirmed, admission)
+	r.replaceActiveMembership(confirmed, admission.displaced)
 	r.invalidateCandidateSnapshot()
 }
 
-func (r *roster) touch(ctx context.Context, peer yagomodel.Hash) (yagomodel.Seed, bool) {
-	var confirmed yagomodel.Seed
+func (r *roster) touch(
+	ctx context.Context,
+	peer yagomodel.Hash,
+) (rosterEntry, endpointAdmission, bool) {
+	if r.isSelf(peer) {
+		return rosterEntry{}, endpointAdmission{}, false
+	}
+	var confirmed rosterEntry
+	var admission endpointAdmission
 	found := false
 	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
-		entry, known, err := r.peers.Get(tx, r.key(peer))
+		entry, known, err := r.getRosterEntry(tx, r.key(peer))
 		if err != nil {
 			return fmt.Errorf("read peer: %w", err)
 		}
@@ -125,11 +120,19 @@ func (r *roster) touch(ctx context.Context, peer yagomodel.Hash) (yagomodel.Seed
 			return nil
 		}
 
-		entry.lastSeen = r.now()
-		if err := r.peers.Put(tx, r.key(peer), entry); err != nil {
+		now := r.now()
+		entry.lastSeen = now
+		entry.retryAfter = time.Time{}
+		entry.expiresAt = now.Add(peerPassiveRetention)
+		entry.verified = true
+		admission = r.endpointAdmission(entry)
+		if !admission.accepted {
+			return nil
+		}
+		if err := r.putRosterEntry(tx, r.key(peer), entry); err != nil {
 			return fmt.Errorf("store peer: %w", err)
 		}
-		confirmed, found = entry.seed, true
+		confirmed, found = entry, true
 
 		return nil
 	}); err != nil {
@@ -140,61 +143,25 @@ func (r *roster) touch(ctx context.Context, peer yagomodel.Hash) (yagomodel.Seed
 			slog.Any("error", err),
 		)
 
-		return yagomodel.Seed{}, false
+		return rosterEntry{}, endpointAdmission{}, false
 	}
 
-	return confirmed, found
-}
-
-// Future: tolerate a bounded number of strikes with a cooldown before removal.
-func (r *roster) ConfirmUnreachable(ctx context.Context, peer yagomodel.Hash) {
-	r.membershipMu.Lock()
-	defer r.membershipMu.Unlock()
-
-	r.mu.Lock()
-	_, active := r.active[peer]
-	delete(r.active, peer)
-	r.mu.Unlock()
-
-	slog.DebugContext(ctx, "peer dropped as unreachable", slog.String("peer", peer.String()))
-
-	deleted := false
-	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
-		entry, known, err := r.peers.Get(tx, r.key(peer))
-		if err != nil {
-			return fmt.Errorf("read peer: %w", err)
-		}
-		if known && locallyJunior(entry.seed) {
-			return nil
-		}
-		removed, err := r.peers.Delete(tx, r.key(peer))
-		if err != nil {
-			return fmt.Errorf("delete peer: %w", err)
-		}
-		deleted = removed
-
-		return nil
-	}); err != nil {
-		slog.WarnContext(
-			ctx,
-			"peer removal failed",
-			slog.String("peer", peer.String()),
-			slog.Any("error", err),
-		)
-	}
-	if active || deleted {
-		r.invalidateCandidateSnapshot()
-	}
+	return confirmed, admission, found
 }
 
 func (r *roster) RejectRemoteIndex(ctx context.Context, failed yagomodel.Seed) {
-	r.membershipMu.Lock()
-	defer r.membershipMu.Unlock()
+	if r.isSelf(failed.Hash) {
+		return
+	}
+	if !r.acquireMembership(ctx) {
+		return
+	}
+	defer r.releaseMembership()
 
 	var updated yagomodel.Seed
 	changed := false
 	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
-		entry, known, err := r.peers.Get(tx, r.key(failed.Hash))
+		entry, known, err := r.getRosterEntry(tx, r.key(failed.Hash))
 		if err != nil {
 			return fmt.Errorf("read peer: %w", err)
 		}
@@ -202,7 +169,7 @@ func (r *roster) RejectRemoteIndex(ctx context.Context, failed yagomodel.Seed) {
 			return nil
 		}
 		entry.seed = withoutRemoteIndex(entry.seed)
-		if err := r.peers.Put(tx, r.key(failed.Hash), entry); err != nil {
+		if err := r.putRosterEntry(tx, r.key(failed.Hash), entry); err != nil {
 			return fmt.Errorf("store peer: %w", err)
 		}
 		updated = entry.seed
@@ -224,8 +191,10 @@ func (r *roster) RejectRemoteIndex(ctx context.Context, failed yagomodel.Seed) {
 	}
 
 	r.mu.Lock()
-	if _, active := r.active[failed.Hash]; active {
-		r.active[failed.Hash] = updated
+	delete(r.active, r.self)
+	if reachable, active := r.active[failed.Hash]; active {
+		reachable.seed = updated
+		r.active[failed.Hash] = reachable
 	}
 	r.mu.Unlock()
 	r.invalidateCandidateSnapshot()
@@ -234,13 +203,30 @@ func (r *roster) RejectRemoteIndex(ctx context.Context, failed yagomodel.Seed) {
 }
 
 func (r *roster) ReachablePeers(_ context.Context) []yagomodel.Seed {
+	owners := r.endpointOwnershipSnapshot()
+	now := r.now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	peers := make([]yagomodel.Seed, 0, len(r.active))
-	for _, seed := range r.active {
-		peers = append(peers, detachCandidateSeed(seed))
+	for peer, entry := range r.active {
+		if r.isSelf(peer) ||
+			(!entry.expiresAt.IsZero() && !now.Before(entry.expiresAt)) ||
+			!entryOwnsAdvertisedEndpoints(owners, entry) {
+			continue
+		}
+		peers = append(peers, detachCandidateSeed(entry.seed))
 	}
+	sort.Slice(peers, func(left, right int) bool {
+		leftEntry := r.active[peers[left].Hash]
+		rightEntry := r.active[peers[right].Hash]
+		comparison := leftEntry.lastSeen.Compare(rightEntry.lastSeen)
+		if comparison != 0 {
+			return comparison > 0
+		}
+
+		return peers[left].Hash.String() < peers[right].Hash.String()
+	})
 
 	return peers
 }
@@ -259,12 +245,15 @@ func withoutRemoteIndex(seed yagomodel.Seed) yagomodel.Seed {
 // never discovered it. It reads through the persisted peers collection, so a peer
 // outside the freshest working set is still resolvable for a detail lookup.
 func (r *roster) PeerByHash(ctx context.Context, peer yagomodel.Hash) (yagomodel.Seed, bool) {
+	if r.isSelf(peer) {
+		return yagomodel.Seed{}, false
+	}
 	var (
 		seed  yagomodel.Seed
 		found bool
 	)
 	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
-		entry, known, err := r.peers.Get(tx, r.key(peer))
+		entry, known, err := r.getRosterEntry(tx, r.key(peer))
 		if err != nil {
 			return fmt.Errorf("read peer: %w", err)
 		}
@@ -288,10 +277,20 @@ func (r *roster) KnownPeerCount(ctx context.Context) int {
 }
 
 func (r *roster) ReachablePeerCount(_ context.Context) int {
+	now := r.now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	return len(r.active)
+	count := 0
+	for peer, entry := range r.active {
+		if r.isSelf(peer) ||
+			(!entry.expiresAt.IsZero() && !now.Before(entry.expiresAt)) {
+			continue
+		}
+		count++
+	}
+
+	return count
 }
 
 // Future: a recency index would replace this scan with a bounded range read.
@@ -299,69 +298,49 @@ func (r *roster) FreshestPeers(ctx context.Context, limit int) []yagomodel.Seed 
 	return r.freshestCandidateSnapshot(ctx, limit)
 }
 
-func (r *roster) activeSnapshot() ([]yagomodel.Seed, map[yagomodel.Hash]struct{}) {
+func (r *roster) activeSnapshot() ([]rosterEntry, map[yagomodel.Hash]struct{}) {
+	return r.activeSnapshotAgainst(r.endpointOwnershipSnapshot())
+}
+
+func (r *roster) activeSnapshotAgainst(
+	owners map[string]endpointOwnership,
+) ([]rosterEntry, map[yagomodel.Hash]struct{}) {
+	now := r.now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	seeds := make([]yagomodel.Seed, 0, len(r.active))
+	entries := make([]rosterEntry, 0, len(r.active))
 	keys := make(map[yagomodel.Hash]struct{}, len(r.active))
-	for hash, seed := range r.active {
-		seeds = append(seeds, seed)
+	for hash, entry := range r.active {
+		if r.isSelf(hash) ||
+			(!entry.expiresAt.IsZero() && !now.Before(entry.expiresAt)) ||
+			!entryOwnsAdvertisedEndpoints(owners, entry) {
+			continue
+		}
+		entry.seed = detachCandidateSeed(entry.seed)
+		entries = append(entries, entry)
 		keys[hash] = struct{}{}
 	}
+	sort.Slice(entries, func(left, right int) bool {
+		comparison := entries[left].lastSeen.Compare(entries[right].lastSeen)
+		if comparison != 0 {
+			return comparison > 0
+		}
 
-	return seeds, keys
+		return entries[left].seed.Hash.String() < entries[right].seed.Hash.String()
+	})
+
+	return entries, keys
 }
 
 func (r *roster) evictOverflow(ctx context.Context) bool {
-	changed := false
-	for _, hash := range r.stalestBeyondCapacity(ctx) {
-		if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
-			deleted, err := r.peers.Delete(tx, r.key(hash))
-			if err != nil {
-				return fmt.Errorf("delete peer: %w", err)
-			}
-			changed = changed || deleted
+	changed, err := r.trimOverflow(ctx)
+	if err != nil {
+		slog.WarnContext(ctx, "peer eviction failed", slog.Any("error", err))
 
-			return nil
-		}); err != nil {
-			slog.WarnContext(
-				ctx,
-				"peer eviction failed",
-				slog.String("peer", hash.String()),
-				slog.Any("error", err),
-			)
-		}
+		return false
 	}
-
 	return changed
-}
-
-func (r *roster) stalestBeyondCapacity(ctx context.Context) []yagomodel.Hash {
-	_, active := r.activeSnapshot()
-
-	excess := r.peerCount(ctx) - r.reservoirCap
-	if excess <= 0 {
-		return nil
-	}
-
-	stale := r.stalestInactive(ctx, active, excess)
-	victims := make([]yagomodel.Hash, 0, len(stale))
-	for _, entry := range stale {
-		victims = append(victims, entry.seed.Hash)
-	}
-
-	return victims
-}
-
-func (r *roster) stalestInactive(
-	ctx context.Context,
-	active map[yagomodel.Hash]struct{},
-	limit int,
-) []rosterEntry {
-	return r.selectInactive(ctx, active, limit, func(a, b rosterEntry) bool {
-		return a.lastSeen.Compare(b.lastSeen) < 0
-	})
 }
 
 func (r *roster) selectInactive(
@@ -376,9 +355,12 @@ func (r *roster) selectInactive(
 
 	kept := &rankedRosterEntries{precedes: precedes}
 	if err := r.vault.View(ctx, func(tx *vault.Txn) error {
-		return r.peers.Scan(tx, nil, func(_ vault.Key, entry rosterEntry) (bool, error) {
+		return r.scanRosterEntries(tx, func(_ vault.Key, entry rosterEntry) (bool, error) {
 			if err := ctx.Err(); err != nil {
 				return false, fmt.Errorf("select inactive peer context: %w", err)
+			}
+			if r.isSelf(entry.seed.Hash) {
+				return true, nil
 			}
 			if _, ok := active[entry.seed.Hash]; ok {
 				return true, nil

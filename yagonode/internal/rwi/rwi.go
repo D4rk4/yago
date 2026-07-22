@@ -55,6 +55,15 @@ type Config struct {
 	AcceptRemoteIndex bool
 }
 
+type TransferRWIRoute struct {
+	Router   httpguard.WireRouter
+	Identity nodeidentity.Identity
+	Receiver PostingReceiver
+	Senders  SenderDirectory
+	Gate     *httpguard.IntakeGate
+	Config   Config
+}
+
 func Open(
 	vault *vault.Vault,
 	urls urlmeta.URLDirectory,
@@ -88,25 +97,20 @@ func Open(
 	return directory, intake, directory, nil
 }
 
-func MountTransferRWI(
-	router httpguard.WireRouter,
-	identity nodeidentity.Identity,
-	receiver PostingReceiver,
-	gate *httpguard.IntakeGate,
-	cfg Config,
-) {
+func MountTransferRWI(route TransferRWIRoute) {
 	httpguard.Mount(
-		router,
+		route.Router,
 		yagoproto.PathTransferRWI,
 		yagoproto.TransferRWIEndpointMethods,
 		yagoproto.ParseTransferRWIRequest,
 		transferRWIEndpoint{
-			identity:          identity,
-			intake:            receiver,
-			gate:              gate,
-			batchCap:          cfg.BatchCap,
-			pauseMilliseconds: cfg.PauseMilliseconds,
-			accept:            cfg.AcceptRemoteIndex,
+			identity:          route.Identity,
+			intake:            route.Receiver,
+			senders:           route.Senders,
+			gate:              route.Gate,
+			batchCap:          route.Config.BatchCap,
+			pauseMilliseconds: route.Config.PauseMilliseconds,
+			accept:            route.Config.AcceptRemoteIndex,
 		}.Serve,
 	)
 }

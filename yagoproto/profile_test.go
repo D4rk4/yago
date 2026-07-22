@@ -8,7 +8,10 @@ import (
 )
 
 func TestProfileRequestFormRoundTrip(t *testing.T) {
-	req := yagoproto.ProfileRequest{NetworkName: "freeworld"}
+	req := yagoproto.ProfileRequest{
+		NetworkName:        "freeworld",
+		NetworkNamePresent: true,
+	}
 
 	got, err := yagoproto.ParseProfileRequest(t.Context(), req.Form())
 	if err != nil {

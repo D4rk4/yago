@@ -14,6 +14,7 @@ func cacheKey(req SearchRequest) string {
 	writeCacheField(&builder, strconv.Itoa(req.MaxResults))
 	writeCacheField(&builder, strconv.FormatBool(req.IncludeRaw))
 	writeCacheField(&builder, strconv.FormatBool(req.SafeSearch))
+	writeCacheField(&builder, req.SiteHost)
 	writeCacheStrings(&builder, req.IncludeDomain)
 	writeCacheStrings(&builder, req.ExcludeDomain)
 	writeCacheField(&builder, req.Language)

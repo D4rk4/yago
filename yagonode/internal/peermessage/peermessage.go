@@ -31,8 +31,29 @@ func OpenMailbox(v *vault.Vault, now func() time.Time) (*Mailbox, error) {
 	if err != nil {
 		return nil, err
 	}
+	cleanup, err := registerMailboxCleanup(v)
+	if err != nil {
+		return nil, err
+	}
 
-	return &Mailbox{vault: v, messages: messages, now: now}, nil
+	mailbox := &Mailbox{
+		writePermit: newMailboxWritePermit(), vault: v, messages: messages,
+		cleanup: cleanup, now: now,
+		retention: mailboxRetention{
+			records: maximumMailboxRecords,
+			bytes:   maximumMailboxBytes,
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), mailboxStartupTimeout)
+	defer cancel()
+	if err := mailbox.reconcilePendingMessage(ctx); err != nil {
+		return nil, fmt.Errorf("reconcile peer messages: %w", err)
+	}
+	if err := mailbox.clearScrubCursor(ctx); err != nil {
+		return nil, fmt.Errorf("finish peer message cleanup: %w", err)
+	}
+
+	return mailbox, nil
 }
 
 func Mount(

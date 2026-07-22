@@ -50,17 +50,17 @@ func (localPeer) NetworkMatches(network string) bool {
 }
 
 func (localPeer) Addresses(network string, youare yagomodel.Hash) bool {
-	return network == "freeworld" && youare == yagomodel.WordHash("self")
+	return (network == "" || network == "freeworld") && youare == yagomodel.WordHash("self")
 }
 
-func (localPeer) AuthenticatesAddress(
+func (localPeer) Authenticates(
 	network string,
-	youare yagomodel.Hash,
+	networkPresent bool,
 	_ string,
 	_ string,
 	_ string,
 ) bool {
-	return network == "freeworld" && youare == yagomodel.WordHash("self")
+	return network == "freeworld" || network == "" && !networkPresent
 }
 
 func TestCrawlReceiptRejectsCrawl(t *testing.T) {

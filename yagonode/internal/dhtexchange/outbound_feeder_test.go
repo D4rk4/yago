@@ -13,11 +13,14 @@ type wordSourceScript struct {
 	words         []yagomodel.WordPostings
 	selectErr     error
 	restoreErr    error
+	finalizeErr   error
 	selectCalls   int
 	restoreCalls  int
+	finalizeCalls int
 	maxWords      int
 	maxPostings   int
 	restoredWords []yagomodel.WordPostings
+	finalized     []yagomodel.RWIPosting
 }
 
 func (s *wordSourceScript) SelectOutboundWords(
@@ -46,6 +49,19 @@ func (s *wordSourceScript) RestoreOutboundWords(
 	}
 
 	return wordPostingCount(words), nil
+}
+
+func (s *wordSourceScript) FinalizeOutboundPostings(
+	_ context.Context,
+	postings []yagomodel.RWIPosting,
+) (int, error) {
+	s.finalizeCalls++
+	s.finalized = append([]yagomodel.RWIPosting(nil), postings...)
+	if s.finalizeErr != nil {
+		return 0, s.finalizeErr
+	}
+
+	return len(postings), nil
 }
 
 func TestOutboundFeederSkipsWhenQueueAlreadyHasWork(t *testing.T) {
@@ -138,6 +154,9 @@ func TestOutboundFeederDropsRowsWithoutLocalURLMetadata(t *testing.T) {
 	}
 	if receipt.State != OutboundFeedDropped ||
 		receipt.Enqueue.MissingURL != 1 ||
+		receipt.FinalizedPostings != 1 ||
+		source.finalizeCalls != 1 ||
+		len(source.finalized) != 1 ||
 		source.restoreCalls != 0 {
 		t.Fatalf("receipt/source = %#v/%#v", receipt, source)
 	}
@@ -163,9 +182,52 @@ func TestOutboundFeederRestoresWhenNoTargetAcceptsRows(t *testing.T) {
 		t.Fatalf("Feed: %v", err)
 	}
 	if receipt.State != OutboundFeedRestored ||
+		receipt.FinalizedPostings != 0 ||
 		receipt.RestoredPostings != 1 ||
 		source.restoreCalls != 1 {
 		t.Fatalf("receipt/source = %#v/%#v", receipt, source)
+	}
+}
+
+func TestOutboundFeederRestoresSelectionWhenOrphanFinalizationFails(t *testing.T) {
+	t.Parallel()
+
+	word := queueHash(t, "WWWWWWWWWWWW")
+	missing := yagomodel.WordHash("missing")
+	kept := yagomodel.WordHash("kept")
+	finalizeErr := errors.New("finalize failed")
+	source := &wordSourceScript{
+		words: []yagomodel.WordPostings{{
+			WordHash: word,
+			Postings: []yagomodel.RWIPosting{
+				queuePosting(word, missing),
+				queuePosting(word, kept),
+			},
+		}},
+		finalizeErr: finalizeErr,
+	}
+	queue := NewOutboundQueue()
+
+	receipt, err := NewOutboundFeeder(
+		queue,
+		source,
+		&URLSet{missing: map[yagomodel.Hash]struct{}{missing: {}}},
+		func(context.Context) []yagomodel.Seed {
+			return []yagomodel.Seed{queueSeed(t, "AAAAAAAAAAAA")}
+		},
+		OutboundFeederConfig{Redundancy: 1, MinimumPeerAgeDays: -1},
+	).Feed(t.Context())
+	if !errors.Is(err, finalizeErr) || receipt.State != OutboundFeedRestored ||
+		receipt.RestoredPostings != 2 || receipt.FinalizedPostings != 0 ||
+		source.restoreCalls != 1 || len(source.restoredWords) != 1 ||
+		len(source.restoredWords[0].Postings) != 2 || queue.PostingCount() != 0 {
+		t.Fatalf(
+			"receipt/error/source/queue = %#v/%v/%#v/%d",
+			receipt,
+			err,
+			source,
+			queue.PostingCount(),
+		)
 	}
 }
 
@@ -194,6 +256,7 @@ func TestOutboundFeederKeepsMissingURLRowsDroppedDuringRestore(t *testing.T) {
 		t.Fatalf("Feed: %v", err)
 	}
 	if receipt.State != OutboundFeedRestored ||
+		receipt.FinalizedPostings != 1 ||
 		receipt.RestoredPostings != 1 ||
 		len(source.restoredWords) != 1 ||
 		len(source.restoredWords[0].Postings) != 1 {

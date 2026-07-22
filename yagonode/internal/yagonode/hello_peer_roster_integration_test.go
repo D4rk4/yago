@@ -64,12 +64,15 @@ func (p helloRosterProbeTransport) RoundTrip(
 	}, nil
 }
 
-func TestHelloAndRosterRetainPromoteDemoteAndExcludeCaller(t *testing.T) {
-	roster, err := peerroster.Open(openTestVault(t), time.Now, 8, 4)
+func TestHelloAndRosterRetainPromoteAndDoNotDowngradeCaller(t *testing.T) {
+	self := helloRosterSeed(t, "self", "203.0.113.1")
+	roster, err := peerroster.Open(
+		t.Context(), openTestVault(t), self.Hash, time.Now,
+		peerroster.Capacity{Reservoir: 8, Active: 4},
+	)
 	if err != nil {
 		t.Fatalf("peerroster.Open: %v", err)
 	}
-	self := helloRosterSeed(t, "self", "203.0.113.1")
 	status := helloRosterStatus{networkName: "freeworld", self: self}
 	reachable := false
 	mux := http.NewServeMux()
@@ -102,19 +105,22 @@ func TestHelloAndRosterRetainPromoteDemoteAndExcludeCaller(t *testing.T) {
 
 	reachable = true
 	serveHelloRosterRequest(t, mux, caller)
-	assertHelloRosterCaller(t, roster, caller.Hash, yagomodel.PeerSenior, true)
+	assertHelloRosterCaller(t, roster, caller.Hash, yagomodel.PeerPrincipal, true)
 
 	reachable = false
 	serveHelloRosterRequest(t, mux, caller)
-	assertHelloRosterCaller(t, roster, caller.Hash, yagomodel.PeerJunior, false)
+	assertHelloRosterCaller(t, roster, caller.Hash, yagomodel.PeerPrincipal, true)
 }
 
 func TestHelloAndRosterRetainJuniorAfterRequestCancellation(t *testing.T) {
-	roster, err := peerroster.Open(openTestVault(t), time.Now, 8, 4)
+	self := helloRosterSeed(t, "self", "203.0.113.1")
+	roster, err := peerroster.Open(
+		t.Context(), openTestVault(t), self.Hash, time.Now,
+		peerroster.Capacity{Reservoir: 8, Active: 4},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	self := helloRosterSeed(t, "self", "203.0.113.1")
 	status := helloRosterStatus{networkName: "freeworld", self: self}
 	requestContext, cancel := context.WithCancel(t.Context())
 	mux := http.NewServeMux()
@@ -143,7 +149,7 @@ func TestHelloAndRosterRetainJuniorAfterRequestCancellation(t *testing.T) {
 	request := yagoproto.HelloRequest{
 		NetworkName: status.networkName,
 		Seed:        caller,
-		Iam:         caller.Hash,
+		Iam:         caller.Hash.String(),
 	}
 	recorder := httptest.NewRecorder()
 	httpRequest := httptest.NewRequestWithContext(
@@ -158,6 +164,36 @@ func TestHelloAndRosterRetainJuniorAfterRequestCancellation(t *testing.T) {
 		t.Fatalf("canceled hello elapsed = %v", elapsed)
 	}
 	assertHelloRosterCaller(t, roster, caller.Hash, yagomodel.PeerJunior, false)
+}
+
+func TestHelloPeerRosterSelectsNewestReachablePeersWithinLimit(t *testing.T) {
+	self := helloRosterSeed(t, "self", "203.0.113.1")
+	now := time.Unix(1_000, 0)
+	roster, err := peerroster.Open(
+		t.Context(),
+		openTestVault(t),
+		self.Hash,
+		func() time.Time {
+			now = now.Add(time.Second)
+
+			return now
+		},
+		peerroster.Capacity{Reservoir: 8, Active: 8},
+	)
+	if err != nil {
+		t.Fatalf("peerroster.Open: %v", err)
+	}
+	oldest := helloRosterSeed(t, "oldest", "203.0.113.2")
+	middle := helloRosterSeed(t, "middle", "203.0.113.3")
+	newest := helloRosterSeed(t, "newest", "203.0.113.4")
+	roster.ObserveResponder(t.Context(), oldest)
+	roster.ObserveResponder(t.Context(), middle)
+	roster.ObserveResponder(t.Context(), newest)
+
+	selected := (helloPeerRoster{roster: roster}).FreshestPeers(t.Context(), 2)
+	if len(selected) != 2 || selected[0].Hash != newest.Hash || selected[1].Hash != middle.Hash {
+		t.Fatalf("selected peers = %#v, want newest then middle", selected)
+	}
 }
 
 func helloRosterSeed(
@@ -188,7 +224,7 @@ func serveHelloRosterRequest(
 	request := yagoproto.HelloRequest{
 		NetworkName: "freeworld",
 		Seed:        caller,
-		Iam:         caller.Hash,
+		Iam:         caller.Hash.String(),
 	}
 	recorder := httptest.NewRecorder()
 	httpRequest := httptest.NewRequestWithContext(

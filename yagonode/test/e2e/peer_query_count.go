@@ -29,7 +29,7 @@ func peerQueryCountWithEnv(
 ) (int, bool) {
 	queryURL := peerURL + "/yacy/query.html?" + (yagoproto.QueryRequest{
 		NetworkName: yagoproto.DefaultNetwork,
-		YouAre:      hash,
+		YouAre:      hash.String(),
 		Object:      object,
 		Env:         env,
 	}).Form().Encode()

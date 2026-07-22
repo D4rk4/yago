@@ -101,7 +101,9 @@ func (s localSearcher) indexRequestWithWeights(
 		ExcludeTerms:       append([]string(nil), req.ExcludedTerms...),
 		Phrases:            append([]string(nil), req.Phrases...),
 		MaxResults:         req.Offset + requestLimit(req),
-		IncludeDomain:      includeDomains(req),
+		SiteHost:           req.SiteHost,
+		IncludeDomain:      append([]string(nil), req.IncludeDomains...),
+		ExcludeDomain:      append([]string(nil), req.ExcludeDomains...),
 		SafeSearch:         req.SafeSearch,
 		Language:           strings.ToLower(req.Language),
 		Weights:            weights,
@@ -153,14 +155,6 @@ func requestLimit(req searchcore.Request) int {
 	}
 
 	return req.Limit
-}
-
-func includeDomains(req searchcore.Request) []string {
-	if req.SiteHost == "" {
-		return nil
-	}
-
-	return []string{req.SiteHost}
 }
 
 func coreResults(

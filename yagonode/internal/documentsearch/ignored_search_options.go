@@ -9,12 +9,8 @@ type ignoredOption struct {
 
 var ignoredOptions = []ignoredOption{
 	{"prefer", func(r yagoproto.SearchRequest) bool { return r.Prefer != "" }},
-	{"filter", func(r yagoproto.SearchRequest) bool { return r.Filter != "" && r.Filter != ".*" }},
 	{"profile", func(r yagoproto.SearchRequest) bool { return r.Profile != "" }},
-	{"author", func(r yagoproto.SearchRequest) bool { return r.Author != "" }},
 	{"collection", func(r yagoproto.SearchRequest) bool { return r.Collection != "" }},
-	{"filetype", func(r yagoproto.SearchRequest) bool { return r.FileType != "" }},
-	{"protocol", func(r yagoproto.SearchRequest) bool { return r.Protocol != "" }},
 	{"timezoneOffset", func(r yagoproto.SearchRequest) bool { return r.TimezoneOffset != 0 }},
 }
 

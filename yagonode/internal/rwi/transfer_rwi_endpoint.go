@@ -32,6 +32,7 @@ func missingFieldResult(
 type transferRWIEndpoint struct {
 	identity          nodeidentity.Identity
 	intake            PostingReceiver
+	senders           SenderDirectory
 	gate              *httpguard.IntakeGate
 	batchCap          int
 	pauseMilliseconds int
@@ -42,44 +43,10 @@ func (e transferRWIEndpoint) Serve(
 	ctx context.Context,
 	req yagoproto.TransferRWIRequest,
 ) (yagoproto.TransferRWIResponse, error) {
-	resp := yagoproto.TransferRWIResponse{Pause: transferRWIDefaultPause}
-
-	if !e.identity.Authenticates(
-		req.NetworkName,
-		req.Key,
-		req.Iam.String(),
-		req.MagicMD5,
-	) {
-		resp.Result = yagoproto.ResultNotAuthentified
-
+	resp, admitted := e.preflight(req)
+	if !admitted {
 		return resp, nil
 	}
-	// The operator turned the accept-remote-index capability off: refuse the
-	// transfer outright, matching YaCy's transferRWI with allowReceiveIndex
-	// disabled, so senders mark this peer as not accepting and move on.
-	if !e.accept {
-		resp.Result = yagoproto.ResultNotGranted
-
-		return resp, nil
-	}
-	if result, missing := missingFieldResult(req); missing {
-		resp.Result = result
-
-		return resp, nil
-	}
-	// A single peer transfer carrying more postings than a batch may hold is a
-	// swarm-transfer admission limit, not a storage failure; answer Busy so the
-	// sender backs off and retries a smaller batch. A non-positive cap disables
-	// the limit. Local crawl ingest bypasses this endpoint and is never
-	// size-capped.
-	if req.ExceedsEntryLimit() || e.batchCap > 0 && len(req.Indexes) > e.batchCap {
-		resp.Result = yagoproto.ResultBusy
-		resp.Pause = e.pauseMilliseconds
-
-		return resp, nil
-	}
-	// YaCy rejects inbound RWI under high system load without details
-	// (transferRWI.java "too high load"); admission slots bound the same harm.
 	release, ok := e.gate.TryAcquire()
 	if !ok {
 		resp.Result = yagoproto.ResultTooHighLoad
@@ -93,7 +60,55 @@ func (e transferRWIEndpoint) Serve(
 
 		return resp, nil
 	}
+	if _, known := e.senders.PeerByHash(ctx, req.Iam); !known {
+		resp.Result = yagoproto.ResultNotGranted
 
+		return resp, nil
+	}
+
+	return e.receive(ctx, req, resp)
+}
+
+func (e transferRWIEndpoint) preflight(
+	req yagoproto.TransferRWIRequest,
+) (yagoproto.TransferRWIResponse, bool) {
+	resp := yagoproto.TransferRWIResponse{Pause: transferRWIDefaultPause}
+	if !e.identity.Authenticates(
+		req.NetworkName,
+		req.NetworkNamePresent,
+		req.Key,
+		req.Iam.String(),
+		req.MagicMD5,
+	) {
+		resp.Result = yagoproto.ResultNotAuthentified
+
+		return resp, false
+	}
+	if !e.accept {
+		resp.Result = yagoproto.ResultNotGranted
+
+		return resp, false
+	}
+	if result, missing := missingFieldResult(req); missing {
+		resp.Result = result
+
+		return resp, false
+	}
+	if req.ExceedsEntryLimit() || e.batchCap > 0 && len(req.Indexes) > e.batchCap {
+		resp.Result = yagoproto.ResultBusy
+		resp.Pause = e.pauseMilliseconds
+
+		return resp, false
+	}
+
+	return resp, true
+}
+
+func (e transferRWIEndpoint) receive(
+	ctx context.Context,
+	req yagoproto.TransferRWIRequest,
+	resp yagoproto.TransferRWIResponse,
+) (yagoproto.TransferRWIResponse, error) {
 	slog.DebugContext(ctx, "transfer rwi request accepted",
 		slog.Int("wordCount", req.WordCount),
 		slog.Int("entryCount", req.EntryCount),

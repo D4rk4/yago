@@ -11,14 +11,17 @@ type Collection[V any] struct {
 func (c *Collection[V]) Get(tx *Txn, key Key) (V, bool, error) {
 	var zero V
 
-	raw := tx.etx.Bucket(c.name).Get(key)
-	if raw == nil {
+	raw, found, err := readEncodedValue(tx, c.name, key)
+	if err != nil {
+		return zero, found, fmt.Errorf("read %s: %w", c.name, err)
+	}
+	if !found {
 		return zero, false, nil
 	}
 
 	val, err := c.codec.Decode(raw)
 	if err != nil {
-		return zero, false, fmt.Errorf("decode %s: %w", c.name, err)
+		return zero, true, corruptValueDecodeError(c.name, err)
 	}
 
 	return val, true, nil
@@ -44,7 +47,7 @@ func (c *Collection[V]) Put(tx *Txn, key Key, val V) error {
 	}
 
 	bucket := tx.etx.Bucket(c.name)
-	existed := bucket.Get(key) != nil
+	existed := c.Contains(tx, key)
 	if err := bucket.Put(key, raw); err != nil {
 		return fmt.Errorf("store %s: %w", c.name, err)
 	}
@@ -65,7 +68,7 @@ func (c *Collection[V]) Delete(tx *Txn, key Key) (bool, error) {
 	}
 
 	bucket := tx.etx.Bucket(c.name)
-	if bucket.Get(key) == nil {
+	if !c.Contains(tx, key) {
 		return false, nil
 	}
 	if err := bucket.Delete(key); err != nil {
@@ -82,7 +85,7 @@ func (c *Collection[V]) Scan(tx *Txn, prefix Key, fn func(Key, V) (bool, error))
 	if err := tx.etx.Bucket(c.name).Scan(prefix, func(key Key, raw []byte) (bool, error) {
 		val, err := c.codec.Decode(raw)
 		if err != nil {
-			return false, fmt.Errorf("decode %s: %w", c.name, err)
+			return false, corruptValueDecodeError(c.name, err)
 		}
 
 		return fn(append(Key(nil), key...), val)

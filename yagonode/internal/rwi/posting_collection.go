@@ -13,7 +13,7 @@ import (
 // (PERF-READ-01).
 const PostingsBucket vault.Name = "rwi"
 
-const outboundSelectedBucket vault.Name = "rwi_outbound_selected"
+const OutboundSelectionBucket vault.Name = "rwi_outbound_selected"
 
 const postingKeyLength = yagomodel.HashLength + yagomodel.HashLength
 
@@ -46,7 +46,7 @@ func registerPostings(
 func registerOutboundSelectedPostings(
 	v *vault.Vault,
 ) (*vault.Collection[yagomodel.RWIPosting], error) {
-	collection, err := vault.Register(v, outboundSelectedBucket, postingCodec{})
+	collection, err := vault.Register(v, OutboundSelectionBucket, postingCodec{})
 	if err != nil {
 		return nil, fmt.Errorf("register outbound selected rwi collection: %w", err)
 	}

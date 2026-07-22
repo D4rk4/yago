@@ -13,6 +13,7 @@ import (
 type transferURLEndpoint struct {
 	identity nodeidentity.Identity
 	intake   URLReceiver
+	senders  SenderDirectory
 	gate     *httpguard.IntakeGate
 	accept   bool
 }
@@ -25,6 +26,7 @@ func (e transferURLEndpoint) Serve(
 
 	if !e.identity.Authenticates(
 		req.NetworkName,
+		req.NetworkNamePresent,
 		req.Key,
 		req.Iam.String(),
 		req.MagicMD5,
@@ -50,6 +52,11 @@ func (e transferURLEndpoint) Serve(
 	defer release()
 	if req.YouAre != e.identity.Hash {
 		resp.Result = yagoproto.ResultWrongTarget
+
+		return resp, nil
+	}
+	if _, known := e.senders.PeerByHash(ctx, req.Iam); !known {
+		resp.Result = yagoproto.ResultErrorNotGranted
 
 		return resp, nil
 	}

@@ -32,7 +32,7 @@ func (s searcher) sendRemoteSearch(
 		ctx,
 		peer,
 		searchReq,
-		remoteSearchBodyCap,
+		remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap},
 	)
 
 	return response, err
@@ -53,6 +53,7 @@ func baseRemoteSearchRequest(
 		Prefer:      req.PreferMaskFilter,
 		Filter:      req.URLMaskFilter,
 		SiteHost:    req.SiteHost,
+		Author:      req.Author,
 		FileType:    req.FileType,
 	}
 }
@@ -71,13 +72,13 @@ func abstractRemoteSearchRequest(
 
 func secondaryRemoteSearchRequest(
 	req searchcore.Request,
-	term yagomodel.Hash,
+	terms []yagomodel.Hash,
 	urls []yagomodel.Hash,
 	networkName string,
 	perPeerTimeout time.Duration,
 ) yagoproto.SearchRequest {
 	searchReq := baseRemoteSearchRequest(req, networkName, perPeerTimeout)
-	searchReq.Query = []yagomodel.Hash{term}
+	searchReq.Query = terms
 	searchReq.URLs = urls
 	searchReq.Count = len(urls)
 
@@ -91,6 +92,9 @@ func remoteSearchRequest(
 ) yagoproto.SearchRequest {
 	searchReq := baseRemoteSearchRequest(req, networkName, perPeerTimeout)
 	searchReq.Query = termHashes(req.Terms)
+	if len(searchReq.Query) > 1 {
+		searchReq.Abstracts = yagoproto.SearchAbstractsAuto
+	}
 
 	return searchReq
 }

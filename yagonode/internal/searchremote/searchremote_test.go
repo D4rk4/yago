@@ -135,7 +135,7 @@ func TestRemoteSearcherSelectsDHTTargetByWordHash(t *testing.T) {
 	}
 }
 
-func TestRemoteSearcherUsesIndexAbstractsForMultiTermSearch(t *testing.T) {
+func TestRemoteSearcherUsesPrimaryIndexAbstractsWithinJavaThrottle(t *testing.T) {
 	fixture := newMultiTermAbstractFixture(t)
 	server := httptest.NewServer(http.HandlerFunc(fixture.serve))
 	defer server.Close()
@@ -161,9 +161,12 @@ func TestRemoteSearcherUsesIndexAbstractsForMultiTermSearch(t *testing.T) {
 		len(resp.PartialFailures) != 0 {
 		t.Fatalf("response = %#v", resp)
 	}
-	if requests := fixture.recordedRequests(); len(requests) != 4 {
-		t.Fatalf("request count = %d, want 4 (1 primary + 2 abstract + 1 secondary); requests=%v",
+	if requests := fixture.recordedRequests(); len(requests) != 2 {
+		t.Fatalf("request count = %d, want 2 (1 primary + 1 secondary); requests=%v",
 			len(requests), requests)
+	}
+	if rejected := fixture.rejectedRequests(); rejected != 0 {
+		t.Fatalf("Java-throttle rejections = %d", rejected)
 	}
 }
 
@@ -175,7 +178,7 @@ func TestRemoteSearcherMultiWordPrimaryConjunction(t *testing.T) {
 	doc := hashFor("doc")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		form := r.URL.Query()
-		if form.Get(yagoproto.FieldAbstracts) != "" || form.Get(yagoproto.FieldURLs) != "" {
+		if form.Get(yagoproto.FieldURLs) != "" {
 			// Abstract/secondary enhancement: no split results in this fixture.
 			writeFixtureResponse(t, w, yagoproto.SearchResponse{}.Encode().Encode())
 
@@ -220,6 +223,7 @@ type multiTermAbstractFixture struct {
 	alphaOnly yagomodel.Hash
 	betaOnly  yagomodel.Hash
 	requests  []url.Values
+	rejected  int
 	mu        sync.Mutex
 }
 
@@ -238,36 +242,34 @@ func newMultiTermAbstractFixture(tb testing.TB) *multiTermAbstractFixture {
 
 func (f *multiTermAbstractFixture) serve(w http.ResponseWriter, r *http.Request) {
 	form := r.URL.Query()
-	f.record(form)
+	if f.record(form) > 2 {
+		w.WriteHeader(http.StatusTooManyRequests)
+		return
+	}
 
 	switch {
-	case form.Get(yagoproto.FieldQuery) == "" &&
-		form.Get(yagoproto.FieldAbstracts) == f.alpha.String():
-		f.writeAbstract(w, f.alpha, f.alphaOnly)
-	case form.Get(yagoproto.FieldQuery) == "" &&
-		form.Get(yagoproto.FieldAbstracts) == f.beta.String():
-		f.writeAbstract(w, f.beta, f.betaOnly)
-	case form.Get(yagoproto.FieldQuery) == f.alpha.String() &&
-		form.Get(yagoproto.FieldURLs) == f.shared.String():
-		f.writeSecondary(w)
-	case form.Get(yagoproto.FieldQuery) == f.beta.String() &&
-		form.Get(yagoproto.FieldURLs) == f.shared.String():
-		f.writeSecondary(w)
-	case form.Get(yagoproto.FieldAbstracts) == "" &&
+	case form.Get(yagoproto.FieldQuery) == f.alpha.String()+f.beta.String() &&
+		form.Get(yagoproto.FieldAbstracts) == string(yagoproto.SearchAbstractsAuto) &&
 		form.Get(yagoproto.FieldURLs) == "":
-		// primary conjunction search: this fixture holds no single-peer hit, so
-		// the shared document is recovered only via the abstract/secondary phase.
-		writeFixtureResponse(f.tb, w, yagoproto.SearchResponse{}.Encode().Encode())
+		f.writePrimary(w)
+	case form.Get(yagoproto.FieldQuery) == f.alpha.String()+f.beta.String() &&
+		form.Get(yagoproto.FieldURLs) == f.shared.String():
+		f.writeSecondary(w)
 	default:
 		f.tb.Fatalf("unexpected remote search request: %s", r.URL.RawQuery)
 	}
 }
 
-func (f *multiTermAbstractFixture) record(form url.Values) {
+func (f *multiTermAbstractFixture) record(form url.Values) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.requests = append(f.requests, form)
+	if len(f.requests) > 2 {
+		f.rejected++
+	}
+
+	return len(f.requests)
 }
 
 func (f *multiTermAbstractFixture) recordedRequests() []url.Values {
@@ -277,16 +279,23 @@ func (f *multiTermAbstractFixture) recordedRequests() []url.Values {
 	return append([]url.Values(nil), f.requests...)
 }
 
-func (f *multiTermAbstractFixture) writeAbstract(
-	w http.ResponseWriter,
-	term yagomodel.Hash,
-	termOnly yagomodel.Hash,
-) {
+func (f *multiTermAbstractFixture) rejectedRequests() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.rejected
+}
+
+func (f *multiTermAbstractFixture) writePrimary(w http.ResponseWriter) {
 	writeFixtureResponse(f.tb, w, yagoproto.SearchResponse{
-		IndexCount: map[yagomodel.Hash]int{term: 2},
+		IndexCount: map[yagomodel.Hash]int{f.alpha: 2, f.beta: 2},
 		IndexAbstract: map[yagomodel.Hash]string{
-			term: yagomodel.EncodeSearchIndexAbstract([]yagomodel.Hash{
-				termOnly,
+			f.alpha: yagomodel.EncodeSearchIndexAbstract([]yagomodel.Hash{
+				f.alphaOnly,
+				f.shared,
+			}),
+			f.beta: yagomodel.EncodeSearchIndexAbstract([]yagomodel.Hash{
+				f.betaOnly,
 				f.shared,
 			}),
 		},
@@ -392,23 +401,16 @@ func TestRemoteSearcherReportsMalformedIndexAbstract(t *testing.T) {
 	at := time.Unix(1_800_000_000, 0).UTC()
 	sink := &capturedReputationObservations{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Query().Get(yagoproto.FieldAbstracts) {
-		case alpha.String():
-			writeFixtureResponse(t, w, yagoproto.SearchResponse{
-				IndexAbstract: map[yagomodel.Hash]string{alpha: "{bad"},
-			}.Encode().Encode())
-		case beta.String():
+		if r.URL.Query().Get(yagoproto.FieldAbstracts) == string(yagoproto.SearchAbstractsAuto) {
 			writeFixtureResponse(t, w, yagoproto.SearchResponse{
 				IndexAbstract: map[yagomodel.Hash]string{
-					beta: yagomodel.EncodeSearchIndexAbstract([]yagomodel.Hash{hashFor("beta")}),
+					alpha: "{bad",
+					beta:  yagomodel.EncodeSearchIndexAbstract([]yagomodel.Hash{hashFor("beta")}),
 				},
 			}.Encode().Encode())
-		case "":
-			// primary conjunction search: no direct hit in this fixture.
-			writeFixtureResponse(t, w, yagoproto.SearchResponse{}.Encode().Encode())
-		default:
-			t.Fatalf("unexpected request: %s", r.URL.RawQuery)
+			return
 		}
+		t.Fatalf("unexpected request: %s", r.URL.RawQuery)
 	}))
 	defer server.Close()
 	peer := serverSeed(t, server.URL)
@@ -433,9 +435,8 @@ func TestRemoteSearcherReportsMalformedIndexAbstract(t *testing.T) {
 		!strings.Contains(resp.PartialFailures[0].Reason, "index abstract") {
 		t.Fatalf("response = %#v", resp)
 	}
-	if len(sink.batches) != 1 || len(sink.batches[0]) != 3 ||
-		countReputationOutcome(sink.batches[0], peerreputation.OutcomeSuccess) != 2 ||
-		countReputationOutcome(sink.batches[0], peerreputation.OutcomeInvalidResult) != 1 {
+	if len(sink.batches) != 1 || len(sink.batches[0]) != 1 ||
+		countReputationOutcome(sink.batches[0], peerreputation.OutcomeSuccess) != 1 {
 		t.Fatalf("abstract observations = %#v", sink.batches)
 	}
 }
@@ -459,10 +460,8 @@ func TestRemoteSearcherReportsIndexAbstractPeerFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	// One primary conjunction failure plus the abstract phase (two peer failures
-	// and two missing-response notices) surface together.
 	if len(resp.Results) != 0 ||
-		len(resp.PartialFailures) != 5 ||
+		len(resp.PartialFailures) != 1 ||
 		!strings.Contains(resp.PartialFailures[0].Reason, "status 502") {
 		t.Fatalf("response = %#v", resp)
 	}
@@ -750,11 +749,25 @@ func TestRemoteSearchRequestHelpers(t *testing.T) {
 	if req.NetworkName != "freeworld" ||
 		len(req.Query) != 1 ||
 		len(req.Exclude) != 1 ||
+		req.Abstracts != "" ||
 		req.Count != 7 ||
 		req.Time != 1500 ||
 		req.ContentDom != yagoproto.ContentDomainImage ||
 		req.FileType != "pdf" {
 		t.Fatalf("request = %#v", req)
+	}
+	multiword := remoteSearchRequest(searchcore.Request{
+		Terms: []string{"a", "b"},
+	}, "freeworld", time.Second)
+	if multiword.Abstracts != yagoproto.SearchAbstractsAuto {
+		t.Fatalf("multiword abstracts = %q", multiword.Abstracts)
+	}
+	configured := NewSearcher(Config{}).(searcher)
+	if DefaultMaxPeers != 16 {
+		t.Fatalf("default maximum peers constant = %d", DefaultMaxPeers)
+	}
+	if configured.maxPeers != DefaultMaxPeers {
+		t.Fatalf("default maximum peers = %d", configured.maxPeers)
 	}
 	if positiveOrDefault(0, 3) != 3 || positiveOrDefault(2, 3) != 2 {
 		t.Fatal("positiveOrDefault failed")
@@ -874,52 +887,15 @@ func TestDHTSearchPeerSelectionSkipsInvalidWordHash(t *testing.T) {
 	}
 }
 
-func TestDHTSearchPeerSelectionSkipsAlreadySeenTarget(t *testing.T) {
-	peer := searchSeed(t, "BBBBBBBBBBBB")
-	selected := []yagomodel.Seed{peer}
-	seen := map[yagomodel.Hash]struct{}{peer.Hash: {}}
-
-	err := appendDHTSearchPeers(
-		&selected,
-		seen,
-		0,
-		[]yagomodel.Seed{peer},
-		dhtSearchPeerConfig{redundancy: 1, minimumPeerAgeDays: -1},
-	)
-	if err != nil {
-		t.Fatalf("appendDHTSearchPeers: %v", err)
-	}
-	if len(selected) != 1 {
-		t.Fatalf("selected = %#v, want existing peer only", selected)
-	}
-}
-
-func TestDHTSearchPeerSelectionRandomizesPeerCap(t *testing.T) {
-	peers := []yagomodel.Seed{
-		searchSeed(t, "AAAAAAAAAAAA"),
-		searchSeed(t, "BBBBBBBBBBBB"),
-		searchSeed(t, "CCCCCCCCCCCC"),
-	}
-	script := &searchTargetScript{values: []int{1}}
-	got, err := limitDHTSearchPeers(peers, dhtSearchPeerConfig{
-		maxPeers:          1,
-		randomTargetIndex: script.next,
-	})
-	if err != nil {
-		t.Fatalf("limitDHTSearchPeers: %v", err)
-	}
-	if len(got) != 1 || got[0].Hash != hashFor("BBBBBBBBBBBB") {
-		t.Fatalf("selected peers = %#v", got)
-	}
-}
-
 func TestDHTSearchPeerSelectionRejectsRandomErrors(t *testing.T) {
 	peers := []yagomodel.Seed{
 		searchSeed(t, "AAAAAAAAAAAA"),
 		searchSeed(t, "BBBBBBBBBBBB"),
 	}
-	_, err := limitDHTSearchPeers(peers, dhtSearchPeerConfig{
-		maxPeers: 1,
+	_, err := dhtSearchTargetsAtPosition(0, peers, dhtSearchPeerConfig{
+		maxPeers:           2,
+		redundancy:         1,
+		minimumPeerAgeDays: -1,
 		randomTargetIndex: func(int) (int, error) {
 			return 0, errors.New("entropy failed")
 		},
@@ -927,8 +903,10 @@ func TestDHTSearchPeerSelectionRejectsRandomErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected random target error")
 	}
-	_, err = limitDHTSearchPeers(peers, dhtSearchPeerConfig{
-		maxPeers: 1,
+	_, err = dhtSearchTargetsAtPosition(0, peers, dhtSearchPeerConfig{
+		maxPeers:           2,
+		redundancy:         1,
+		minimumPeerAgeDays: -1,
 		randomTargetIndex: func(int) (int, error) {
 			return 2, nil
 		},
@@ -1082,6 +1060,11 @@ func metadataRow(
 		yagomodel.URLMetaHash:           hash.String(),
 		yagomodel.URLMetaURL:            yagomodel.EncodeBase64WireForm(rawURL),
 		yagomodel.URLMetaColDescription: yagomodel.EncodeBase64WireForm(title),
+		yagomodel.URLMetaWordReference: yagomodel.Encode([]byte(
+			yagomodel.WordReferencePropertyForm(yagomodel.RWIPosting{Properties: map[string]string{
+				yagomodel.ColURLHash: hash.String(),
+			}}),
+		)),
 	}}
 }
 
@@ -1108,17 +1091,6 @@ func searchSeed(tb testing.TB, raw string) yagomodel.Seed {
 		Flags:    yagomodel.Some(acceptRemoteIndexFlags()),
 		RWICount: yagomodel.Some(1),
 	}
-}
-
-type searchTargetScript struct {
-	values []int
-}
-
-func (s *searchTargetScript) next(int) (int, error) {
-	value := s.values[0]
-	s.values = s.values[1:]
-
-	return value, nil
 }
 
 func mustHost(tb testing.TB, raw string) yagomodel.Host {

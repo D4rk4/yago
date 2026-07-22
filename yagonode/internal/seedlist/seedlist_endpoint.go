@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -16,17 +15,16 @@ import (
 )
 
 const (
-	seedlistHTMLContentType       = "text/plain; charset=UTF-8"
-	seedlistJSONContentType       = "application/json; charset=UTF-8"
-	seedlistJavaScriptContentType = "application/javascript; charset=UTF-8"
-	seedlistXMLContentType        = "application/xml; charset=UTF-8"
-	seedlistLineBreak             = "\r\n"
-	seedlistMaxEntries            = 1000
+	seedlistHTMLContentType = "text/html; charset=UTF-8"
+	seedlistJSONContentType = "application/json; charset=UTF-8"
+	seedlistXMLContentType  = "application/xml; charset=UTF-8"
+	seedlistLineBreak       = "\r\n"
+	seedlistMaxEntries      = yagoproto.SeedlistMaximumEntries
 )
 
 type endpoint struct {
-	status       RuntimeStatus
-	reachability ReachablePeers
+	status RuntimeStatus
+	peers  PeerDirectory
 }
 
 var marshalSeedlistJSON = json.MarshalIndent
@@ -37,7 +35,7 @@ func (e endpoint) ServeHTML(
 ) (httpguard.RawResponse, error) {
 	return httpguard.RawResponse{
 		ContentType: seedlistHTMLContentType,
-		Body:        encodeSeeds(e.seeds(ctx, req)),
+		Body:        encodeSeeds(e.selectSeeds(ctx, req)),
 	}, nil
 }
 
@@ -45,17 +43,16 @@ func (e endpoint) ServeJSON(
 	ctx context.Context,
 	req yagoproto.SeedlistRequest,
 ) (httpguard.RawResponse, error) {
-	body, err := encodeJSON(e.seeds(ctx, req), req)
+	seeds := e.selectSeeds(ctx, req)
+	if !req.OwnSeedOnly {
+		seeds = filterByName(seeds, req.PeerName, req.PeerNamePresent)
+	}
+	body, err := encodeJSON(seeds, req)
 	if err != nil {
 		return httpguard.RawResponse{}, err
 	}
 
-	contentType := seedlistJSONContentType
-	if req.Callback != "" {
-		contentType = seedlistJavaScriptContentType
-	}
-
-	return httpguard.RawResponse{ContentType: contentType, Body: body}, nil
+	return httpguard.RawResponse{ContentType: seedlistJSONContentType, Body: body}, nil
 }
 
 func (e endpoint) ServeXML(
@@ -64,61 +61,12 @@ func (e endpoint) ServeXML(
 ) (httpguard.RawResponse, error) {
 	return httpguard.RawResponse{
 		ContentType: seedlistXMLContentType,
-		Body:        encodeXML(e.seeds(ctx, req), req),
+		Body:        encodeXML(e.xmlSeeds(ctx, req), req),
 	}, nil
 }
 
-func (e endpoint) seeds(ctx context.Context, req yagoproto.SeedlistRequest) []yagomodel.Seed {
-	candidates := e.candidates(ctx, req)
-	if req.NodeOnly {
-		candidates = filterAddressed(candidates)
-	}
-	candidates = filterByID(candidates, req.ID)
-	candidates = filterByName(candidates, req.Name)
-	candidates = filterByName(candidates, req.PeerName)
-	candidates = filterByMinVersion(candidates, req.MinVersion)
-
-	return limitSeeds(candidates, req.MaxCount)
-}
-
-func (e endpoint) candidates(
-	ctx context.Context,
-	req yagoproto.SeedlistRequest,
-) []yagomodel.Seed {
-	if req.OwnSeedOnly {
-		return []yagomodel.Seed{e.status.SelfSeed(ctx)}
-	}
-
-	reachable := e.reachability.ReachablePeers(ctx)
-	seeds := make([]yagomodel.Seed, 0, 1+len(reachable))
-	if req.IncludeSelf {
-		seeds = append(seeds, e.status.SelfSeed(ctx))
-	}
-
-	return append(seeds, reachable...)
-}
-
-func filterByID(
-	seeds []yagomodel.Seed,
-	id yagomodel.Optional[yagomodel.Hash],
-) []yagomodel.Seed {
-	target, ok := id.Get()
-	if !ok {
-		return seeds
-	}
-
-	filtered := seeds[:0]
-	for _, seed := range seeds {
-		if seed.Hash == target {
-			filtered = append(filtered, seed)
-		}
-	}
-
-	return filtered
-}
-
-func filterByName(seeds []yagomodel.Seed, name string) []yagomodel.Seed {
-	if name == "" {
+func filterByName(seeds []yagomodel.Seed, name string, present bool) []yagomodel.Seed {
+	if name == "" && !present {
 		return seeds
 	}
 
@@ -132,45 +80,15 @@ func filterByName(seeds []yagomodel.Seed, name string) []yagomodel.Seed {
 	return filtered
 }
 
-func filterAddressed(seeds []yagomodel.Seed) []yagomodel.Seed {
-	filtered := seeds[:0]
-	for _, seed := range seeds {
-		if len(seedAddresses(seed)) > 0 {
-			filtered = append(filtered, seed)
-		}
-	}
-
-	return filtered
-}
-
-func filterByMinVersion(
-	seeds []yagomodel.Seed,
-	minVersion yagomodel.Optional[float64],
-) []yagomodel.Seed {
-	floor, ok := minVersion.Get()
-	if !ok || floor <= 0 {
-		return seeds
-	}
-
-	filtered := seeds[:0]
-	for _, seed := range seeds {
-		if seedVersionAtLeast(seed, floor) {
-			filtered = append(filtered, seed)
-		}
-	}
-
-	return filtered
-}
-
-func seedVersionAtLeast(seed yagomodel.Seed, floor float64) bool {
+func seedPassesVersionFloor(seed yagomodel.Seed, floor float64) bool {
 	version, ok := seed.Version.Get()
 	if !ok {
-		return false
+		return true
 	}
 
-	value, err := strconv.ParseFloat(version.String(), 64)
+	value, err := version.Float()
 
-	return err == nil && value >= floor
+	return err != nil || value == 0 || value >= floor
 }
 
 func seedNameMatches(seed yagomodel.Seed, name string) bool {
@@ -179,31 +97,10 @@ func seedNameMatches(seed yagomodel.Seed, name string) bool {
 	return ok && seedName == name
 }
 
-func limitSeeds(
-	seeds []yagomodel.Seed,
-	maxCount yagomodel.Optional[int],
-) []yagomodel.Seed {
-	limit := seedlistMaxEntries
-	if requested, ok := maxCount.Get(); ok {
-		limit = requested
-	}
-	if limit < 0 {
-		limit = 0
-	}
-	if limit > seedlistMaxEntries {
-		limit = seedlistMaxEntries
-	}
-	if limit < len(seeds) {
-		return seeds[:limit]
-	}
-
-	return seeds
-}
-
 func encodeSeeds(seeds []yagomodel.Seed) string {
 	var b strings.Builder
 	for _, seed := range seeds {
-		b.WriteString(seed.String())
+		b.WriteString(yagomodel.EncodeSeedWireForm(seed))
 		b.WriteString(seedlistLineBreak)
 	}
 
@@ -220,7 +117,7 @@ func encodeJSON(seeds []yagomodel.Seed, req yagoproto.SeedlistRequest) (string, 
 	}
 
 	body := string(encoded)
-	if req.Callback != "" {
+	if req.CallbackPresent || req.Callback != "" {
 		body = req.Callback + "([" + body + "]);"
 	}
 
@@ -317,12 +214,21 @@ func seedAddresses(seed yagomodel.Seed) []string {
 	}
 
 	var addresses []string
+	seen := make(map[string]struct{})
+	appendAddress := func(host yagomodel.Host) {
+		address := net.JoinHostPort(host.String(), port.String())
+		if _, exists := seen[address]; exists {
+			return
+		}
+		seen[address] = struct{}{}
+		addresses = append(addresses, address)
+	}
 	if host, ok := seed.IP.Get(); ok {
-		addresses = append(addresses, net.JoinHostPort(host.String(), port.String()))
+		appendAddress(host)
 	}
 	if hosts, ok := seed.IP6.Get(); ok {
 		for _, host := range hosts {
-			addresses = append(addresses, net.JoinHostPort(host.String(), port.String()))
+			appendAddress(host)
 		}
 	}
 

@@ -90,6 +90,24 @@ func TestBlockingRosterExcludesBlockedFromReachable(t *testing.T) {
 	}
 }
 
+func TestHelloPeerRosterSelectsFreshestUnblockedPeers(t *testing.T) {
+	ctx := t.Context()
+	blocked := yagomodel.Hash("AAAAAAAAAAAA")
+	first := yagomodel.Hash("BBBBBBBBBBBB")
+	second := yagomodel.Hash("CCCCCCCCCCCC")
+	inner := reachableRoster{peers: []yagomodel.Seed{
+		{Hash: blocked},
+		{Hash: first},
+		{Hash: second},
+	}}
+	roster := newBlockingRoster(inner, newFakePeerBlocks(blocked))
+
+	peers := (helloPeerRoster{roster: roster}).FreshestPeers(ctx, 2)
+	if len(peers) != 2 || peers[0].Hash != first || peers[1].Hash != second {
+		t.Fatalf("hello peers = %+v, want freshest unblocked peers", peers)
+	}
+}
+
 func TestBlockingRosterPassesThroughWithoutBlocks(t *testing.T) {
 	ctx := context.Background()
 	inner := reachableRoster{peers: []yagomodel.Seed{

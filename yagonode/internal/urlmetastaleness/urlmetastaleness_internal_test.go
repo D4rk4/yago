@@ -14,6 +14,7 @@ import (
 
 type scriptedEngine struct {
 	buckets      map[vault.Name]map[string][]byte
+	readErrors   map[vault.Name]error
 	putErrors    map[vault.Name]error
 	deleteErrors map[vault.Name]error
 	scanErrors   map[vault.Name]error
@@ -22,6 +23,7 @@ type scriptedEngine struct {
 func newScriptedEngine() *scriptedEngine {
 	return &scriptedEngine{
 		buckets:      map[vault.Name]map[string][]byte{},
+		readErrors:   map[vault.Name]error{},
 		putErrors:    map[vault.Name]error{},
 		deleteErrors: map[vault.Name]error{},
 		scanErrors:   map[vault.Name]error{},
@@ -77,6 +79,15 @@ func (b scriptedBucket) Get(key vault.Key) []byte {
 	out := make([]byte, len(raw))
 	copy(out, raw)
 	return out
+}
+
+func (b scriptedBucket) ReadValue(key vault.Key) ([]byte, bool, error) {
+	if err := b.engine.readErrors[b.name]; err != nil {
+		return nil, false, err
+	}
+	raw, found := b.engine.buckets[b.name][string(key)]
+
+	return append([]byte(nil), raw...), found, nil
 }
 
 func (b scriptedBucket) Put(key vault.Key, raw []byte) error {
@@ -220,5 +231,15 @@ func TestURLPurgedReturnsDeleteErrors(t *testing.T) {
 		return order.URLPurged(tx, hash)
 	}); err == nil {
 		t.Fatal("expected freshness delete error")
+	}
+}
+
+func TestURLPurgedReturnsReadError(t *testing.T) {
+	storage, order, engine := openScriptedOrder(t)
+	engine.readErrors[freshnessBucket] = errors.New("freshness read failed")
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		return order.URLPurged(tx, yagomodel.WordHash("u1"))
+	}); err == nil {
+		t.Fatal("expected freshness read error")
 	}
 }

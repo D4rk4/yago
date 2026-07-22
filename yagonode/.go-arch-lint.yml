@@ -58,6 +58,8 @@ components:
     in: internal/faviconproxy/**
   siteicon:
     in: internal/siteicon/**
+  sitehost:
+    in: internal/sitehost/**
   searchsession:
     in: internal/searchsession/**
   crawlformats:
@@ -569,6 +571,7 @@ deps:
       - searchindex
       - searchlocal
       - searchremote
+      - sitehost
     canUse:
       - yagomodel
       - yagoproto
@@ -633,6 +636,7 @@ deps:
   searchindex:
     mayDependOn:
       - searchindex
+      - sitehost
       - documentstore
       - queryidentifier
       - stopwords
@@ -794,6 +798,7 @@ deps:
   websearch:
     mayDependOn:
       - websearch
+      - sitehost
       - queryidentifier
       - searchcore
       - stopwords

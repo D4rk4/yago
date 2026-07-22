@@ -67,9 +67,10 @@ func TestPublicEndpointSelfTestConfirmsQueryResponse(t *testing.T) {
 	}
 
 	want := yagoproto.QueryRequest{
-		NetworkName: "freeworld",
-		YouAre:      self,
-		Object:      yagoproto.ObjectRWICount,
+		NetworkName:        "freeworld",
+		NetworkNamePresent: true,
+		YouAre:             self.String(),
+		Object:             yagoproto.ObjectRWICount,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("query = %#v, want %#v", got, want)

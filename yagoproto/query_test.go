@@ -14,11 +14,12 @@ func TestQueryRequestRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	req := yagoproto.QueryRequest{
-		NetworkName: yagoproto.DefaultNetwork,
-		YouAre:      sampleHash(t, "alpha"),
-		Iam:         sampleHash(t, "beta"),
-		Object:      yagoproto.ObjectRWIURLCount,
-		Env:         sampleHash(t, "alpha").String(),
+		NetworkName:        yagoproto.DefaultNetwork,
+		NetworkNamePresent: true,
+		YouAre:             sampleHash(t, "alpha").String(),
+		Iam:                sampleHash(t, "beta").String(),
+		Object:             yagoproto.ObjectRWIURLCount,
+		Env:                sampleHash(t, "alpha").String(),
 	}
 
 	got, err := yagoproto.ParseQueryRequest(context.Background(), req.Form())
@@ -35,9 +36,10 @@ func TestQueryRequestAcceptsMissingIam(t *testing.T) {
 	t.Parallel()
 
 	req := yagoproto.QueryRequest{
-		NetworkName: yagoproto.DefaultNetwork,
-		YouAre:      sampleHash(t, "alpha"),
-		Object:      yagoproto.ObjectRWICount,
+		NetworkName:        yagoproto.DefaultNetwork,
+		NetworkNamePresent: true,
+		YouAre:             sampleHash(t, "alpha").String(),
+		Object:             yagoproto.ObjectRWICount,
 	}
 
 	got, err := yagoproto.ParseQueryRequest(context.Background(), req.Form())
@@ -72,7 +74,7 @@ func TestQueryResponseRoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseQueryRequestRejectsBadIam(t *testing.T) {
+func TestParseQueryRequestPreservesArbitraryIam(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{
@@ -80,29 +82,35 @@ func TestParseQueryRequestRejectsBadIam(t *testing.T) {
 		yagoproto.FieldYouAre: {sampleHash(t, "alpha").String()},
 		yagoproto.FieldIam:    {"nope"},
 	}
-	if _, err := yagoproto.ParseQueryRequest(context.Background(), form); err == nil {
-		t.Fatal("expected error for malformed iam hash")
+	request, err := yagoproto.ParseQueryRequest(context.Background(), form)
+	if err != nil || request.Iam != "nope" {
+		t.Fatalf("ParseQueryRequest = %#v, %v", request, err)
 	}
 }
 
-func TestParseQueryRequestRejectsBadYouAre(t *testing.T) {
+func TestParseQueryRequestPreservesArbitraryYouAre(t *testing.T) {
 	t.Parallel()
 
 	form := url.Values{
 		yagoproto.FieldObject: {string(yagoproto.ObjectRWICount)},
 		yagoproto.FieldYouAre: {"nope"},
 	}
-	if _, err := yagoproto.ParseQueryRequest(context.Background(), form); err == nil {
-		t.Fatal("expected error for malformed youare hash")
+	request, err := yagoproto.ParseQueryRequest(context.Background(), form)
+	if err != nil || request.YouAre != "nope" {
+		t.Fatalf("ParseQueryRequest = %#v, %v", request, err)
 	}
 }
 
-func TestParseQueryRequestRejectsUnknownObject(t *testing.T) {
+func TestParseQueryRequestPreservesUnknownObject(t *testing.T) {
 	t.Parallel()
 
-	form := url.Values{yagoproto.FieldObject: {"whatever"}}
-	if _, err := yagoproto.ParseQueryRequest(context.Background(), form); err == nil {
-		t.Fatal("expected error for unknown query object")
+	form := url.Values{
+		yagoproto.FieldObject: {"whatever"},
+		yagoproto.FieldYouAre: {sampleHash(t, "alpha").String()},
+	}
+	request, err := yagoproto.ParseQueryRequest(context.Background(), form)
+	if err != nil || request.Object != yagoproto.QueryObject("whatever") {
+		t.Fatalf("ParseQueryRequest = %#v, %v", request, err)
 	}
 }
 
@@ -118,8 +126,44 @@ func TestParseQueryResponseRejectsBadResponse(t *testing.T) {
 func TestParseQueryResponseRejectsMissingResponse(t *testing.T) {
 	t.Parallel()
 
-	if _, err := yagoproto.ParseQueryResponse(yagomodel.Message{}); err == nil {
-		t.Fatal("expected error for missing response")
+	_, err := yagoproto.ParseQueryResponse(yagomodel.Message{
+		yagoproto.FieldMagic:  "123",
+		yagoproto.FieldMyTime: "20260721120000",
+	})
+	if err == nil {
+		t.Fatal("missing response field was accepted")
+	}
+}
+
+func TestQueryResponseCanEmitUnresolvedTemplateMarker(t *testing.T) {
+	t.Parallel()
+
+	response := yagoproto.QueryResponse{
+		Magic: "123", MyTime: "20260721120000", UnresolvedResponse: true,
+	}
+	message := response.Encode()
+	if message[yagoproto.FieldResponse] != yagoproto.QueryResponseUnresolved {
+		t.Fatalf("encoded response = %#v", message)
+	}
+	parsed, err := yagoproto.ParseQueryResponse(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.UnresolvedResponse || parsed.Response != yagoproto.QueryResponseRejected ||
+		parsed.Magic != response.Magic || parsed.MyTime != response.MyTime {
+		t.Fatalf("parsed response = %#v", parsed)
+	}
+}
+
+func TestQueryResponseEmitsUnresolvedTimeWhenAuthenticationStopsEarly(t *testing.T) {
+	t.Parallel()
+
+	message := (yagoproto.QueryResponse{
+		Response: yagoproto.QueryResponseRejected,
+		Magic:    "123",
+	}).Encode()
+	if message[yagoproto.FieldMyTime] != yagoproto.QueryResponseUnresolved {
+		t.Fatalf("mytime = %q", message[yagoproto.FieldMyTime])
 	}
 }
 

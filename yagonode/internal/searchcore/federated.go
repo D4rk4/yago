@@ -77,6 +77,8 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 			federatedRemoteSearchFailed,
 		)
 	}
+	localResp = responseSatisfyingDomainConstraints(req, localResp)
+	remoteResp = responseSatisfyingDomainConstraints(req, remoteResp)
 
 	merged := FuseByReciprocalRank(
 		localResp.Results,

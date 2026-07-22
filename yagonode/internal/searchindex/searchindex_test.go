@@ -151,12 +151,12 @@ func TestBleveMemoryIndexUpdatesDeletesAndFilters(t *testing.T) {
 	}
 
 	results, err := index.Search(t.Context(), SearchRequest{
-		Query:         "needle",
-		MaxResults:    1,
-		IncludeDomain: []string{"example"},
-		Language:      "en",
-		Since:         time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
-		Until:         time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+		Query:      "needle",
+		MaxResults: 1,
+		SiteHost:   "www.fallback.example",
+		Language:   "en",
+		Since:      time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC),
+		Until:      time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -377,6 +377,12 @@ func TestBleveMemoryIndexHelpers(t *testing.T) {
 		req,
 	) {
 		t.Fatal("document should be allowed")
+	}
+	if allowsDocument(
+		documentstore.Document{NormalizedURL: "https://other.example/"},
+		SearchRequest{SiteHost: "example.org"},
+	) {
+		t.Fatal("site-host constraint accepted another host")
 	}
 }
 

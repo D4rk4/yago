@@ -33,12 +33,16 @@ func observableHelloCaller(
 }
 
 func observableAdvertisedCaller(caller yagomodel.Seed) bool {
-	host, hostKnown := caller.IP.Get()
 	_, portKnown := caller.Port.Get()
-	if !hostKnown || !portKnown {
+	if !portKnown {
 		return false
 	}
-	address, err := netip.ParseAddr(host.String())
+	for _, host := range caller.AdvertisedHosts() {
+		address, err := netip.ParseAddr(host.String())
+		if err != nil || !address.Unmap().IsUnspecified() {
+			return true
+		}
+	}
 
-	return err != nil || !address.Unmap().IsUnspecified()
+	return false
 }

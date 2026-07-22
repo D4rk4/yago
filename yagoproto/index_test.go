@@ -9,8 +9,9 @@ import (
 
 func TestIndexRequestFormRoundTrip(t *testing.T) {
 	req := yagoproto.IndexRequest{
-		NetworkName: "freeworld",
-		Object:      yagoproto.IndexObjectHost,
+		NetworkName:        "freeworld",
+		NetworkNamePresent: true,
+		Object:             yagoproto.IndexObjectHost,
 	}
 
 	got, err := yagoproto.ParseIndexRequest(t.Context(), req.Form())

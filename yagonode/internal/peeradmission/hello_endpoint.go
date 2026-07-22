@@ -2,10 +2,7 @@ package peeradmission
 
 import (
 	"context"
-	"crypto/rand"
 	"log/slog"
-	"math/big"
-	"slices"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -15,22 +12,23 @@ import (
 )
 
 type callerReachabilityProbe interface {
-	Reachable(
+	ReachableCaller(
 		ctx context.Context,
 		caller yagomodel.Seed,
 		self yagomodel.Hash,
 		networkName string,
-	) bool
+	) (yagomodel.Seed, bool)
 }
 
 type ReachableRoster interface {
-	ReachablePeers(ctx context.Context) []yagomodel.Seed
+	FreshestPeers(ctx context.Context, limit int) []yagomodel.Seed
 	ObserveCaller(ctx context.Context, caller yagomodel.Seed, classification yagomodel.PeerType)
 }
 
-var randomPeerIndex = rand.Int
-
-const callerObservationTimeout = time.Second
+const (
+	callerObservationTimeout = time.Second
+	maximumHelloKnownPeers   = 100
+)
 
 type helloEndpoint struct {
 	identity     nodeidentity.Identity
@@ -45,31 +43,41 @@ func (e helloEndpoint) Serve(
 	req yagoproto.HelloRequest,
 ) (yagoproto.HelloResponse, error) {
 	resp := yagoproto.HelloResponse{
-		YourIP: httpguard.RemoteAddr(ctx),
-		Seeds:  []yagomodel.Seed{e.status.SelfSeed(ctx)},
+		YourIP:   httpguard.RemoteAddr(ctx),
+		YourType: yagomodel.PeerVirgin,
 	}
+	defer func() {
+		slog.DebugContext(ctx, "hello served", slog.Int("seedCount", len(resp.Seeds)))
+	}()
 
-	if e.identity.Authenticates(
+	if !e.identity.Authenticates(
 		req.NetworkName,
+		req.NetworkNamePresent,
 		req.Key,
-		req.Iam.String(),
+		req.Iam,
 		req.MagicMD5,
 	) {
-		caller, observable := observableHelloCaller(ctx, req.Seed)
-		resp.YourType = e.classifyCaller(ctx, caller, observable)
-		if observable && resp.YourType != yagomodel.PeerVirgin {
-			observationContext, cancel := context.WithTimeout(
-				context.WithoutCancel(ctx),
-				callerObservationTimeout,
-			)
-			e.reachability.ObserveCaller(observationContext, caller, resp.YourType)
-			cancel()
-			e.acceptCallerNews(ctx, caller, resp.YourType)
-		}
-		resp.Seeds = append(resp.Seeds, e.knownPeers(ctx, req.Count)...)
+		return resp, nil
 	}
 
-	slog.DebugContext(ctx, "hello served", slog.Int("seedCount", len(resp.Seeds)))
+	caller, observable := observableHelloCaller(ctx, req.Seed)
+	caller, resp.YourType = e.classifyCaller(ctx, caller, observable)
+	if resp.YourType == yagomodel.PeerVirgin {
+		return resp, nil
+	}
+	if observable {
+		observationContext, cancel := context.WithTimeout(
+			context.WithoutCancel(ctx),
+			callerObservationTimeout,
+		)
+		e.reachability.ObserveCaller(observationContext, caller, resp.YourType)
+		cancel()
+		e.acceptCallerNews(ctx, caller, resp.YourType)
+	}
+	resp.Seeds = append(
+		[]yagomodel.Seed{e.status.SelfSeed(ctx)},
+		e.knownPeers(ctx, req.Count)...,
+	)
 
 	return resp, nil
 }
@@ -91,55 +99,41 @@ func (e helloEndpoint) classifyCaller(
 	ctx context.Context,
 	caller yagomodel.Seed,
 	observable bool,
-) yagomodel.PeerType {
+) (yagomodel.Seed, yagomodel.PeerType) {
 	if samePeerIdentity(caller, e.status.SelfSeed(ctx)) {
-		return yagomodel.PeerVirgin
+		return caller, yagomodel.PeerVirgin
 	}
 
 	if !observable {
-		return yagomodel.PeerJunior
+		return caller, yagomodel.PeerJunior
 	}
 
-	if !e.probe.Reachable(ctx, caller, e.status.SelfSeed(ctx).Hash, e.status.NetworkName(ctx)) {
-		return yagomodel.PeerJunior
+	verifiedCaller, reachable := e.probe.ReachableCaller(
+		ctx,
+		caller,
+		e.status.SelfSeed(ctx).Hash,
+		e.status.NetworkName(ctx),
+	)
+	if !reachable {
+		return caller, yagomodel.PeerJunior
+	}
+	if peerType, known := caller.PeerType.Get(); known && peerType == yagomodel.PeerPrincipal {
+		return verifiedCaller, yagomodel.PeerPrincipal
 	}
 
-	return yagomodel.PeerSenior
+	return verifiedCaller, yagomodel.PeerSenior
 }
 
 func samePeerIdentity(caller, self yagomodel.Seed) bool {
-	if caller.Hash == self.Hash {
-		return true
-	}
-
-	callerPort, callerPortOK := caller.Port.Get()
-	selfPort, selfPortOK := self.Port.Get()
-	if !callerPortOK || !selfPortOK || callerPort != selfPort {
-		return false
-	}
-
-	return caller.SharesAddress(self)
+	return caller.Hash == self.Hash
 }
 
 func (e helloEndpoint) knownPeers(ctx context.Context, count int) []yagomodel.Seed {
-	known := slices.Clone(e.reachability.ReachablePeers(ctx))
-
-	shuffleKnownPeers(known)
-
-	if count > 0 && count < len(known) {
-		known = known[:count]
+	if count <= 0 {
+		return nil
 	}
+	limit := min(count, maximumHelloKnownPeers)
+	known := e.reachability.FreshestPeers(ctx, limit)
 
-	return known
-}
-
-func shuffleKnownPeers(peers []yagomodel.Seed) {
-	for last := len(peers) - 1; last > 0; last-- {
-		selected, err := randomPeerIndex(rand.Reader, big.NewInt(int64(last+1)))
-		if err != nil {
-			return
-		}
-		current := int(selected.Int64())
-		peers[last], peers[current] = peers[current], peers[last]
-	}
+	return known[:min(limit, len(known))]
 }

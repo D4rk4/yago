@@ -10,25 +10,51 @@ import (
 )
 
 type Mailbox struct {
-	vault    *vault.Vault
-	messages *vault.Collection[Message]
-	now      func() time.Time
+	writePermit                  mailboxWritePermit
+	vault                        *vault.Vault
+	messages                     *vault.Collection[Message]
+	cleanup                      *vault.Keyspace[string]
+	now                          func() time.Time
+	retention                    mailboxRetention
+	retainedRecords              int
+	retainedBytes                int
+	retentionNeedsReconciliation bool
 }
 
 func (m *Mailbox) Receive(ctx context.Context, message Message) error {
+	if err := m.writePermit.Acquire(ctx); err != nil {
+		return fmt.Errorf("write message: %w", err)
+	}
+	defer m.writePermit.Release()
+	if m.retentionNeedsReconciliation {
+		if err := m.reconcilePendingMessage(ctx); err != nil {
+			return fmt.Errorf("reconcile message retention: %w", err)
+		}
+	}
+
 	if message.ReceivedAt.IsZero() {
 		message.ReceivedAt = m.now().UTC()
 	}
-
-	if err := m.vault.Update(ctx, func(tx *vault.Txn) error {
-		if err := m.messages.Put(tx, messageKey(message), message); err != nil {
-			return fmt.Errorf("store message: %w", err)
-		}
-
-		return nil
-	}); err != nil {
+	raw, _ := (messageCodec{}).Encode(message)
+	if !storedMessageAdmitted(raw) {
+		return fmt.Errorf("write message: message exceeds storage admission limits")
+	}
+	if err := m.storeMessageAdmission(ctx, raw); err != nil {
 		return fmt.Errorf("write message: %w", err)
 	}
+	retained, err := m.storeRetainedMessage(ctx, message, raw)
+	if err != nil {
+		m.retentionNeedsReconciliation = true
+
+		return fmt.Errorf("write message: %w", err)
+	}
+	if err := m.clearMessageAdmission(ctx); err != nil {
+		m.retentionNeedsReconciliation = true
+
+		return fmt.Errorf("write message: finish message admission: %w", err)
+	}
+	m.retainedRecords = retained.records
+	m.retainedBytes = retained.bytes
 
 	return nil
 }

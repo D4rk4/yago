@@ -395,6 +395,18 @@ func TestSearchReturnsPipelineErrors(t *testing.T) {
 		t.Fatalf("rows error = %v, want %v", err, sentinel)
 	}
 
+	if _, err := (searcher{
+		index: fakeScanner{postings: map[yagomodel.Hash][]yagomodel.RWIPosting{
+			word: {postingEntry(word, "u1", 0, 1)},
+		}},
+		documents: fakeDirectory{err: sentinel},
+	}).search(context.Background(), searchCriteria{
+		terms:    []yagomodel.Hash{word},
+		metadata: metadataConstraints{author: "author"},
+	}); !errors.Is(err, sentinel) {
+		t.Fatalf("metadata rows error = %v, want %v", err, sentinel)
+	}
+
 	if _, err := (searcher{index: fakeScanner{err: sentinel}, documents: fakeDirectory{rows: map[yagomodel.Hash]yagomodel.URIMetadataRow{}}}).search(
 		context.Background(),
 		searchCriteria{

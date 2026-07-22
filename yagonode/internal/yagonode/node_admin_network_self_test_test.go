@@ -11,8 +11,16 @@ import (
 func TestNetworkSelfTesterReturnsFreshNetworkSnapshot(t *testing.T) {
 	reachable := false
 	network := newNetworkSource(dhtGateStatusSource{
-		snapshot: func(context.Context) dhtexchange.GateState {
-			return dhtexchange.GateState{PublicReachable: reachable}
+		snapshotWithReachability: func(context.Context) (
+			dhtexchange.GateState,
+			publicReachabilitySnapshot,
+		) {
+			state := publicReachabilityUnreachable
+			if reachable {
+				state = publicReachabilityReachable
+			}
+
+			return dhtexchange.GateState{}, publicReachabilitySnapshot{state: state}
 		},
 	}, nil, nil, nil, nil)
 	recorder := events.NewRecorder(4)

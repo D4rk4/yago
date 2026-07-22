@@ -8,10 +8,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/indextransfer"
 )
 
-type RemoteCapacity interface {
-	RWICount(ctx context.Context, peer yagomodel.Seed) (int, error)
-}
-
 type IndexHandoff interface {
 	Send(
 		ctx context.Context,
@@ -29,7 +25,6 @@ type DistributionState string
 const (
 	DistributionGateClosed      DistributionState = "gate_closed"
 	DistributionQueueEmpty      DistributionState = "queue_empty"
-	DistributionCapacityFailed  DistributionState = "capacity_failed"
 	DistributionHandoffFailed   DistributionState = "handoff_failed"
 	DistributionHandoffRejected DistributionState = "handoff_rejected"
 	DistributionRetryDeferred   DistributionState = "retry_deferred"
@@ -42,37 +37,37 @@ type DistributionReceipt struct {
 	Peer              yagomodel.Hash
 	Target            yagomodel.Seed
 	PostingCount      int
-	RemoteRWIWords    int
 	Handoff           indextransfer.HandoffReceipt
 	RequeuedPostings  int
+	RestoredPostings  int
 	ConfirmedPostings int
 }
 
 type OutboundDistributor struct {
 	queue     *OutboundQueue
-	probe     RemoteCapacity
 	handoff   IndexHandoff
+	restorer  OutboundWordRestorer
 	confirmer SentPostingConfirmer
 }
 
 func NewOutboundDistributor(
 	queue *OutboundQueue,
-	probe RemoteCapacity,
 	handoff IndexHandoff,
+	restorer OutboundWordRestorer,
 ) OutboundDistributor {
-	return OutboundDistributor{queue: queue, probe: probe, handoff: handoff}
+	return OutboundDistributor{queue: queue, handoff: handoff, restorer: restorer}
 }
 
 func NewConfirmingOutboundDistributor(
 	queue *OutboundQueue,
-	probe RemoteCapacity,
 	handoff IndexHandoff,
+	restorer OutboundWordRestorer,
 	confirmer SentPostingConfirmer,
 ) OutboundDistributor {
 	return OutboundDistributor{
 		queue:     queue,
-		probe:     probe,
 		handoff:   handoff,
+		restorer:  restorer,
 		confirmer: confirmer,
 	}
 }
@@ -107,6 +102,9 @@ func (d OutboundDistributor) distribute(
 ) (DistributionReceipt, error) {
 	gates := EvaluateGates(state, config)
 	receipt := DistributionReceipt{Gates: gates}
+	if completion, pending, err := d.retryLocalCompletion(ctx, gates); pending {
+		return completion, err
+	}
 	if !gates.Open {
 		receipt.State = DistributionGateClosed
 
@@ -127,42 +125,60 @@ func (d OutboundDistributor) distribute(
 	receipt.Target = chunk.Peer
 	receipt.PostingCount = len(chunk.Postings)
 
-	count, err := d.probe.RWICount(ctx, chunk.Peer)
-	receipt.RemoteRWIWords = count
-	if err != nil {
-		receipt.State = DistributionCapacityFailed
-		receipt.RequeuedPostings = d.queue.Requeue(chunk)
-
-		return receipt, fmt.Errorf("probe remote rwi count: %w", err)
-	}
-
 	handoff, err := d.handoff.Send(ctx, chunk.Peer, chunk.Postings)
 	receipt.Handoff = handoff
-	if err != nil {
+	if err != nil && !handoffRejected(handoff.State) {
 		receipt.State = DistributionHandoffFailed
 		receipt.RequeuedPostings = d.queue.Requeue(chunk)
 
 		return receipt, fmt.Errorf("send dht chunk: %w", err)
 	}
 	if !handoffAccepted(handoff.State) {
-		receipt.State = DistributionHandoffRejected
-		receipt.RequeuedPostings = d.queue.Requeue(chunk)
-
-		return receipt, nil
+		return d.finishRejectedHandoff(ctx, receipt, chunk, err)
 	}
 
-	receipt.State = DistributionSent
-	if d.confirmer != nil {
-		confirmed, err := d.confirmer.ConfirmTransferred(ctx, chunk.Postings)
-		receipt.ConfirmedPostings = confirmed
-		if err != nil {
-			return receipt, fmt.Errorf("confirm sent dht chunk: %w", err)
-		}
+	return d.finishAcceptedHandoff(ctx, receipt, chunk, handoff)
+}
+
+func (d OutboundDistributor) RestoreRequeuedPeer(
+	ctx context.Context,
+	peer yagomodel.Hash,
+) (restored int, requeued int, err error) {
+	chunk, known := d.queue.DequeuePeer(peer)
+	if !known {
+		return 0, 0, nil
+	}
+	d.queue.cancelPostingCopies(chunk.Postings)
+
+	return d.restoreChunk(ctx, chunk)
+}
+
+func (d OutboundDistributor) restoreChunk(
+	ctx context.Context,
+	chunk OutboundChunk,
+) (restored int, requeued int, err error) {
+	return d.restorePostings(ctx, chunk.Peer, chunk.Postings)
+}
+
+func (d OutboundDistributor) restorePostings(
+	ctx context.Context,
+	peer yagomodel.Seed,
+	postings []yagomodel.RWIPosting,
+) (restored int, requeued int, err error) {
+	restored, err = d.restorer.RestoreOutboundWords(ctx, outboundRestoreWords(postings))
+	if err != nil {
+		requeued = d.queue.Requeue(OutboundChunk{Peer: peer, Postings: postings})
+
+		return 0, requeued, fmt.Errorf("restore outbound words: %w", err)
 	}
 
-	return receipt, nil
+	return restored, 0, nil
 }
 
 func handoffAccepted(state indextransfer.HandoffState) bool {
 	return state == indextransfer.HandoffRWIOnly || state == indextransfer.HandoffURLSent
+}
+
+func handoffRejected(state indextransfer.HandoffState) bool {
+	return state == indextransfer.HandoffRWIRejected || state == indextransfer.HandoffURLRejected
 }

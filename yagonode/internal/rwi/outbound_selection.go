@@ -83,51 +83,13 @@ func (d postingDirectory) RestoreOutbound(
 	ctx context.Context,
 	words []yagomodel.WordPostings,
 ) (int, error) {
-	restored := 0
-	err := d.vault.Update(ctx, func(tx *vault.Txn) error {
-		count, err := d.restoreOutboundWords(ctx, tx, words)
-		if err != nil {
-			return err
-		}
-		restored = count
-
-		return nil
-	})
+	selected, err := outboundPostingsFromWords(words)
 	if err != nil {
 		return 0, fmt.Errorf("restore outbound rwi: %w", err)
 	}
-
-	return restored, nil
-}
-
-func (d postingDirectory) restoreOutboundWords(
-	ctx context.Context,
-	tx *vault.Txn,
-	words []yagomodel.WordPostings,
-) (int, error) {
-	restored := 0
-	for _, word := range words {
-		count, err := d.restoreOutboundWord(ctx, tx, word)
-		if err != nil {
-			return 0, err
-		}
-		restored += count
-	}
-
-	return restored, nil
-}
-
-func (d postingDirectory) restoreOutboundWord(
-	ctx context.Context,
-	tx *vault.Txn,
-	word yagomodel.WordPostings,
-) (int, error) {
-	restored := 0
-	for _, posting := range word.Postings {
-		if err := d.restoreOutboundPosting(ctx, tx, word.WordHash, posting); err != nil {
-			return 0, err
-		}
-		restored++
+	restored, err := d.restoreOutboundPostings(ctx, selected)
+	if err != nil {
+		return 0, fmt.Errorf("restore outbound rwi: %w", err)
 	}
 
 	return restored, nil
@@ -136,26 +98,17 @@ func (d postingDirectory) restoreOutboundWord(
 func (d postingDirectory) restoreOutboundPosting(
 	ctx context.Context,
 	tx *vault.Txn,
-	word yagomodel.Hash,
-	posting yagomodel.RWIPosting,
+	posting selectedPosting,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
-	url, err := posting.URLHash()
-	if err != nil {
-		return fmt.Errorf("rwi posting url hash: %w", err)
-	}
-	hash := url.Hash()
-	posting.WordHash = word
-	if err := d.postings.Put(tx, postingKey(word, hash), posting); err != nil {
+	posting.row.WordHash = posting.word
+	if err := d.postings.Put(tx, posting.key, posting.row); err != nil {
 		return fmt.Errorf("restore rwi posting: %w", err)
 	}
-	if err := d.observers.stored(tx, word, hash); err != nil {
+	if err := d.observers.stored(tx, posting.word, posting.url); err != nil {
 		return fmt.Errorf("observe outbound rwi restore: %w", err)
-	}
-	if _, err := d.outboundSelected.Delete(tx, postingKey(word, hash)); err != nil {
-		return fmt.Errorf("delete outbound selected rwi: %w", err)
 	}
 
 	return nil
@@ -181,9 +134,12 @@ func (d postingDirectory) selectOutboundPostings(
 		}
 		selected = append(selected[:0], selector.selected...)
 
-		return d.deleteOutboundSelection(tx, selector.selected)
+		return nil
 	})
 	if err != nil {
+		return nil, fmt.Errorf("select outbound rwi: %w", err)
+	}
+	if err := d.removeDurablySelectedPostings(ctx, selected); err != nil {
 		return nil, fmt.Errorf("select outbound rwi: %w", err)
 	}
 

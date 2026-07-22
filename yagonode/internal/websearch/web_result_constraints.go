@@ -6,6 +6,7 @@ import (
 
 	"github.com/D4rk4/yago/yagonode/internal/filetypeclass"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/sitehost"
 )
 
 func resultsMatchingConstraints(req searchcore.Request, results []Result) []Result {
@@ -20,6 +21,9 @@ func resultsMatchingConstraints(req searchcore.Request, results []Result) []Resu
 }
 
 func resultMatchesConstraints(req searchcore.Request, result Result) bool {
+	if !searchcore.ResultSatisfiesDomainConstraints(req, searchcore.Result{URL: result.URL}) {
+		return false
+	}
 	if len(req.ExcludedTerms) > 0 && searchcore.ResultMentionsTerms(searchcore.Result{
 		Title: result.Title, URL: result.URL, Snippet: result.Snippet,
 	}, req.ExcludedTerms) {
@@ -42,7 +46,7 @@ func resultMatchesConstraints(req searchcore.Request, result Result) bool {
 		return false
 	}
 	host := parsed.Hostname()
-	if req.SiteHost != "" && !hostMatchesDomain(host, req.SiteHost) {
+	if req.SiteHost != "" && !sitehost.Matches(host, req.SiteHost) {
 		return false
 	}
 

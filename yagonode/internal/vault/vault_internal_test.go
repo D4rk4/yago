@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -127,11 +128,16 @@ func (b *scriptedBucket) Scan(prefix Key, fn func(Key, []byte) (bool, error)) er
 	if b.scanErr != nil {
 		return b.scanErr
 	}
-	for key, value := range b.values {
+	keys := make([]string, 0, len(b.values))
+	for key := range b.values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	for _, key := range keys {
 		if len(prefix) > 0 && key != string(prefix) {
 			continue
 		}
-		keep, err := fn(Key(key), value)
+		keep, err := fn(Key(key), b.values[key])
 		if err != nil {
 			return err
 		}

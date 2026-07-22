@@ -2,6 +2,7 @@ package yagoproto_test
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -10,13 +11,14 @@ import (
 
 func TestMessageRequestPermissionFormRoundTrip(t *testing.T) {
 	req := yagoproto.MessageRequest{
-		NetworkName: "freeworld",
-		YouAre:      hashFor(t, "youare"),
-		Iam:         hashFor(t, "sender"),
-		Key:         "salt",
-		MagicMD5:    "magic",
-		MyTime:      "20260701210000",
-		Process:     yagoproto.MessageProcessPermission,
+		NetworkName:        "freeworld",
+		NetworkNamePresent: true,
+		YouAre:             hashFor(t, "youare"),
+		Iam:                hashFor(t, "sender"),
+		Key:                "salt",
+		MagicMD5:           "magic",
+		MyTime:             "20260701210000",
+		Process:            yagoproto.MessageProcessPermission,
 	}
 
 	got, err := yagoproto.ParseMessageRequest(t.Context(), req.Form())
@@ -171,6 +173,57 @@ func TestParseMessageRequestRejectsBadFields(t *testing.T) {
 		if _, err := yagoproto.ParseMessageRequest(t.Context(), form); err == nil {
 			t.Fatalf("ParseMessageRequest(%v) should fail", form)
 		}
+	}
+}
+
+func TestParseMessageRequestBoundsDecodedSubjectAndBody(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		field string
+		plain string
+	}{
+		{
+			name: "subject", field: yagoproto.FieldMessageSubject,
+			plain: strings.Repeat("s", yagoproto.MessageSubjectMaximumBytes+1),
+		},
+		{
+			name: "body", field: yagoproto.FieldMessage,
+			plain: strings.Repeat("b", yagoproto.MessageBodyMaximumBytes+1),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, encoded := range []string{
+				yagomodel.EncodeBase64WireForm(test.plain),
+				yagomodel.EncodeCompactWireForm(test.plain),
+			} {
+				form := url.Values{
+					yagoproto.FieldYouAre:         {hashFor(t, "youare").String()},
+					yagoproto.FieldMessageProcess: {string(yagoproto.MessageProcessPost)},
+					test.field:                    {encoded},
+				}
+				if _, err := yagoproto.ParseMessageRequest(t.Context(), form); err == nil {
+					t.Fatalf("oversized %s form was accepted", test.name)
+				}
+			}
+		})
+	}
+}
+
+func TestParseMessageRequestAcceptsExactDecodedLimits(t *testing.T) {
+	subject := strings.Repeat("s", yagoproto.MessageSubjectMaximumBytes)
+	body := strings.Repeat("b", yagoproto.MessageBodyMaximumBytes)
+	form := url.Values{
+		yagoproto.FieldYouAre:         {hashFor(t, "youare").String()},
+		yagoproto.FieldMessageProcess: {string(yagoproto.MessageProcessPost)},
+		yagoproto.FieldMessageSubject: {yagomodel.EncodeCompactWireForm(subject)},
+		yagoproto.FieldMessage:        {yagomodel.EncodeCompactWireForm(body)},
+	}
+	request, err := yagoproto.ParseMessageRequest(t.Context(), form)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Subject != subject || request.Body != body {
+		t.Fatalf("decoded sizes = %d/%d", len(request.Subject), len(request.Body))
 	}
 }
 

@@ -15,6 +15,7 @@ const (
 	URLMetaColDescription = "descr"
 	URLMetaAuthor         = "author"
 	URLMetaReferrer       = "referrer"
+	URLMetaWordReference  = "wi"
 )
 
 var ErrBadURLMetadata = errors.New("bad url metadata")

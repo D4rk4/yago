@@ -221,7 +221,7 @@ func TestExtractWorkDeadlineCancelsSlowFetch(t *testing.T) {
 		access:       SearchAccessPolicy{BearerToken: extractTestKey},
 		fetcher:      deadlineContentFetcher{finished: finished},
 		now:          time.Now,
-		workDuration: time.Millisecond,
+		workDuration: 100 * time.Millisecond,
 	}
 	result := postExtract(
 		t,
@@ -229,9 +229,10 @@ func TestExtractWorkDeadlineCancelsSlowFetch(t *testing.T) {
 		`{"urls":"https://slow.example/"}`,
 		extractTestKey,
 	)
-	if result.Code != http.StatusOK || !errors.Is(<-finished, context.DeadlineExceeded) {
+	if result.Code != http.StatusOK {
 		t.Fatalf("result=%d body=%s", result.Code, result.Body.String())
 	}
+	requireDeadlineSignal(t, finished)
 	response := decodeExtract(t, result)
 	if len(response.FailedResults) != 1 {
 		t.Fatalf("failures=%d", len(response.FailedResults))
@@ -255,7 +256,7 @@ func TestCrawlWorkDeadlineCancelsSlowFetch(t *testing.T) {
 		access:       SearchAccessPolicy{BearerToken: crawlTestKey},
 		fetcher:      deadlinePageFetcher{finished: finished},
 		now:          time.Now,
-		workDuration: time.Millisecond,
+		workDuration: 100 * time.Millisecond,
 	}
 	request := httptest.NewRequestWithContext(
 		t.Context(),
@@ -266,9 +267,10 @@ func TestCrawlWorkDeadlineCancelsSlowFetch(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer "+crawlTestKey)
 	result := httptest.NewRecorder()
 	endpoint.ServeHTTP(result, request)
-	if result.Code != http.StatusOK || !errors.Is(<-finished, context.DeadlineExceeded) {
+	if result.Code != http.StatusOK {
 		t.Fatalf("result=%d body=%s", result.Code, result.Body.String())
 	}
+	requireDeadlineSignal(t, finished)
 }
 
 type deadlineSearcher struct {
@@ -292,15 +294,27 @@ func TestRawSearchWorkDeadlineCancelsSlowSearch(t *testing.T) {
 		access:          SearchAccessPolicy{BearerToken: searchTestKey},
 		intake:          nil,
 		now:             time.Now,
-		rawWorkDuration: time.Millisecond,
+		rawWorkDuration: 100 * time.Millisecond,
 	}
 	result := postRawSearch(
 		t,
 		endpoint,
 		`{"query":"slow","include_raw_content":true}`,
 	)
-	if result.Code != http.StatusInternalServerError ||
-		!errors.Is(<-finished, context.DeadlineExceeded) {
+	if result.Code != http.StatusInternalServerError {
 		t.Fatalf("result=%d body=%s", result.Code, result.Body.String())
+	}
+	requireDeadlineSignal(t, finished)
+}
+
+func requireDeadlineSignal(t *testing.T, finished <-chan error) {
+	t.Helper()
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("deadline result: %v", err)
+		}
+	case <-time.After(extractTestCompletionTimeout):
+		t.Fatal("deadline result was not reported")
 	}
 }

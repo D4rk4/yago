@@ -160,6 +160,14 @@ func TestDHTOutboundRWIWordsAdaptsSelectionAndRestore(t *testing.T) {
 	if confirmed != 1 || source.confirmCalls != 1 {
 		t.Fatalf("confirmed/source = %d/%#v", confirmed, source)
 	}
+
+	finalized, err := adapter.FinalizeOutboundPostings(context.Background(), words[0].Postings)
+	if err != nil {
+		t.Fatalf("FinalizeOutboundPostings: %v", err)
+	}
+	if finalized != 1 || source.confirmCalls != 2 {
+		t.Fatalf("finalized/source = %d/%#v", finalized, source)
+	}
 }
 
 func TestDHTOutboundRWIWordsReturnsStoreErrors(t *testing.T) {
@@ -187,6 +195,13 @@ func TestDHTOutboundRWIWordsReturnsStoreErrors(t *testing.T) {
 	}).ConfirmTransferred(context.Background(), []yagomodel.RWIPosting{{}})
 	if !errors.Is(err, confirmErr) {
 		t.Fatalf("confirm error = %v, want %v", err, confirmErr)
+	}
+
+	_, err = (dhtOutboundRWIWords{
+		postings: &outboundPostingStoreScript{confirmErr: confirmErr},
+	}).FinalizeOutboundPostings(context.Background(), []yagomodel.RWIPosting{{}})
+	if !errors.Is(err, confirmErr) {
+		t.Fatalf("finalize error = %v, want %v", err, confirmErr)
 	}
 }
 

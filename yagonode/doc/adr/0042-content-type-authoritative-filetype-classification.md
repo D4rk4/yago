@@ -68,7 +68,9 @@ staged epic; each slice is independently `make verify`-green.
 2. **Facet/filter consistency (SEARCH-FILETYPE-02).** Move `FileType`/`SiteHost`/
    `InURL`/`TLD` filtering into `searchindex` alongside the other post-retrieval
    filters, so the navigation counts are taken over the same set the results come
-   from.
+   from. `SiteHost` follows YaCy's exact-host equivalence: the requested host and
+   its counterpart with or without one leading `www.` label match, while other
+   subdomains do not.
 
 3. **Modifier-only browse queries (SEARCH-FILETYPE-03).** A bare `filetype:pdf`
    (or `site:`/`tld:`/`inurl:` with no keyword) stays keyword-seeded, matching

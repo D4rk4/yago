@@ -160,10 +160,10 @@ Verified findings:
   work grows linearly with retained forms and never creates a request for each
   combination of forms.
 - Abstract provenance is retained per peer, term, and URL. Metadata retrieval
-  chooses a deterministic greedy cover of proven admitting terms and splits a
-  peer only when no one selected term covers every remaining URL. A query-
-  sensitive stock peer therefore receives the same exact surface hash that
-  admitted each requested URL.
+  sends at most one secondary request to each peer, carrying the union of the
+  exact surface hashes and requested URL hashes that peer admitted. A query-
+  sensitive stock peer therefore receives only evidence it reported, while the
+  request shape remains compatible with YaCy's `SecondarySearchSuperviser`.
 - Enabling morphology adds its bounded frequency synopsis to the existing shared
   corpus pass; it does not add another scan. The retained vocabulary and the
   structures built from it have fixed cardinality bounds instead of growing with

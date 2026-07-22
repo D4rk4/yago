@@ -365,6 +365,7 @@ func (b *BleveDiskIndex) collectHits(
 func hasPostFilters(req SearchRequest) bool {
 	return req.SafeSearch ||
 		req.Language != "" ||
+		req.SiteHost != "" ||
 		len(req.IncludeDomain) > 0 ||
 		len(req.ExcludeDomain) > 0 ||
 		!req.Since.IsZero() ||

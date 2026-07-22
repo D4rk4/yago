@@ -44,13 +44,23 @@ func (id Identity) Addresses(network string, youare yagomodel.Hash) bool {
 	return id.NetworkMatches(network) && youare == id.Hash
 }
 
-func (id Identity) Authenticates(network, key, iam, magic string) bool {
-	return id.NetworkAccess().Authorizes(url.Values{
-		yagoproto.FieldNetworkName: {network},
-		yagoproto.FieldKey:         {key},
-		yagoproto.FieldIam:         {iam},
-		yagoproto.FieldMagicMD5:    {magic},
-	})
+func (id Identity) Authenticates(
+	network string,
+	networkPresent bool,
+	key string,
+	iam string,
+	magic string,
+) bool {
+	form := url.Values{
+		yagoproto.FieldKey:      {key},
+		yagoproto.FieldIam:      {iam},
+		yagoproto.FieldMagicMD5: {magic},
+	}
+	if network != "" || networkPresent {
+		form.Set(yagoproto.FieldNetworkName, network)
+	}
+
+	return id.NetworkAccess().Authorizes(form)
 }
 
 func (id Identity) NetworkAccess() yagoproto.NetworkAccess {
@@ -60,14 +70,4 @@ func (id Identity) NetworkAccess() yagoproto.NetworkAccess {
 		Essentials:  id.AuthenticationEssentials,
 		Self:        id.Hash,
 	}
-}
-
-func (id Identity) AuthenticatesAddress(
-	network string,
-	youare yagomodel.Hash,
-	key string,
-	iam string,
-	magic string,
-) bool {
-	return youare == id.Hash && id.Authenticates(network, key, iam, magic)
 }

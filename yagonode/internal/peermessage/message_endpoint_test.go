@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,6 +158,49 @@ func TestMessagePostRejectsMissingSeedOrEmptyContent(t *testing.T) {
 
 	if inbox.called {
 		t.Fatal("inbox called for rejected message")
+	}
+}
+
+func TestMessagePostEnforcesDecodedContentLimits(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		subject string
+		body    string
+		want    string
+	}{
+		{name: "exact subject", subject: strings.Repeat("s", acceptedSubjectSize), body: "body", want: yagoproto.MessageResponseAccepted},
+		{name: "long subject", subject: strings.Repeat("s", acceptedSubjectSize+1), body: "body", want: yagoproto.MessageResponseRejected},
+		{name: "subject limit plus space", subject: strings.Repeat("s", acceptedSubjectSize) + " ", body: "body", want: yagoproto.MessageResponseRejected},
+		{name: "exact body", subject: "subject", body: strings.Repeat("b", acceptedMessageSize), want: yagoproto.MessageResponseAccepted},
+		{name: "long body", subject: "subject", body: strings.Repeat("b", acceptedMessageSize+1), want: yagoproto.MessageResponseRejected},
+		{name: "body limit plus space", subject: "subject", body: strings.Repeat("b", acceptedMessageSize) + " ", want: yagoproto.MessageResponseRejected},
+		{name: "blank subject", subject: " \t ", body: "body", want: yagoproto.MessageResponseRejected},
+		{name: "blank body", subject: "subject", body: " \n ", want: yagoproto.MessageResponseRejected},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			inbox := &recordingInbox{}
+			resp, err := endpoint{identity: localIdentity(), inbox: inbox}.Serve(
+				t.Context(),
+				yagoproto.MessageRequest{
+					NetworkName: "freeworld", YouAre: hashFor("self"),
+					Process: yagoproto.MessageProcessPost, MySeed: yagomodel.Some(senderSeed()),
+					Subject: test.subject, Body: test.body,
+				},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resp.Response != test.want ||
+				inbox.called != (test.want == yagoproto.MessageResponseAccepted) {
+				t.Fatalf(
+					"response = %q inbox=%t, want %q inbox=%t",
+					resp.Response,
+					inbox.called,
+					test.want,
+					test.want == yagoproto.MessageResponseAccepted,
+				)
+			}
+		})
 	}
 }
 

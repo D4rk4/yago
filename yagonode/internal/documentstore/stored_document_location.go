@@ -1,6 +1,7 @@
 package documentstore
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -43,10 +44,16 @@ func (d documentVault) readStoredDocument(
 		return Document{}, storedDocumentLocation{}, found, err
 	}
 	if location.admission == 0 {
-		document, present := decodedStoredDocument(d.legacyDocuments.Get(
+		document, present, err := decodedStoredDocument(d.legacyDocuments.Get(
 			tx,
 			vault.Key(normalizedURL),
 		))
+		if err != nil {
+			return Document{}, location, false, fmt.Errorf(
+				"read legacy stored document: %w",
+				err,
+			)
+		}
 		if present && document.NormalizedURL != normalizedURL {
 			return Document{}, location, false, nil
 		}
@@ -60,7 +67,13 @@ func (d documentVault) readStoredDocument(
 			err,
 		)
 	}
-	document, present := decodedStoredDocument(d.orderedDocuments.Get(tx, key))
+	document, present, err := decodedStoredDocument(d.orderedDocuments.Get(tx, key))
+	if err != nil {
+		return Document{}, location, false, fmt.Errorf(
+			"read ordered stored document: %w",
+			err,
+		)
+	}
 	if !present {
 		return Document{}, location, false, nil
 	}
@@ -75,12 +88,12 @@ func decodedStoredDocument(
 	document Document,
 	present bool,
 	err error,
-) (Document, bool) {
-	if err != nil {
-		return Document{}, false
+) (Document, bool, error) {
+	if errors.Is(err, vault.ErrCorruptValue) {
+		return Document{}, false, nil
 	}
 
-	return document, present
+	return document, present, err
 }
 
 func (d documentVault) putStoredDocument(

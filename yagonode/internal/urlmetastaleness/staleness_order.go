@@ -82,7 +82,10 @@ func (o *stalenessRanking) URLStored(
 var _ StalenessRanking = (*stalenessRanking)(nil)
 
 func (o *stalenessRanking) URLPurged(tx *vault.Txn, hash yagomodel.Hash) error {
-	freshness, found, _ := o.freshness.Get(tx, vault.Key(hash))
+	freshness, found, err := o.freshness.Get(tx, vault.Key(hash))
+	if err != nil {
+		return fmt.Errorf("read staleness freshness: %w", err)
+	}
 	if !found {
 		return nil
 	}

@@ -16,7 +16,7 @@ type termAppearanceCriteria struct {
 	language           string
 	requiredDocuments  map[yagomodel.Hash]struct{}
 	excludedDocuments  map[yagomodel.Hash]struct{}
-	siteHash           string
+	siteHashes         []string
 	contentKind        contentKind
 	strictContentKind  bool
 	requiredProperties yagomodel.Bitfield
@@ -36,7 +36,7 @@ func (s searcher) appearanceCriteria(
 		language:           criteria.language,
 		requiredDocuments:  documentSet(criteria.requiredDocuments),
 		excludedDocuments:  excluded,
-		siteHash:           criteria.siteHash,
+		siteHashes:         criteria.siteHashes,
 		contentKind:        criteria.contentKind,
 		strictContentKind:  criteria.strictContentKind,
 		requiredProperties: criteria.requiredProperties,
@@ -55,7 +55,7 @@ func (c termAppearanceCriteria) matches(ctx context.Context, appearance termAppe
 	if _, ok := c.excludedDocuments[appearance.documentIdentifier]; ok {
 		return false
 	}
-	if !matchesSiteHost(ctx, appearance.documentLocation, c.siteHash) {
+	if !matchesSiteHost(ctx, appearance.documentLocation, c.siteHashes) {
 		return false
 	}
 	if !matchesContentKind(ctx, appearance, c.contentKind, c.strictContentKind) {
@@ -65,8 +65,8 @@ func (c termAppearanceCriteria) matches(ctx context.Context, appearance termAppe
 	return matchesRequiredProperties(ctx, appearance, c.requiredProperties)
 }
 
-func matchesSiteHost(ctx context.Context, location yagomodel.URLHash, siteHash string) bool {
-	if siteHash == "" {
+func matchesSiteHost(ctx context.Context, location yagomodel.URLHash, siteHashes []string) bool {
+	if len(siteHashes) == 0 {
 		return true
 	}
 	hostHash, err := location.HostHash()
@@ -76,7 +76,13 @@ func matchesSiteHost(ctx context.Context, location yagomodel.URLHash, siteHash s
 		return false
 	}
 
-	return hostHash == siteHash
+	for _, siteHash := range siteHashes {
+		if hostHash == siteHash {
+			return true
+		}
+	}
+
+	return false
 }
 
 func matchesContentKind(

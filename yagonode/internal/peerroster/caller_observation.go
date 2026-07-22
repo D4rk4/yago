@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"github.com/D4rk4/yago/yagomodel"
-	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 const peerCallerObservationFailedMessage = "peer caller observation failed"
@@ -16,18 +15,31 @@ func (r *roster) ObserveCaller(
 	caller yagomodel.Seed,
 	classification yagomodel.PeerType,
 ) {
-	if classification != yagomodel.PeerJunior && classification != yagomodel.PeerSenior {
+	if r.isSelf(caller.Hash) {
+		return
+	}
+	if classification != yagomodel.PeerJunior &&
+		classification != yagomodel.PeerSenior &&
+		classification != yagomodel.PeerPrincipal {
 		return
 	}
 	if _, addressable := caller.NetworkAddress(); !addressable {
 		return
 	}
-	r.membershipMu.Lock()
-	defer r.membershipMu.Unlock()
+	if !r.acquireMembership(ctx) {
+		return
+	}
+	defer r.releaseMembership()
 
 	observed := caller.Copy()
 	observed.PeerType = yagomodel.Some(classification)
-	if err := r.persistCallerObservation(ctx, observed); err != nil {
+	now := r.now()
+	observation := verifiedRosterEntry(observed, now)
+	if classification == yagomodel.PeerJunior {
+		observation.verified = false
+	}
+	stored, err := r.persistCallerObservation(ctx, observation)
+	if err != nil {
 		slog.WarnContext(
 			ctx,
 			peerCallerObservationFailedMessage,
@@ -37,14 +49,11 @@ func (r *roster) ObserveCaller(
 
 		return
 	}
-
-	r.mu.Lock()
-	if classification == yagomodel.PeerJunior {
-		delete(r.active, observed.Hash)
-	} else if _, active := r.active[observed.Hash]; active || len(r.active) < r.activeCap {
-		r.active[observed.Hash] = observed
+	if !stored {
+		return
 	}
-	r.mu.Unlock()
+
+	r.replaceActiveMembership(observation, nil)
 
 	r.evictOverflow(ctx)
 	r.invalidateCandidateSnapshot()
@@ -52,25 +61,15 @@ func (r *roster) ObserveCaller(
 
 func (r *roster) persistCallerObservation(
 	ctx context.Context,
-	observed yagomodel.Seed,
-) error {
-	if err := r.vault.Update(ctx, func(tx *vault.Txn) error {
-		if err := r.peers.Put(tx, r.key(observed.Hash), rosterEntry{
-			seed: observed, lastSeen: r.now(),
-		}); err != nil {
-			return fmt.Errorf("store caller: %w", err)
-		}
-
-		return nil
-	}); err != nil {
-		return fmt.Errorf("observe caller: %w", err)
+	observation rosterEntry,
+) (bool, error) {
+	if r.isSelf(observation.seed.Hash) {
+		return false, nil
+	}
+	stored, err := r.persistObservation(ctx, observation, !observation.verified)
+	if err != nil {
+		return false, fmt.Errorf("observe caller: %w", err)
 	}
 
-	return nil
-}
-
-func locallyJunior(seed yagomodel.Seed) bool {
-	classification, known := seed.PeerType.Get()
-
-	return known && classification == yagomodel.PeerJunior
+	return stored, nil
 }

@@ -141,8 +141,9 @@ func TestMultiDomainWidensRetrievalAndCapsResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("single search: %v", err)
 	}
-	if search.got.SiteHost != "example.org" {
-		t.Fatalf("single domain host = %q", search.got.SiteHost)
+	if search.got.SiteHost != "" || len(search.got.IncludeDomains) != 1 ||
+		search.got.IncludeDomains[0] != "example.org" {
+		t.Fatalf("single domain request = %#v", search.got)
 	}
 
 	// The response is capped at max_results even when overfetch returned more.

@@ -2,6 +2,7 @@ package indextransfer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -44,6 +45,7 @@ type HandoffReceipt struct {
 	RWI              yagoproto.TransferRWIResponse
 	URL              yagoproto.TransferURLResponse
 	RemoteUnknownURL []yagomodel.Hash
+	RejectedPostings []yagomodel.RWIPosting
 	SentURLRows      int
 }
 
@@ -62,27 +64,46 @@ func (h Handoff) Send(
 		RemoteUnknownURL: append([]yagomodel.Hash(nil), rwi.UnknownURL...),
 	}
 	if err != nil {
+		if errors.Is(err, yagoproto.ErrBadField) {
+			receipt.State = HandoffRWIRejected
+		}
 		return receipt, fmt.Errorf("transfer rwi: %w", err)
+	}
+	if rwi.Result == yagoproto.TransferRWIResult(yagoproto.ResultOK) &&
+		!rwi.UnknownURLFieldPresent {
+		receipt.State = HandoffRWIRejected
+		return receipt, fmt.Errorf(
+			"transfer rwi: %w: response missing %s",
+			yagoproto.ErrBadField,
+			yagoproto.FieldUnknownURL,
+		)
 	}
 	if rwi.Result != yagoproto.TransferRWIResult(yagoproto.ResultOK) {
 		receipt.State = HandoffRWIRejected
 
 		return receipt, nil
 	}
-	if len(rwi.UnknownURL) == 0 {
+	rejected := newRejectedURLs(rwi.ErrorURL)
+	unknown := rejected.without(rwi.UnknownURL)
+	if len(unknown) == 0 {
 		receipt.State = HandoffRWIOnly
+		receipt.RejectedPostings = rejected.postings(postings)
 
 		return receipt, nil
 	}
 
-	rows, err := h.urls.RowsByHash(ctx, rwi.UnknownURL)
+	rows, err := h.urls.RowsByHash(ctx, unknown)
 	if err != nil {
 		return receipt, fmt.Errorf("lookup url metadata: %w", err)
 	}
+	rejected.add(missingMetadataURLs(unknown, rows))
 	urls, err := h.writer.TransferURL(ctx, peer, rows)
 	receipt.URL = urls
 	receipt.SentURLRows = len(rows)
 	if err != nil {
+		if errors.Is(err, yagoproto.ErrBadField) {
+			receipt.State = HandoffURLRejected
+		}
 		return receipt, fmt.Errorf("transfer url: %w", err)
 	}
 	if urls.Result != yagoproto.TransferURLResult(yagoproto.ResultOK) {
@@ -91,7 +112,9 @@ func (h Handoff) Send(
 		return receipt, nil
 	}
 
+	rejected.add(urls.ErrorURL)
 	receipt.State = HandoffURLSent
+	receipt.RejectedPostings = rejected.postings(postings)
 
 	return receipt, nil
 }

@@ -64,7 +64,10 @@ func openRoster(t *testing.T, reservoirCap, activeCap int) peerroster.Roster {
 	})
 
 	clock := &tickingClock{now: time.Unix(1_000, 0)}
-	roster, err := peerroster.Open(v, clock.Now, reservoirCap, activeCap)
+	roster, err := peerroster.Open(
+		t.Context(), v, hashFor("local"), clock.Now,
+		peerroster.Capacity{Reservoir: reservoirCap, Active: activeCap},
+	)
 	if err != nil {
 		t.Fatalf("peerroster.Open: %v", err)
 	}
@@ -85,7 +88,10 @@ func openConcurrentRoster(t *testing.T, reservoirCap, activeCap int) peerroster.
 		}
 	})
 
-	roster, err := peerroster.Open(v, time.Now, reservoirCap, activeCap)
+	roster, err := peerroster.Open(
+		t.Context(), v, hashFor("local"), time.Now,
+		peerroster.Capacity{Reservoir: reservoirCap, Active: activeCap},
+	)
 	if err != nil {
 		t.Fatalf("peerroster.Open: %v", err)
 	}

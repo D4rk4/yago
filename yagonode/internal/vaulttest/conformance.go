@@ -23,6 +23,10 @@ func (stringCodec) Decode(raw []byte) (string, error)   { return string(raw), ni
 func RunConformance(t *testing.T, open func(quotaBytes int64) (*vault.Vault, error)) {
 	t.Helper()
 
+	t.Run(
+		"BucketInspection",
+		func(t *testing.T) { RunBucketInspectionConformance(t, open) },
+	)
 	t.Run("RoundTripAndLength", func(t *testing.T) { roundTripAndLength(t, open) })
 	t.Run("MissingKeyReportsAbsent", func(t *testing.T) { missingKeyReportsAbsent(t, open) })
 	t.Run(

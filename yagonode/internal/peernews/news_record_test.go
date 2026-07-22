@@ -68,16 +68,12 @@ func TestParseRecordAcceptsJavaMapForm(t *testing.T) {
 	}
 }
 
-func TestParseRecordDefaultsBadCreationToFallback(t *testing.T) {
+func TestParseRecordRejectsBadCreation(t *testing.T) {
 	hash := yagomodel.WordHash("myseed").String()
 	now := func() time.Time { return time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC) }
 
-	record, err := ParseRecord("{cre=garbage,ori="+hash+",malformed,=orphan}", now)
-	if err != nil {
-		t.Fatalf("ParseRecord: %v", err)
-	}
-	if !record.Created.Equal(now()) {
-		t.Fatalf("created = %v, want fallback %v", record.Created, now())
+	if _, err := ParseRecord("{cre=garbage,ori="+hash+",malformed,=orphan}", now); err == nil {
+		t.Fatal("bad creation timestamp was accepted")
 	}
 }
 

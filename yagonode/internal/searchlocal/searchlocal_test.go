@@ -74,8 +74,8 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 		index.got.MaxResults != 2 ||
 		index.got.Language != "en" ||
 		len(index.got.ExcludeTerms) != 1 ||
-		len(index.got.IncludeDomain) != 1 ||
-		index.got.IncludeDomain[0] != "example.org" || !index.got.SafeSearch {
+		index.got.SiteHost != "example.org" ||
+		len(index.got.IncludeDomain) != 0 || !index.got.SafeSearch {
 		t.Fatalf("index request = %#v", index.got)
 	}
 	if resp.TotalResults != 3 || len(resp.Results) != 1 {

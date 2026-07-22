@@ -79,8 +79,13 @@ func TestNetworkSourceComputesHealthFromCompleteStatistics(t *testing.T) {
 
 func TestNetworkSourceSurfacesReachabilityAndSeedlists(t *testing.T) {
 	gates := dhtGateStatusSource{
-		snapshot: func(context.Context) dhtexchange.GateState {
-			return dhtexchange.GateState{PublicReachable: true}
+		snapshotWithReachability: func(context.Context) (
+			dhtexchange.GateState,
+			publicReachabilitySnapshot,
+		) {
+			return dhtexchange.GateState{}, publicReachabilitySnapshot{
+				state: publicReachabilityReachable,
+			}
 		},
 	}
 	roster := reachableRoster{peers: []yagomodel.Seed{networkTestSeed(t)}}
@@ -108,7 +113,7 @@ func TestNetworkSourceSurfacesReachabilityProvenance(t *testing.T) {
 			dhtexchange.GateState,
 			publicReachabilitySnapshot,
 		) {
-			return dhtexchange.GateState{PublicReachable: true}, publicReachabilitySnapshot{
+			return dhtexchange.GateState{}, publicReachabilitySnapshot{
 				state: publicReachabilityReachable, source: publicReachabilitySourcePeerBackPing,
 				observedAt: observedAt,
 			}

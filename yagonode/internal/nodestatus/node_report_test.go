@@ -26,19 +26,17 @@ func (c stubCounter) RWIURLCount(context.Context, yagomodel.Hash) (int, error) {
 func (c stubCounter) Count(context.Context) (int, error) { return c.urls, c.err }
 
 type stubPeers struct {
-	known int
+	reachable int
 }
 
-func (p stubPeers) KnownPeerCount(context.Context) int { return p.known }
+func (p stubPeers) ReachablePeerCount(context.Context) int { return p.reachable }
 
-type stubObservedPeers struct {
-	stubPeers
-	observed int
-	err      error
+type stubSeedQueues struct {
+	statistics SeedQueueStatistics
 }
 
-func (p stubObservedPeers) ObservedKnownPeerCount(context.Context) (int, error) {
-	return p.observed, p.err
+func (s stubSeedQueues) SeedQueueStatistics(context.Context) SeedQueueStatistics {
+	return s.statistics
 }
 
 type stubNews struct {
@@ -52,6 +50,14 @@ type stubTransfers struct {
 }
 
 func (s stubTransfers) TransferTotals(context.Context) TransferTotals { return s.totals }
+
+type stubPublishedPeerClassification struct {
+	peerType yagomodel.PeerType
+}
+
+func (s stubPublishedPeerClassification) PublishedPeerType(context.Context) yagomodel.PeerType {
+	return s.peerType
+}
 
 func testIdentity() nodeidentity.Identity {
 	return nodeidentity.Identity{
@@ -76,8 +82,11 @@ func reportAt(start time.Time, elapsed time.Duration, rwi, urls stubCounter) nod
 	return newReport(id, clockAt(start.Add(elapsed)), ReportSources{
 		RWI:   rwi,
 		URLs:  urls,
-		Peers: stubPeers{known: 4},
-		News:  stubNews{attachment: "b|news"},
+		Peers: stubPeers{reachable: 4},
+		Queues: stubSeedQueues{statistics: SeedQueueStatistics{
+			Noticed: 9, NoticedKnown: true, Offered: 6, OfferedKnown: true,
+		}},
+		News: stubNews{attachment: "b|news"},
 		Transfers: stubTransfers{totals: TransferTotals{
 			Known:         true,
 			SentWords:     11,
@@ -130,52 +139,66 @@ func TestSelfSeedRefreshesDynamicFields(t *testing.T) {
 			t.Fatalf("%s = %d (set %v), want %d", name, got, ok, want.value)
 		}
 	}
+	for name, want := range map[string]struct {
+		field yagomodel.Optional[int]
+		value int
+	}{
+		yagomodel.SeedNoticedURLCount: {seed.NoticedURLCount, 9},
+		yagomodel.SeedOfferedURLCount: {seed.OfferedURLCount, 6},
+	} {
+		got, ok := want.field.Get()
+		if !ok || got != want.value {
+			t.Fatalf("%s = %d (set %v), want %d", name, got, ok, want.value)
+		}
+	}
 	for name, field := range map[string]yagomodel.Optional[int]{
-		yagomodel.SeedNoticedURLCount: seed.NoticedURLCount,
-		yagomodel.SeedOfferedURLCount: seed.OfferedURLCount,
 		yagomodel.SeedConnectsPerHour: seed.ConnectsPerHour,
 		yagomodel.SeedIndexingSpeed:   seed.IndexingSpeed,
 		yagomodel.SeedRequestSpeed:    seed.RequestSpeed,
 		yagomodel.SeedUplinkSpeed:     seed.UplinkSpeed,
 	} {
-		got, ok := field.Get()
-		if !ok || got != 0 {
-			t.Fatalf("%s = %d (set %v), want reported 0", name, got, ok)
+		if _, ok := field.Get(); ok {
+			t.Fatalf("%s was reported without a measurement", name)
 		}
 	}
 }
 
-func TestSelfSeedKeepsUnavailablePeerCountUnknown(t *testing.T) {
+func TestSelfSeedPublishesReachablePeerCount(t *testing.T) {
 	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
 	id := testIdentity()
 	id.Start = start
 	report := newReport(id, clockAt(start), ReportSources{
 		RWI:       stubCounter{},
 		URLs:      stubCounter{},
-		Peers:     stubObservedPeers{err: errors.New("closed")},
-		News:      stubNews{},
-		Transfers: stubTransfers{},
-	})
-
-	if _, known := report.SelfSeed(t.Context()).KnownSeedCount.Get(); known {
-		t.Fatal("unavailable peer count was published as known")
-	}
-}
-
-func TestSelfSeedPublishesObservedPeerCount(t *testing.T) {
-	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
-	id := testIdentity()
-	id.Start = start
-	report := newReport(id, clockAt(start), ReportSources{
-		RWI:       stubCounter{},
-		URLs:      stubCounter{},
-		Peers:     stubObservedPeers{stubPeers: stubPeers{known: 4}, observed: 7},
+		Peers:     stubPeers{reachable: 7},
 		News:      stubNews{},
 		Transfers: stubTransfers{},
 	})
 
 	if got, known := report.SelfSeed(t.Context()).KnownSeedCount.Get(); got != 7 || !known {
 		t.Fatalf("KnownSeedCount = %d known=%t, want 7 true", got, known)
+	}
+}
+
+func TestSelfSeedKeepsUnavailableQueueStatisticsUnknown(t *testing.T) {
+	start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
+	id := testIdentity()
+	id.Start = start
+	report := newReport(id, clockAt(start), ReportSources{
+		RWI:       stubCounter{},
+		URLs:      stubCounter{},
+		Peers:     stubPeers{},
+		Queues:    stubSeedQueues{},
+		News:      stubNews{},
+		Transfers: stubTransfers{},
+	})
+
+	seed := report.SelfSeed(t.Context())
+	if _, known := seed.NoticedURLCount.Get(); known {
+		t.Fatal("unavailable noticed queue depth was published")
+	}
+	if _, known := seed.OfferedURLCount.Get(); known {
+		t.Fatal("unavailable offered queue depth was published")
 	}
 }
 
@@ -217,8 +240,8 @@ func TestSelfSeedKeepsIdentityFields(t *testing.T) {
 	if port, _ := seed.Port.Get(); port != yagomodel.Port(8090) {
 		t.Fatalf("Port = %d, want 8090", port)
 	}
-	if peerType, _ := seed.PeerType.Get(); peerType != yagomodel.PeerSenior {
-		t.Fatalf("PeerType = %q, want senior", peerType)
+	if peerType, _ := seed.PeerType.Get(); peerType != yagomodel.PeerVirgin {
+		t.Fatalf("PeerType = %q, want virgin", peerType)
 	}
 	host, ok := seed.IP.Get()
 	if !ok || host.String() != "192.0.2.1" {
@@ -226,6 +249,40 @@ func TestSelfSeedKeepsIdentityFields(t *testing.T) {
 	}
 	if _, ok := seed.BirthDate.Get(); ok {
 		t.Fatal("BirthDate set without a persistent identity birth date")
+	}
+}
+
+func TestSelfSeedPublishesRuntimePeerClassification(t *testing.T) {
+	for _, test := range []struct {
+		peerType yagomodel.PeerType
+		want     yagomodel.PeerType
+	}{
+		{peerType: yagomodel.PeerVirgin, want: yagomodel.PeerVirgin},
+		{peerType: yagomodel.PeerJunior, want: yagomodel.PeerJunior},
+		{peerType: yagomodel.PeerSenior, want: yagomodel.PeerSenior},
+		{peerType: yagomodel.PeerPrincipal, want: yagomodel.PeerPrincipal},
+		{peerType: yagomodel.PeerMentor, want: yagomodel.PeerVirgin},
+	} {
+		t.Run(test.peerType.String(), func(t *testing.T) {
+			start := time.Date(2026, time.June, 22, 10, 0, 0, 0, time.UTC)
+			id := testIdentity()
+			id.Start = start
+			report := newReport(id, clockAt(start), ReportSources{
+				RWI:       stubCounter{},
+				URLs:      stubCounter{},
+				Peers:     stubPeers{},
+				News:      stubNews{},
+				Transfers: stubTransfers{},
+				PeerClassification: stubPublishedPeerClassification{
+					peerType: test.peerType,
+				},
+			})
+
+			got, known := report.SelfSeed(t.Context()).PeerType.Get()
+			if !known || got != test.want || report.PublishedPeerType(t.Context()) != test.want {
+				t.Fatalf("PeerType = %q known=%t, want %q true", got, known, test.want)
+			}
+		})
 	}
 }
 

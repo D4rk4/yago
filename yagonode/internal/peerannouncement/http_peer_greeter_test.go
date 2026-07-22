@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagoproto"
@@ -90,6 +91,206 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 	}
 	if len(result.Known) != 1 {
 		t.Fatalf("known = %d, want 1 (own seed excluded)", len(result.Known))
+	}
+}
+
+func TestPeerGreeterFallsBackToAlternateAdvertisedAddress(t *testing.T) {
+	target := callerSeed(t, "target", "192.0.2.7")
+	alternatives, err := yagomodel.ParseIP6("2001:db8::7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target.IP6 = yagomodel.Some(alternatives)
+	requestedHosts := make([]string, 0, 2)
+	response := yagoproto.HelloResponse{
+		YourIP:   "203.0.113.9",
+		YourType: yagomodel.PeerSenior,
+		Seeds:    []yagomodel.Seed{target},
+	}.Encode().Encode()
+	client := &http.Client{
+		Timeout: 100 * time.Millisecond,
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			requestedHosts = append(requestedHosts, request.URL.Hostname())
+			if request.URL.Hostname() == "192.0.2.7" {
+				return nil, errors.New("primary unavailable")
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(response)),
+			}, nil
+		}),
+	}
+
+	result, err := newHTTPPeerGreeter(client, "freeworld", false).Greet(
+		t.Context(),
+		target,
+		callerSeed(t, "self", "203.0.113.9"),
+		0,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contacted, ok := result.ContactedHost.Get()
+	if !ok || contacted.String() != "2001:db8::7" {
+		t.Fatalf("contacted host = %q, %v", contacted.String(), ok)
+	}
+	if len(requestedHosts) != 2 || requestedHosts[0] != "192.0.2.7" ||
+		requestedHosts[1] != "2001:db8::7" {
+		t.Fatalf("requested hosts = %v", requestedHosts)
+	}
+}
+
+func TestPeerGreeterRejectsWrongIdentityBeforeAlternateAddress(t *testing.T) {
+	target := callerSeed(t, "target", "192.0.2.7")
+	alternatives, err := yagomodel.ParseIP6("198.51.100.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target.IP6 = yagomodel.Some(alternatives)
+	wrong := target.Copy()
+	wrong.Hash = hashFor("wrong")
+	client := &http.Client{
+		Timeout: 100 * time.Millisecond,
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			responder := target
+			if request.URL.Hostname() == "192.0.2.7" {
+				responder = wrong
+			}
+			response := yagoproto.HelloResponse{
+				YourIP:   "203.0.113.9",
+				YourType: yagomodel.PeerSenior,
+				Seeds:    []yagomodel.Seed{responder},
+			}.Encode().Encode()
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(response)),
+			}, nil
+		}),
+	}
+
+	result, err := newHTTPPeerGreeter(client, "freeworld", false).Greet(
+		t.Context(),
+		target,
+		callerSeed(t, "self", "203.0.113.9"),
+		0,
+	)
+	if err != nil || result.Responder.Hash != target.Hash {
+		t.Fatalf("identity-preserving fallback = %+v, %v", result, err)
+	}
+	contacted, ok := result.ContactedHost.Get()
+	if !ok || contacted.String() != "198.51.100.7" {
+		t.Fatalf("contacted host = %q, %v", contacted.String(), ok)
+	}
+}
+
+func TestPeerGreeterSharesOneTimeoutAcrossAdvertisedAddresses(t *testing.T) {
+	target := callerSeed(t, "target", "192.0.2.7")
+	alternatives, err := yagomodel.ParseIP6("198.51.100.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target.IP6 = yagomodel.Some(alternatives)
+	attempts := 0
+	client := &http.Client{
+		Timeout: 200 * time.Millisecond,
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			attempts++
+			<-request.Context().Done()
+
+			return nil, request.Context().Err()
+		}),
+	}
+	started := time.Now()
+	_, err = newHTTPPeerGreeter(client, "freeworld", false).Greet(
+		t.Context(),
+		target,
+		callerSeed(t, "self", "203.0.113.9"),
+		0,
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Greet error = %v, want deadline", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want both bounded addresses", attempts)
+	}
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("shared timeout elapsed = %v", elapsed)
+	}
+}
+
+func TestPeerGreeterStopsAddressFallbackOnCancellation(t *testing.T) {
+	target := callerSeed(t, "target", "192.0.2.7")
+	alternatives, err := yagomodel.ParseIP6("198.51.100.7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	target.IP6 = yagomodel.Some(alternatives)
+	ctx, cancel := context.WithCancel(t.Context())
+	attempts := 0
+	client := &http.Client{
+		Timeout: time.Second,
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			attempts++
+			cancel()
+			<-request.Context().Done()
+
+			return nil, request.Context().Err()
+		}),
+	}
+
+	_, err = newHTTPPeerGreeter(client, "freeworld", false).Greet(
+		ctx,
+		target,
+		callerSeed(t, "self", "203.0.113.9"),
+		0,
+	)
+	if !errors.Is(err, context.Canceled) || attempts != 1 {
+		t.Fatalf("canceled greet error/attempts = %v/%d", err, attempts)
+	}
+}
+
+func TestPeerGreeterDoesNotStartWithCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	attempts := 0
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		attempts++
+
+		return nil, errors.New("unexpected request")
+	})}
+
+	_, err := newHTTPPeerGreeter(client, "freeworld", false).Greet(
+		ctx,
+		callerSeed(t, "target", "192.0.2.7"),
+		callerSeed(t, "self", "203.0.113.9"),
+		0,
+	)
+	if !errors.Is(err, context.Canceled) || attempts != 0 {
+		t.Fatalf("pre-canceled greet error/attempts = %v/%d", err, attempts)
+	}
+}
+
+func TestPeerGreeterAcceptsAdvertisedHostnameFromBackping(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		response := yagoproto.HelloResponse{
+			YourIP:   "YAGOSEEK.DEV.",
+			YourType: yagomodel.PeerSenior,
+			Seeds:    []yagomodel.Seed{callerSeed(t, "server", "203.0.113.1")},
+		}
+		_, _ = strings.NewReader(response.Encode().Encode()).WriteTo(w)
+	}))
+	defer server.Close()
+
+	result, err := newHTTPPeerGreeter(server.Client(), "freeworld", false).Greet(
+		t.Context(),
+		serverSeed(t, server),
+		callerSeed(t, "self", "yagoseek.dev"),
+		0,
+	)
+	if err != nil || result.YourType != yagomodel.PeerSenior {
+		t.Fatalf("hostname greet = %+v, %v", result, err)
 	}
 }
 
@@ -236,7 +437,11 @@ func TestPeerGreeterRejectsMessageParseError(t *testing.T) {
 		return nil, sentinel
 	}
 
-	_, err := parseGreetResponse(context.Background(), strings.NewReader("response=3\n"))
+	_, err := parseGreetResponse(
+		context.Background(),
+		strings.NewReader("response=3\n"),
+		callerSeed(t, "self", "203.0.113.9"),
+	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("parseGreetResponse error = %v, want %v", err, sentinel)
 	}
@@ -246,6 +451,7 @@ func TestPeerGreeterRejectsBadHelloResponse(t *testing.T) {
 	_, err := parseGreetResponse(
 		context.Background(),
 		strings.NewReader(yagomodel.Message{yagoproto.FieldYourType: "unknown"}.Encode()),
+		callerSeed(t, "self", "203.0.113.9"),
 	)
 	if err == nil {
 		t.Fatal("expected bad hello response error")
@@ -273,6 +479,7 @@ func TestPeerGreeterValidatesRequiredHelloResponseFields(t *testing.T) {
 			if _, err := parseGreetResponse(
 				t.Context(),
 				strings.NewReader(response.Encode().Encode()),
+				callerSeed(t, "self", "203.0.113.9"),
 			); err == nil {
 				t.Fatal("invalid hello response was accepted")
 			}
@@ -289,6 +496,7 @@ func TestPeerGreeterAcceptsCommaSeparatedCallerAddresses(t *testing.T) {
 	result, err := parseGreetResponse(
 		t.Context(),
 		strings.NewReader(response.Encode().Encode()),
+		callerSeed(t, "self", "203.0.113.9"),
 	)
 	if err != nil || result.YourIP != response.YourIP {
 		t.Fatalf("comma-separated caller addresses = %+v, %v", result, err)

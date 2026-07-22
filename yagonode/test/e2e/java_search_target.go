@@ -26,7 +26,7 @@ func announceNodeSelfSeedToYaCy(
 	if !result.ok {
 		t.Fatalf("read Yago self seed: %s", result.diag())
 	}
-	seed, err := yagomodel.ParseSeed(ctx, strings.TrimSpace(result.body))
+	seed, err := parseNodeSelfSeed(ctx, result.body)
 	if err != nil {
 		t.Fatalf("parse Yago self seed: %v", err)
 	}
@@ -34,7 +34,7 @@ func announceNodeSelfSeedToYaCy(
 		NetworkName: yagoproto.DefaultNetwork,
 		Seed:        seed,
 		Count:       dhtMinConnectedPeers,
-		Iam:         nodeHash,
+		Iam:         nodeHash.String(),
 	}
 	if !waitFor(30*time.Second, func() bool {
 		result := probe.PostRaw(
@@ -55,6 +55,10 @@ func announceNodeSelfSeedToYaCy(
 	}) {
 		t.Fatal("real YaCy never accepted the live Yago self seed")
 	}
+}
+
+func parseNodeSelfSeed(ctx context.Context, body string) (yagomodel.Seed, error) {
+	return yagomodel.ParseSeedWireForm(ctx, strings.TrimSpace(body))
 }
 
 func waitYaCySearchTarget(

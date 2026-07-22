@@ -204,6 +204,16 @@ func TestSearchCriteriaRequestBranches(t *testing.T) {
 	); err == nil {
 		t.Fatal("expected bad site hash error")
 	}
+	if _, err := searchCriteriaFromRequest(
+		yagoproto.SearchRequest{SiteHost: "%"},
+	); err == nil {
+		t.Fatal("expected malformed site host error")
+	}
+	if _, err := searchCriteriaFromRequest(
+		yagoproto.SearchRequest{Filter: "["},
+	); err == nil {
+		t.Fatal("expected bad URL filter error")
+	}
 	if got := firstNonEmpty("", "", "value"); got != "value" {
 		t.Fatalf("firstNonEmpty = %q, want value", got)
 	}
@@ -223,10 +233,10 @@ func TestTermAppearanceCriteriaBranches(t *testing.T) {
 	if criteria.matches(t.Context(), termAppearance{documentIdentifier: identifier}) {
 		t.Fatal("excluded document should fail")
 	}
-	if matchesSiteHost(t.Context(), yagomodel.URLHash("bad"), "abcdef") {
+	if matchesSiteHost(t.Context(), yagomodel.URLHash("bad"), []string{"abcdef"}) {
 		t.Fatal("bad URL hash should not match site host")
 	}
-	criteria = termAppearanceCriteria{siteHash: "abcdef"}
+	criteria = termAppearanceCriteria{siteHashes: []string{"abcdef"}}
 	if criteria.matches(t.Context(), termAppearance{documentLocation: yagomodel.URLHash("bad")}) {
 		t.Fatal("site hash mismatch should fail")
 	}

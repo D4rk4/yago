@@ -65,24 +65,25 @@ func TestIdentityAuthenticatesConfiguredNetwork(t *testing.T) {
 
 	if !identity.Authenticates(
 		form.Get(yagoproto.FieldNetworkName),
+		form.Has(yagoproto.FieldNetworkName),
 		form.Get(yagoproto.FieldKey),
 		form.Get(yagoproto.FieldIam),
 		form.Get(yagoproto.FieldMagicMD5),
 	) {
 		t.Fatal("signed network request was not authenticated")
 	}
-	if identity.Authenticates("other", "", "", "") {
+	if identity.Authenticates("other", true, "", "", "") {
 		t.Fatal("foreign network request was authenticated")
 	}
 }
 
-func TestIdentityAuthenticatesAddressAndTargetTogether(t *testing.T) {
+func TestIdentityAuthenticatesMissingNetworkAndAddressesTarget(t *testing.T) {
 	self := yagomodel.WordHash("self")
 	identity := Identity{Hash: self, NetworkName: yagoproto.DefaultNetwork}
-	if !identity.AuthenticatesAddress("", self, "", "", "") {
+	if !identity.Authenticates("", false, "", "", "") || !identity.Addresses("", self) {
 		t.Fatal("matching uncontrolled request was rejected")
 	}
-	if identity.AuthenticatesAddress("", yagomodel.WordHash("other"), "", "", "") {
+	if identity.Addresses("", yagomodel.WordHash("other")) {
 		t.Fatal("request addressed to another node was authenticated")
 	}
 }

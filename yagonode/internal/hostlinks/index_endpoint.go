@@ -56,7 +56,13 @@ func (e endpoint) Serve(
 }
 
 func (e endpoint) accepts(req yagoproto.IndexRequest) bool {
-	if !e.identity.Authenticates(req.NetworkName, req.Key, req.Iam, req.MagicMD5) {
+	if !e.identity.Authenticates(
+		req.NetworkName,
+		req.NetworkNamePresent,
+		req.Key,
+		req.Iam,
+		req.MagicMD5,
+	) {
 		return false
 	}
 

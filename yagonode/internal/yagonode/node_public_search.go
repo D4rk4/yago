@@ -74,6 +74,7 @@ type publicSearchAssembly struct {
 	learnedRanker          *learnedrank.Ranker
 	peerReputation         searchremote.ReputationSnapshotSource
 	peerObservations       searchremote.ReputationObservationSink
+	peerReachability       searchremote.PeerReachability
 	peerNetworkGroup       searchremote.ReputationNetworkGroup
 	selfSeed               func(context.Context) yagomodel.Seed
 	observeRemoteResources func(context.Context, int)

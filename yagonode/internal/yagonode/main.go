@@ -373,6 +373,7 @@ func serve(
 		}()
 	}
 	defer awaitBackgroundAndDrainTransferTally(&background, assembled.transferTally)
+	defer assembled.peerLifecycle.Close()
 	defer stopPeerReputation(cancel, assembled.peerEvents)
 
 	select {

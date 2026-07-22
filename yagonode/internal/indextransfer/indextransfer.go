@@ -78,7 +78,10 @@ func (w HTTPPeerWriter) TransferRWI(
 	postings []yagomodel.RWIPosting,
 ) (yagoproto.TransferRWIResponse, error) {
 	if len(postings) == 0 {
-		return yagoproto.TransferRWIResponse{Result: yagoproto.ResultOK}, nil
+		return yagoproto.TransferRWIResponse{
+			Result:                 yagoproto.ResultOK,
+			UnknownURLFieldPresent: true,
+		}, nil
 	}
 
 	req := yagoproto.TransferRWIRequest{
@@ -157,10 +160,20 @@ func postTransfer[T any](post transferPost[T]) (T, error) {
 	if err != nil {
 		return zero, fmt.Errorf("%w: target: %w", errTransferFailed, err)
 	}
+	operationContext, cancelOperation := transferOperationContext(post.ctx, post.client)
+	defer cancelOperation()
+	post.ctx = operationContext
 
 	var lastErr error
-	for _, target := range targets {
-		parsed, err := postTransferTo(post, target)
+	for position, target := range targets {
+		attemptContext, cancelAttempt := transferAttemptContext(
+			post.ctx,
+			len(targets)-position,
+		)
+		attempt := post
+		attempt.ctx = attemptContext
+		parsed, err := postTransferTo(attempt, target)
+		cancelAttempt()
 		if err == nil {
 			return parsed, nil
 		}

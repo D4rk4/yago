@@ -46,19 +46,65 @@ its binaries (`yago-node`, `yago-crawler`).
   responses instead of silently acknowledging an unprocessed tail. Remote
   result copies carry the transient `wi` WordReferenceRow evidence required by
   current Java peers, and accepted remote-search resources contribute to the
-  advertised received-word and received-URL totals.
+  advertised received-word and received-URL totals. Inbound RWI and URL
+  metadata transfers require the authenticated sender hash to exist in the
+  persistent peer roster; an inactive or junior peer remains eligible. Outbound
+  selection commits its recovery rows before a separate live-index deletion,
+  and restoration commits live rows before releasing those recovery rows.
+  A later shard failure therefore leaves a live or restart-recoverable copy
+  until every queued redundancy copy is accepted. Per-URL rejection restores
+  only the affected postings while unaffected postings complete. A rejected
+  redundancy copy is cancelled from
+  every sibling target before local restore, and a failed restore or final
+  journal confirmation is retried locally before another network handoff.
 - **Swarm participation**: seedlist bootstrap, peer roster with birth-date
   promotion, LAN discovery, peer news, per-peer blocking, and the DHT gates
   dashboard showing exactly why a transfer would or would not fire. Authenticated
   inbound hello callers that fail the local callback remain visible as bounded
   `junior` potential peers, but cannot enter reachable membership, search,
   seed-list, or DHT target selection. Callback work uses YaCy's aggregate
-  6.5-second HTTP or 13-second HTTPS-first budget; its bounded caller-observation
+  6.5-second HTTP or 13-second HTTPS-first budget across at most five unique
+  advertised hosts. Peer transport tries the primary `IP` host first and then
+  `IP6` entries in wire order, supports IPv6-only seeds, and promotes the host
+  that actually answered before storing the peer. RWI and URL transfer attempts
+  divide the existing caller/client deadline across that same bounded address
+  order instead of multiplying the timeout per address. Its bounded caller-observation
   write survives request cancellation, so a blackholed endpoint does not erase
-  the junior row. Validated outbound hello responses retain
-  recent external back-ping evidence, so DHT readiness uses peer observations
-  first and no longer depends solely on a NAT-sensitive request from the node
-  to itself.
+  the junior row. Authentication failure and self identity receive a virgin
+  response without peer seeds; authenticated responses expose no more than 100
+  currently reachable peers in deterministic local last-seen order without a
+  persistent-roster scan, and reachable principal callers retain that type.
+  Hello keeps `iam` opaque for exact salted authentication; an absent,
+  malformed, or signed-int32-overflow `count` uses stock YaCy's zero fallback.
+  Configured seedlists share one ten-second, eight-worker refresh and one
+  4,096-seed/16-MiB aggregate, preserving completed fast sources at the deadline.
+  Served plain seed lists use YaCy's shorter compact `b|` or `z|` row form;
+  request counts and version floors follow Java integer and binary32 parsing,
+  including the stock fallback for malformed peer versions.
+  Peer membership changes use cancellation-aware serialization; transport
+  failures retain a durable cooling peer for retry, successful search or greeting
+  contact promotes it, and verified exact endpoint ownership prevents an
+  unverified duplicate from becoming routable after restart. Primary peer rows
+  remain readable by v0.0.20; additive row-and-state-bound lifecycle metadata is
+  ignored by that version and falls back conservatively after a downgrade rewrite.
+  Validated outbound hello responses retain recent external back-ping
+  evidence for truthful public-endpoint status without making inbound
+  reachability a prerequisite for outbound RWI distribution. The published
+  self type starts virgin, follows the strongest current peer evidence, and
+  retains its last value when the current evidence window becomes empty; the
+  self seed, seed lists, Admin Overview, and DHT maturity gate share that value.
+  The roster excludes the immutable local peer hash at persistence, admission,
+  selection, count, and Admin projection boundaries.
+- Peer messages enforce the advertised decoded 100-byte subject and 10,240-byte
+  body limits and retain a deterministic 1,024-record/8-MiB durable mailbox.
+  Peer-news records are limited to 1 KiB, expire after 24 or 72 hours by upstream
+  category, and use restart-safe newest-created retention bounded to 4,096 queue
+  rows/4 MiB and 4,096 duplicate identities. Startup cleanup is progress-making
+  and removes confirmed corrupt, oversized, expired, or orphaned legacy state
+  before use. An operational inspection or read failure rolls back the current
+  cleanup page instead of treating unread state as corrupt. Earlier committed
+  pages remain durable, cleanup resumes from its last durable checkpoint, and a
+  pending recovery intent remains available for idempotent reconciliation.
 - Deliberate divergences are documented, not hidden — see
   [compatibility.md](yagonode/doc/compatibility.md).
 
@@ -142,6 +188,10 @@ its binaries (`yago-node`, `yago-crawler`).
   verticals (images/audio/video/apps with a lightbox grid), spell-check
   ("did you mean"), zero-result fuzzy recovery, query-term-highlighted
   snippets, anchor-text document expansion, and an explainable ranking API.
+  The `site:` operator accepts only the exact normalized host and its counterpart
+  with one leading `www.` label; it does not include other subdomains.
+  Operator-only searches stay keyword-seeded and prompt for a search word rather
+  than scanning the entire index.
   Local snippets and stored-body passages use query-match offsets from the
   indexed language analyzer. A local result with stored-body evidence links its
   cached copy to the matching analyzer-backed range plus bounded surrounding
@@ -165,8 +215,11 @@ its binaries (`yago-node`, `yago-crawler`).
   optional `YAGO_SEARCH_REQUIRE_API_KEY` switch makes the surface scoped-only
   by disabling the legacy static `YAGO_SEARCH_API_KEY` credential.
   `basic`, `fast`, and `ultra-fast` use local retrieval; `advanced` shares the
-  root portal's canonical global ranking for equivalent requests. Default
-  results include `raw_content: null`, errors contain only `detail.error`, and
+  root portal's canonical global ranking for equivalent requests. Domain
+  includes and excludes constrain every local, peer, and web candidate
+  before source fusion and truncation, while retaining parent-domain suffix
+  matching. Default results include `raw_content: null`, errors contain only
+  `detail.error`, and
   raw-content requests retain YaGo's stricter 30-second and 200-page safety
   limits. `/extract` gives each local document lookup at most 250 milliseconds;
   an enabled guarded fetch then uses only the remaining request budget. A lookup

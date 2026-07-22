@@ -24,12 +24,13 @@ func TestRealYaCyPromotesNodeToSenior(t *testing.T) {
 
 	_, yacyURL := startYaCy(t, ctx, probe, network.Name, yacyAlias)
 
-	startNode(t, ctx, probe, nodeConfig{
+	_, nodeURL := startNode(t, ctx, probe, nodeConfig{
 		networkName: network.Name,
 		alias:       nodeAlias,
 		hash:        nodeHash,
 		seedlistURL: "http://" + yacyAlias + ":" + nodeContainerPort + "/yacy/seedlist.html",
 	})
+	announceNodeSelfSeedToYaCy(t, ctx, probe, nodeURL, yacyURL, nodeHash)
 
 	if !waitFor(15*time.Second, func() bool {
 		result := probe.Get(ctx, yacyURL+"/Network.xml?page=1&maxCount=1000")

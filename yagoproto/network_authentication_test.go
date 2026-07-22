@@ -120,6 +120,44 @@ func TestNetworkAccessUncontrolledStillChecksNetwork(t *testing.T) {
 	}
 }
 
+func TestNetworkAccessDistinguishesAbsentAndEmptyNetwork(t *testing.T) {
+	t.Parallel()
+
+	for _, mode := range []yagoproto.NetworkAuthenticationMode{
+		yagoproto.NetworkAuthenticationUncontrolled,
+		yagoproto.NetworkAuthenticationSaltedMagic,
+	} {
+		t.Run(string(mode), func(t *testing.T) {
+			access := yagoproto.NetworkAccess{
+				Mode:       mode,
+				Essentials: "shared-secret",
+			}
+			form := url.Values{
+				yagoproto.FieldKey: {"salt1234"},
+				yagoproto.FieldIam: {"opaque-caller"},
+			}
+			if mode == yagoproto.NetworkAuthenticationSaltedMagic {
+				form.Set(
+					yagoproto.FieldMagicMD5,
+					yagoproto.MagicMD5("salt1234", "opaque-caller", "shared-secret"),
+				)
+			}
+
+			if !access.Authorizes(form) {
+				t.Fatal("absent network was not defaulted to freeworld")
+			}
+			form.Set(yagoproto.FieldNetworkName, "")
+			if access.Authorizes(form) {
+				t.Fatal("explicitly empty network was authorized as freeworld")
+			}
+			form.Set(yagoproto.FieldNetworkName, yagoproto.DefaultNetwork)
+			if !access.Authorizes(form) {
+				t.Fatal("explicit freeworld network was rejected")
+			}
+		})
+	}
+}
+
 func TestNetworkAccessRejectsUnknownMode(t *testing.T) {
 	access := yagoproto.NetworkAccess{
 		NetworkName: "freeworld",

@@ -18,14 +18,18 @@ type stubGreeter struct {
 }
 
 func (g *stubGreeter) Greet(
-	context.Context,
-	yagomodel.Seed,
-	yagomodel.Seed,
-	int,
+	_ context.Context,
+	target yagomodel.Seed,
+	_ yagomodel.Seed,
+	_ int,
 ) (greetResult, error) {
 	g.calls++
+	result := g.result
+	if result.Responder.Hash == "" {
+		result.Responder = target
+	}
 
-	return g.result, g.err
+	return result, g.err
 }
 
 type cancelingGreeter struct {
@@ -34,24 +38,26 @@ type cancelingGreeter struct {
 }
 
 func (g *cancelingGreeter) Greet(
-	context.Context,
-	yagomodel.Seed,
-	yagomodel.Seed,
-	int,
+	_ context.Context,
+	target yagomodel.Seed,
+	_ yagomodel.Seed,
+	_ int,
 ) (greetResult, error) {
 	g.calls++
 	if g.calls == 2 {
 		g.cancel()
 	}
 
-	return greetResult{YourType: yagomodel.PeerSenior}, nil
+	return greetResult{Responder: target, YourType: yagomodel.PeerSenior}, nil
 }
 
 type stubRoster struct {
 	rounds      [][]yagomodel.Seed
 	discovered  []yagomodel.Seed
+	responders  []yagomodel.Seed
 	reachable   []yagomodel.Hash
 	unreachable []yagomodel.Hash
+	prunes      int
 }
 
 func (s *stubRoster) FreshestPeers(context.Context, int) []yagomodel.Seed {
@@ -68,12 +74,21 @@ func (s *stubRoster) Discover(_ context.Context, seeds ...yagomodel.Seed) {
 	s.discovered = append(s.discovered, seeds...)
 }
 
+func (s *stubRoster) ObserveResponder(_ context.Context, responder yagomodel.Seed) {
+	s.responders = append(s.responders, responder)
+	s.reachable = append(s.reachable, responder.Hash)
+}
+
 func (s *stubRoster) ConfirmReachable(_ context.Context, peer yagomodel.Hash) {
 	s.reachable = append(s.reachable, peer)
 }
 
 func (s *stubRoster) ConfirmUnreachable(_ context.Context, peer yagomodel.Hash) {
 	s.unreachable = append(s.unreachable, peer)
+}
+
+func (s *stubRoster) PruneExpired(context.Context) {
+	s.prunes++
 }
 
 type stubSelf struct {
@@ -126,6 +141,85 @@ func TestAnnounceRecordsReachableAndGossip(t *testing.T) {
 	}
 	if len(roster.discovered) != 1 || roster.discovered[0].Hash != known.Hash {
 		t.Fatalf("discovered = %v, want gossiped known seed", roster.discovered)
+	}
+	if roster.prunes != 1 {
+		t.Fatalf("prunes = %d, want 1", roster.prunes)
+	}
+}
+
+func TestAnnounceObservesVerifiedResponderMetadata(t *testing.T) {
+	peer := callerSeed(t, "peer", "203.0.113.1")
+	peer.RWICount = yagomodel.Some(17)
+	responder := callerSeed(t, "peer", "198.51.100.77")
+	responder.Hash = peer.Hash
+	responder.Port = yagomodel.Some(yagomodel.Port(9999))
+	responder.PortSSL = yagomodel.Some(yagomodel.Port(9443))
+	responder.Name = yagomodel.Some("current-peer")
+	responder.RWICount = yagomodel.Some(8_363_840)
+
+	roster := &stubRoster{rounds: [][]yagomodel.Seed{{peer}}}
+	a := &announcer{
+		self:   stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		seeds:  &stubSeedSource{},
+		roster: roster,
+		greeter: &stubGreeter{result: greetResult{
+			Responder: responder,
+			YourType:  yagomodel.PeerSenior,
+		}},
+	}
+
+	a.Announce(t.Context())
+
+	if len(roster.responders) != 1 {
+		t.Fatalf("responders = %v, want one", roster.responders)
+	}
+	stored := roster.responders[0]
+	name, _ := stored.Name.Get()
+	rwi, _ := stored.RWICount.Get()
+	endpoint, _ := stored.NetworkAddress()
+	if name != "current-peer" || rwi != 8_363_840 || endpoint != "203.0.113.1:8090" {
+		t.Fatalf("verified responder = %#v, want refreshed metadata", stored)
+	}
+	if _, retained := stored.PortSSL.Get(); retained {
+		t.Fatalf("verified responder retained uncontacted TLS port: %#v", stored)
+	}
+}
+
+func TestAnnouncePersistsActualWinningAddress(t *testing.T) {
+	peer := callerSeed(t, "peer", "192.0.2.7")
+	alternatives, err := yagomodel.ParseIP6("2001:db8::7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer.IP6 = yagomodel.Some(alternatives)
+	responder := callerSeed(t, "peer", "198.51.100.77")
+	responder.Hash = peer.Hash
+	roster := &stubRoster{rounds: [][]yagomodel.Seed{{peer}}}
+	a := &announcer{
+		self:   stubSelf{seed: callerSeed(t, "self", "203.0.113.9")},
+		seeds:  &stubSeedSource{},
+		roster: roster,
+		greeter: &stubGreeter{result: greetResult{
+			Responder:     responder,
+			ContactedHost: yagomodel.Some(alternatives[0]),
+			YourType:      yagomodel.PeerSenior,
+		}},
+	}
+
+	a.Announce(t.Context())
+
+	if len(roster.responders) != 1 {
+		t.Fatalf("responders = %v, want one", roster.responders)
+	}
+	stored := roster.responders[0]
+	address, ok := stored.NetworkAddress()
+	if !ok || address != "[2001:db8::7]:8090" || stored.Hash != peer.Hash {
+		t.Fatalf("stored winning endpoint = %q/%v hash=%q", address, ok, stored.Hash)
+	}
+	hosts := stored.AdvertisedHosts()
+	if len(hosts) != 2 || hosts[0].String() != "2001:db8::7" ||
+		hosts[1].String() != "192.0.2.7" {
+		t.Fatalf("stored address order = %v", hosts)
 	}
 }
 
@@ -328,8 +422,11 @@ func TestGreetDiscoveredVerifiesBeforeAdmittingToRoster(t *testing.T) {
 	if len(roster.reachable) != 1 || roster.reachable[0] != peer.Hash {
 		t.Fatalf("reachable = %v, want the verified peer %v", roster.reachable, peer.Hash)
 	}
-	if len(roster.discovered) != 2 || roster.discovered[0].Hash != peer.Hash {
-		t.Fatalf("discovered = %v, want the verified peer then its gossip", roster.discovered)
+	if len(roster.responders) != 1 || roster.responders[0].Hash != peer.Hash {
+		t.Fatalf("responders = %v, want the verified peer", roster.responders)
+	}
+	if len(roster.discovered) != 1 || roster.discovered[0].Hash != known.Hash {
+		t.Fatalf("discovered = %v, want only the responder gossip", roster.discovered)
 	}
 }
 

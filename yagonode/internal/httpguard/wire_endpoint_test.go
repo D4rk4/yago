@@ -210,3 +210,56 @@ func TestMountServesMuxRoute(t *testing.T) {
 		t.Fatalf("body = %q, want mounted response", rec.Body.String())
 	}
 }
+
+func TestMountWithContentTypeChangesOnlySelectedRoute(t *testing.T) {
+	mux := http.NewServeMux()
+	router := httpguard.NewWireRouter(mux, testGate())
+	parse := func(ctx context.Context, _ url.Values) (echoResponse, error) {
+		return echoResponse{addr: httpguard.RemoteAddr(ctx)}, nil
+	}
+	serve := func(_ context.Context, resp echoResponse) (echoResponse, error) {
+		return resp, nil
+	}
+	httpguard.MountWithContentType(
+		router,
+		"/html",
+		yagoproto.TransferURLEndpointMethods,
+		"text/html; charset=UTF-8",
+		httpguard.WireEndpoint[echoResponse, echoResponse]{Parse: parse, Serve: serve},
+	)
+	httpguard.Mount(
+		router,
+		"/plain",
+		yagoproto.TransferURLEndpointMethods,
+		parse,
+		serve,
+	)
+
+	for _, test := range []struct {
+		path        string
+		contentType string
+	}{
+		{path: "/html", contentType: "text/html; charset=UTF-8"},
+		{path: "/plain", contentType: "text/plain; charset=UTF-8"},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			test.path,
+			strings.NewReader("a=b"),
+		)
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		mux.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusOK ||
+			recorder.Header().Get("Content-Type") != test.contentType {
+			t.Fatalf(
+				"%s response = %d Content-Type %q",
+				test.path,
+				recorder.Code,
+				recorder.Header().Get("Content-Type"),
+			)
+		}
+	}
+}

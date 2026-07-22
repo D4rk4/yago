@@ -46,13 +46,29 @@ func TestCallerObservationHonorsActiveCapacityAndRefreshesActivePeer(t *testing.
 	}
 }
 
+func TestCallerObservationRetainsPrincipalClassification(t *testing.T) {
+	r, _ := openScriptedRoster(t, 8, 4)
+	caller := internalSeed(t, "principal", "203.0.113.3")
+
+	r.ObserveCaller(t.Context(), caller, yagomodel.PeerPrincipal)
+
+	reachable := r.ReachablePeers(t.Context())
+	if len(reachable) != 1 || reachable[0].Hash != caller.Hash {
+		t.Fatalf("reachable principal = %#v", reachable)
+	}
+	peerType, known := reachable[0].PeerType.Get()
+	if !known || peerType != yagomodel.PeerPrincipal {
+		t.Fatalf("principal classification = %q known=%t", peerType, known)
+	}
+}
+
 func TestCandidateSnapshotRejectsPersistedAddresslessPeer(t *testing.T) {
 	r, _ := openScriptedRoster(t, 8, 4)
 	peer := yagomodel.Seed{
 		Hash:     internalHashFor("legacy"),
 		PeerType: yagomodel.Some(yagomodel.PeerJunior),
 	}
-	if err := r.persistCallerObservation(t.Context(), peer); err != nil {
+	if _, err := r.persistCallerObservation(t.Context(), rosterEntry{seed: peer}); err != nil {
 		t.Fatalf("persistCallerObservation: %v", err)
 	}
 	r.invalidateCandidateSnapshot()
