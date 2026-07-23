@@ -134,7 +134,7 @@ func (engine *leaseSweepFailureEngine) View(
 ) error {
 	err := engine.scriptedEngine.View(ctx, read)
 	engine.views++
-	if err == nil && engine.views == 1 {
+	if err == nil && engine.views == 3 {
 		engine.scanErrors[leaseBucket] = errors.New("scan failed")
 	}
 

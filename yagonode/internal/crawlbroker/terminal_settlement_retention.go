@@ -130,11 +130,15 @@ func (q *DurableOrderQueue) requeueTerminalLeaseTx(
 	if !lease.Deferred || lease.WorkerID != "" || !bytes.Equal(identity[:], orderIdentity) {
 		return false, errLeaseDispositionConflict
 	}
-	if _, err := q.enqueueTx(
+	sequence, err := q.enqueueTx(
 		tx,
 		lease.OrderData,
 		persistedOrderPriority(lease.OrderData, lease.Priority),
-	); err != nil {
+	)
+	if err != nil {
+		return false, err
+	}
+	if err := q.recordRequeuedAutomaticDiscoveryTx(tx, leaseID, lease, sequence); err != nil {
 		return false, err
 	}
 	if _, err := q.leases.Delete(tx, vault.Key(leaseID)); err != nil {

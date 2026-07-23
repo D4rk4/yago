@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -50,11 +51,8 @@ func (s *fakeSearcher) Search(
 ) (searchcore.Response, error) {
 	s.calls++
 	s.got = req
-	if s.err != nil {
-		return searchcore.Response{}, s.err
-	}
 
-	return s.response, nil
+	return s.response, s.err
 }
 
 type fakeDocuments struct {
@@ -275,7 +273,7 @@ func assertRichSearchResponse(
 	}
 }
 
-func TestSearchEndpointDefaultsToLocalAndMetadataSnippet(t *testing.T) {
+func TestSearchEndpointDefaultsToFederatedAndMetadataSnippet(t *testing.T) {
 	search := &fakeSearcher{response: searchcore.Response{Results: []searchcore.Result{{
 		Title:   "Title",
 		URL:     "https://sub.example.org/doc",
@@ -297,7 +295,7 @@ func TestSearchEndpointDefaultsToLocalAndMetadataSnippet(t *testing.T) {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	got := decodeSearchResponse(t, rec)
-	if search.got.Source != searchcore.SourceLocal ||
+	if search.got.Source != searchcore.SourceGlobal ||
 		search.got.Verify != searchcore.VerifyFalse ||
 		search.got.Limit != defaultMaxResults*domainOverfetchFactor ||
 		!search.got.AllowWebFallback ||
@@ -794,7 +792,7 @@ func TestSearchEndpointMountsRoute(t *testing.T) {
 func TestSearchDepthAndValidationHelpers(t *testing.T) {
 	for _, depth := range []string{"", "basic", "fast", "ultra-fast"} {
 		source, err := sourceForDepth(depth)
-		if err != nil || source != searchcore.SourceLocal {
+		if err != nil || source != searchcore.SourceGlobal {
 			t.Fatalf("sourceForDepth(%q) = %q, %v", depth, source, err)
 		}
 	}
@@ -830,6 +828,14 @@ func TestSearchReferenceValidationBounds(t *testing.T) {
 	}
 	if err := validateRequestOptions(SearchRequest{Country: "United States"}); err == nil {
 		t.Fatal("non-reference country spelling accepted")
+	}
+}
+
+func TestNormalizedDomainsCanonicalizeBracketedIPv6(t *testing.T) {
+	got := normalizedDomains([]string{"[2001:DB8::1]", "https://[2001:db8::2]/"})
+	want := []string{"2001:db8::1", "2001:db8::2"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("normalized domains = %q, want %q", got, want)
 	}
 }
 

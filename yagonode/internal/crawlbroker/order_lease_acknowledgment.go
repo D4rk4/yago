@@ -32,7 +32,7 @@ func (q *DurableOrderQueue) acknowledgeLeaseTx(
 	if err != nil {
 		return leaseControlTarget{}, leaseRecord{}, false, err
 	}
-	if err := q.persistAcknowledgedLeaseTx(tx, leaseID, target); err != nil {
+	if err := q.persistAcknowledgedLeaseTx(tx, leaseID, target, record); err != nil {
 		return leaseControlTarget{}, leaseRecord{}, false, err
 	}
 
@@ -58,6 +58,7 @@ func (q *DurableOrderQueue) persistAcknowledgedLeaseTx(
 	tx *vault.Txn,
 	leaseID string,
 	target leaseControlTarget,
+	record leaseRecord,
 ) error {
 	if target.WorkerID != "" && target.RunID != "" {
 		if err := q.leaseControlTargets.Put(tx, vault.Key(leaseID), target); err != nil {
@@ -66,6 +67,9 @@ func (q *DurableOrderQueue) persistAcknowledgedLeaseTx(
 	}
 	if _, err := q.leases.Delete(tx, vault.Key(leaseID)); err != nil {
 		return fmt.Errorf("delete crawl lease: %w", err)
+	}
+	if err := q.releaseLeasedAutomaticDiscoveryTx(tx, leaseID, record); err != nil {
+		return err
 	}
 	if err := q.recordLeaseSettlement(tx, leaseID, leaseSettlementAcknowledged); err != nil {
 		return err

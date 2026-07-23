@@ -97,7 +97,7 @@ func (p *DDGSProvider) searchProviderQuery(
 	if query.outboundText == "" {
 		return nil, nil
 	}
-	if cached, ok := p.cache.get(query.outboundText); ok {
+	if cached, ok := p.cache.get(query.cacheIdentity); ok {
 		return capResults(cached, p.limit(limit)), nil
 	}
 	results, rateLimited, err := p.query(ctx, query)
@@ -119,7 +119,7 @@ func (p *DDGSProvider) searchProviderQuery(
 	// intermittently, and caching the miss would pin the failure for the whole
 	// TTL while the next attempt might succeed.
 	if len(results) > 0 {
-		p.cache.put(query.outboundText, results)
+		p.cache.put(query.cacheIdentity, results)
 	}
 
 	return capResults(results, p.limit(limit)), nil

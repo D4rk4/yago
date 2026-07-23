@@ -38,6 +38,8 @@ type leaseRecord struct {
 	WorkerSessionID   string                               `json:"session,omitempty"`
 	Deferred          bool                                 `json:"deferred,omitempty"`
 	ExpiresAtUnixNano int64                                `json:"expires"`
+	DiscoveryKey      string                               `json:"discovery_key,omitempty"`
+	DiscoverySequence uint64                               `json:"discovery_sequence,omitempty"`
 }
 
 type leaseRecordCodec struct{}
@@ -160,10 +162,27 @@ func (q *DurableOrderQueue) ackLeaseWithTargetLocked(
 	workerSessionID string,
 	requireOwner bool,
 ) (leaseControlTarget, error) {
+	staged, err := q.stageAutomaticDiscoveryAcknowledgmentForCompletion(
+		ctx,
+		leaseID,
+		workerID,
+		workerSessionID,
+		requireOwner,
+	)
+	if err != nil {
+		return leaseControlTarget{}, fmt.Errorf("ack crawl lease: %w", err)
+	}
+	settlementContext := ctx
+	cancelSettlement := func() {}
+	if staged {
+		afterAutomaticDiscoverySettlementStage()
+		settlementContext, cancelSettlement = automaticDiscoverySettlementRecoveryContext(ctx)
+	}
+	defer cancelSettlement()
 	var target leaseControlTarget
 	var removed leaseRecord
 	removedFound := false
-	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
+	settlementErr := q.vault.Update(settlementContext, func(tx *vault.Txn) error {
 		var err error
 		target, removed, removedFound, err = q.acknowledgeLeaseTx(
 			tx,
@@ -174,11 +193,28 @@ func (q *DurableOrderQueue) ackLeaseWithTargetLocked(
 		)
 
 		return err
-	}); err != nil {
-		return leaseControlTarget{}, fmt.Errorf("ack crawl lease: %w", err)
-	}
-	if removedFound {
+	})
+	mainSettlementCommitted := settlementErr == nil
+	if mainSettlementCommitted && removedFound {
 		q.workerLeases.remove(removed)
+	}
+	resolution, recoveryErr := q.completeAutomaticDiscoverySettlement(
+		settlementContext,
+		leaseID,
+	)
+	if resolution.Acknowledged && (!mainSettlementCommitted || !removedFound) {
+		q.workerLeases.remove(resolution.Intent.Lease)
+	}
+	if recoveryErr != nil {
+		q.signal()
+
+		return leaseControlTarget{}, recoveryErr
+	}
+	if settlementErr != nil && !resolution.Acknowledged {
+		return leaseControlTarget{}, fmt.Errorf("ack crawl lease: %w", settlementErr)
+	}
+	if resolution.Acknowledged {
+		target = resolution.Intent.Target
 	}
 
 	return target, nil

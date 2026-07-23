@@ -199,7 +199,7 @@ func (c *IngestConsumer) absorbReservedTail(
 		return
 	}
 
-	c.recordFetch(ctx, batch)
+	c.recordFetch(ctx, delivery)
 	if !c.completeObservations(ctx, []IngestDelivery{delivery}) {
 		return
 	}
@@ -344,14 +344,25 @@ func (c *IngestConsumer) rejectLowQuality(
 // best-effort: a failure is logged, never propagated, so it cannot fail an ingest
 // that already stored its document, metadata, and postings. Only real page fetches
 // (a document with a source URL and a fetch time) are recorded.
-func (c *IngestConsumer) recordFetch(ctx context.Context, batch yagocrawlcontract.IngestBatch) {
+func (c *IngestConsumer) recordFetch(ctx context.Context, delivery IngestDelivery) {
+	batch := delivery.Batch
 	if batch.SourceURL == "" ||
 		!hasDocument(batch.Document) ||
 		batch.Document.FetchedAt.IsZero() {
 		return
 	}
 	var err error
-	if recorder, ok := c.recorder.(sourceModifiedFetchRecorder); ok {
+	if recorder, ok := c.recorder.(profileFetchRecorder); ok &&
+		delivery.CrawlProfile != nil &&
+		delivery.CrawlProfile.Handle == batch.ProfileHandle {
+		err = recorder.RecordProfileFetch(
+			ctx,
+			batch.SourceURL,
+			*delivery.CrawlProfile,
+			batch.Document.FetchedAt,
+			batch.SourceModifiedAt,
+		)
+	} else if recorder, ok := c.recorder.(sourceModifiedFetchRecorder); ok {
 		err = recorder.RecordFetchWithSourceModified(
 			ctx,
 			batch.SourceURL,

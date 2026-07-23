@@ -244,14 +244,14 @@ required.
 | `YAGO_PEER_SNIPPET_FETCH` | `true` | Permit bounded, egress-guarded body fetches for the first peer rows whose visible title, snippet, and decoded URL do not prove every query requirement. Admin setting: `search.peer.snippet_fetch`. |
 | `YAGO_SWARM_MORPHOLOGY` | `false` | Add bounded corpus-observed and analyzer-verified surface forms to YaCy swarm retrieval while preserving exact RWI wire hashes. Admin setting: `swarm.morphology.enabled`. |
 | `YAGO_WEB_FALLBACK_ENABLED` | _(migration only)_ | Legacy on/off input accepted only when `YAGO_WEB_FALLBACK_PRIVACY` is unset (`true` becomes `enabled`, `false` becomes `disabled`). Canonical deployment examples omit it. |
-| `YAGO_WEB_FALLBACK_PRIVACY` | `disabled` | Controls the `Web search fallback (DDGS)` Admin setting. `disabled` never sends a query; `explicit` requires request consent; `enabled` runs web search after exact local-plus-swarm and the applicable bounded local recovery miss; `always` starts bounded web retrieval alongside local and swarm for every eligible global query, then rank-fuses and deduplicates all completed results. Tavily `advanced` search grants request consent and follows this global policy; `basic`, `fast`, and `ultra-fast` remain local-only and never use the provider. YaCy `resource=local` and admin `scope=local` also never use the provider. |
+| `YAGO_WEB_FALLBACK_PRIVACY` | `disabled` | Controls the `Web search fallback (DDGS)` Admin setting. `disabled` never sends a query; `explicit` requires request consent; `enabled` runs web search after exact local-plus-swarm and the applicable bounded local recovery miss; `always` starts bounded web retrieval alongside local and swarm for every eligible global query, then rank-fuses and deduplicates all completed results. Every Tavily search depth uses global local-plus-peer retrieval and carries fallback consent, while this operator setting remains authoritative: `enabled` invokes web search after the bounded miss path and `always` starts it in parallel for every depth. `basic`, `fast`, and `ultra-fast` use `verify=false`; `advanced` uses `verify=ifexist`. YaCy `resource=local` and admin `scope=local` never use the provider. |
 | `YAGO_WEB_FALLBACK_PROVIDER` | _(migration only)_ | Legacy provider-family input; if present it must be exactly `ddgs`. The runtime provider is fixed, while `YAGO_WEB_FALLBACK_BACKEND` selects its engine. Canonical deployment examples omit this input. |
 | `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` starts DuckDuckGo HTML first, then hedges DuckDuckGo Lite, Brave, Mojeek, and Bing at 50ms intervals until one answer survives relevance checks. Internal dash punctuation is sent as word boundaries so engines do not reinterpret a compound query as exclusion; an explicit leading minus and structured modifier values remain intact. At most eight engine fetch-and-parse attempts run process-wide. `mojeek`, `bing`, `brave`, or `duckduckgo` restrict the engine set. See `doc/adr/0021-in-house-metasearch-backend.md`. |
 | `YAGO_WEB_FALLBACK_MAX_RESULTS` | `10` | Maximum fallback results (1–20). |
 | `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-engine timeout ceiling. Interactive search additionally caps the complete hedged web stage at 900ms after a local-plus-swarm miss or 1500ms when `always` starts it in parallel, inside the fixed 1.8-second deadline. |
 | `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Safe-search preference passed to engines that support it (`strict`, `moderate`, `off`). |
 | `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. Normalized responses share a fixed 4 MiB/256-entry byte-aware cache, retain at most 20 rows per query, and bound each title, URL, and snippet before insertion. |
-| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so later queries can be answered locally. Publishing runs after the search response through two background workers, a process-wide queue of at most 128 pending jobs, and a ten-second deadline that begins when each job starts. A full queue warns and skips only new optional warming work. Each URL gets a 50-millisecond stored-document presence check before an absent or indeterminate URL attempts URL-idempotent durable publication; at most one accepted order remains for that normalized URL. No effect when crawling is disabled. |
+| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so later queries can be answered locally. Publishing runs after the search response through two background workers, a process-wide queue of at most 128 pending jobs, and a ten-second deadline that begins when each job starts. A full queue warns and skips only new optional warming work. Each URL gets a 50-millisecond stored-document presence check before an absent or indeterminate URL attempts recovery-intent-backed durable publication. Publication coalesces the normalized URL only while its order is pending or leased. Acknowledgement, terminal failure, or cancellation permits a later surfaced result to retry. Successful lease-authorized ingest attempts to persist the live lease's profile before recording the fetch. A profile or schedule write failure is logged and cannot reject or roll back the fetched document. No effect when crawling is disabled. |
 | `YAGO_WEB_FALLBACK_SEED_DEPTH` | `5` | Crawl depth for web-discovery orders when web-discovery crawling is enabled (0–8). |
 | `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `250` | Whole-run page cap for each web-discovery crawl task when enabled. The global crawler run cap may reduce it further. |
 | `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records the query length and result count but never the text; `full` records the query text. In either enabled mode, an incomplete response also records `partialFailures` and at most eight ordered unique `failureSources`. The default keeps queries out of the logs. |
@@ -260,7 +260,7 @@ required.
 | `YAGO_SEARCH_LINKS_NEW_TAB` | `false` | Open result links on the public portal, admin console search, and /yacysearch.html in a new tab. Off by default per NN/G guidance (opening new tabs breaks the back button and takes control from the user); when on, links carry `rel="noopener noreferrer nofollow"` and an accessible "opens in new tab" indicator (visible ↗ plus screen-reader text). |
 | `YAGO_SEARCH_CLICK_CAPTURE` | `false` | Record query-to-result click aggregates for offline YagoRank relevance learning. Admin key: `search.click.capture`; takes effect after restart. Query text is not added to ordinary logs by this setting. |
 | `YAGO_INGEST_QUALITY_GATE` | `true` | Apply the deterministic web-page quality gate before crawled HTML or plain text is stored and indexed. Admin key: `crawl.ingest.quality_gate`; takes effect after restart. Parsed document formats and unsegmented scripts follow the bounded exceptions described in the feature catalog. |
-| `YAGO_SWARM_SEED_CRAWL` | `true` | Greedy learning (YaCy 1.5): enqueue a domain-scoped crawl order (depth 5, up to 250 pages for the complete task, idempotent by URL, skipping URLs already stored) for every URL surfaced by swarm search, so the index grows from what the network already answers with. Requires crawler integration; orders respect robots.txt and blacklist handling. |
+| `YAGO_SWARM_SEED_CRAWL` | `true` | Greedy learning (YaCy 1.5): enqueue a domain-scoped crawl order (depth 5, up to 250 pages for the complete task, coalescing each normalized URL while its automatic-discovery order is pending or leased, permitting retry after settlement, and skipping URLs already stored) for every URL surfaced by swarm search, so the index grows from what the network already answers with. Requires crawler integration; orders respect robots.txt and blacklist handling. |
 | `YAGO_SWARM_SEED_DEPTH` | `5` | Crawl depth for greedy-learning orders (0–8). |
 | `YAGO_SWARM_SEED_MAX_PAGES` | `250` | Whole-run page cap for each greedy-learning crawl task. The global crawler run cap may reduce it further. |
 
@@ -288,7 +288,13 @@ query, and any pages it returns may be queued for this node to crawl (see
 `explicit` contacts it only for a request that opted in; `enabled` waits for
 exact local-plus-swarm and the applicable bounded local recovery to miss;
 `always` starts the provider alongside local and swarm retrieval and merges all
-completed rankings. Internal provenance remains `ddgs`; the public portal and
+completed rankings. Every Tavily depth carries request consent and follows this
+operator policy. DNS-name and IPv4 `include_domains` values are submitted as
+bounded provider `site:` constraints when the complete encoded expression fits
+the fixed provider-query ceiling. IPv6 literals and oversized expressions retain
+the base provider query because DDGS does not define an unambiguous IPv6 `site:`
+operand.
+Normalized returned-host filtering remains authoritative. Internal provenance remains `ddgs`; the public portal and
 Admin render plain `web`, YaCy HTML renders `[web]`, and Tavily-compatible
 payloads carry no provider marker. Human surfaces state that the provider
 received the query.
@@ -309,6 +315,13 @@ evidence-confidence rules, relaxed admission, RM3 drift limits, source fusion,
 diversity, safety thresholds, and search deadlines are fixed algorithm or safety
 policy rather than operator settings. Learned feature weights change only through
 held-out model promotion or rollback.
+
+A non-facet strict pass skips relaxed retrieval only when it fills the requested
+result window and reports further strict rows (`Total > window`), so the exact
+pagination boundary still retains relaxed evidence. Pseudo-relevance expansion
+runs only below the smaller of the requested result limit and its fixed
+50-result activation ceiling. Facet requests retain the relaxed pass needed for
+complete facet evidence.
 
 **Retention.** Cached fallback responses are held for `YAGO_WEB_FALLBACK_CACHE_TTL`
 (the only outbound-search cache) and then discarded, bounding how long external
@@ -488,13 +501,18 @@ settings surface.
 
 When web-fallback crawl seeding is enabled, every eligible surfaced URL enters
 the bounded background warming path described by `YAGO_WEB_FALLBACK_SEED_CRAWL`.
-Fragments are removed before URL deduplication; credential-bearing, addressless,
+Fragments are removed before URL coalescing; credential-bearing, addressless,
 non-HTTP, and oversized identities are rejected. Each absent or
-lookup-indeterminate URL attempts one URL-idempotent durable
-automatic-discovery publication and keeps the web-discovery profile's depth,
-per-host limit, and whole-run cap. At most one accepted order remains for a
-normalized URL. Its root page is the warming fetch, so the node does not create a
-second cache order for the same result.
+lookup-indeterminate URL enters recovery-intent-backed durable
+automatic-discovery publication. A normalized URL is coalesced only while its
+order is pending or leased. Acknowledgement, terminal failure, or cancellation
+stages a durable settlement intent before releasing the identity so a partial
+write or restart can finish idempotently and a later surfaced result can retry.
+Successful ingest uses the live lease's complete crawl profile and attempts to
+persist that profile before recording the fetch. A profile or schedule write
+failure is logged and cannot reject or roll back the already indexed document.
+Its root page is the warming fetch, so the node does not create a second cache
+order while that work remains active.
 
 `YAGO_CRAWLER_MAX_PAGES_PER_RUN` bootstraps a 50,000-page whole-run budget in
 both the node and crawler. The node records the effective value in every new

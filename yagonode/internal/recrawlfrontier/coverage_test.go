@@ -20,6 +20,7 @@ type ctrlEngine struct {
 	failProv   map[vault.Name]bool
 	failPut    map[vault.Name]bool
 	failDel    map[vault.Name]bool
+	putCalls   map[vault.Name]int
 	replayNext bool
 }
 
@@ -29,6 +30,7 @@ func newCtrlEngine() *ctrlEngine {
 		failProv: map[vault.Name]bool{},
 		failPut:  map[vault.Name]bool{},
 		failDel:  map[vault.Name]bool{},
+		putCalls: map[vault.Name]int{},
 	}
 }
 
@@ -137,6 +139,7 @@ func (b *ctrlBucket) Put(key vault.Key, val []byte) error {
 	if b.engine.failPut[b.name] {
 		return fmt.Errorf("ctrl put %s", b.name)
 	}
+	b.engine.putCalls[b.name]++
 	b.entries[string(key)] = copyBytes(val)
 
 	return nil

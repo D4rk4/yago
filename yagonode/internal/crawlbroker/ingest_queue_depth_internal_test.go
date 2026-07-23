@@ -17,6 +17,7 @@ func TestIngestReceiverTracksWaitingAndActiveDelivery(t *testing.T) {
 	server.beginIngest = receiver.beginIngest
 	data, err := yagocrawlcontract.MarshalIngestBatch(yagocrawlcontract.IngestBatch{
 		SourceURL: "https://example.org/page", Provenance: []byte("admin"),
+		ProfileHandle: testOrder("depth").Profile.Handle,
 	})
 	if err != nil {
 		t.Fatalf("marshal ingest: %v", err)
@@ -36,6 +37,17 @@ func TestIngestReceiverTracksWaitingAndActiveDelivery(t *testing.T) {
 	delivery := <-receiver.Receive()
 	if delivery.BatchJSONSize != len(data) {
 		t.Fatalf("batch JSON size = %d, want %d", delivery.BatchJSONSize, len(data))
+	}
+	if err := delivery.AuthorizeLeaseSnapshot(t.Context()); err != nil {
+		t.Fatalf("authorize delivery: %v", err)
+	}
+	if delivery.CrawlProfile == nil ||
+		delivery.CrawlProfile.Handle != delivery.Batch.ProfileHandle {
+		t.Fatalf(
+			"authorized profile = %+v, want handle %q",
+			delivery.CrawlProfile,
+			delivery.Batch.ProfileHandle,
+		)
 	}
 	if receiver.Outstanding() != 1 {
 		t.Fatalf("active depth = %d, want 1", receiver.Outstanding())
@@ -58,6 +70,7 @@ func TestIngestReceiverReleasesCancelledWaitingDelivery(t *testing.T) {
 	server.beginIngest = receiver.beginIngest
 	data, err := yagocrawlcontract.MarshalIngestBatch(yagocrawlcontract.IngestBatch{
 		SourceURL: "https://example.org/page", Provenance: []byte("admin"),
+		ProfileHandle: testOrder("cancel-depth").Profile.Handle,
 	})
 	if err != nil {
 		t.Fatalf("marshal ingest: %v", err)

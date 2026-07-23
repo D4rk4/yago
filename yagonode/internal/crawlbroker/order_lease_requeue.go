@@ -38,32 +38,35 @@ func (q *DurableOrderQueue) requeueLeaseChunk(
 ) (bool, error) {
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
-	requeued := false
-	removed := make([]leaseRecord, 0, len(keys))
+	var mutation leaseRequeueBatchMutation
 	err := q.vault.Update(ctx, func(tx *vault.Txn) error {
-		requeued = false
-		removed = removed[:0]
-		for _, key := range keys {
-			record, changed, err := q.requeueLeaseTx(tx, key, match)
-			if err != nil {
-				return err
-			}
-			if changed {
-				removed = append(removed, record)
-			}
-			requeued = requeued || changed
-		}
+		var err error
+		mutation, err = q.requeueLeaseBatchTx(tx, keys, match)
 
-		return nil
+		return err
 	})
 	if err != nil {
 		return false, fmt.Errorf("commit crawl lease requeue: %w", err)
 	}
-	for _, record := range removed {
+	for _, record := range mutation.removed {
 		q.workerLeases.remove(record)
 	}
+	if len(mutation.stagedLeaseIDs) != 0 {
+		recoveryContext, cancel := automaticDiscoverySettlementRecoveryContext(ctx)
+		defer cancel()
+		for _, leaseID := range mutation.stagedLeaseIDs {
+			if err := q.resolveAutomaticDiscoverySettlement(
+				recoveryContext,
+				leaseID,
+			); err != nil {
+				q.signal()
 
-	return requeued, nil
+				return mutation.requeued, err
+			}
+		}
+	}
+
+	return mutation.requeued, nil
 }
 
 func (q *DurableOrderQueue) requeueLeaseTx(
@@ -81,11 +84,15 @@ func (q *DurableOrderQueue) requeueLeaseTx(
 	if _, err := q.leases.Delete(tx, key); err != nil {
 		return leaseRecord{}, false, fmt.Errorf("delete crawl lease: %w", err)
 	}
-	if _, err := q.enqueueTx(
+	sequence, err := q.enqueueTx(
 		tx,
 		record.OrderData,
 		persistedOrderPriority(record.OrderData, record.Priority),
-	); err != nil {
+	)
+	if err != nil {
+		return leaseRecord{}, false, err
+	}
+	if err := q.recordRequeuedAutomaticDiscoveryTx(tx, string(key), record, sequence); err != nil {
 		return leaseRecord{}, false, err
 	}
 	if err := q.recordLeaseSettlement(tx, string(key), leaseSettlementRequeued); err != nil {

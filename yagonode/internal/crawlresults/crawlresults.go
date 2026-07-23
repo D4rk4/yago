@@ -19,6 +19,7 @@ import (
 
 type IngestDelivery struct {
 	Batch                  yagocrawlcontract.IngestBatch
+	CrawlProfile           *yagocrawlcontract.CrawlProfile
 	BatchJSONSize          int
 	Ack                    func(context.Context) error
 	Nak                    func(context.Context) error

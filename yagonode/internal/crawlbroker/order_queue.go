@@ -18,6 +18,11 @@ const (
 	automaticOrderIndexBucket  vault.Name = "crawlordersautomatic"
 	seqBucket                  vault.Name = "crawlorderseq"
 	idempotencyBucket          vault.Name = "crawlorderkeys"
+	activeDiscoveryKeyBucket   vault.Name = "crawldiscoveryactive"
+	pendingDiscoveryKeyBucket  vault.Name = "crawldiscoverypending"
+	leasedDiscoveryKeyBucket   vault.Name = "crawldiscoveryleased"
+	discoveryIntentBucket      vault.Name = "crawldiscoveryintents"
+	discoverySettlementBucket  vault.Name = "crawldiscoverysettlements"
 	priorityIndexFormatVersion uint64     = 1
 )
 
@@ -65,6 +70,11 @@ type DurableOrderQueue struct {
 	automaticOrderIndex      *vault.Collection[[]byte]
 	seq                      *vault.Collection[uint64]
 	keys                     *vault.Collection[uint64]
+	activeDiscoveryKeys      *vault.Collection[uint64]
+	pendingDiscoveryKeys     *vault.Collection[[]byte]
+	leasedDiscoveryKeys      *vault.Collection[[]byte]
+	discoveryIntents         *vault.Collection[[]byte]
+	discoverySettlements     *vault.Collection[automaticDiscoverySettlementIntent]
 	leases                   *vault.Collection[leaseRecord]
 	workerLeases             *workerLeaseCatalog
 	leaseSettlements         *vault.Collection[leaseSettlementRecord]
@@ -80,10 +90,11 @@ type DurableOrderQueue struct {
 	// extended, so frequent heartbeats (they also carry control directives, so
 	// their cadence is short) skip the per-beat fsync and only refresh the
 	// durable deadlines every leaseTTL/4 (IO-AGG-02).
-	mu              sync.Mutex
-	extendedAt      map[string]time.Time
-	leaseMutation   sync.RWMutex
-	growthAdmission GrowthAdmission
+	mu                 sync.Mutex
+	extendedAt         map[string]time.Time
+	leaseMutation      sync.RWMutex
+	growthAdmission    GrowthAdmission
+	discoveryAdmission sync.Mutex
 }
 
 func newDurableOrderQueue(
@@ -103,6 +114,11 @@ func newDurableOrderQueue(
 		automaticOrderIndex:      collections.automaticOrderIndex,
 		seq:                      collections.sequence,
 		keys:                     collections.idempotencyKeys,
+		activeDiscoveryKeys:      collections.activeDiscoveryKeys,
+		pendingDiscoveryKeys:     collections.pendingDiscoveryKeys,
+		leasedDiscoveryKeys:      collections.leasedDiscoveryKeys,
+		discoveryIntents:         collections.discoveryIntents,
+		discoverySettlements:     collections.discoverySettlements,
 		leases:                   collections.leases,
 		leaseSettlements:         collections.leaseSettlements,
 		leaseSettlementOrder:     collections.leaseSettlementOrder,
@@ -113,6 +129,15 @@ func newDurableOrderQueue(
 		leaseTTL:                 leaseTTL,
 		notify:                   make(chan struct{}, 1),
 		extendedAt:               map[string]time.Time{},
+	}
+	if err := queue.reconcileAutomaticDiscoveryIntents(context.Background()); err != nil {
+		return nil, err
+	}
+	if err := queue.reconcileAutomaticDiscoveryLeases(context.Background()); err != nil {
+		return nil, err
+	}
+	if err := queue.reconcileAutomaticDiscoverySettlements(context.Background()); err != nil {
+		return nil, err
 	}
 	queue.workerLeases, err = loadWorkerLeaseCatalog(
 		context.Background(),
@@ -151,6 +176,19 @@ func (q *DurableOrderQueue) PublishOnce(
 	if err != nil {
 		return false, fmt.Errorf("encode crawl order: %w", err)
 	}
+	if key != "" && order.Priority == yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery {
+		return q.publishAutomaticDiscovery(ctx, key, data)
+	}
+
+	return q.publishEncodedOrder(ctx, key, data, order.Priority)
+}
+
+func (q *DurableOrderQueue) publishEncodedOrder(
+	ctx context.Context,
+	key string,
+	data []byte,
+	priority yagocrawlcontract.CrawlOrderPriority,
+) (bool, error) {
 	duplicate, err := q.admitOrderGrowth(ctx, key)
 	if err != nil {
 		return false, fmt.Errorf("enqueue crawl order: %w", err)
@@ -172,7 +210,7 @@ func (q *DurableOrderQueue) PublishOnce(
 				return nil
 			}
 		}
-		seq, err := q.enqueueTx(tx, data, order.Priority)
+		seq, err := q.enqueueTx(tx, data, priority)
 		if err != nil {
 			return err
 		}

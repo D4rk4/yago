@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
@@ -254,10 +255,11 @@ type fetchBatchRecorder interface {
 // propagated, so it cannot fail an ingest that already stored its data.
 func (c *IngestConsumer) recordFetchGroup(ctx context.Context, group []IngestDelivery) {
 	hintedRecorder, hinted := c.recorder.(sourceModifiedFetchBatchRecorder)
-	recorder, batched := c.recorder.(fetchBatchRecorder)
-	if !hinted && !batched {
+	batchRecorder, batched := c.recorder.(fetchBatchRecorder)
+	profileRecorder, profileBatched := c.recorder.(profileFetchBatchRecorder)
+	if !hinted && !batched && !profileBatched {
 		for _, delivery := range group {
-			c.recordFetch(ctx, delivery.Batch)
+			c.recordFetch(ctx, delivery)
 		}
 
 		return
@@ -266,6 +268,8 @@ func (c *IngestConsumer) recordFetchGroup(ctx context.Context, group []IngestDel
 	handles := make([]string, 0, len(group))
 	fetched := make([]time.Time, 0, len(group))
 	modified := make([]time.Time, 0, len(group))
+	profiles := make([]yagocrawlcontract.CrawlProfile, 0, len(group))
+	profilesComplete := true
 	for _, delivery := range group {
 		batch := delivery.Batch
 		if batch.SourceURL == "" ||
@@ -277,12 +281,21 @@ func (c *IngestConsumer) recordFetchGroup(ctx context.Context, group []IngestDel
 		handles = append(handles, batch.ProfileHandle)
 		fetched = append(fetched, batch.Document.FetchedAt)
 		modified = append(modified, batch.SourceModifiedAt)
+		if delivery.CrawlProfile == nil ||
+			delivery.CrawlProfile.Handle != batch.ProfileHandle {
+			profilesComplete = false
+		} else {
+			profiles = append(profiles, *delivery.CrawlProfile)
+		}
 	}
 	if len(urls) == 0 {
 		return
 	}
 	var err error
-	if hinted {
+	switch {
+	case profileBatched && profilesComplete:
+		err = profileRecorder.RecordProfileFetches(ctx, urls, profiles, fetched, modified)
+	case hinted:
 		err = hintedRecorder.RecordFetchesWithSourceModified(
 			ctx,
 			urls,
@@ -290,8 +303,14 @@ func (c *IngestConsumer) recordFetchGroup(ctx context.Context, group []IngestDel
 			fetched,
 			modified,
 		)
-	} else {
-		err = recorder.RecordFetches(ctx, urls, handles, fetched)
+	case batched:
+		err = batchRecorder.RecordFetches(ctx, urls, handles, fetched)
+	default:
+		for _, delivery := range group {
+			c.recordFetch(ctx, delivery)
+		}
+
+		return
 	}
 	if err != nil {
 		slog.WarnContext(ctx, msgRecrawlRecordFailed, slog.Any("error", err))

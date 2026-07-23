@@ -119,14 +119,20 @@ its binaries (`yago-node`, `yago-crawler`).
   YaCy HTML marks them `[web]`, and Tavily-compatible responses keep their
   standard shape without a provider field. A hyphen or dash inside an ordinary query word
   separates searchable words across local and web retrieval, while a leading
-  minus remains an exclusion operator. A web row must independently cover the
-  query before it can appear or seed a crawl: one token occurrence cannot stand
-  in for several query words, and another language's stopword list cannot weaken
-  that check. When web-discovery seeding is enabled, surfaced URLs are admitted
-  to bounded background warming and normalized before admission. Each absent or
-  lookup-indeterminate page attempts URL-idempotent durable publication; at most
-  one accepted automatic-discovery order remains for its normalized URL, without
-  delaying the search response or scheduling a second root fetch.
+  minus remains an exclusion operator. Web rows always satisfy authoritative URL
+  and structured constraints. Requests using `verify=ifexist` additionally
+  require bounded visible query evidence; Tavily `basic`, `fast`, and
+  `ultra-fast` preserve `verify=false`. When web-discovery seeding is enabled,
+  surfaced URLs are admitted to bounded background warming and normalized before
+  admission. A one-at-a-time recovery intent protects durable publication, which
+  coalesces a normalized URL only while its task is pending or leased.
+  Acknowledgement, terminal failure, or cancellation first persists a settlement
+  intent; retry or startup finishes any partial lease transition and identity
+  release idempotently. A later search can then retry without delaying the
+  original response or scheduling a second root fetch while work is active.
+  Successful lease-authorized ingest attempts to persist the live lease's
+  profile before recording the fetch. A profile or schedule write failure is
+  logged and cannot reject or roll back the fetched document.
   Results are
   merged with **reciprocal-rank
   fusion** and **MMR result diversity**. A slow swarm branch cannot discard a
@@ -141,6 +147,17 @@ its binaries (`yago-node`, `yago-crawler`).
   while a deeper page is being extended. Portal navigation links only to the
   materialized result prefix; an explicitly requested page is preserved until
   a complete retrieval proves that it lies beyond the final page.
+  A Tavily-compatible search with no rows and at least one incomplete source
+  returns HTTP 503 with `Retry-After: 1` while the original caller context
+  remains live. A child or source deadline is therefore retryable while that
+  caller remains live; inherited caller cancellation or deadline retains the
+  existing infrastructure-error path. An honest complete miss remains HTTP 200
+  with an empty result list, and completed partial rows remain HTTP 200.
+  A strict non-facet candidate pass skips relaxed retrieval only when it fills
+  the requested result window and reports further strict rows (`Total > window`);
+  this preserves relaxed evidence at the exact pagination boundary.
+  Pseudo-relevance feedback skips its second pass once its bounded activation
+  window is full.
 - **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
   bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
   anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
@@ -214,12 +231,20 @@ its binaries (`yago-node`, `yago-crawler`).
   Admin-minted keys holding the required scope authenticate in every mode; the
   optional `YAGO_SEARCH_REQUIRE_API_KEY` switch makes the surface scoped-only
   by disabling the legacy static `YAGO_SEARCH_API_KEY` credential.
-  `basic`, `fast`, and `ultra-fast` use local retrieval; `advanced` shares the
-  root portal's canonical global ranking for equivalent requests. Domain
-  includes and excludes constrain every local, peer, and web candidate
-  before source fusion and truncation, while retaining parent-domain suffix
-  matching. Default results include `raw_content: null`, errors contain only
-  `detail.error`, and
+  Every supported `search_depth` uses the shared global local-plus-peer
+  retrieval pipeline. `basic`, `fast`, and `ultra-fast` retain `verify=false`;
+  `advanced` uses `verify=ifexist` and shares the root portal's canonical ranking
+  for equivalent requests. The operator's web-fallback policy remains
+  authoritative, and `always` starts web retrieval in parallel for every depth.
+  Domain includes narrow local Bleve candidates. DNS names and IPv4 literals are
+  sent to the web provider as bounded `site:` constraints when the complete
+  encoded expression fits the provider-query ceiling. IPv6 literals and oversized
+  expressions retain the bounded base provider query because DDGS does not define
+  an unambiguous IPv6 `site:` operand.
+  Normalized hostname-suffix filtering before fusion and response emission
+  remains authoritative for every local, peer, and web candidate. Default
+  results include `raw_content: null`, errors contain
+  only `detail.error`, and
   raw-content requests retain YaGo's stricter 30-second and 200-page safety
   limits. `/extract` gives each local document lookup at most 250 milliseconds;
   an enabled guarded fetch then uses only the remaining request budget. A lookup

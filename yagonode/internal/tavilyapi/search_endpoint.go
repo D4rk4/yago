@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -214,6 +215,7 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	callerContext := r.Context()
 	r, releaseWork, admitted := e.enterWork(
 		w,
 		r,
@@ -226,20 +228,14 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer releaseWork()
 
 	start := e.now()
-	resp, err := e.searchResponse(r.Context(), req, start, id)
-	if err != nil {
-		status, code := rawContentResponseError(
-			err,
-			"search_failed",
-			"invalid_search_request",
-		)
-		writeError(w, status, code, err.Error(), id)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(resp)
+	resp, err := e.searchResponseForCaller(
+		r.Context(),
+		callerContext,
+		req,
+		start,
+		id,
+	)
+	writeSearchEndpointResponse(w, resp, err, id)
 }
 
 func searchScope(req SearchRequest) SearchScope {
@@ -265,6 +261,16 @@ func (e searchEndpoint) searchResponse(
 	start time.Time,
 	id string,
 ) (SearchResponse, error) {
+	return e.searchResponseForCaller(ctx, ctx, req, start, id)
+}
+
+func (e searchEndpoint) searchResponseForCaller(
+	ctx context.Context,
+	callerContext context.Context,
+	req SearchRequest,
+	start time.Time,
+	id string,
+) (SearchResponse, error) {
 	coreReq, err := coreRequest(req)
 	if err != nil {
 		return SearchResponse{}, err
@@ -283,10 +289,11 @@ func (e searchEndpoint) searchResponse(
 		}, nil
 	}
 
-	resp, err := e.search.Search(ctx, coreReq)
-	if err != nil {
-		return SearchResponse{}, fmt.Errorf("search failed: %w", err)
+	completion := searchCompletionFrom(e.search.Search(ctx, coreReq))
+	if err := completion.errorForCaller(callerContext.Err()); err != nil {
+		return SearchResponse{}, err
 	}
+	resp := completion.response
 	dated := resp.Results
 	if !coreReq.MinDate.IsZero() || !coreReq.MaxDate.IsZero() {
 		// Remote and web results bypass the local index filter; hold them to
@@ -302,6 +309,13 @@ func (e searchEndpoint) searchResponse(
 	results, images, err := e.responseResults(ctx, req, coreReq, dated)
 	if err != nil {
 		return SearchResponse{}, err
+	}
+	if availabilityErr := searchAvailabilityError(
+		len(results),
+		len(resp.PartialFailures),
+		callerContext.Err(),
+	); availabilityErr != nil {
+		return SearchResponse{}, availabilityErr
 	}
 	applyCanonicalRankScores(results)
 
@@ -363,7 +377,7 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		MinDate:          minDate,
 		MaxDate:          maxDate,
 	}
-	if source == searchcore.SourceGlobal {
+	if normalizedSearchDepth(req.SearchDepth) == "advanced" {
 		coreReq.Verify = searchcore.VerifyIfExist
 	}
 	if limit == 0 {
@@ -411,9 +425,7 @@ func requestLimit(maxResults *int) (int, error) {
 
 func sourceForDepth(depth string) (searchcore.Source, error) {
 	switch normalizedSearchDepth(depth) {
-	case "basic", "fast", "ultra-fast":
-		return searchcore.SourceLocal, nil
-	case "advanced":
+	case "basic", "fast", "ultra-fast", "advanced":
 		return searchcore.SourceGlobal, nil
 	default:
 		return "", badRequest(
@@ -684,6 +696,9 @@ func normalizeDomain(domain string) string {
 	domain = strings.TrimPrefix(domain, "*.")
 	if strings.ContainsAny(domain, "/?#") {
 		return ""
+	}
+	if address, err := netip.ParseAddr(strings.Trim(domain, "[]")); err == nil {
+		return address.String()
 	}
 
 	return domain

@@ -151,7 +151,8 @@ func TestNodePublicSearchAppliesSearchAPIKeyOnlyToAgentSearch(t *testing.T) {
 	)
 	authorizedReq.Header.Set("Authorization", "Bearer secret")
 	mux.ServeHTTP(authorizedRec, authorizedReq)
-	if authorizedRec.Code != http.StatusOK {
+	if authorizedRec.Code != http.StatusServiceUnavailable ||
+		authorizedRec.Header().Get("Retry-After") != "1" {
 		t.Fatalf("authorized status = %d body=%s", authorizedRec.Code, authorizedRec.Body.String())
 	}
 }

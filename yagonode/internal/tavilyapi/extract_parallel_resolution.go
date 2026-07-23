@@ -48,7 +48,6 @@ func (e extractEndpoint) resolveExtractURLs(
 	defer func() {
 		cancel()
 		close(halt)
-		close(jobs)
 		workers.Wait()
 	}()
 
@@ -109,21 +108,14 @@ func (e extractEndpoint) runExtractURLResolutionWorker(
 		select {
 		case <-halt:
 			return
-		case job, open := <-jobs:
-			if !open {
-				return
-			}
+		case job := <-jobs:
 			resolution, err := e.resolveExtractURLWithoutPanic(ctx, job.requestedURL)
 			outcome := extractURLResolutionOutcome{
 				position:   job.position,
 				resolution: resolution,
 				err:        err,
 			}
-			select {
-			case outcomes <- outcome:
-			case <-halt:
-				return
-			}
+			outcomes <- outcome
 		}
 	}
 }

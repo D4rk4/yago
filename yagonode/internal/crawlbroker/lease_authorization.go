@@ -20,6 +20,7 @@ type leaseAuthorization struct {
 	WorkerID        string
 	WorkerSessionID string
 	RunID           string
+	ProfileHandle   string
 }
 
 type leaseRenewalCandidate struct {
@@ -65,6 +66,29 @@ func (q *DurableOrderQueue) verifyLeaseAuthorization(
 	ctx context.Context,
 	authorization leaseAuthorization,
 ) error {
+	_, err := q.authorizedLeaseOrder(ctx, authorization, false)
+
+	return err
+}
+
+func (q *DurableOrderQueue) authorizedLeaseProfile(
+	ctx context.Context,
+	authorization leaseAuthorization,
+) (yagocrawlcontract.CrawlProfile, error) {
+	order, err := q.authorizedLeaseOrder(ctx, authorization, true)
+	if err != nil {
+		return yagocrawlcontract.CrawlProfile{}, err
+	}
+
+	return order.Profile, nil
+}
+
+func (q *DurableOrderQueue) authorizedLeaseOrder(
+	ctx context.Context,
+	authorization leaseAuthorization,
+	requireOrder bool,
+) (yagocrawlcontract.CrawlOrder, error) {
+	var authorized yagocrawlcontract.CrawlOrder
 	err := q.vault.View(ctx, func(tx *vault.Txn) error {
 		record, found, err := q.leases.Get(tx, vault.Key(authorization.LeaseID))
 		if err != nil {
@@ -78,24 +102,33 @@ func (q *DurableOrderQueue) verifyLeaseAuthorization(
 		) {
 			return errLeaseLost
 		}
-		if authorization.RunID == "" {
+		if !requireOrder && authorization.RunID == "" && authorization.ProfileHandle == "" {
 			return nil
 		}
 		order, err := yagocrawlcontract.UnmarshalCrawlOrder(record.OrderData)
 		if err != nil {
 			return fmt.Errorf("decode crawl lease order: %w", err)
 		}
-		if hex.EncodeToString(order.Provenance) != authorization.RunID {
+		if authorization.RunID != "" &&
+			hex.EncodeToString(order.Provenance) != authorization.RunID {
 			return errLeaseLost
 		}
+		if authorization.ProfileHandle != "" &&
+			order.Profile.Handle != authorization.ProfileHandle {
+			return errLeaseLost
+		}
+		authorized = order
 
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("verify crawl lease authorization: %w", err)
+		return yagocrawlcontract.CrawlOrder{}, fmt.Errorf(
+			"verify crawl lease authorization: %w",
+			err,
+		)
 	}
 
-	return nil
+	return authorized, nil
 }
 
 func (q *DurableOrderQueue) adoptWorkerSession(
@@ -105,6 +138,12 @@ func (q *DurableOrderQueue) adoptWorkerSession(
 ) ([]leasedCrawlOrder, error) {
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
+	if err := q.resolveWorkerAutomaticDiscoverySettlements(ctx, workerID); err != nil {
+		return nil, fmt.Errorf(
+			"adopt worker crawl leases: settle automatic discoveries: %w",
+			err,
+		)
+	}
 	now := nowFunc()
 	deadline := now.Add(q.leaseTTL).UnixNano()
 	leases := make([]leasedCrawlOrder, 0)

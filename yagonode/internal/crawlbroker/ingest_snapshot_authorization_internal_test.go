@@ -298,8 +298,9 @@ func leaseSnapshotIngestMessage(
 	t.Helper()
 	url := fmt.Sprintf("https://example.test/snapshot/%d", index)
 	data, err := yagocrawlcontract.MarshalIngestBatch(yagocrawlcontract.IngestBatch{
-		SourceURL:  url,
-		Provenance: []byte("admin"),
+		SourceURL:     url,
+		Provenance:    []byte("admin"),
+		ProfileHandle: testOrder(fmt.Sprintf("snapshot-%d", index)).Profile.Handle,
 		Document: yagocrawlcontract.DocumentIngest{
 			NormalizedURL: url,
 			ExtractedText: "lease snapshot ingest body",

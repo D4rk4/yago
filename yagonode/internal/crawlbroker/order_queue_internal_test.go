@@ -19,6 +19,7 @@ type scriptedEngine struct {
 	provisionErrors map[vault.Name]error
 	putErrors       map[vault.Name]error
 	putKeyErrors    map[vault.Name]map[string]error
+	readErrors      map[vault.Name]error
 	deleteErrors    map[vault.Name]error
 	scanErrors      map[vault.Name]error
 	replayNext      bool
@@ -31,6 +32,7 @@ func newScriptedEngine() *scriptedEngine {
 		provisionErrors: map[vault.Name]error{},
 		putErrors:       map[vault.Name]error{},
 		putKeyErrors:    map[vault.Name]map[string]error{},
+		readErrors:      map[vault.Name]error{},
 		deleteErrors:    map[vault.Name]error{},
 		scanErrors:      map[vault.Name]error{},
 	}
@@ -115,6 +117,15 @@ func (b scriptedBucket) Get(key vault.Key) []byte {
 	}
 
 	return append([]byte(nil), raw...)
+}
+
+func (b scriptedBucket) ReadValue(key vault.Key) ([]byte, bool, error) {
+	if err := b.engine.readErrors[b.name]; err != nil {
+		return nil, false, err
+	}
+	raw := b.Get(key)
+
+	return raw, raw != nil, nil
 }
 
 func (b scriptedBucket) Put(key vault.Key, raw []byte) error {

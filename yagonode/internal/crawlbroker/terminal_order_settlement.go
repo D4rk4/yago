@@ -111,10 +111,25 @@ func (q *DurableOrderQueue) prepareTerminalLeaseSettlement(
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
 	want := terminalSettlementRecord(request)
+	staged, err := q.stageAutomaticDiscoveryTerminalSettlementForCompletion(
+		ctx,
+		leaseID,
+		request,
+	)
+	if err != nil {
+		return leaseSettlementRecord{}, fmt.Errorf("settle terminal crawl lease: %w", err)
+	}
+	settlementContext := ctx
+	cancelSettlement := func() {}
+	if staged {
+		afterAutomaticDiscoverySettlementStage()
+		settlementContext, cancelSettlement = automaticDiscoverySettlementRecoveryContext(ctx)
+	}
+	defer cancelSettlement()
 	var settlement leaseSettlementRecord
 	var removed leaseRecord
 	removedFound := false
-	err := q.vault.Update(ctx, func(tx *vault.Txn) error {
+	settlementErr := q.vault.Update(settlementContext, func(tx *vault.Txn) error {
 		var err error
 		settlement, removed, removedFound, err = q.prepareTerminalLeaseSettlementTx(
 			tx,
@@ -125,11 +140,27 @@ func (q *DurableOrderQueue) prepareTerminalLeaseSettlement(
 
 		return err
 	})
-	if err != nil {
-		return leaseSettlementRecord{}, fmt.Errorf("settle terminal crawl lease: %w", err)
-	}
-	if removedFound {
+	mainSettlementCommitted := settlementErr == nil
+	if mainSettlementCommitted && removedFound {
 		q.workerLeases.remove(removed)
+	}
+	resolution, recoveryErr := q.completeAutomaticDiscoverySettlement(
+		settlementContext,
+		leaseID,
+	)
+	if resolution.Acknowledged && (!mainSettlementCommitted || !removedFound) {
+		q.workerLeases.remove(resolution.Intent.Lease)
+	}
+	if recoveryErr != nil {
+		q.signal()
+
+		return leaseSettlementRecord{}, recoveryErr
+	}
+	if settlementErr != nil && !resolution.Acknowledged {
+		return leaseSettlementRecord{}, fmt.Errorf("settle terminal crawl lease: %w", settlementErr)
+	}
+	if resolution.Acknowledged {
+		settlement = resolution.Settlement
 	}
 	q.signal()
 

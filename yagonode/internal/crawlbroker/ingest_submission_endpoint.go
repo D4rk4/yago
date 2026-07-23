@@ -37,8 +37,9 @@ func (s *exchangeServer) SubmitIngest(
 		WorkerID:        workerID,
 		WorkerSessionID: workerSessionID,
 		RunID:           hex.EncodeToString(batch.Provenance),
+		ProfileHandle:   batch.ProfileHandle,
 	}
-	if authorization.LeaseID == "" || len(batch.Provenance) == 0 {
+	if authorization.LeaseID == "" || len(batch.Provenance) == 0 || batch.ProfileHandle == "" {
 		return nil, status.Error(codes.InvalidArgument, "empty crawl ingest lease identity")
 	}
 	finish := func() {}
@@ -47,33 +48,13 @@ func (s *exchangeServer) SubmitIngest(
 	}
 
 	result := make(chan error, 1)
-	delivery := crawlresults.IngestDelivery{
-		Batch:         batch,
-		BatchJSONSize: len(batchJSON),
-		Ack:           func(context.Context) error { finish(); result <- nil; return nil },
-		Nak:           func(context.Context) error { finish(); result <- errIngestDeferred; return nil },
-		AuthorizeLeaseSnapshot: func(mutationContext context.Context) error {
-			if !s.sessions.current(authorization.WorkerID, authorization.WorkerSessionID) {
-				return errLeaseLost
-			}
-			release, mutationErr := s.queue.beginAuthorizedLeaseMutation(
-				mutationContext,
-				authorization,
-			)
-			if mutationErr != nil {
-				return mutationErr
-			}
-			release()
-
-			return nil
-		},
-		LeaseLost: func(context.Context) error {
-			finish()
-			result <- errLeaseLost
-
-			return nil
-		},
-	}
+	delivery := s.authorizedIngestDelivery(
+		batch,
+		len(batchJSON),
+		authorization,
+		finish,
+		result,
+	)
 	select {
 	case s.ingest <- delivery:
 	case <-ctx.Done():
@@ -93,5 +74,41 @@ func (s *exchangeServer) SubmitIngest(
 		return &crawlrpc.IngestAck{}, nil
 	case <-ctx.Done():
 		return nil, status.FromContextError(ctx.Err()).Err()
+	}
+}
+
+func (s *exchangeServer) authorizedIngestDelivery(
+	batch yagocrawlcontract.IngestBatch,
+	batchJSONSize int,
+	authorization leaseAuthorization,
+	finish func(),
+	result chan<- error,
+) crawlresults.IngestDelivery {
+	authorizedProfile := new(yagocrawlcontract.CrawlProfile)
+
+	return crawlresults.IngestDelivery{
+		Batch:         batch,
+		CrawlProfile:  authorizedProfile,
+		BatchJSONSize: batchJSONSize,
+		Ack:           func(context.Context) error { finish(); result <- nil; return nil },
+		Nak:           func(context.Context) error { finish(); result <- errIngestDeferred; return nil },
+		AuthorizeLeaseSnapshot: func(mutationContext context.Context) error {
+			if !s.sessions.current(authorization.WorkerID, authorization.WorkerSessionID) {
+				return errLeaseLost
+			}
+			profile, err := s.queue.authorizedLeaseProfile(mutationContext, authorization)
+			if err != nil {
+				return err
+			}
+			*authorizedProfile = profile
+
+			return nil
+		},
+		LeaseLost: func(context.Context) error {
+			finish()
+			result <- errLeaseLost
+
+			return nil
+		},
 	}
 }

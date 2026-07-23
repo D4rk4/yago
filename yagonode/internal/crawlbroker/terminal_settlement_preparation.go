@@ -91,6 +91,9 @@ func (q *DurableOrderQueue) applyTerminalLeaseDispositionTx(
 		if _, err := q.leases.Delete(tx, vault.Key(leaseID)); err != nil {
 			return fmt.Errorf("delete crawl lease: %w", err)
 		}
+		if err := q.releaseLeasedAutomaticDiscoveryTx(tx, leaseID, record); err != nil {
+			return err
+		}
 
 		return nil
 	}

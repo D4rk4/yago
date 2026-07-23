@@ -100,6 +100,22 @@ func TestResultSatisfiesDomainConstraints(t *testing.T) {
 	}
 }
 
+func TestResultSatisfiesBracketedIPv6DomainConstraint(t *testing.T) {
+	result := Result{URL: "https://[2001:db8::1]/reference"}
+	if !ResultSatisfiesDomainConstraints(
+		Request{IncludeDomains: []string{"[2001:DB8::1]"}},
+		result,
+	) {
+		t.Fatal("bracketed IPv6 constraint rejected matching URL")
+	}
+	if ResultSatisfiesDomainConstraints(
+		Request{ExcludeDomains: []string{"[2001:DB8::1]"}},
+		result,
+	) {
+		t.Fatal("bracketed IPv6 exclusion retained matching URL")
+	}
+}
+
 func TestResponseSatisfyingDomainConstraintsKeepsHonestMaterializedTotal(t *testing.T) {
 	response := responseSatisfyingDomainConstraints(
 		Request{IncludeDomains: []string{"allowed.example"}},

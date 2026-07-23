@@ -52,7 +52,7 @@ func (s pseudoRelevanceSearcher) Search(
 	if err != nil {
 		return Response{}, fmt.Errorf("pseudo-relevance first pass: %w", err)
 	}
-	if len(first.Results) == 0 || len(first.Results) >= prfActivateBelow {
+	if len(first.Results) == 0 || len(first.Results) >= pseudoRelevanceActivationLimit(req.Limit) {
 		return first, nil
 	}
 	expansion := minePseudoRelevanceTerms(

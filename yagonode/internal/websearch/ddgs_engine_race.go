@@ -157,8 +157,13 @@ func (r *engineRace) evaluate(attempts []engineAttempt) []Result {
 	for _, attempt := range attempts {
 		r.finished++
 		fetched := len(attempt.results)
-		if attempt.err == nil && r.provider.accept != nil {
-			attempt.results = r.provider.accept(r.query.submittedText, attempt.results)
+		if attempt.err == nil {
+			switch {
+			case r.query.acceptResults != nil:
+				attempt.results = r.query.acceptResults(attempt.results)
+			case r.provider.accept != nil:
+				attempt.results = r.provider.accept(r.query.submittedText, attempt.results)
+			}
 		}
 		slog.DebugContext(r.ctx, "web-search engine attempt",
 			slog.String("engine", attempt.backend.name),

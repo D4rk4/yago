@@ -77,3 +77,33 @@ func TestCrawlFormatsAdminHidesWithoutRuntime(t *testing.T) {
 		t.Fatalf("nil runtime source = %v, want nil", got)
 	}
 }
+
+func TestFormatStampingFeedsDurableOrder(t *testing.T) {
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault: %v", err)
+	}
+	store, err := crawlformats.Open(v)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	custom := yagocrawlcontract.FormatToggles{Text: true, PDF: true}
+	if err := store.Set(t.Context(), custom); err != nil {
+		t.Fatalf("set formats: %v", err)
+	}
+	inner := &capturedOrderQueue{}
+	queue := formatStampingQueue{
+		inner:   inner,
+		formats: store,
+	}
+	if _, err := queue.PublishOnce(
+		t.Context(),
+		"key",
+		yagocrawlcontract.CrawlOrder{},
+	); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if inner.got.Profile.Formats != custom {
+		t.Fatalf("durable formats = %+v, want %+v", inner.got.Profile.Formats, custom)
+	}
+}

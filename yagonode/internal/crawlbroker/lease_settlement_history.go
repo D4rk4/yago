@@ -228,20 +228,16 @@ func (q *DurableOrderQueue) storeLeaseSettlement(
 
 		return existing, nil
 	}
-	next, _, err := q.seq.Get(tx, leaseSettlementNextKey)
+	sequence, err := q.reserveLeaseSettlementSequenceTx(tx)
 	if err != nil {
-		return leaseSettlementRecord{}, fmt.Errorf("read crawl lease settlement sequence: %w", err)
+		return leaseSettlementRecord{}, err
 	}
-	migrationNext, _, err := q.seq.Get(tx, leaseSettlementMigrationNextKey)
-	if err != nil {
-		return leaseSettlementRecord{}, fmt.Errorf("read crawl lease settlement migration: %w", err)
-	}
-	record.Sequence = next
+	record.Sequence = sequence
 	record.SettledAtUnixNano = nowFunc().UnixNano()
 	if err := q.leaseSettlements.Put(tx, vault.Key(leaseID), record); err != nil {
 		return leaseSettlementRecord{}, fmt.Errorf("store crawl lease settlement: %w", err)
 	}
-	if err := q.leaseSettlementOrder.Put(tx, orderKey(next), []byte(leaseID)); err != nil {
+	if err := q.leaseSettlementOrder.Put(tx, orderKey(sequence), []byte(leaseID)); err != nil {
 		return leaseSettlementRecord{}, fmt.Errorf("store crawl lease settlement index: %w", err)
 	}
 	if !record.Terminal {
@@ -256,20 +252,5 @@ func (q *DurableOrderQueue) storeLeaseSettlement(
 			)
 		}
 	}
-	if err := q.seq.Put(tx, leaseSettlementNextKey, next+1); err != nil {
-		return leaseSettlementRecord{}, fmt.Errorf(
-			"advance crawl lease settlement sequence: %w",
-			err,
-		)
-	}
-	if migrationNext == next {
-		if err := q.seq.Put(tx, leaseSettlementMigrationNextKey, next+1); err != nil {
-			return leaseSettlementRecord{}, fmt.Errorf(
-				"advance crawl lease settlement migration: %w",
-				err,
-			)
-		}
-	}
-
 	return record, nil
 }

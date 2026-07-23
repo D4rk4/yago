@@ -159,18 +159,3 @@ func TestWebCrawlSeederLogsPublishFailure(t *testing.T) {
 	)
 	seeder.Seed(context.Background(), []string{"https://unknown.example/"})
 }
-
-func TestProfileRecordingQueueSurfacesPublishError(t *testing.T) {
-	queue := profileRecordingQueue{inner: failingOrderQueue{}, frontier: openTestFrontier(t)}
-	order := yagocrawlcontract.CrawlOrder{
-		Profile: yagocrawlcontract.NewCrawlProfile(yagocrawlcontract.CrawlProfile{
-			Name:            "Example",
-			Scope:           yagocrawlcontract.ScopeDomain,
-			URLMustMatch:    yagocrawlcontract.MatchAll,
-			MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
-		}),
-	}
-	if _, err := queue.PublishOnce(context.Background(), "key", order); err == nil {
-		t.Fatal("inner publish error must propagate")
-	}
-}

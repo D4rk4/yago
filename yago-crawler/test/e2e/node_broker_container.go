@@ -38,8 +38,46 @@ type nodeBroker struct {
 }
 
 func startNodeBroker(t *testing.T, ctx context.Context, networkName string) nodeBroker {
+	return startNodeBrokerWithLaunch(t, ctx, networkName, nodeBrokerLaunch{})
+}
+
+type nodeBrokerLaunch struct {
+	environment map[string]string
+	mounts      testcontainers.ContainerMounts
+}
+
+func startNodeBrokerWithLaunch(
+	t *testing.T,
+	ctx context.Context,
+	networkName string,
+	launch nodeBrokerLaunch,
+) nodeBroker {
 	t.Helper()
 	image := requireImage(t, envNodeImage, "node")
+	environment := map[string]string{
+		"YAGO_PEER_HASH":      nodePeerHash,
+		"YAGO_PEER_NAME":      "lease-e2e-node",
+		"YAGO_PEER_ADDR":      ":" + nodePeerPort,
+		"YAGO_PUBLIC_ADDR":    ":" + nodePublicPort,
+		"YAGO_OPS_ADDR":       ":" + nodeOpsPort,
+		"YAGO_ADVERTISE_HOST": nodeAlias,
+		"YAGO_ADVERTISE_PORT": nodePeerPort,
+		"YAGO_NETWORK_NAME":   "freeworld",
+		"YAGO_PEER_BIRTH_DATE": time.Now().
+			AddDate(0, 0, -1).
+			UTC().
+			Format("20060102"),
+		"YAGO_DATA_DIR":                       "/opt/yago/data",
+		"YAGO_CRAWL_RPC_ADDR":                 nodeCrawlRPCEnv,
+		"YAGO_ADMIN_USER":                     nodeAdminUser,
+		"YAGO_ADMIN_PASSWORD":                 nodeAdminPass,
+		"YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS":  "true",
+		"YAGO_CRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
+		"LOG_LEVEL":                           "info",
+	}
+	for key, value := range launch.environment {
+		environment[key] = value
+	}
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -53,28 +91,9 @@ func startNodeBroker(t *testing.T, ctx context.Context, networkName string) node
 			},
 			Networks:       []string{networkName},
 			NetworkAliases: map[string][]string{networkName: {nodeAlias}},
-			Env: map[string]string{
-				"YAGO_PEER_HASH":      nodePeerHash,
-				"YAGO_PEER_NAME":      "lease-e2e-node",
-				"YAGO_PEER_ADDR":      ":" + nodePeerPort,
-				"YAGO_PUBLIC_ADDR":    ":" + nodePublicPort,
-				"YAGO_OPS_ADDR":       ":" + nodeOpsPort,
-				"YAGO_ADVERTISE_HOST": nodeAlias,
-				"YAGO_ADVERTISE_PORT": nodePeerPort,
-				"YAGO_NETWORK_NAME":   "freeworld",
-				"YAGO_PEER_BIRTH_DATE": time.Now().
-					AddDate(0, 0, -1).
-					UTC().
-					Format("20060102"),
-				"YAGO_DATA_DIR":                       "/opt/yago/data",
-				"YAGO_CRAWL_RPC_ADDR":                 nodeCrawlRPCEnv,
-				"YAGO_ADMIN_USER":                     nodeAdminUser,
-				"YAGO_ADMIN_PASSWORD":                 nodeAdminPass,
-				"YAGO_EGRESS_ALLOW_PRIVATE_NETWORKS":  "true",
-				"YAGO_CRAWLER_ALLOW_PRIVATE_NETWORKS": "true",
-				"LOG_LEVEL":                           "info",
-			},
-			Tmpfs: map[string]string{"/tmp": "rw,mode=1777"},
+			Env:            environment,
+			Mounts:         launch.mounts,
+			Tmpfs:          map[string]string{"/tmp": "rw,mode=1777"},
 			HostConfigModifier: func(hostConfig *dockercontainer.HostConfig) {
 				hostConfig.ReadonlyRootfs = true
 				hostConfig.CapDrop = []string{"ALL"}

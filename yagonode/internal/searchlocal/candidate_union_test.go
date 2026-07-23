@@ -164,7 +164,7 @@ func TestSearchCandidatesDefersEvidenceUntilAfterFusion(t *testing.T) {
 		t.Context(),
 		searchindex.SearchRequest{
 			Query: "alpha beta gamma",
-			Terms: []string{"alpha", "beta", "gamma"}, MaxResults: 2,
+			Terms: []string{"alpha", "beta", "gamma"}, MaxResults: 3,
 		},
 	)
 	if err != nil {
@@ -177,7 +177,7 @@ func TestSearchCandidatesDefersEvidenceUntilAfterFusion(t *testing.T) {
 	if index.evidenceCalls != 1 || index.evidenceReq.CandidateOnly ||
 		index.evidenceReq.MinimumTermMatches != 2 ||
 		!index.evidenceReq.Relaxed ||
-		len(index.evidenceInput) != 2 {
+		len(index.evidenceInput) != 3 {
 		t.Fatalf(
 			"evidence calls=%d req=%#v input=%#v",
 			index.evidenceCalls,
@@ -185,7 +185,7 @@ func TestSearchCandidatesDefersEvidenceUntilAfterFusion(t *testing.T) {
 			index.evidenceInput,
 		)
 	}
-	if len(set.Results) != 2 || set.Results[0].Snippet != "matched evidence" {
+	if len(set.Results) != 3 || set.Results[0].Snippet != "matched evidence" {
 		t.Fatalf("results = %#v", set.Results)
 	}
 }

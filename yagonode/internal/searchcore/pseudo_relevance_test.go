@@ -98,7 +98,7 @@ func TestPseudoRelevanceSkipsWhenNotHelpful(t *testing.T) {
 	}
 
 	// A full first page needs no recall help.
-	full := &scriptedSearcher{responses: []Response{{Results: manyResults(prfActivateBelow)}}}
+	full := &scriptedSearcher{responses: []Response{{Results: manyResults(10)}}}
 	if _, err := NewPseudoRelevanceSearcher(full).Search(
 		context.Background(), Request{Query: "alpha", Limit: 10},
 	); err != nil || full.calls != 1 {

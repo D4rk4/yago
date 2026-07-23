@@ -240,15 +240,15 @@ func TestAutomaticDiscoveryPriorityRecoversDuringLegacyExpiredLeaseRequeue(t *te
 	}
 }
 
-func TestAutomaticDiscoveryOrdersRetainIdempotency(t *testing.T) {
+func TestAutomaticDiscoveryUsesSeparateIdempotencyNamespace(t *testing.T) {
 	queue := memQueue(t)
 	duplicate, err := queue.PublishOnce(t.Context(), "seed", automaticOrder("automatic"))
 	if err != nil || duplicate {
 		t.Fatalf("publish automatic: duplicate=%v err=%v", duplicate, err)
 	}
 	duplicate, err = queue.PublishOnce(t.Context(), "seed", testOrder("duplicate"))
-	if err != nil || !duplicate {
-		t.Fatalf("publish duplicate: duplicate=%v err=%v", duplicate, err)
+	if err != nil || duplicate {
+		t.Fatalf("publish manual namespace: duplicate=%v err=%v", duplicate, err)
 	}
 	publishOrders(t, queue, testOrder("normal"))
 	if got := leaseOrderName(t, queue); got != "automatic" {

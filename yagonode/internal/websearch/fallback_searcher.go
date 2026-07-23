@@ -53,7 +53,7 @@ func (s *FallbackSearcher) Search(
 	if !s.shouldFallback(resp, req) {
 		return resp, nil
 	}
-	results, provErr := s.searchProvider(ctx, req.SubmittedText(), req.Limit)
+	results, provErr := s.searchProvider(ctx, req, req.Limit)
 	results = verifiedWebResults(req, results)
 	if provErr != nil {
 		slog.DebugContext(

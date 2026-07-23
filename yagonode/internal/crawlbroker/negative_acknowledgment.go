@@ -44,49 +44,35 @@ func (q *DurableOrderQueue) deferLeaseLocked(
 	workerSessionID string,
 	requireOwner bool,
 ) error {
-	var removed leaseRecord
-	removedFound := false
+	var mutation negativeAcknowledgmentMutation
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
-		record, ok, err := q.leases.Get(tx, vault.Key(leaseID))
-		if err != nil {
-			return fmt.Errorf("read crawl lease: %w", err)
-		}
-		if !ok {
-			return errLeaseDispositionConflict
-		}
-		if record.WorkerID == "" {
-			if record.Deferred {
-				return nil
-			}
-
-			return errLeaseDispositionConflict
-		}
-		removed = record
-		removedFound = true
-		if requireOwner && !liveLeaseOwnedBy(
-			record,
+		var err error
+		mutation, err = q.negativeAcknowledgmentTx(
+			tx,
+			leaseID,
 			workerID,
 			workerSessionID,
-			nowFunc(),
-		) {
-			return errLeaseLost
-		}
-		if err := q.recordLeaseSettlement(tx, leaseID, leaseSettlementRequeued); err != nil {
-			return err
-		}
-		record.WorkerID = ""
-		record.Deferred = true
-		record.ExpiresAtUnixNano = nowFunc().Add(negativeAcknowledgmentRetryDelay).UnixNano()
-		if err := q.leases.Put(tx, vault.Key(leaseID), record); err != nil {
-			return fmt.Errorf("defer crawl lease: %w", err)
-		}
+			requireOwner,
+		)
 
-		return nil
+		return err
 	}); err != nil {
 		return fmt.Errorf("nak crawl lease: %w", err)
 	}
-	if removedFound {
-		q.workerLeases.remove(removed)
+	if mutation.staged {
+		recoveryContext, cancel := automaticDiscoverySettlementRecoveryContext(ctx)
+		defer cancel()
+		if err := q.resolveAutomaticDiscoverySettlement(
+			recoveryContext,
+			leaseID,
+		); err != nil {
+			return fmt.Errorf("nak crawl lease: %w", err)
+		}
+
+		return fmt.Errorf("nak crawl lease: %w", errLeaseDispositionConflict)
+	}
+	if mutation.removed {
+		q.workerLeases.remove(mutation.lease)
 	}
 
 	return nil

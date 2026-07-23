@@ -263,6 +263,7 @@ func TestSubmitIngestAcceptsBatchAtContractLimit(t *testing.T) {
 	queue := memQueue(t)
 	server := newExchangeServer(queue, out)
 	message := ingestMessage(t, "https://example.org/maximum")
+	authorizeIngestMessage(t, server, message, "maximum-ingest")
 	message.BatchJson = append(
 		message.BatchJson,
 		bytes.Repeat(
@@ -270,7 +271,6 @@ func TestSubmitIngestAcceptsBatchAtContractLimit(t *testing.T) {
 			yagocrawlcontract.MaximumIngestBatchBytes-len(message.BatchJson),
 		)...,
 	)
-	authorizeIngestMessage(t, server, message, "maximum-ingest")
 	received := make(chan int, 1)
 	go func() {
 		delivery := <-out
@@ -341,6 +341,23 @@ func authorizeIngestMessage(
 	)
 	message.WorkerId = "worker"
 	message.WorkerSessionId = testWorkerSessionID
+	record, found := leaseRecordFor(t, server.queue, message.LeaseId)
+	if !found {
+		t.Fatal("authorized ingest lease not found")
+	}
+	order, err := yagocrawlcontract.UnmarshalCrawlOrder(record.OrderData)
+	if err != nil {
+		t.Fatalf("decode authorized ingest order: %v", err)
+	}
+	batch, err := yagocrawlcontract.UnmarshalIngestBatch(message.BatchJson)
+	if err != nil {
+		t.Fatalf("decode authorized ingest batch: %v", err)
+	}
+	batch.ProfileHandle = order.Profile.Handle
+	message.BatchJson, err = yagocrawlcontract.MarshalIngestBatch(batch)
+	if err != nil {
+		t.Fatalf("encode authorized ingest batch: %v", err)
+	}
 	activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 }
 

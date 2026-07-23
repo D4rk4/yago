@@ -75,9 +75,18 @@ func normalizedDomainName(value string) string {
 }
 
 func hostSatisfiesDomain(host, domain string) bool {
-	domain = strings.ToLower(strings.Trim(strings.TrimSpace(domain), "."))
-	domain = strings.TrimPrefix(domain, "*.")
+	domain = normalizedDomainConstraint(domain)
 
 	return host != "" && domain != "" &&
 		(host == domain || strings.HasSuffix(host, "."+domain))
+}
+
+func normalizedDomainConstraint(domain string) string {
+	domain = strings.ToLower(strings.Trim(strings.TrimSpace(domain), "."))
+	domain = strings.TrimPrefix(domain, "*.")
+	if address, err := netip.ParseAddr(strings.Trim(domain, "[]")); err == nil {
+		return address.String()
+	}
+
+	return domain
 }

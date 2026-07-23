@@ -249,20 +249,19 @@ func bleveSearchQuery(
 		// matching YaCy's all-words RWI join; expansion terms only reorder.
 		main = requiredTermsQuery(req, analyzers, weights, analyzerScope)
 	}
-	if len(req.ExcludeTerms) == 0 {
-		return main
-	}
-
-	query := bleve.NewBooleanQuery()
-	query.AddMust(main)
-	for _, term := range req.ExcludeTerms {
-		term = strings.TrimSpace(term)
-		if term != "" {
-			query.AddMustNot(crossFieldTermClause(term, analyzers, weights, 1))
+	if len(req.ExcludeTerms) > 0 {
+		query := bleve.NewBooleanQuery()
+		query.AddMust(main)
+		for _, term := range req.ExcludeTerms {
+			term = strings.TrimSpace(term)
+			if term != "" {
+				query.AddMustNot(crossFieldTermClause(term, analyzers, weights, 1))
+			}
 		}
+		main = query
 	}
 
-	return query
+	return bleveQueryWithIncludeDomainCandidates(main, req.IncludeDomain)
 }
 
 // textSearchFields are the fields analyzed with a per-language stemmer (the url

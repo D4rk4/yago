@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -63,7 +64,7 @@ func TestBuildCrawlRuntimeFormatsOpenError(t *testing.T) {
 	}
 }
 
-func TestCrawlFormatsSourceSurfacesPersistedReadError(t *testing.T) {
+func TestCrawlFormatsSourceUsesLoadedSnapshotAfterSuccessfulOpen(t *testing.T) {
 	engine := newCtrlEngine()
 	v := ctrlVault(t, engine)
 	store, err := crawlformats.Open(v)
@@ -78,8 +79,41 @@ func TestCrawlFormatsSourceSurfacesPersistedReadError(t *testing.T) {
 	}
 	engine.corrupt("crawl_formats")
 
-	_, err = (crawlFormatsSource{store: store}).CurrentFormats(context.Background())
+	current, err := (crawlFormatsSource{store: store}).CurrentFormats(context.Background())
+	if err != nil {
+		t.Fatalf("CurrentFormats: %v", err)
+	}
+	if !current.Text {
+		t.Fatalf("CurrentFormats = %+v, want loaded snapshot", current)
+	}
+}
+
+func TestCrawlFormatsSourceRejectsCancelledRead(t *testing.T) {
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault: %v", err)
+	}
+	store, err := crawlformats.Open(v)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := (crawlFormatsSource{store: store}).CurrentFormats(ctx); !errors.Is(
+		err,
+		context.Canceled,
+	) {
+		t.Fatalf("cancelled CurrentFormats error = %v", err)
+	}
+}
+
+func TestCrawlFormatsOpenSurfacesInitialPersistedReadError(t *testing.T) {
+	engine := newCtrlEngine()
+	engine.bucket("crawl_formats")["toggles"] = []byte("corrupt-not-decodable")
+	v := ctrlVault(t, engine)
+
+	_, err := crawlformats.Open(v)
 	if err == nil || !strings.Contains(err.Error(), "read crawl formats") {
-		t.Fatalf("CurrentFormats error = %v, want persisted read error", err)
+		t.Fatalf("Open error = %v, want persisted read error", err)
 	}
 }

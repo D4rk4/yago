@@ -12,6 +12,8 @@ import (
 type providerQuery struct {
 	submittedText string
 	outboundText  string
+	cacheIdentity string
+	acceptResults func([]Result) []Result
 }
 
 type providerQuerySearcher interface {
@@ -19,10 +21,13 @@ type providerQuerySearcher interface {
 }
 
 func newProviderQuery(query string) providerQuery {
-	return providerQuery{
+	prepared := providerQuery{
 		submittedText: strings.TrimSpace(query),
 		outboundText:  searchcore.NormalizeTextQuery(query),
 	}
+	prepared.cacheIdentity = prepared.outboundText
+
+	return prepared
 }
 
 func WithProviderBudget(budget time.Duration) Option {
@@ -31,10 +36,10 @@ func WithProviderBudget(budget time.Duration) Option {
 
 func (s *FallbackSearcher) searchProvider(
 	ctx context.Context,
-	query string,
+	req searchcore.Request,
 	limit int,
 ) ([]Result, error) {
-	preparedQuery := newProviderQuery(query)
+	preparedQuery := newProviderQueryForRequest(req)
 	search := func(searchContext context.Context) ([]Result, error) {
 		if provider, ok := s.provider.(providerQuerySearcher); ok {
 			return provider.searchProviderQuery(searchContext, preparedQuery, limit)

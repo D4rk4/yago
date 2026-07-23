@@ -12,6 +12,11 @@ type orderQueueCollections struct {
 	automaticOrderIndex      *vault.Collection[[]byte]
 	sequence                 *vault.Collection[uint64]
 	idempotencyKeys          *vault.Collection[uint64]
+	activeDiscoveryKeys      *vault.Collection[uint64]
+	pendingDiscoveryKeys     *vault.Collection[[]byte]
+	leasedDiscoveryKeys      *vault.Collection[[]byte]
+	discoveryIntents         *vault.Collection[[]byte]
+	discoverySettlements     *vault.Collection[automaticDiscoverySettlementIntent]
 	leases                   *vault.Collection[leaseRecord]
 	leaseSettlements         *vault.Collection[leaseSettlementRecord]
 	leaseSettlementOrder     *vault.Collection[[]byte]
@@ -67,6 +72,38 @@ func registerPendingOrderCollections(storage *vault.Vault) (orderQueueCollection
 	if err != nil {
 		return orderQueueCollections{}, fmt.Errorf("register crawl order idempotency keys: %w", err)
 	}
+	collections.activeDiscoveryKeys, err = vault.Register(
+		storage,
+		activeDiscoveryKeyBucket,
+		sequenceCodec{},
+	)
+	if err != nil {
+		return orderQueueCollections{}, fmt.Errorf("register active crawl discovery keys: %w", err)
+	}
+	collections.pendingDiscoveryKeys, err = vault.Register(
+		storage,
+		pendingDiscoveryKeyBucket,
+		orderCodec{},
+	)
+	if err != nil {
+		return orderQueueCollections{}, fmt.Errorf("register pending crawl discovery keys: %w", err)
+	}
+	collections.leasedDiscoveryKeys, err = vault.Register(
+		storage,
+		leasedDiscoveryKeyBucket,
+		orderCodec{},
+	)
+	if err != nil {
+		return orderQueueCollections{}, fmt.Errorf("register leased crawl discovery keys: %w", err)
+	}
+	collections.discoveryIntents, err = vault.Register(
+		storage,
+		discoveryIntentBucket,
+		orderCodec{},
+	)
+	if err != nil {
+		return orderQueueCollections{}, fmt.Errorf("register crawl discovery intents: %w", err)
+	}
 
 	return collections, nil
 }
@@ -76,6 +113,14 @@ func registerLeaseCollections(storage *vault.Vault, collections *orderQueueColle
 	collections.leases, err = vault.Register(storage, leaseBucket, leaseRecordCodec{})
 	if err != nil {
 		return fmt.Errorf("register crawl order leases: %w", err)
+	}
+	collections.discoverySettlements, err = vault.Register(
+		storage,
+		discoverySettlementBucket,
+		automaticDiscoverySettlementIntentCodec{},
+	)
+	if err != nil {
+		return fmt.Errorf("register crawl discovery settlements: %w", err)
 	}
 	collections.leaseSettlements, err = vault.Register(
 		storage,

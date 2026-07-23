@@ -46,7 +46,6 @@ func openCrawlIngestRuntime(
 	consumer.AdmitGrowth(crawlStateLifecycleAdmission(config.GrowthAdmission))
 	consumer.OrderObservations(observationHistory)
 	consumer.RecordFetches(frontier)
-	consumer.CheckOwnership(frontier)
 	consumer.TrackContentClusters(storage.contentClusters)
 	evictor := eviction.NewEvictor(
 		storageVault,

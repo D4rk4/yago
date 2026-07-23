@@ -661,6 +661,7 @@ func leaseIngestMessage(
 	t.Helper()
 	data, err := yagocrawlcontract.MarshalIngestBatch(yagocrawlcontract.IngestBatch{
 		SourceURL: "https://example.org/session", Provenance: []byte("admin"),
+		ProfileHandle: testOrder("session").Profile.Handle,
 	})
 	if err != nil {
 		t.Fatalf("marshal ingest: %v", err)

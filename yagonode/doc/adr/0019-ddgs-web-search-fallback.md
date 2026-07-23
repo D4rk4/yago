@@ -29,15 +29,15 @@ Drop the outbound upstream-Tavily provider entirely. In its place, offer an
 optional, admin-toggled **DDGS web-search fallback**:
 
 - It runs only when the operator permits it. Mode `enabled` automatically runs
-  after exact/morphological local-plus-peer retrieval and bounded local fuzzy
-  recovery both miss, `always` starts web retrieval alongside local and peer work
+  after exact/morphological local-plus-peer retrieval and the applicable bounded
+  local recovery miss, `always` starts web retrieval alongside local and peer work
   and fuses their completed rankings, `explicit` requires the individual request
   to consent and runs after a miss, and `disabled` does not install web search. A
   local-only request never reaches peers or this provider.
-- Tavily-compatible `advanced` search permits web fallback according to the
-  operator policy because it uses the global retrieval path. `basic`, `fast`,
-  and `ultra-fast` remain local-only, as do YaCy `resource=local` and Admin
-  `scope=local`.
+- Every Tavily-compatible search depth uses the global retrieval path and
+  permits web fallback according to the operator policy. `basic`, `fast`, and
+  `ultra-fast` retain `verify=false`; `advanced` uses `verify=ifexist`. YaCy
+  `resource=local` and Admin `scope=local` remain local-only.
 - It uses the pure-Go keyless provider selected in ADR-0021. `auto` starts the
   preferred engine immediately, hedges later engines at 50-millisecond intervals,
   and cancels the remaining attempts when one answer survives relevance checks.
@@ -45,21 +45,24 @@ optional, admin-toggled **DDGS web-search fallback**:
   fields. The fallback submits the bounded original query, including supported
   provider operators, then independently enforces site, TLD, file type, URL, and
   excluded-term constraints that can be verified from each returned row.
+- DNS-name and IPv4 include-domain values may add a bounded provider `site:`
+  operand. IPv6 literals retain the base query because DDGS does not define an
+  unambiguous IPv6 operand; authoritative returned-host filtering still applies.
 - Its results carry internal `ddgs` provenance so external hits are never
   confused with owned local or federated hits. Human renderers expose web
   provenance, while a compatible Tavily-shaped adapter omits project-specific
   provenance.
-- Discovered URLs the node has never seen are handed to the crawler through the
-  existing crawl-order queue (TAVILY-06), using a conservative, robots-respecting,
-  egress-guarded profile with per-host caps and URL deduplication, so the next
-  identical query is answered from the local index.
+- Eligible surfaced URLs that are absent or lookup-indeterminate are handed to the
+  crawler through the existing crawl-order queue (TAVILY-06), using a conservative,
+  robots-respecting, egress-guarded profile with per-host caps and active-work URL
+  coalescing, so a later query can become local after successful ingest.
 
 The fallback is disabled by default and installed through admin config
 (`YAGO_WEB_FALLBACK_*`). Outbound queries pass the in-process egress guard;
 responses are rate-limit backed off and briefly cached under a fixed 4 MiB and
 256-entry limit after per-field normalization. Interactive miss-only requests run
-the ordered exact local-plus-swarm, local fuzzy, then web cascade inside a fixed
-deadline. `always` overlaps the web stage with the primary ranking and
+the ordered exact local-plus-swarm, applicable mutually exclusive local recovery,
+then web cascade inside a fixed deadline. `always` overlaps the web stage with the primary ranking and
 deduplicates the fused result set. Exact, fuzzy, and web stages are capped
 independently, and retained exact or fuzzy work holds bounded admission until it
 exits, so a context-insensitive local query cannot starve the provider or
@@ -75,17 +78,22 @@ Fallback results can seed the crawler so the local index grows toward its query
 traffic. Durable queue publishing runs after the search response through two
 background workers, at most 128 pending jobs, and a ten-second deadline per job.
 Each worker starts with a fresh bounded context, so queue delay does not consume
-that deadline. Normalized URLs coalesce before admission, and each absent or
-lookup-indeterminate page attempts one URL-idempotent automatic-discovery
-publication; at most one accepted order remains for that normalized URL. Its
-root fetch performs the warming, and no parallel cache order duplicates that
-fetch. A full queue drops only the new optional warming job instead of adding
-search latency or an unbounded queue.
+that deadline. An absent or lookup-indeterminate URL uses a one-at-a-time
+node-internal recovery intent for durable publication. Its normalized identity
+coalesces only while the order is pending or leased and is released after
+acknowledgement, terminal failure, or cancellation so later discovery can retry.
+Successful lease-authorized ingest attempts to persist the live lease's profile
+before recording the fetch. A profile or schedule write failure is logged and
+cannot roll back indexed content. The root fetch performs the warming, and no
+parallel cache order duplicates active work. A full queue drops only the new
+optional warming job instead of adding search latency or an unbounded queue.
 
 The providers are external rate-limited surfaces with their own terms of service,
-so the client backs off, caches briefly, and degrades to an empty result rather
-than fail the request. Web-result crawl seeding is an amplification vector, so it
-stays conservative and deduplicated and respects robots, egress deny, and per-host
-caps. Background admission also bounds concurrent durable queue writes. Both
-behaviors require opt-in. The `WebSearchProvider` seam keeps the
-concrete backend replaceable without touching the search core.
+so the client backs off, caches briefly, and records a classified partial failure.
+A row-bearing search remains successful; an empty Tavily-compatible response with
+that incomplete source is retryable HTTP 503. Web-result crawl seeding is an
+amplification vector, so it stays conservative and coalesces active work while
+respecting robots, egress deny, and per-host caps. Background admission also bounds
+concurrent durable queue writes. Both behaviors require opt-in. The
+`WebSearchProvider` seam keeps the concrete backend replaceable without touching
+the search core.

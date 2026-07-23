@@ -36,6 +36,7 @@ type crawlRuntime struct {
 	runs        *crawlruns.Registry
 	frontier    *recrawlfrontier.Frontier
 	formats     *crawlformats.Store
+	profiles    *crawlProfileDispatchRegistry
 	initiator   yagomodel.Hash
 	pageBudget  *crawlRunPageBudget
 	remoteCrawl remoteCrawlOrderObserver
@@ -78,19 +79,19 @@ func buildCrawlRuntime(
 		runs:       coordination.runs,
 		frontier:   ingest.frontier,
 		formats:    ingest.formats,
+		profiles:   newCrawlProfileDispatchRegistry(ingest.frontier),
 		initiator:  identity.Hash,
 		pageBudget: newCrawlRunPageBudget(config.MaxPagesPerRun),
 	}, nil
 }
 
-// dispatchQueue wraps the durable order queue so every dispatched or seeded crawl
-// order records its profile in the recrawl frontier before it is enqueued.
 func (r *crawlRuntime) dispatchQueue() crawldispatch.CrawlOrderQueue {
-	// Format toggles are stamped first so the recorded recrawl profile carries
-	// them too and re-dispatched URLs parse the same families.
-	var queue crawldispatch.CrawlOrderQueue = profileRecordingQueue{
-		inner:    formatStampingQueue{inner: r.broker.Orders, formats: r.formats},
-		frontier: r.frontier,
+	var queue crawldispatch.CrawlOrderQueue = formatStampingQueue{
+		inner: crawlProfileRegisteringQueue{
+			inner:    r.broker.Orders,
+			registry: r.profiles,
+		},
+		formats: r.formats,
 	}
 	if r.remoteCrawl != nil {
 		queue = remoteCrawlObservedOrderQueue{inner: queue, observer: r.remoteCrawl}

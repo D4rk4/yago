@@ -54,6 +54,9 @@ func rawContentResponseError(
 	if errors.Is(err, errRawContentBudgetExceeded) {
 		return http.StatusRequestEntityTooLarge, "raw_content_too_large"
 	}
+	if errors.Is(err, errSearchUnavailable) {
+		return http.StatusServiceUnavailable, "search_unavailable"
+	}
 
 	return http.StatusInternalServerError, defaultCode
 }

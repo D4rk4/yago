@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -82,17 +83,42 @@ func TestCurrentSurfacesReadFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("vault.New: %v", err)
 	}
-	store, err := Open(v)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if _, err := store.Current(context.Background()); err == nil {
-		t.Fatal("corrupt persisted toggles must fail")
+	if _, err := Open(v); err == nil {
+		t.Fatal("corrupt persisted toggles must fail at open")
 	}
 
+	clean, err := vault.New(&formatReadEngine{})
+	if err != nil {
+		t.Fatalf("clean vault.New: %v", err)
+	}
+	store, err := Open(clean)
+	if err != nil {
+		t.Fatalf("clean Open: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := store.Current(ctx); err == nil {
 		t.Fatal("cancelled format read must fail")
+	}
+
+	persisted := yagocrawlcontract.FormatToggles{Text: true, Archives: true}
+	encoded, err := (togglesCodec{}).Encode(persisted)
+	if err != nil {
+		t.Fatalf("encode persisted toggles: %v", err)
+	}
+	loadedVault, err := vault.New(&formatReadEngine{raw: encoded})
+	if err != nil {
+		t.Fatalf("persisted vault.New: %v", err)
+	}
+	loaded, err := Open(loadedVault)
+	if err != nil {
+		t.Fatalf("open persisted toggles: %v", err)
+	}
+	current, err := loaded.Current(t.Context())
+	if err != nil {
+		t.Fatalf("current persisted toggles: %v", err)
+	}
+	if current != persisted {
+		t.Fatalf("persisted toggles = %+v, want %+v", current, persisted)
 	}
 }

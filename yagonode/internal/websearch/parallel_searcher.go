@@ -135,7 +135,7 @@ func (s *ParallelSearcher) startParallelSearches(
 		}()
 		outcome.results, outcome.err = s.fallback.searchProvider(
 			ctx,
-			req.SubmittedText(),
+			req,
 			req.Limit,
 		)
 	}()

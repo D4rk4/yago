@@ -3,9 +3,11 @@ package crawlformats
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
+	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
 func TestStoreDefaultsAndRoundTrip(t *testing.T) {
@@ -75,5 +77,46 @@ func TestSetSurfacesVaultError(t *testing.T) {
 	cancel()
 	if err := store.Set(ctx, yagocrawlcontract.FormatToggles{Text: true}); err == nil {
 		t.Fatal("Set must surface the vault error on a cancelled context")
+	}
+}
+
+func TestCurrentDoesNotWaitForStorageWriter(t *testing.T) {
+	v, err := memvault.Open(0)
+	if err != nil {
+		t.Fatalf("memvault: %v", err)
+	}
+	store, err := Open(v)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	writerDone := make(chan error, 1)
+	go func() {
+		writerDone <- v.Update(context.Background(), func(*vault.Txn) error {
+			close(started)
+			<-release
+
+			return nil
+		})
+	}()
+	<-started
+
+	currentDone := make(chan error, 1)
+	go func() {
+		_, currentErr := store.Current(context.Background())
+		currentDone <- currentErr
+	}()
+	select {
+	case currentErr := <-currentDone:
+		if currentErr != nil {
+			t.Fatalf("current during storage write: %v", currentErr)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("cached format read waited for storage writer")
+	}
+	close(release)
+	if err := <-writerDone; err != nil {
+		t.Fatalf("release storage writer: %v", err)
 	}
 }

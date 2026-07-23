@@ -34,7 +34,7 @@ func (s localSearcher) searchCandidates(
 	if err != nil {
 		return searchindex.SearchResultSet{}, fmt.Errorf("strict candidates: %w", err)
 	}
-	if minimum == 0 {
+	if minimum == 0 || strictCandidateWindowFilled(strict, originalLimit, req.WithFacets) {
 		strict.Results = limitCandidateResults(strict.Results, originalLimit)
 
 		return finishCandidateEvidence(ctx, evidence, deferredEvidence, req, strict)
