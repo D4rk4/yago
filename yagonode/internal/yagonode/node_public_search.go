@@ -36,20 +36,23 @@ import (
 )
 
 type publicSearchAssembly struct {
-	storage                nodeStorage
-	roster                 peerroster.Roster
-	identity               nodeidentity.Identity
-	dht                    dhtDistributionConfig
-	client                 *http.Client
-	peerClient             *http.Client
-	peerHTTPSPreferred     bool
-	dhtSearchTargetIndex   func(int) (int, error)
-	searchAPIKey           string
-	searchAuthorizer       tavilyapi.ScopeAuthorizer
-	searchAdmission        tavilyapi.SearchAdmission
-	extractFetcher         tavilyapi.ContentFetcher
-	webFallback            webFallbackConfig
-	seedQueue              crawldispatch.CrawlOrderQueue
+	storage              nodeStorage
+	roster               peerroster.Roster
+	identity             nodeidentity.Identity
+	dht                  dhtDistributionConfig
+	client               *http.Client
+	peerClient           *http.Client
+	peerHTTPSPreferred   bool
+	dhtSearchTargetIndex func(int) (int, error)
+	searchAPIKey         string
+	searchAuthorizer     tavilyapi.ScopeAuthorizer
+	searchAdmission      tavilyapi.SearchAdmission
+	extractFetcher       tavilyapi.ContentFetcher
+	webFallback          webFallbackConfig
+	seedQueue            crawldispatch.CrawlOrderQueue
+	// diagnostic marks the search-explanation chain, which mirrors the live
+	// retrieval chain but must not seed crawls or report on seeding wiring.
+	diagnostic             bool
 	maxPagesPerRun         func() int
 	toggles                *runtimeToggles
 	queryLogMode           queryLogMode
@@ -425,17 +428,24 @@ func withWebFallback(
 	opts := []websearch.Option{websearch.WithProviderBudget(
 		webFallbackProviderStageBudget(config),
 	)}
-	if config.SeedCrawl && assembly.seedQueue != nil {
-		opts = append(opts, websearch.WithSeeder(newWebCrawlSeeder(
-			assembly.seedQueue,
-			assembly.storage.documentDirectory,
-			assembly.identity.Hash,
-			webCrawlSeedProfile{
-				fallback:       config,
-				crawl:          assembly.autocrawlerCrawl,
-				maxPagesPerRun: assembly.maxPagesPerRun,
-			},
+	if assembly.seedQueue != nil {
+		opts = append(opts, websearch.WithSeeder(newGatedWebCrawlSeeder(
+			newWebCrawlSeeder(
+				assembly.seedQueue,
+				assembly.storage.documentDirectory,
+				assembly.identity.Hash,
+				webCrawlSeedProfile{
+					fallback:       config,
+					crawl:          assembly.autocrawlerCrawl,
+					maxPagesPerRun: assembly.maxPagesPerRun,
+					bounds:         webSeedBoundsSource(assembly.toggles, config),
+				},
+			),
+			webSeedCrawlAdmission(assembly.toggles, config),
 		)))
+	}
+	if !assembly.diagnostic {
+		reportWebSeedWiring(config, assembly.seedQueue != nil)
 	}
 
 	permit := webFallbackPermit(config.Privacy)

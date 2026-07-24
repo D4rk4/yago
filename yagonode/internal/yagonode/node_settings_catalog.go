@@ -156,6 +156,9 @@ func webDiscoveryDefinitions() []settingDefinition {
 
 				return config
 			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				toggles.SetWebSeedCrawl(value == settingBoolTrue)
+			},
 		},
 		{
 			key:          "web.fallback.seed_depth",
@@ -168,6 +171,10 @@ func webDiscoveryDefinitions() []settingDefinition {
 
 				return config
 			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				depth, _ := strconv.Atoi(value)
+				toggles.SetWebSeedDepth(depth)
+			},
 		},
 		{
 			key:          "web.fallback.seed_max_pages",
@@ -179,6 +186,10 @@ func webDiscoveryDefinitions() []settingDefinition {
 				config.WebFallback.SeedMaxPages, _ = strconv.Atoi(value)
 
 				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				pages, _ := strconv.Atoi(value)
+				toggles.SetWebSeedMaxPages(pages)
 			},
 		},
 	}

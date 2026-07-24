@@ -131,6 +131,8 @@ deps:
   weburl:
     mayDependOn:
       - weburl
+    canUse:
+      - yagocrawlcontract
   crawlrun:
     mayDependOn:
       - crawlrun

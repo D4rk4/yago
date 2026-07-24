@@ -18,9 +18,12 @@ func (s *webCrawlSeeder) publishWebDiscoveryOrder(
 	target string,
 	instant time.Time,
 ) {
+	bounds := s.bounds()
 	profile := s.profile
+	profile.MaxDepth = bounds.depth
+	profile.MaxPagesPerHost = bounds.maxPages
 	maximum := automaticDiscoveryPageLimit(
-		s.maximumPages,
+		bounds.maxPages,
 		s.crawlerMaximum(),
 	)
 	profile.MaxPagesPerRun = &maximum
@@ -54,8 +57,16 @@ func (s *webCrawlSeeder) publishWebSeedOrder(
 ) {
 	var err error
 	for attempt := range webSeedPublishAttempts {
-		_, err = s.queue.PublishOnce(ctx, identity, order)
+		duplicate, publishErr := s.queue.PublishOnce(ctx, identity, order)
+		err = publishErr
 		if err == nil {
+			slog.DebugContext(
+				ctx,
+				msgWebSeedPublished,
+				slog.String("url", identity),
+				slog.Bool("coalesced", duplicate),
+			)
+
 			return
 		}
 		if attempt+1 < webSeedPublishAttempts &&
@@ -63,10 +74,14 @@ func (s *webCrawlSeeder) publishWebSeedOrder(
 			break
 		}
 	}
+	// The profile name is the constant "web-fallback-seed", so on its own it
+	// attributes nothing; the URL is what an operator needs to chase a seed
+	// that never became a document.
 	slog.WarnContext(
 		ctx,
 		msgWebSeedFailed,
 		slog.String("profile", order.Profile.Name),
+		slog.String("url", identity),
 		slog.Any("error", err),
 	)
 }

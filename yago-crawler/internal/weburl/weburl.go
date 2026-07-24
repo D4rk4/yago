@@ -1,26 +1,22 @@
 package weburl
 
-import "net/url"
+import (
+	"net/url"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
+)
 
 // Normalize canonicalizes an http(s) URL to the one spelling the frontier
 // visited-set, document keys, and recrawl schedule share, so tracking-parameter
 // and session-id variants of one page stop burning crawl budget and index
 // space as distinct URLs (RFC 3986 normalization; Manku et al. WWW 2007
 // motivate dedup before fetch).
+//
+// The rules live in yagocrawlcontract so the node seeds crawl orders under the
+// same spelling this crawler stores them under; a second copy here would let
+// the two drift and re-crawl the same page forever.
 func Normalize(raw string) (string, bool) {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return "", false
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", false
-	}
-	if parsed.Host == "" {
-		return "", false
-	}
-	canonicalizeURL(parsed)
-
-	return parsed.String(), true
+	return yagocrawlcontract.CanonicalURL(raw)
 }
 
 func Host(rawURL string) string {

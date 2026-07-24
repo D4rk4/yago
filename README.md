@@ -123,8 +123,10 @@ its binaries (`yago-node`, `yago-crawler`).
   and structured constraints. Requests using `verify=ifexist` additionally
   require bounded visible query evidence; Tavily `basic`, `fast`, and
   `ultra-fast` preserve `verify=false`. When web-discovery seeding is enabled,
-  surfaced URLs are admitted to bounded background warming and normalized before
-  admission. A one-at-a-time recovery intent protects durable publication, which
+  surfaced URLs are admitted to bounded background warming and rendered in the
+  crawl contract's canonical spelling — the one the crawler stores documents
+  under — before admission, so a page already indexed is not re-seeded under a
+  second spelling. A one-at-a-time recovery intent protects durable publication, which
   coalesces a normalized URL only while its task is pending or leased.
   Acknowledgement, terminal failure, or cancellation first persists a settlement
   intent; retry or startup finishes any partial lease transition and identity
@@ -432,7 +434,11 @@ its binaries (`yago-node`, `yago-crawler`).
   environment knob for it, avoiding an upgrade-time crawl storm.
 - Automatic discovery: enabled swarm greedy-learning uses a depth-5,
   250-page-per-task HTTP-fast-path profile; web-discovery crawling stays opt-in
-  with the same ready profile. Surfaced fallback URLs use two background workers,
+  with the same ready profile. The three web-discovery controls — the on/off
+  switch, the crawl depth, and the page cap — apply live, so enabling seeding
+  starts publishing on the next search and narrowing either bound applies to the
+  next seeded order without a restart. Startup logs whether seeding can run and
+  which condition blocks it. Surfaced fallback URLs use two background workers,
   at most 128 pending warming jobs, and a ten-second deadline beginning when each
   job starts. A full
   queue warns and drops only new optional warming work; an admitted crawl order

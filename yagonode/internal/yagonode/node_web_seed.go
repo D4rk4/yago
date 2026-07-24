@@ -14,6 +14,7 @@ import (
 
 const (
 	msgWebSeedFailed       = "web-search crawl seeding failed"
+	msgWebSeedPublished    = "web-search crawl seed published"
 	webSeedProfileName     = "web-fallback-seed"
 	webSeedPresenceTimeout = 50 * time.Millisecond
 )
@@ -37,15 +38,26 @@ type webCrawlSeeder struct {
 	documents      documentstore.DocumentDirectory
 	initiator      yagomodel.Hash
 	profile        yagocrawlcontract.CrawlProfile
-	maximumPages   int
+	bounds         func() seedBounds
 	crawlerMaximum func() int
 	now            func() time.Time
+}
+
+// seedBounds is how far one seeded order may crawl. It is resolved per publish
+// rather than captured at assembly so an operator who is drowning the crawler
+// can pull the depth and page cap down and have the very next seed obey them —
+// these two knobs are the only defence against one web-fallback query enqueuing
+// SeedMaxPages x MaxResults pages of work.
+type seedBounds struct {
+	depth    int
+	maxPages int
 }
 
 type webCrawlSeedProfile struct {
 	fallback       webFallbackConfig
 	crawl          seedCrawlOptions
 	maxPagesPerRun func() int
+	bounds         func() seedBounds
 }
 
 func newWebCrawlSeeder(
@@ -54,12 +66,17 @@ func newWebCrawlSeeder(
 	initiator yagomodel.Hash,
 	seed webCrawlSeedProfile,
 ) *webCrawlSeeder {
-	return newCrawlSeeder(queue, documents, initiator, seedProfile{
+	seeder := newCrawlSeeder(queue, documents, initiator, seedProfile{
 		name:     webSeedProfileName,
 		depth:    seed.fallback.SeedDepth,
 		maxPages: seed.fallback.SeedMaxPages,
 		options:  seed.crawl,
 	}, seed.maxPagesPerRun)
+	if seed.bounds != nil {
+		seeder.bounds = seed.bounds
+	}
+
+	return seeder
 }
 
 func newCrawlSeeder(
@@ -82,13 +99,14 @@ func newCrawlSeeder(
 		FollowNoFollowLinks: seed.options.FollowNoFollowLinks,
 		RecrawlIfOlder:      seed.options.RecrawlInterval,
 	})
+	fixed := seedBounds{depth: seed.depth, maxPages: seed.maxPages}
 
 	return &webCrawlSeeder{
 		queue:          queue,
 		documents:      documents,
 		initiator:      initiator,
 		profile:        profile,
-		maximumPages:   seed.maxPages,
+		bounds:         func() seedBounds { return fixed },
 		crawlerMaximum: selectMaxPagesPerRunSource(maxPagesPerRun),
 		now:            time.Now,
 	}
@@ -134,17 +152,19 @@ func (s *webCrawlSeeder) stored(ctx context.Context, target string) bool {
 	return err == nil && found
 }
 
+// seedURL renders a web-surfaced URL in the crawl contract's canonical spelling
+// — the same one the crawler stores documents under. Seeding a raw SERP URL
+// instead made the stored() probe miss for every homepage ("https://host" vs
+// the stored "https://host/") and for every tracking-parameter variant, so
+// already-indexed pages were re-seeded as fresh domain crawls on every repeat
+// query, and PublishOnce's per-URL idempotency key stopped coalescing them.
 func seedURL(raw string) string {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || !parsed.IsAbs() || parsed.Hostname() == "" || parsed.User != nil {
 		return ""
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return ""
-	}
-	parsed.Fragment = ""
-	normalized := parsed.String()
-	if len(normalized) > yagomodel.MaximumURLIdentityBytes {
+	normalized, ok := yagocrawlcontract.CanonicalURL(parsed.String())
+	if !ok || len(normalized) > yagomodel.MaximumURLIdentityBytes {
 		return ""
 	}
 

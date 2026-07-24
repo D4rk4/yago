@@ -1,4 +1,4 @@
-package weburl
+package yagocrawlcontract
 
 import (
 	"net/url"
@@ -33,13 +33,36 @@ var trackingParams = map[string]bool{
 // id such as a story or section number.
 var sessionValuePattern = regexp.MustCompile(`^[0-9a-zA-Z]{32}$`)
 
-// canonicalizeURL applies RFC 3986 semantics-preserving normalization plus
-// production-crawler parameter hygiene, so the visited-set, document keys, and
-// recrawl schedule all see one spelling of one page: lowercased host, default
-// ports elided, dot-segments removed, an empty path spelled "/", query
-// parameters sorted with tracking and session identifiers stripped. Path and
-// query casing is untouched and trailing slashes are preserved (Google treats
-// /fish and /fish/ as different URLs).
+// CanonicalURL canonicalizes an http(s) URL to the one spelling every crawl
+// participant shares: the crawler's frontier visited-set, the node's document
+// keys, the recrawl schedule, and the crawl-order idempotency keys the
+// automatic-discovery queue coalesces on. It lives in the crawl contract
+// because a node and a crawler that disagree about a URL's spelling silently
+// re-crawl the same page forever — the node's "is it already stored?" probe
+// misses, and the queue's per-URL idempotency key stops coalescing.
+//
+// It applies RFC 3986 semantics-preserving normalization plus
+// production-crawler parameter hygiene: lowercased host, default ports elided,
+// dot-segments removed, an empty path spelled "/", query parameters sorted with
+// tracking and session identifiers stripped. Path and query casing is untouched
+// and trailing slashes are preserved (Google treats /fish and /fish/ as
+// different URLs).
+func CanonicalURL(raw string) (string, bool) {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", false
+	}
+	if parsed.Host == "" {
+		return "", false
+	}
+	canonicalizeURL(parsed)
+
+	return parsed.String(), true
+}
+
 func canonicalizeURL(parsed *url.URL) {
 	parsed.Host = canonicalHost(parsed)
 	parsed.Path = canonicalPath(parsed.Path)

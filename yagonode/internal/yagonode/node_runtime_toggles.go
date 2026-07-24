@@ -19,6 +19,14 @@ type runtimeToggles struct {
 	publicBaseURL atomic.Value
 	robotsPolicy  atomic.Value
 	greeting      atomic.Value
+	// webSeedCrawl gates the web-fallback crawl seeder. The seeder itself is
+	// always wired when a crawl queue exists, so flipping this admits or
+	// silences seeding on the next search instead of waiting for a restart.
+	// webSeedDepth and webSeedMaxPages bound each seeded order and are read per
+	// publish, so an operator can throttle a runaway seed backlog live.
+	webSeedCrawl    atomic.Bool
+	webSeedDepth    atomic.Int64
+	webSeedMaxPages atomic.Int64
 	// compaction holds the storage-compaction cadence in nanoseconds (0 = off);
 	// the compaction loop reads the current value each cycle.
 	compaction atomic.Int64
@@ -58,6 +66,9 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.publicBaseURL.Store(config.PublicBaseURL)
 	toggles.robotsPolicy.Store(string(publicrobots.ParsePolicy(config.RobotsPolicy)))
 	toggles.greeting.Store(config.PortalGreeting)
+	toggles.webSeedCrawl.Store(config.WebFallback.SeedCrawl)
+	toggles.webSeedDepth.Store(int64(config.WebFallback.SeedDepth))
+	toggles.webSeedMaxPages.Store(int64(config.WebFallback.SeedMaxPages))
 	toggles.compaction.Store(int64(config.StorageCompaction))
 	toggles.autosplit.Store(config.StorageAutosplit)
 	toggles.storageReservedFree.Store(config.StorageReservedFreeBytes)
@@ -189,6 +200,35 @@ func (t *runtimeToggles) PortalEnabled() bool {
 
 func (t *runtimeToggles) SetPortalEnabled(enabled bool) {
 	t.portalEnabled.Store(enabled)
+}
+
+// WebSeedCrawlEnabled reports whether the web-search fallback may hand the URLs
+// it surfaced to the crawler. The seeder reads it on every search.
+func (t *runtimeToggles) WebSeedCrawlEnabled() bool {
+	return t != nil && t.webSeedCrawl.Load()
+}
+
+// SetWebSeedCrawl admits or silences web-discovery seeding without a restart.
+func (t *runtimeToggles) SetWebSeedCrawl(enabled bool) {
+	if t != nil {
+		t.webSeedCrawl.Store(enabled)
+	}
+}
+
+// SetWebSeedDepth narrows or widens how many link hops each seeded order
+// crawls, taking effect on the next seed.
+func (t *runtimeToggles) SetWebSeedDepth(depth int) {
+	if t != nil {
+		t.webSeedDepth.Store(int64(depth))
+	}
+}
+
+// SetWebSeedMaxPages caps the pages one seeded order may crawl, taking effect
+// on the next seed.
+func (t *runtimeToggles) SetWebSeedMaxPages(pages int) {
+	if t != nil {
+		t.webSeedMaxPages.Store(int64(pages))
+	}
 }
 
 func (t *runtimeToggles) HTTPSRedirectEnabled() bool {

@@ -251,9 +251,9 @@ required.
 | `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-engine timeout ceiling. Interactive search additionally caps the complete hedged web stage at 900ms after a local-plus-swarm miss or 1500ms when `always` starts it in parallel, inside the fixed 1.8-second deadline. |
 | `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Safe-search preference passed to engines that support it (`strict`, `moderate`, `off`). |
 | `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. Normalized responses share a fixed 4 MiB/256-entry byte-aware cache, retain at most 20 rows per query, and bound each title, URL, and snippet before insertion. |
-| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so later queries can be answered locally. Publishing runs after the search response through two background workers, a process-wide queue of at most 128 pending jobs, and a ten-second deadline that begins when each job starts. A full queue warns and skips only new optional warming work. Each URL gets a 50-millisecond stored-document presence check before an absent or indeterminate URL attempts recovery-intent-backed durable publication. Publication coalesces the normalized URL only while its order is pending or leased. Acknowledgement, terminal failure, or cancellation permits a later surfaced result to retry. Successful lease-authorized ingest attempts to persist the live lease's profile before recording the fetch. A profile or schedule write failure is logged and cannot reject or roll back the fetched document. No effect when crawling is disabled. |
-| `YAGO_WEB_FALLBACK_SEED_DEPTH` | `5` | Crawl depth for web-discovery orders when web-discovery crawling is enabled (0–8). |
-| `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `250` | Whole-run page cap for each web-discovery crawl task when enabled. The global crawler run cap may reduce it further. |
+| `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so later queries can be answered locally. Editable live as `web.fallback.seed_crawl`: the seeder is wired whenever the node has a crawl queue, and this switch admits or silences it on the next search. The node logs `web-search crawl seeding wiring` at startup naming whether seeding can run and why not. Publishing runs after the search response through two background workers, a process-wide queue of at most 128 pending jobs, and a ten-second deadline that begins when each job starts. A full queue warns and skips only new optional warming work. Each URL gets a 50-millisecond stored-document presence check before an absent or indeterminate URL attempts recovery-intent-backed durable publication. Publication coalesces the normalized URL only while its order is pending or leased. Acknowledgement, terminal failure, or cancellation permits a later surfaced result to retry. Successful lease-authorized ingest attempts to persist the live lease's profile before recording the fetch. A profile or schedule write failure is logged and cannot reject or roll back the fetched document. No effect when crawling is disabled. |
+| `YAGO_WEB_FALLBACK_SEED_DEPTH` | `5` | Crawl depth for web-discovery orders when web-discovery crawling is enabled (0–8). Editable live as `web.fallback.seed_depth`; the new bound applies to the next seeded order. |
+| `YAGO_WEB_FALLBACK_SEED_MAX_PAGES` | `250` | Whole-run page cap for each web-discovery crawl task when enabled. The global crawler run cap may reduce it further. Note the multiplier: one fallback query surfaces up to `YAGO_WEB_FALLBACK_MAX_RESULTS` URLs, so the default caps one query at 2 500 queued pages against a fleet paced by `YAGO_CRAWLER_MAX_PAGES_PER_SECOND`. Editable live as `web.fallback.seed_max_pages`. |
 | `YAGO_QUERY_LOG_MODE` | `off` | How much of a search query is written to the node's logs. `off` records nothing; `aggregate` records the query length and result count but never the text; `full` records the query text. In either enabled mode, an incomplete response also records `partialFailures` and at most eight ordered unique `failureSources`. The default keeps queries out of the logs. |
 | `YAGO_INDEX_REMOTE_RESULTS` | `true` | Cache the metadata of results returned by peers into the local index after a swarm search, mirroring YaCy's `addResultsToLocalIndex`, so a later query for the same content is answered locally without re-fetching. Metadata only (title, snippet, URL — no crawl); a URL already in the store is never overwritten, so a locally crawled full page is preserved. Writes run off the request path, are limited to two concurrent operations with a 30-second deadline, and are skipped while that bounded admission is saturated. Set to `false` to leave the index unchanged by searches (a node that indexes only what it crawls). |
 | `YAGO_PEER_HTTPS_PREFERRED` | `false` | Prefer HTTPS for outbound YaCy peer-protocol calls (hello, remote search, transferRWI/transferURL, back-ping) to peers that advertise an SSL port and the SSL seed flag, mirroring YaCy's `network.unit.protocol.https.preferred`. A failed HTTPS transport attempt retries the same peer over plain HTTP, YaCy-style. Peer certificates in the wild are self-signed, so certificate verification is disabled for the peer-protocol client only — peer authenticity on the YaCy wire comes from protocol-level checks (target hash, network name, hello magic), not PKI — and the egress guard still applies. |
@@ -494,15 +494,23 @@ query-bearing URLs, accept untrusted TLS certificate authorities, use the HTTP
 fast path without browser rendering, honor robots.txt, skip links marked
 `rel=nofollow`, and schedule indexed pages for refresh after 30 days. These
 values are editable under Admin → Configuration → Crawler; runtime overrides
-take precedence over the environment-derived defaults. That tab contains
+take precedence over the environment-derived defaults. The three web-discovery
+knobs — `web.fallback.seed_crawl`, `web.fallback.seed_depth`, and
+`web.fallback.seed_max_pages` — apply live: enabling seeding starts publishing
+orders on the next search, and narrowing the depth or page cap bounds the very
+next order, so an operator can throttle a seed backlog without a restart. The
+swarm-seed equivalents still take effect on restart. That tab contains
 separate Crawler, Automatic discovery, and Document formats fieldsets. The
 legacy `/admin/autocrawler` URLs redirect to this tab and do not keep a second
 settings surface.
 
 When web-fallback crawl seeding is enabled, every eligible surfaced URL enters
 the bounded background warming path described by `YAGO_WEB_FALLBACK_SEED_CRAWL`.
-Fragments are removed before URL coalescing; credential-bearing, addressless,
-non-HTTP, and oversized identities are rejected. Each absent or
+Surfaced URLs are rendered in the crawl contract's canonical spelling — the one
+the crawler stores documents under — before the presence check and before
+coalescing, so an already-indexed page is not re-seeded under a second
+spelling; credential-bearing, addressless, non-HTTP, and oversized identities
+are rejected. Each absent or
 lookup-indeterminate URL enters recovery-intent-backed durable
 automatic-discovery publication. A normalized URL is coalesced only while its
 order is pending or leased. Acknowledgement, terminal failure, or cancellation
