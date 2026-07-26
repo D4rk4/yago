@@ -36,7 +36,7 @@ func NewFallbackSearcher(
 		opt(searcher)
 	}
 	if searcher.seeder != nil {
-		searcher.spawnSeedWork = webSeedProcessAdmission.try
+		searcher.spawnSeedWork = webSeedProcessAdmission().try
 	}
 
 	return searcher

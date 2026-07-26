@@ -34,7 +34,14 @@ func (f *Frontier) persistMissingProfiles(
 			if found {
 				continue
 			}
-			if err := f.profiles.Put(tx, vault.Key(profile.Handle), profile); err != nil {
+			// Ingest carries the profile from the live lease but not the order
+			// priority, so a backfilled record leaves it unset. This only ever
+			// fills a gap left by a failed or evicted dispatch registration —
+			// an existing record, and the priority it carries, is never
+			// rewritten here — and the next dispatch under the handle restores
+			// the authoritative priority.
+			record := profileRecord{CrawlProfile: profile}
+			if err := f.profiles.Put(tx, vault.Key(profile.Handle), record); err != nil {
 				return fmt.Errorf("write recrawl profile: %w", err)
 			}
 		}

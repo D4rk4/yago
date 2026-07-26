@@ -25,6 +25,7 @@ func TestOpenServesAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	t.Cleanup(broker.Close)
 	if broker.Orders == nil || broker.Ingest == nil {
 		t.Fatal("broker ports must be wired")
 	}

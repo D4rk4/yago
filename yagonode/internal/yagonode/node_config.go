@@ -15,6 +15,7 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/publicratelimit"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
+	"github.com/D4rk4/yago/yagonode/internal/searchsession"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -60,6 +61,12 @@ const (
 	envSearchLinksNewTab    = "YAGO_SEARCH_LINKS_NEW_TAB"
 	envSearchClickCapture   = "YAGO_SEARCH_CLICK_CAPTURE"
 	envSwarmSeedCrawl       = "YAGO_SWARM_SEED_CRAWL"
+	envSearchSessionTTL     = "YAGO_SEARCH_SESSION_TTL"
+	// A materialized result window is node-local retention: a shorter one frees
+	// memory sooner, a longer one lets a reader page further back. The bounds
+	// keep it useful without letting one setting pin the session cache.
+	minimumSearchSessionTTL = 30 * time.Second
+	maximumSearchSessionTTL = time.Hour
 	envSwarmSeedDepth       = "YAGO_SWARM_SEED_DEPTH"
 	envSwarmSeedMaxPages    = "YAGO_SWARM_SEED_MAX_PAGES"
 	envSwarmMorphology      = "YAGO_SWARM_MORPHOLOGY"
@@ -127,6 +134,7 @@ type nodeConfig struct {
 	PublicSearchUIEnabled        bool
 	SearchLinksNewTab            bool
 	SearchClickCapture           bool
+	SearchSessionTTL             time.Duration
 	HTTPSRedirect                bool
 	PublicBaseURL                string
 	QueryLogMode                 queryLogMode
@@ -284,6 +292,7 @@ type derivedConfigs struct {
 	searchClickCapture  bool
 	storageAutosplit    bool
 	storageDeferFsync   bool
+	searchSessionTTL    time.Duration
 	swarmSeed           swarmSeedConfig
 	extractFetch        extractFetchConfig
 	remotePeerTimeout   time.Duration
@@ -304,8 +313,11 @@ type swarmSeedConfig struct {
 }
 
 const (
-	defaultSwarmSeedDepth    = 5
-	defaultSwarmSeedMaxPages = 250
+	// Swarm greedy learning seeds one task per remote result, so it carries the
+	// same per-query multiplier as the web-discovery seeder and is sized to
+	// match it.
+	defaultSwarmSeedDepth    = 1
+	defaultSwarmSeedMaxPages = 25
 	maxSwarmSeedDepth        = 8
 )
 
@@ -381,7 +393,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 	if err != nil {
 		return derivedConfigs{}, err
 	}
-	swarmSeed, err := loadSwarmSeedConfig(getenv)
+	swarmSeed, searchSessionTTL, err := loadSeedAndSessionConfigs(getenv)
 	if err != nil {
 		return derivedConfigs{}, err
 	}
@@ -431,6 +443,7 @@ func loadDerivedConfigs(getenv func(string) string) (derivedConfigs, error) {
 		searchClickCapture:  toggles.searchClickCapture,
 		storageAutosplit:    toggles.storageAutosplit,
 		storageDeferFsync:   toggles.storageDeferFsync,
+		searchSessionTTL:    searchSessionTTL,
 		swarmSeed:           swarmSeed,
 		extractFetch:        extractFetch,
 		remotePeerTimeout:   remotePeerTimeout,
@@ -964,4 +977,38 @@ func envWithDefault(getenv func(string) string, key, fallback string) string {
 	}
 
 	return fallback
+}
+
+// loadSeedAndSessionConfigs groups the greedy-learning seed profile with the
+// public result-window lifetime; both are node-local retention policy.
+func loadSeedAndSessionConfigs(
+	getenv func(string) string,
+) (swarmSeedConfig, time.Duration, error) {
+	swarmSeed, err := loadSwarmSeedConfig(getenv)
+	if err != nil {
+		return swarmSeedConfig{}, 0, err
+	}
+	searchSessionTTL, err := loadSearchSessionTTL(getenv)
+	if err != nil {
+		return swarmSeedConfig{}, 0, err
+	}
+
+	return swarmSeed, searchSessionTTL, nil
+}
+
+// loadSearchSessionTTL bounds the public result-window lifetime, node-local
+// retention policy an operator can tune without touching retrieval behaviour.
+func loadSearchSessionTTL(getenv func(string) string) (time.Duration, error) {
+	value, err := durationRangeEnv(
+		getenv,
+		envSearchSessionTTL,
+		searchsession.DefaultSessionTTL,
+		minimumSearchSessionTTL,
+		maximumSearchSessionTTL,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", envSearchSessionTTL, err)
+	}
+
+	return value, nil
 }

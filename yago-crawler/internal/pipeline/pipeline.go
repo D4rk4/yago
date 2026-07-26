@@ -33,15 +33,16 @@ type Frontier interface {
 }
 
 const (
-	msgPageRejected      = "crawl page rejected"
-	msgCrawlJobFailed    = "crawl job failed"
-	msgJobFetching       = "crawl job fetching"
-	msgPageCrawled       = "crawl page crawled"
-	msgPageNotIndexed    = "crawl page not indexed"
-	msgPageNoindex       = "crawl page noindex"
-	msgPageNofollow      = "crawl page nofollow"
-	msgRedirectDuplicate = "crawl redirect target already visited"
-	msgRedirectRejected  = "crawl redirect target rejected"
+	msgPageRejected       = "crawl page rejected"
+	msgCrawlJobFailed     = "crawl job failed"
+	msgJobFetching        = "crawl job fetching"
+	msgPageCrawled        = "crawl page crawled"
+	msgPageNotIndexed     = "crawl page not indexed"
+	msgPageRejectedByNode = "crawl page rejected by node content-quality gate"
+	msgPageNoindex        = "crawl page noindex"
+	msgPageNofollow       = "crawl page nofollow"
+	msgRedirectDuplicate  = "crawl redirect target already visited"
+	msgRedirectRejected   = "crawl redirect target rejected"
 )
 
 type Pipeline struct {
@@ -208,8 +209,8 @@ func (p *Pipeline) fetchJob(
 	outcome *yagocrawlcontract.CrawlRunTally,
 ) (pagefetch.FetchedPage, error) {
 	if p.fetchStartAdmission != nil {
-		if err := p.fetchStartAdmission.Wait(ctx); err != nil {
-			return pagefetch.FetchedPage{}, fmt.Errorf("fetch admission: %w", err)
+		if err := p.awaitFetchAdmission(ctx); err != nil {
+			return pagefetch.FetchedPage{}, err
 		}
 	}
 	p.observer.FetchAttempted()
@@ -350,15 +351,37 @@ func (p *Pipeline) processFetchedPage(
 		return outcomeReason, nil
 	}
 	err := p.indexAndEmit(ctx, job, page, fetched.ContentType)
+	if reason, refused := p.refusedPageOutcome(ctx, page, err); refused {
+		return reason, nil
+	}
 	if err == nil {
 		outcome.Indexed++
-	}
-
-	if err != nil {
+	} else {
 		outcomeReason = pageProcessingFailureReason(err)
 	}
 
 	return outcomeReason, err
+}
+
+// refusedPageOutcome reports a page the node consumed but declined to store.
+// It is fetched, not indexed, and not a failure: leaving the indexed tally
+// untouched is what keeps it out of the run's indexed total and classifies its
+// URL as fetched, which is what the crawl monitor then shows.
+func (p *Pipeline) refusedPageOutcome(
+	ctx context.Context,
+	page pageparse.ParsedPage,
+	err error,
+) (string, bool) {
+	refused := new(ingest.RejectedError)
+	if !errors.As(err, &refused) {
+		return "", false
+	}
+	slog.InfoContext(ctx, msgPageRejectedByNode,
+		slog.String("url", page.URL),
+		slog.String("rule", refused.Rule),
+	)
+
+	return documentRejectedReason(refused.Rule), true
 }
 
 // redirectAdmitted applies the run's visited-set to a job's post-redirect
@@ -477,9 +500,35 @@ func (p *Pipeline) indexAndEmit(
 			SourceModifiedAt: job.SourceModifiedAt,
 		},
 	); err != nil {
+		// A refused document is an outcome, not a transport failure: the node
+		// consumed the batch and chose not to store the page. Wrapping it as an
+		// ingest failure would retry work the node has already decided about.
+		rejected := new(ingest.RejectedError)
+		if errors.As(err, &rejected) {
+			return fmt.Errorf("emit ingest batch %s: %w", page.URL, err)
+		}
+
 		return fmt.Errorf("%w: %w", errDocumentIngestFailure, err)
 	}
 	p.observer.IngestPublished()
+
+	return nil
+}
+
+// awaitFetchAdmission waits for the fleet fetch-start permit and the process
+// page-rate budget, recording the wait so an operator can tell a rate-limited
+// crawl from a busy one. The job is already counted as active here, which is
+// exactly why the wait needs its own instrument.
+func (p *Pipeline) awaitFetchAdmission(ctx context.Context) error {
+	started := time.Now()
+	p.observer.FetchAdmissionWaitStarted()
+	defer func() {
+		p.observer.FetchAdmissionWaitFinished()
+		p.observer.ObserveFetchAdmissionWait(time.Since(started))
+	}()
+	if err := p.fetchStartAdmission.Wait(ctx); err != nil {
+		return fmt.Errorf("fetch admission: %w", err)
+	}
 
 	return nil
 }

@@ -24,7 +24,11 @@ func TestRecordProfileRoundTrips(t *testing.T) {
 	f := openTestFrontier(t)
 	ctx := context.Background()
 	profile := profileWithRecrawl("Example", time.Hour)
-	if err := f.RecordProfile(ctx, profile); err != nil {
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 
@@ -53,7 +57,11 @@ func TestOwnsProfileReflectsRegistry(t *testing.T) {
 		t.Fatal("owns an unrecorded profile")
 	}
 
-	if err := f.RecordProfile(ctx, profile); err != nil {
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	owns, err = f.OwnsProfile(ctx, profile.Handle)
@@ -78,7 +86,11 @@ func TestProfileByHandleMissingReturnsNotFound(t *testing.T) {
 
 func TestRecordProfileRejectsEmptyHandle(t *testing.T) {
 	f := openTestFrontier(t)
-	if err := f.RecordProfile(context.Background(), yagocrawlcontract.CrawlProfile{}); err == nil {
+	if err := f.RecordProfile(
+		context.Background(),
+		yagocrawlcontract.CrawlProfile{},
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err == nil {
 		t.Fatal("expected error for empty handle")
 	}
 }
@@ -87,7 +99,11 @@ func TestRecordFetchSchedulesFromProfileInterval(t *testing.T) {
 	f := openTestFrontier(t)
 	ctx := context.Background()
 	profile := profileWithRecrawl("Example", time.Hour)
-	if err := f.RecordProfile(ctx, profile); err != nil {
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	if err := f.RecordFetch(ctx, "https://a.example/", profile.Handle, testBase); err != nil {
@@ -122,7 +138,11 @@ func TestRecordFetchNeverRecrawlProfileDoesNotSchedule(t *testing.T) {
 	f := openTestFrontier(t)
 	ctx := context.Background()
 	profile := profileWithRecrawl("NoRecrawl", 0)
-	if err := f.RecordProfile(ctx, profile); err != nil {
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	if err := f.RecordFetch(ctx, "https://a.example/", profile.Handle, testBase); err != nil {
@@ -145,7 +165,11 @@ func TestProfileRegistryPersistsAcrossReopen(t *testing.T) {
 	}
 	ctx := context.Background()
 	profile := profileWithRecrawl("Example", time.Hour)
-	if err := frontier.RecordProfile(ctx, profile); err != nil {
+	if err := frontier.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	if err := v.Close(); err != nil {
@@ -181,7 +205,11 @@ func TestRecordFetchesSchedulesKnownAndSkipsUnknown(t *testing.T) {
 	f := openTestFrontier(t)
 	ctx := context.Background()
 	profile := profileWithRecrawl("Example", time.Hour)
-	if err := f.RecordProfile(ctx, profile); err != nil {
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 
@@ -206,7 +234,11 @@ func TestRecordFetchesDeduplicatesHandleResolution(t *testing.T) {
 	f := openTestFrontier(t)
 	ctx := context.Background()
 	profile := profileWithRecrawl("Example", time.Hour)
-	if err := f.RecordProfile(ctx, profile); err != nil {
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 
@@ -241,7 +273,11 @@ func TestRecordFetchesObserveError(t *testing.T) {
 	f, _ := openCtrlFrontier(t)
 	ctx := context.Background()
 	profile := profileWithRecrawl("Example", 48*time.Hour)
-	if err := f.RecordProfile(ctx, profile); err != nil {
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	err := f.RecordFetches(ctx,
@@ -263,5 +299,36 @@ func TestRecordFetchesRejectsMismatchedLengths(t *testing.T) {
 		[]time.Time{testBase},
 	); err == nil {
 		t.Fatal("mismatched slice lengths must be rejected")
+	}
+}
+
+// The sweeper rebuilds a due URL's order from this record, so the priority it
+// was dispatched under has to come back with the profile: the whole-run page
+// budget of an automatic-discovery order is bounded by its per-host cap, and a
+// recrawl re-dispatched as an ordinary order silently loses that bound.
+func TestDispatchByHandleReturnsTheRecordedPriority(t *testing.T) {
+	f := openTestFrontier(t)
+	ctx := context.Background()
+	profile := profileWithRecrawl("Seed", time.Hour)
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery,
+	); err != nil {
+		t.Fatalf("record profile: %v", err)
+	}
+
+	got, priority, found, err := f.DispatchByHandle(ctx, profile.Handle)
+	if err != nil {
+		t.Fatalf("dispatch by handle: %v", err)
+	}
+	if !found || got.Handle != profile.Handle ||
+		priority != yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery {
+		t.Fatalf("dispatch = %+v priority %q found %v", got, priority, found)
+	}
+
+	if _, priority, found, err = f.DispatchByHandle(ctx, "absent"); err != nil ||
+		found || priority != yagocrawlcontract.CrawlOrderPriorityNormal {
+		t.Fatalf("absent dispatch = priority %q found %v err %v", priority, found, err)
 	}
 }

@@ -13,15 +13,18 @@ import (
 )
 
 type crawlProfileWriterProbe struct {
-	profiles []yagocrawlcontract.CrawlProfile
-	failures int
+	profiles   []yagocrawlcontract.CrawlProfile
+	priorities []yagocrawlcontract.CrawlOrderPriority
+	failures   int
 }
 
 func (p *crawlProfileWriterProbe) RecordProfile(
 	_ context.Context,
 	profile yagocrawlcontract.CrawlProfile,
+	priority yagocrawlcontract.CrawlOrderPriority,
 ) error {
 	p.profiles = append(p.profiles, profile)
+	p.priorities = append(p.priorities, priority)
 	if p.failures > 0 {
 		p.failures--
 
@@ -139,7 +142,7 @@ func TestCrawlProfileDispatchRegistryEvictsOldestHandle(t *testing.T) {
 	for index := range crawlProfileDispatchRegistryCapacity + 1 {
 		registry.record(t.Context(), yagocrawlcontract.CrawlProfile{
 			Handle: fmt.Sprintf("profile-%03d", index),
-		})
+		}, yagocrawlcontract.CrawlOrderPriorityNormal)
 	}
 	if len(registry.recorded) != crawlProfileDispatchRegistryCapacity {
 		t.Fatalf(
@@ -151,7 +154,11 @@ func TestCrawlProfileDispatchRegistryEvictsOldestHandle(t *testing.T) {
 	if _, found := registry.recorded["profile-000"]; found {
 		t.Fatal("oldest profile remained cached")
 	}
-	registry.record(t.Context(), yagocrawlcontract.CrawlProfile{Handle: "profile-000"})
+	registry.record(
+		t.Context(),
+		yagocrawlcontract.CrawlProfile{Handle: "profile-000"},
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	)
 	if len(writer.profiles) != crawlProfileDispatchRegistryCapacity+2 {
 		t.Fatalf("profile writes after eviction = %d", len(writer.profiles))
 	}
@@ -160,5 +167,38 @@ func TestCrawlProfileDispatchRegistryEvictsOldestHandle(t *testing.T) {
 	}
 	if _, found := registry.recorded["profile-001"]; found {
 		t.Fatal("second-oldest profile was not evicted")
+	}
+}
+
+// The cached registration is keyed by profile and priority together. A handle
+// first published as an ordinary order and later as automatic discovery must be
+// rewritten, because the recorded priority is what bounds a later recrawl's
+// whole-run page budget.
+func TestCrawlProfileDispatchRegistryRewritesOnPriorityChange(t *testing.T) {
+	writer := &crawlProfileWriterProbe{}
+	inner := &crawlProfileQueueProbe{}
+	queue := crawlProfileRegisteringQueue{
+		inner:    inner,
+		registry: newCrawlProfileDispatchRegistry(writer),
+	}
+	order := yagocrawlcontract.CrawlOrder{
+		Profile: yagocrawlcontract.NewCrawlProfile(
+			yagocrawlcontract.CrawlProfile{Name: webSeedProfileName},
+		),
+	}
+	if _, err := queue.PublishOnce(t.Context(), "key", order); err != nil {
+		t.Fatalf("publish ordinary order: %v", err)
+	}
+	order.Priority = yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery
+	for range 2 {
+		if _, err := queue.PublishOnce(t.Context(), "key", order); err != nil {
+			t.Fatalf("publish automatic order: %v", err)
+		}
+	}
+
+	if len(writer.priorities) != 2 ||
+		writer.priorities[0] != yagocrawlcontract.CrawlOrderPriorityNormal ||
+		writer.priorities[1] != yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery {
+		t.Fatalf("recorded priorities = %v, want one rewrite then a cache hit", writer.priorities)
 	}
 }

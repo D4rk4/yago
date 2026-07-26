@@ -158,7 +158,11 @@ func TestRecordProfileFetchSurfacesProfilePersistenceFailures(t *testing.T) {
 func TestRecordProfileFetchesSurfacesScheduleFailure(t *testing.T) {
 	frontier, engine := openCtrlFrontier(t)
 	profile := profileWithRecrawl("Lease profile", time.Hour)
-	if err := frontier.RecordProfile(t.Context(), profile); err != nil {
+	if err := frontier.RecordProfile(
+		t.Context(),
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	engine.failPut[recordBucket] = true
@@ -274,7 +278,11 @@ func TestOlderIngestDoesNotReplaceLatestDispatchedProfile(t *testing.T) {
 	older := profileWithRecrawl("Shared profile", time.Hour)
 	latest := older
 	latest.RecrawlIfOlder = 2 * time.Hour
-	if err := frontier.RecordProfile(t.Context(), latest); err != nil {
+	if err := frontier.RecordProfile(
+		t.Context(),
+		latest,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record latest profile: %v", err)
 	}
 	if err := frontier.RecordProfileFetch(

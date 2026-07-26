@@ -18,11 +18,18 @@ import (
 )
 
 type IngestDelivery struct {
-	Batch                  yagocrawlcontract.IngestBatch
-	CrawlProfile           *yagocrawlcontract.CrawlProfile
-	BatchJSONSize          int
-	Ack                    func(context.Context) error
-	Nak                    func(context.Context) error
+	Batch         yagocrawlcontract.IngestBatch
+	CrawlProfile  *yagocrawlcontract.CrawlProfile
+	BatchJSONSize int
+	Ack           func(context.Context) error
+	Nak           func(context.Context) error
+	// Reject consumes the delivery without storing its document, naming the
+	// gate rule the page violated. It exists separately from Ack because the
+	// crawler derives its indexed tally from the acknowledgement: acking a
+	// refused page made every upstream counter report it as indexed. A
+	// delivery without this hook falls back to Ack, preserving the old
+	// behaviour for callers that do not distinguish the two.
+	Reject                 func(ctx context.Context, rule string) error
 	ValidateMutation       func(context.Context) error
 	AuthorizeLeaseSnapshot func(context.Context) error
 	BeginMutation          func(context.Context) (func(), error)
@@ -39,6 +46,12 @@ type IngestObserver interface {
 	ObserveDeferred()
 	ObserveRejected()
 	ObserveLowQuality()
+	// ObserveScheduleFailure counts a page stored and searchable whose durable
+	// crawl profile or recrawl entry could not be written. The write is
+	// deliberately best-effort so it cannot roll back an indexed document, but
+	// without a counter the resulting gap — a page that will never be refreshed
+	// until a later dispatch supplies its schedule — was only ever a log line.
+	ObserveScheduleFailure()
 }
 
 // FetchRecorder is told, once per successfully absorbed page batch, which URL was

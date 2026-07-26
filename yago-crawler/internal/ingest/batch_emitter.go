@@ -105,3 +105,17 @@ func ingestObservationTime(observedAt, fetchedAt time.Time) time.Time {
 
 	return time.Now().UTC()
 }
+
+// RejectedError reports that the node consumed an ingest batch but did not
+// store its document — its content-quality gate refused the page. It is not a
+// transport failure and must not be retried: the page was fetched, and simply
+// is not indexed. Before the node reported this, a refused page was
+// acknowledged like a stored one and every upstream counter tallied it as
+// indexed.
+type RejectedError struct {
+	Rule string
+}
+
+func (e *RejectedError) Error() string {
+	return "node rejected document: " + e.Rule
+}

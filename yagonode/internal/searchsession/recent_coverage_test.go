@@ -28,7 +28,7 @@ func TestGlobalIncompleteRefreshUsesUnexpiredLocalCoverage(t *testing.T) {
 	if _, err := stable.Search(t.Context(), localRequest); err != nil {
 		t.Fatal(err)
 	}
-	now = now.Add(sessionTTL - time.Second)
+	now = now.Add(DefaultSessionTTL - time.Second)
 	failure := searchcore.PartialFailure{
 		Source: searchcore.PartialFailureSourceLocalSearch,
 		Reason: "local search deadline exceeded",

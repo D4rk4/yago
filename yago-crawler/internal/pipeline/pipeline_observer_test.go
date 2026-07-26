@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/crawljob"
 	"github.com/D4rk4/yago/yago-crawler/internal/ingest"
@@ -25,6 +26,20 @@ type countingPipelineObserver struct {
 	parseFailed     int
 	ingestPublished int
 	bytes           int
+	admissionWaits  int
+	admissionActive int
+	admissionPeak   int
+}
+
+func (c *countingPipelineObserver) FetchAdmissionWaitStarted() {
+	c.admissionActive++
+	c.admissionPeak = max(c.admissionPeak, c.admissionActive)
+}
+
+func (c *countingPipelineObserver) FetchAdmissionWaitFinished() { c.admissionActive-- }
+
+func (c *countingPipelineObserver) ObserveFetchAdmissionWait(time.Duration) {
+	c.admissionWaits++
 }
 
 func (c *countingPipelineObserver) JobStarted()      { c.jobStarted++ }

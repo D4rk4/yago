@@ -51,23 +51,37 @@ func (recordCodec) Decode(raw []byte) (scheduleRecord, error) {
 	return record, nil
 }
 
+// profileRecord is a stored crawl profile together with the crawl-order priority
+// it was dispatched under, so the sweeper can rebuild a faithful order. The
+// priority is not cosmetic: the whole-run page budget of an automatic-discovery
+// order is bounded by its per-host cap, and an order re-dispatched without it
+// silently inherits the operator-crawl default instead.
+//
+// CrawlProfile is embedded so the JSON stays a superset of the bare profile
+// object written before this field existed. Those records still decode, with the
+// zero priority meaning the ordinary operator priority they already had.
+type profileRecord struct {
+	yagocrawlcontract.CrawlProfile
+	Priority yagocrawlcontract.CrawlOrderPriority `json:",omitempty"`
+}
+
 type profileCodec struct{}
 
-func (profileCodec) Encode(profile yagocrawlcontract.CrawlProfile) ([]byte, error) {
-	// CrawlProfile holds only string, int, bool and time.Duration fields, so
+func (profileCodec) Encode(record profileRecord) ([]byte, error) {
+	// The record holds only string, int, bool and time.Duration fields, so
 	// json.Marshal cannot fail; the error result satisfies the codec interface.
-	raw, _ := json.Marshal(profile)
+	raw, _ := json.Marshal(record)
 
 	return raw, nil
 }
 
-func (profileCodec) Decode(raw []byte) (yagocrawlcontract.CrawlProfile, error) {
-	var profile yagocrawlcontract.CrawlProfile
-	if err := json.Unmarshal(raw, &profile); err != nil {
-		return yagocrawlcontract.CrawlProfile{}, fmt.Errorf("decode recrawl profile: %w", err)
+func (profileCodec) Decode(raw []byte) (profileRecord, error) {
+	var record profileRecord
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return profileRecord{}, fmt.Errorf("decode recrawl profile: %w", err)
 	}
 
-	return profile, nil
+	return record, nil
 }
 
 // DueURL names a URL the sweeper should re-dispatch, with the profile that owns it.
@@ -83,7 +97,7 @@ type Frontier struct {
 	vault    *vault.Vault
 	records  *vault.Collection[scheduleRecord]
 	due      *vault.Collection[struct{}]
-	profiles *vault.Collection[yagocrawlcontract.CrawlProfile]
+	profiles *vault.Collection[profileRecord]
 }
 
 func Open(v *vault.Vault) (*Frontier, error) {

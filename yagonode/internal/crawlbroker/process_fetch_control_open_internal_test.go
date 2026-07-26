@@ -55,6 +55,7 @@ func TestOpenReportsFetchStartSchedulePreparationFailure(t *testing.T) {
 	if broker != nil || !errors.Is(err, preparationError) {
 		t.Fatalf("open result = (%v, %v), want preparation error", broker, err)
 	}
+	t.Cleanup(broker.Close)
 }
 
 func TestOpenReportsFetchStartAuthorityBindingFailure(t *testing.T) {
@@ -83,4 +84,5 @@ func TestOpenReportsFetchStartAuthorityBindingFailure(t *testing.T) {
 	if broker != nil || !errors.Is(err, errFleetFetchPolicyInvalid) {
 		t.Fatalf("open result = (%v, %v), want authority binding error", broker, err)
 	}
+	t.Cleanup(broker.Close)
 }

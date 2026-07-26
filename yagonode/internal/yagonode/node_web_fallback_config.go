@@ -32,13 +32,21 @@ const (
 
 	webFallbackProviderDDGS = "ddgs"
 
-	defaultWebFallbackBackend      = "auto"
-	defaultWebFallbackMaxResults   = 10
-	defaultWebFallbackTimeout      = 10 * time.Second
-	defaultWebFallbackSafeSearch   = "moderate"
-	defaultWebFallbackCacheTTL     = 5 * time.Minute
-	defaultWebFallbackSeedDepth    = 5
-	defaultWebFallbackSeedMaxPages = 250
+	defaultWebFallbackBackend    = "auto"
+	defaultWebFallbackMaxResults = 10
+	defaultWebFallbackTimeout    = 10 * time.Second
+	defaultWebFallbackSafeSearch = "moderate"
+	defaultWebFallbackCacheTTL   = 5 * time.Minute
+	// defaultWebFallbackSeedDepth and defaultWebFallbackSeedMaxPages are sized
+	// against the crawl fleet, not against one URL. Every fallback answer
+	// surfaces up to MaxResults URLs and seeds a whole-domain task for each, so
+	// the queued page count per query is the product of the two. The former
+	// depth-5, 250-page defaults made one query worth 2,500 pages against a
+	// fleet whose page rate is governed in the tens per second, which outgrew
+	// the crawler faster than it could drain. These keep greedy learning — the
+	// surfaced page plus one hop — at a tenth of that cost.
+	defaultWebFallbackSeedDepth    = 1
+	defaultWebFallbackSeedMaxPages = 25
 	minWebFallbackResults          = 1
 	maxWebFallbackResults          = 20
 	maxWebFallbackSeedDepth        = 8

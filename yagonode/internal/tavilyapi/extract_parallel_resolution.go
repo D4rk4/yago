@@ -29,9 +29,10 @@ func (e extractEndpoint) resolveExtractURLs(
 	req ExtractRequest,
 	budget *rawContentBudget,
 ) ([]ExtractResult, []ExtractFailure, error) {
+	distinct, sources := distinctExtractURLs(req.URLs)
 	resolutionContext, cancel := context.WithCancel(ctx)
 	halt := make(chan struct{})
-	workerTotal := min(maximumConcurrentExtractURLResolutions, len(req.URLs))
+	workerTotal := min(maximumConcurrentExtractURLResolutions, len(distinct))
 	jobs := make(chan extractURLResolutionJob, workerTotal)
 	outcomes := make(chan extractURLResolutionOutcome, workerTotal)
 	var workers sync.WaitGroup
@@ -55,24 +56,27 @@ func (e extractEndpoint) resolveExtractURLs(
 	for nextDispatch < workerTotal {
 		jobs <- extractURLResolutionJob{
 			position:     nextDispatch,
-			requestedURL: req.URLs[nextDispatch],
+			requestedURL: distinct[nextDispatch],
 		}
 		nextDispatch++
 	}
 	results := make([]ExtractResult, 0, len(req.URLs))
 	failures := make([]ExtractFailure, 0, len(req.URLs))
-	pending := make(map[int]extractURLResolution, workerTotal)
-	for nextPosition := 0; nextPosition < len(req.URLs); {
-		resolution, ready := pending[nextPosition]
+	resolved := make(map[int]extractURLResolution, len(distinct))
+	for position := 0; position < len(sources); {
+		resolution, ready := resolved[sources[position]]
 		if !ready {
 			outcome := <-outcomes
 			if outcome.err != nil {
 				return nil, nil, outcome.err
 			}
-			pending[outcome.position] = outcome.resolution
+			resolved[outcome.position] = outcome.resolution
 
 			continue
 		}
+		// retain does not mutate the resolution, so a URL repeated in the
+		// request yields its own row and consumes its own response budget while
+		// the lookup or fetch behind it happened once.
 		result, failure, err := resolution.retain(req, budget)
 		if err != nil {
 			return nil, nil, err
@@ -82,18 +86,39 @@ func (e extractEndpoint) resolveExtractURLs(
 		} else {
 			results = append(results, result)
 		}
-		delete(pending, nextPosition)
-		nextPosition++
-		if nextDispatch < len(req.URLs) {
+		position++
+		if nextDispatch < len(distinct) {
 			jobs <- extractURLResolutionJob{
 				position:     nextDispatch,
-				requestedURL: req.URLs[nextDispatch],
+				requestedURL: distinct[nextDispatch],
 			}
 			nextDispatch++
 		}
 	}
 
 	return results, failures, nil
+}
+
+// distinctExtractURLs splits the requested URLs into the distinct set to resolve
+// and, for each input position in order, the index of the distinct URL behind
+// it. Duplicate inputs previously each paid for their own document lookup and
+// possible outbound fetch; they now share one resolution while the response
+// keeps every requested position, in input order.
+func distinctExtractURLs(urls []string) (distinct []string, sources []int) {
+	distinct = make([]string, 0, len(urls))
+	sources = make([]int, 0, len(urls))
+	seen := make(map[string]int, len(urls))
+	for _, requestedURL := range urls {
+		index, known := seen[requestedURL]
+		if !known {
+			index = len(distinct)
+			seen[requestedURL] = index
+			distinct = append(distinct, requestedURL)
+		}
+		sources = append(sources, index)
+	}
+
+	return distinct, sources
 }
 
 func (e extractEndpoint) runExtractURLResolutionWorker(

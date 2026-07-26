@@ -20,6 +20,8 @@ type Metrics struct {
 	fetches                         prometheus.Counter
 	fetchFailures                   prometheus.Counter
 	parseFailures                   prometheus.Counter
+	fetchAdmissionWaiting           prometheus.Gauge
+	fetchAdmissionWait              prometheus.Histogram
 	hostBackoffs                    prometheus.Counter
 	bytes                           prometheus.Counter
 	robotsDenied                    prometheus.Counter
@@ -75,6 +77,17 @@ func newCrawlerActivityMetrics() *Metrics {
 			Name: "yacy_crawler_ingest_batches_total",
 			Help: "Ingest batches accepted by the node.",
 		}),
+		fetchAdmissionWaiting: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "yacy_crawler_fetch_admission_waiting",
+			Help: "Fetch worker jobs parked on the fleet fetch-start permit or the process page-rate budget. " +
+				"Jobs counted here are also active, so a value approaching jobs_active means the crawl is " +
+				"rate-limited rather than busy.",
+		}),
+		fetchAdmissionWait: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "yacy_crawler_fetch_admission_seconds",
+			Help:    "Time each page fetch waited for the fleet fetch-start permit and the process page-rate budget.",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		}),
 		hostBackoffs: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "yacy_crawler_host_backoffs_total",
 			Help: "Hosts backed off after a 429/503 or Retry-After throttle signal.",
@@ -108,6 +121,8 @@ func (m *Metrics) prometheusCollectors() []prometheus.Collector {
 		m.bytes,
 		m.robotsDenied,
 		m.ingestBatches,
+		m.fetchAdmissionWaiting,
+		m.fetchAdmissionWait,
 		m.hostBackoffs,
 		m.browserSlotAcquisitionDeadlines,
 		m.browserSlotWait,
@@ -163,6 +178,19 @@ func (m *Metrics) JobFinished() {
 func (m *Metrics) ActiveFetchWorkerJobs() uint32 {
 	return m.activeFetchWorkerJobs.Load()
 }
+
+// ObserveFetchAdmissionWait records one page fetch's wait on the fleet
+// fetch-start permit and the process page-rate budget. Without it the two
+// governors that bound crawl throughput were unmeasured, and a throttled worker
+// was indistinguishable from a busy one on yacy_crawler_jobs_active.
+func (m *Metrics) ObserveFetchAdmissionWait(elapsed time.Duration) {
+	m.fetchAdmissionWait.Observe(elapsed.Seconds())
+}
+
+// FetchAdmissionWaitStarted and FetchAdmissionWaitFinished bracket that wait.
+func (m *Metrics) FetchAdmissionWaitStarted() { m.fetchAdmissionWaiting.Inc() }
+
+func (m *Metrics) FetchAdmissionWaitFinished() { m.fetchAdmissionWaiting.Dec() }
 
 func (m *Metrics) FetchAttempted() { m.fetches.Inc() }
 

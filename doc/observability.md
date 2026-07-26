@@ -27,6 +27,25 @@ Utilization, Saturation, and Errors for the node's capacity-bounded parts:
 | DHT intake | slot-bounded (fixed) | `intake_rejections_total{gate="dht_transfer"}` | protocol-level busy answers |
 | Inbound remote search | slot-bounded (fixed) | `intake_rejections_total{gate="remote_search"}` | — |
 | Web fallback engines | — | per-engine backoff (debug log) | provider errors degrade to empty answers |
+| Crawl fetch governors | `yacy_crawler_jobs_active` | `yacy_crawler_fetch_admission_waiting`, `yacy_crawler_fetch_admission_seconds` | fetch failures (`yacy_crawler_fetch_failures_total`) |
+
+### Reading the crawl fetch governors
+
+Two governors bound crawl throughput: the fleet fetch-start permit and the
+per-process page-rate budget. A job waiting on either is still counted in
+`yacy_crawler_jobs_active`, so that gauge alone cannot distinguish a busy crawl
+from a throttled one. `yacy_crawler_fetch_admission_waiting` is the subset of
+those active jobs parked on a governor: when it approaches `jobs_active`, the
+crawl is rate-limited rather than working, and raising fetch workers will not
+help until the page-rate ceiling is raised.
+`yacy_crawler_fetch_admission_seconds` gives the wait distribution.
+
+A page the node's content-quality gate refuses is reported back to the crawler
+and recorded as fetched, not indexed, so harvest rate below reflects refusals
+honestly. `crawl_ingest_low_quality_total` counts them on the node.
+`crawl_ingest_schedule_failures_total` counts stored pages whose durable crawl
+profile or recrawl entry could not be written: they stay searchable but are not
+scheduled for refresh until a later dispatch supplies one.
 
 ## Saturation events
 

@@ -249,8 +249,12 @@ func TestExtractParallelResolutionRetainsRepeatedInputs(t *testing.T) {
 			t.Fatalf("result[%d]=%q", position, extracted.URL)
 		}
 	}
-	if calls := fetcher.totalCalls(); calls != 2 {
-		t.Fatalf("fetch calls=%d", calls)
+	// A repeated URL keeps its own response row and its own response budget, but
+	// the lookup and outbound fetch behind it happen once. Resolving each input
+	// position independently made a request repeating one URL pay for the same
+	// remote page as many times as it was listed.
+	if calls := fetcher.totalCalls(); calls != 1 {
+		t.Fatalf("fetch calls=%d, want the repeated URL fetched once", calls)
 	}
 }
 

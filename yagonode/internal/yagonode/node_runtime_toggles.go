@@ -27,9 +27,18 @@ type runtimeToggles struct {
 	webSeedCrawl    atomic.Bool
 	webSeedDepth    atomic.Int64
 	webSeedMaxPages atomic.Int64
+	// swarmSeedCrawl and its bounds do the same for swarm greedy learning, so
+	// both automatic-discovery paths are throttled from one console without a
+	// restart.
+	swarmSeedCrawl    atomic.Bool
+	swarmSeedDepth    atomic.Int64
+	swarmSeedMaxPages atomic.Int64
 	// compaction holds the storage-compaction cadence in nanoseconds (0 = off);
 	// the compaction loop reads the current value each cycle.
-	compaction atomic.Int64
+	// searchSessionTTL is the live public result-window lifetime, read when a
+	// session is stored.
+	searchSessionTTL atomic.Int64
+	compaction       atomic.Int64
 	// autosplit gates automatic shard-pool growth; the growth loop reads it each
 	// cycle (ADR-0037).
 	autosplit atomic.Bool
@@ -69,6 +78,10 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.webSeedCrawl.Store(config.WebFallback.SeedCrawl)
 	toggles.webSeedDepth.Store(int64(config.WebFallback.SeedDepth))
 	toggles.webSeedMaxPages.Store(int64(config.WebFallback.SeedMaxPages))
+	toggles.swarmSeedCrawl.Store(config.SwarmSeed.Enabled)
+	toggles.swarmSeedDepth.Store(int64(config.SwarmSeed.SeedDepth))
+	toggles.swarmSeedMaxPages.Store(int64(config.SwarmSeed.SeedMaxPages))
+	toggles.searchSessionTTL.Store(int64(config.SearchSessionTTL))
 	toggles.compaction.Store(int64(config.StorageCompaction))
 	toggles.autosplit.Store(config.StorageAutosplit)
 	toggles.storageReservedFree.Store(config.StorageReservedFreeBytes)
@@ -212,6 +225,50 @@ func (t *runtimeToggles) WebSeedCrawlEnabled() bool {
 func (t *runtimeToggles) SetWebSeedCrawl(enabled bool) {
 	if t != nil {
 		t.webSeedCrawl.Store(enabled)
+	}
+}
+
+// SearchSessionTTL is the live lifetime of a materialized public result window.
+func (t *runtimeToggles) SearchSessionTTL() time.Duration {
+	if t == nil {
+		return 0
+	}
+
+	return time.Duration(t.searchSessionTTL.Load())
+}
+
+// SetSearchSessionTTL changes that lifetime without a restart; it applies to
+// sessions stored afterwards.
+func (t *runtimeToggles) SetSearchSessionTTL(ttl time.Duration) {
+	if t != nil {
+		t.searchSessionTTL.Store(int64(ttl))
+	}
+}
+
+// SwarmSeedCrawlEnabled reports whether swarm greedy learning may hand the URLs
+// a swarm search surfaced to the crawler.
+func (t *runtimeToggles) SwarmSeedCrawlEnabled() bool {
+	return t != nil && t.swarmSeedCrawl.Load()
+}
+
+// SetSwarmSeedCrawl admits or silences greedy learning without a restart.
+func (t *runtimeToggles) SetSwarmSeedCrawl(enabled bool) {
+	if t != nil {
+		t.swarmSeedCrawl.Store(enabled)
+	}
+}
+
+// SetSwarmSeedDepth and SetSwarmSeedMaxPages bound each greedy-learning order,
+// taking effect on the next seed.
+func (t *runtimeToggles) SetSwarmSeedDepth(depth int) {
+	if t != nil {
+		t.swarmSeedDepth.Store(int64(depth))
+	}
+}
+
+func (t *runtimeToggles) SetSwarmSeedMaxPages(pages int) {
+	if t != nil {
+		t.swarmSeedMaxPages.Store(int64(pages))
 	}
 }
 

@@ -24,7 +24,7 @@
           <span class="cds-setting-row__label">
             <label for="setting-{{.Key}}">{{.Title}}</label>
             {{if .Overridden}}<span class="cds-tag cds-tag--info">overridden</span>{{end}}
-            {{if .PendingRestart}}<span class="cds-tag cds-tag--warn">pending restart</span>{{end}}
+            {{if .PendingRestart}}<span class="cds-tag cds-tag--warn">pending restart</span>{{else if .RestartRequired}}<span class="cds-tag" title="Changing this setting takes effect after the node restarts.">needs restart</span>{{else}}<span class="cds-tag cds-tag--info" title="Changing this setting takes effect immediately.">applies live</span>{{end}}
           </span>
           <span class="cds-setting-row__control">
             {{if .Sensitive}}

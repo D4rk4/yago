@@ -100,6 +100,7 @@ func NewGRPCOrderReceiver(
 		apply(&config)
 	}
 	heartbeat := heartbeatDelivery{
+		requestTimeout:      orderHeartbeatRequestTimeout,
 		client:              client,
 		workerID:            workerID,
 		workerSessionID:     config.workerSessionID,

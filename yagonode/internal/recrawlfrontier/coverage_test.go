@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -365,7 +366,11 @@ func TestRecordProfilePutError(t *testing.T) {
 	f, engine := openCtrlFrontier(t)
 	engine.failPut[profileBucket] = true
 	profile := profileWithRecrawl("Example", time.Hour)
-	if err := f.RecordProfile(context.Background(), profile); err == nil {
+	if err := f.RecordProfile(
+		context.Background(),
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err == nil {
 		t.Fatal("expected put error recording profile")
 	}
 }
@@ -398,7 +403,11 @@ func TestRecordFetchObserveError(t *testing.T) {
 	f, _ := openCtrlFrontier(t)
 	ctx := context.Background()
 	profile := profileWithRecrawl("Example", 48*time.Hour)
-	if err := f.RecordProfile(ctx, profile); err != nil {
+	if err := f.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	err := f.RecordFetch(ctx, "https://a.example/", profile.Handle, year10000Base)

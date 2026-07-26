@@ -198,7 +198,7 @@ func TestStableWindowStorePurgesExpiredSessions(t *testing.T) {
 	stable := WithStableWindow(&shufflingSearcher{}).(*stableSearcher)
 	response := searchcore.Response{Results: []searchcore.Result{{URL: "x"}}}
 	stable.store("expired", response, 1)
-	current = base.Add(sessionTTL + time.Second)
+	current = base.Add(DefaultSessionTTL + time.Second)
 	stable.store("current", response, 1)
 	if stable.sessions["expired"] != nil || stable.sessions["current"] == nil ||
 		stable.order.Len() != 1 {
@@ -212,5 +212,34 @@ func TestRetainedByteArithmeticSaturates(t *testing.T) {
 	}
 	if got := retainedAdd(retainedMaximumInt, 1); got != retainedMaximumInt {
 		t.Fatalf("sum = %d", got)
+	}
+}
+
+// The result-window lifetime is node-local retention policy, so it is
+// operator-tunable and resolved when a session is stored. A construction that
+// supplies no source, or one reporting a non-positive duration, keeps the
+// default rather than storing a window that expires immediately.
+func TestSessionRetentionFallsBackToTheDefault(t *testing.T) {
+	for name, sources := range map[string][]func() time.Duration{
+		"absent":   nil,
+		"nil":      {nil},
+		"zero":     {func() time.Duration { return 0 }},
+		"negative": {func() time.Duration { return -time.Minute }},
+	} {
+		if got := selectSessionRetention(sources)(); got != DefaultSessionTTL {
+			t.Fatalf("%s retention = %s, want the default", name, got)
+		}
+	}
+}
+
+// A configured lifetime is honoured, so shortening it frees held windows sooner
+// and lengthening it lets a reader page further back into one.
+func TestSessionRetentionHonoursAConfiguredLifetime(t *testing.T) {
+	retention := selectSessionRetention([]func() time.Duration{
+		func() time.Duration { return 30 * time.Minute },
+	})
+
+	if got := retention(); got != 30*time.Minute {
+		t.Fatalf("retention = %s, want 30m", got)
 	}
 }

@@ -21,6 +21,9 @@ func catalogRoundTripCases() map[string]catalogRoundTripCase {
 			return len(c.SeedlistURLs) == 2 && c.SeedlistURLs[1] == "https://b.example/s"
 		}},
 		"search.links.newtab": {"true", func(c nodeConfig) bool { return c.SearchLinksNewTab }},
+		"search.session.ttl": {"12m", func(c nodeConfig) bool {
+			return c.SearchSessionTTL == 12*time.Minute
+		}},
 		"search.index.remote": {"true", func(c nodeConfig) bool { return c.IndexRemoteResults }},
 		"metrics.enabled":     {"false", func(c nodeConfig) bool { return !c.MetricsEnabled }},
 		"search.query.log": {"aggregate", func(c nodeConfig) bool {

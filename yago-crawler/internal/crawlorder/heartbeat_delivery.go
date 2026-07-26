@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/crawldenylist"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawllease"
@@ -25,6 +26,9 @@ type heartbeatDelivery struct {
 	urlDenylist         *crawldenylist.Denylist
 	runtimePolicy       func(yagocrawlcontract.CrawlerRuntimePolicy)
 	runtimePolicySource func() yagocrawlcontract.CrawlerRuntimePolicy
+	// requestTimeout bounds one heartbeat request, snapshotted at construction
+	// so the heartbeat goroutine never reads the mutable package default.
+	requestTimeout time.Duration
 }
 
 func (d heartbeatDelivery) deliver(ctx context.Context) {

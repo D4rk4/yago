@@ -83,7 +83,7 @@ func (s recrawlSweeper) redispatch(
 	item recrawlfrontier.DueURL,
 	now time.Time,
 ) bool {
-	profile, found, err := s.frontier.ProfileByHandle(ctx, item.ProfileHandle)
+	profile, priority, found, err := s.frontier.DispatchByHandle(ctx, item.ProfileHandle)
 	if err != nil {
 		slog.ErrorContext(ctx, msgRecrawlSweepClaimFailed,
 			slog.String("url", item.URL), slog.Any("error", err))
@@ -96,8 +96,13 @@ func (s recrawlSweeper) redispatch(
 
 		return false
 	}
+	// The priority is restored, not defaulted: an automatic-discovery run's
+	// whole-run page budget is bounded by its per-host cap, so re-dispatching a
+	// web-discovery or swarm-seed URL as an ordinary order let one due page
+	// expand into a crawl carrying the operator default of 50,000 pages.
 	order := yagocrawlcontract.CrawlOrder{
 		Provenance: s.mint(),
+		Priority:   priority,
 		Profile:    profile,
 		Requests: []yagocrawlcontract.CrawlRequest{{
 			URL:           item.URL,

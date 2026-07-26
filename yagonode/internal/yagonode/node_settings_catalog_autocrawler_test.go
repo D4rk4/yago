@@ -18,11 +18,11 @@ func TestAutocrawlerCatalogShippedProfile(t *testing.T) {
 	definitions := indexSettingDefinitions()
 	want := map[string]string{
 		"swarm.seed.enabled":                 "true",
-		"swarm.seed.depth":                   "5",
-		"swarm.seed.max_pages":               "250",
+		"swarm.seed.depth":                   "1",
+		"swarm.seed.max_pages":               "25",
 		"web.fallback.seed_crawl":            "false",
-		"web.fallback.seed_depth":            "5",
-		"web.fallback.seed_max_pages":        "250",
+		"web.fallback.seed_depth":            "1",
+		"web.fallback.seed_max_pages":        "25",
 		"autocrawler.crawl.query_urls":       "true",
 		"autocrawler.crawl.tls_insecure":     "true",
 		"autocrawler.crawl.ignore_robots":    "false",

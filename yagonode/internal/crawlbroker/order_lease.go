@@ -277,6 +277,9 @@ func (q *DurableOrderQueue) sweepExpired(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
+	if err := q.reclaimAbandonedLeases(ctx); err != nil {
+		return err
+	}
 	if err := q.expireLeaseSettlements(ctx, now); err != nil {
 		return err
 	}

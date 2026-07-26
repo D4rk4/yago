@@ -36,6 +36,7 @@ func composeNodeConfig(in nodeConfigComposition) nodeConfig {
 		PublicSearchUIEnabled:        in.derived.publicSearchUI,
 		SearchLinksNewTab:            in.derived.searchLinksNewTab,
 		SearchClickCapture:           in.derived.searchClickCapture,
+		SearchSessionTTL:             in.derived.searchSessionTTL,
 		HTTPSRedirect:                in.derived.httpsRedirect,
 		PublicBaseURL:                in.derived.publicBaseURL,
 		QueryLogMode:                 in.derived.queryLogMode,

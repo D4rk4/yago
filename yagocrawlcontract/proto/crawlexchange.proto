@@ -183,7 +183,19 @@ message IngestBatchMessage {
   string worker_session_id = 4;
 }
 
-message IngestAck {}
+// IngestAck confirms that the node consumed the batch. Absorbing a batch and
+// storing its page are different outcomes: the node's content-quality gate can
+// accept delivery and still refuse to store the document. Both fields default
+// to "stored", so a node that predates them, or one that stored the page,
+// leaves a crawler counting the page as indexed exactly as before.
+message IngestAck {
+  // rejected is true when the node consumed the batch but did not store its
+  // document, so the crawler must not count the page as indexed.
+  bool rejected = 1;
+  // rejection_rule names the gate rule the page violated, for the crawler's
+  // per-URL outcome and logs. Empty when the page was stored.
+  string rejection_rule = 2;
+}
 
 enum CrawlRunState {
   CRAWL_RUN_STATE_UNSPECIFIED = 0;

@@ -9,19 +9,22 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-// RecordProfile stores a crawl profile by its handle so that, when one of its
-// pages later reports a fetch, the recrawl interval is known, and so the sweeper
-// can rebuild a faithful crawl order for a due URL. Re-recording the same handle
-// overwrites, keeping a profile's evolving fields current.
+// RecordProfile stores a crawl profile by its handle, together with the priority
+// of the order that dispatched it, so that when one of its pages later reports a
+// fetch the recrawl interval is known, and so the sweeper can rebuild a faithful
+// crawl order for a due URL. Re-recording the same handle overwrites, keeping a
+// profile's evolving fields current.
 func (f *Frontier) RecordProfile(
 	ctx context.Context,
 	profile yagocrawlcontract.CrawlProfile,
+	priority yagocrawlcontract.CrawlOrderPriority,
 ) error {
 	if profile.Handle == "" {
 		return fmt.Errorf("record recrawl profile: empty handle")
 	}
+	record := profileRecord{CrawlProfile: profile, Priority: priority}
 	if err := f.vault.Update(ctx, func(tx *vault.Txn) error {
-		if err := f.profiles.Put(tx, vault.Key(profile.Handle), profile); err != nil {
+		if err := f.profiles.Put(tx, vault.Key(profile.Handle), record); err != nil {
 			return fmt.Errorf("write recrawl profile: %w", err)
 		}
 
@@ -33,29 +36,49 @@ func (f *Frontier) RecordProfile(
 	return nil
 }
 
-// ProfileByHandle returns the crawl profile recorded for handle, if any. The
-// sweeper uses it to turn a due URL back into a full crawl order.
+// ProfileByHandle returns the crawl profile recorded for handle, if any.
 func (f *Frontier) ProfileByHandle(
 	ctx context.Context,
 	handle string,
 ) (yagocrawlcontract.CrawlProfile, bool, error) {
+	record, found, err := f.profileRecordByHandle(ctx, handle)
+
+	return record.CrawlProfile, found, err
+}
+
+// DispatchByHandle returns the crawl profile recorded for handle and the priority
+// it was dispatched under. The sweeper uses it to turn a due URL back into the
+// order that first crawled it, priority included.
+func (f *Frontier) DispatchByHandle(
+	ctx context.Context,
+	handle string,
+) (yagocrawlcontract.CrawlProfile, yagocrawlcontract.CrawlOrderPriority, bool, error) {
+	record, found, err := f.profileRecordByHandle(ctx, handle)
+
+	return record.CrawlProfile, record.Priority, found, err
+}
+
+func (f *Frontier) profileRecordByHandle(
+	ctx context.Context,
+	handle string,
+) (profileRecord, bool, error) {
 	var (
-		profile yagocrawlcontract.CrawlProfile
-		found   bool
+		record profileRecord
+		found  bool
 	)
 	if err := f.vault.View(ctx, func(tx *vault.Txn) error {
 		var err error
-		profile, found, err = f.profiles.Get(tx, vault.Key(handle))
+		record, found, err = f.profiles.Get(tx, vault.Key(handle))
 		if err != nil {
 			return fmt.Errorf("read recrawl profile: %w", err)
 		}
 
 		return nil
 	}); err != nil {
-		return yagocrawlcontract.CrawlProfile{}, false, fmt.Errorf("profile by handle: %w", err)
+		return profileRecord{}, false, fmt.Errorf("profile by handle: %w", err)
 	}
 
-	return profile, found, nil
+	return record, found, nil
 }
 
 // OwnsProfile reports whether a crawl profile with the given handle has been

@@ -182,7 +182,7 @@ func TestStableWindowExpiryAndErrors(t *testing.T) {
 	if _, err := searcher.Search(ctx, searchcore.Request{Query: "go", Limit: 10}); err != nil {
 		t.Fatal(err)
 	}
-	current = base.Add(sessionTTL + time.Minute)
+	current = base.Add(DefaultSessionTTL + time.Minute)
 	if _, err := searcher.Search(ctx, searchcore.Request{
 		Query: "go", Offset: 10, Limit: 10,
 	}); err != nil {

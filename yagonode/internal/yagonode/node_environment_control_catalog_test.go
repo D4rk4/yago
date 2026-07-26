@@ -632,6 +632,12 @@ func addNodePeerEnvironmentSettings(add environmentCatalogAdder) {
 		"search.click.capture",
 		environmentNodeConsumer,
 	)
+	addEnvironmentSetting(
+		add,
+		envSearchSessionTTL,
+		"search.session.ttl",
+		environmentNodeConsumer,
+	)
 	addEnvironmentSetting(add, envSwarmSeedCrawl, "swarm.seed.enabled", environmentNodeConsumer)
 	addEnvironmentSetting(add, envSwarmSeedDepth, "swarm.seed.depth", environmentNodeConsumer)
 	addEnvironmentSetting(

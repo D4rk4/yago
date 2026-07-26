@@ -3,13 +3,14 @@ package metrics
 import "github.com/prometheus/client_golang/prometheus"
 
 type CrawlMetrics struct {
-	absorbed   prometheus.Counter
-	deferred   prometheus.Counter
-	rejected   prometheus.Counter
-	lowQuality prometheus.Counter
-	bytes      prometheus.Counter
-	urls       prometheus.Counter
-	postings   prometheus.Counter
+	absorbed         prometheus.Counter
+	deferred         prometheus.Counter
+	rejected         prometheus.Counter
+	lowQuality       prometheus.Counter
+	scheduleFailures prometheus.Counter
+	bytes            prometheus.Counter
+	urls             prometheus.Counter
+	postings         prometheus.Counter
 }
 
 func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
@@ -41,18 +42,26 @@ func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
 		Name: "crawl_ingest_low_quality_total",
 		Help: "Crawl ingest batches rejected by the content-quality gate.",
 	})
+	scheduleFailures := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "crawl_ingest_schedule_failures_total",
+		Help: "Stored pages whose durable crawl profile or recrawl entry could " +
+			"not be written, so they stay searchable but unscheduled for refresh " +
+			"until a later dispatch supplies one.",
+	})
 	registry.MustRegister(
 		absorbed, deferred, rejected, lowQuality, bytes, urls, postings,
+		scheduleFailures,
 	)
 
 	return &CrawlMetrics{
-		absorbed:   absorbed,
-		deferred:   deferred,
-		rejected:   rejected,
-		lowQuality: lowQuality,
-		bytes:      bytes,
-		urls:       urls,
-		postings:   postings,
+		absorbed:         absorbed,
+		deferred:         deferred,
+		scheduleFailures: scheduleFailures,
+		rejected:         rejected,
+		lowQuality:       lowQuality,
+		bytes:            bytes,
+		urls:             urls,
+		postings:         postings,
 	}
 }
 
@@ -73,4 +82,8 @@ func (m *CrawlMetrics) ObserveRejected() {
 
 func (m *CrawlMetrics) ObserveLowQuality() {
 	m.lowQuality.Inc()
+}
+
+func (m *CrawlMetrics) ObserveScheduleFailure() {
+	m.scheduleFailures.Inc()
 }

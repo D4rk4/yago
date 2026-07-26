@@ -432,13 +432,15 @@ its binaries (`yago-node`, `yago-crawler`).
   the captured high key of each document partition; it is not a transactional
   snapshot. The node never starts this migration automatically and exposes no
   environment knob for it, avoiding an upgrade-time crawl storm.
-- Automatic discovery: enabled swarm greedy-learning uses a depth-5,
-  250-page-per-task HTTP-fast-path profile; web-discovery crawling stays opt-in
-  with the same ready profile. The three web-discovery controls — the on/off
-  switch, the crawl depth, and the page cap — apply live, so enabling seeding
-  starts publishing on the next search and narrowing either bound applies to the
-  next seeded order without a restart. Startup logs whether seeding can run and
-  which condition blocks it. Surfaced fallback URLs use two background workers,
+- Automatic discovery: enabled swarm greedy-learning uses a depth-1,
+  25-page-per-task HTTP-fast-path profile; web-discovery crawling stays opt-in
+  with the same ready profile. Both defaults are sized against the crawl fleet
+  rather than one URL, because every surfaced result seeds its own whole-domain
+  task: the pages queued by one query are the page cap times the result count.
+  All six controls — each path's on/off switch, crawl depth, and page cap —
+  apply live, so enabling seeding starts publishing on the next search and
+  narrowing either bound applies to the next seeded order without a restart.
+  Startup logs whether seeding can run and which condition blocks it. Surfaced fallback URLs use two background workers,
   at most 128 pending warming jobs, and a ten-second deadline beginning when each
   job starts. A full
   queue warns and drops only new optional warming work; an admitted crawl order

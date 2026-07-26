@@ -16,9 +16,13 @@ import (
 )
 
 const (
-	sessionDepth             = 50
-	maxSessionDepth          = searchcore.MaximumPublicResultHorizon
-	sessionTTL               = 5 * time.Minute
+	sessionDepth    = 50
+	maxSessionDepth = searchcore.MaximumPublicResultHorizon
+	// DefaultSessionTTL is how long a materialized result window stays
+	// navigable. It is operator-tunable because it is pure node-local retention
+	// policy: a longer window lets a reader page further back at the cost of
+	// held memory, bounded independently by sessionCacheMaximumBytes.
+	DefaultSessionTTL        = 5 * time.Minute
 	maxSessions              = 128
 	sessionCacheMaximumBytes = 32 << 20
 )
@@ -51,6 +55,9 @@ type stableSearcher struct {
 	order    *list.List
 	retained int
 	limit    int
+	// retention is read per stored session so a console change to the window
+	// lifetime applies to the next search rather than after a restart.
+	retention func() time.Duration
 }
 
 type RecentWindow interface {
@@ -67,12 +74,29 @@ func WithStableWindow(inner searchcore.Searcher) searchcore.Searcher {
 	return NewStableWindow(inner)
 }
 
-func NewStableWindow(inner searchcore.Searcher) StableWindow {
+func NewStableWindow(inner searchcore.Searcher, retention ...func() time.Duration) StableWindow {
 	return &stableSearcher{
-		inner:    inner,
-		sessions: map[string]*session{},
-		order:    list.New(),
-		limit:    sessionCacheMaximumBytes,
+		inner:     inner,
+		sessions:  map[string]*session{},
+		order:     list.New(),
+		limit:     sessionCacheMaximumBytes,
+		retention: selectSessionRetention(retention),
+	}
+}
+
+// selectSessionRetention resolves the live retention source; callers that pass
+// none keep the default so existing constructions are unchanged.
+func selectSessionRetention(sources []func() time.Duration) func() time.Duration {
+	if len(sources) == 0 || sources[0] == nil {
+		return func() time.Duration { return DefaultSessionTTL }
+	}
+
+	return func() time.Duration {
+		if value := sources[0](); value > 0 {
+			return value
+		}
+
+		return DefaultSessionTTL
 	}
 }
 
@@ -164,7 +188,7 @@ func (s *stableSearcher) store(key string, resp searchcore.Response, searchDepth
 		recovered:   strings.Clone(resp.Recovered),
 		didYouMean:  strings.Clone(resp.DidYouMean),
 		facets:      cloneSessionFacets(resp.Facets),
-		expires:     now.Add(sessionTTL),
+		expires:     now.Add(s.retention()),
 	}
 	entry.retained = retainedSessionBytes(entry)
 	entry.replaceVisibleWindowLocked()

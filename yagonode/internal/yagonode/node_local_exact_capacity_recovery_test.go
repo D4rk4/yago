@@ -177,7 +177,6 @@ func TestLocalExactCapacityAdmissionPreservesParentDeadline(t *testing.T) {
 
 func TestLocalExactNonCapacityRecoveryRetainsOrdinaryBudget(t *testing.T) {
 	previousAdmission := processLocalExactRecoveryAdmission
-	processLocalExactRecoveryAdmission = newInteractiveSearchAdmission(1)
 	t.Cleanup(func() { processLocalExactRecoveryAdmission = previousAdmission })
 
 	request := searchcore.Request{Query: "bounded retry"}
@@ -190,6 +189,11 @@ func TestLocalExactNonCapacityRecoveryRetainsOrdinaryBudget(t *testing.T) {
 			}},
 		},
 	} {
+		// A fresh admission per iteration: the previous iteration's inner search
+		// outlives its budget and holds its slot until it finishes, which would
+		// make this iteration report capacity exhaustion instead of the ordinary
+		// budget this test is about.
+		processLocalExactRecoveryAdmission = newInteractiveSearchAdmission(1)
 		started := time.Now()
 		result, err := withLocalExactRecoveryBudgetForFailure(
 			delayedLocalExactResult{delay: 200 * time.Millisecond},

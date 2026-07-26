@@ -254,13 +254,13 @@ func TestStableWindowDoesNotReuseExpiredSuccessForIncompleteRefresh(t *testing.T
 	if _, err := stable.Search(t.Context(), req); err != nil {
 		t.Fatal(err)
 	}
-	current = base.Add(sessionTTL / 2)
+	current = base.Add(DefaultSessionTTL / 2)
 	response, err := stable.Search(t.Context(), req)
 	if err != nil || len(response.Results) != 1 ||
 		response.Results[0].URL != "https://expired.example/" {
 		t.Fatalf("response before expiry = %#v, error = %v", response, err)
 	}
-	current = base.Add(sessionTTL + time.Second)
+	current = base.Add(DefaultSessionTTL + time.Second)
 	response, err = stable.Search(t.Context(), req)
 	if err != nil || len(response.Results) != 0 || len(response.PartialFailures) != 1 {
 		t.Fatalf("response = %#v, error = %v", response, err)

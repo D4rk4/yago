@@ -191,6 +191,7 @@ func TestDeferredLeaseSurvivesBrokerRestartUntilRetryDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open second broker: %v", err)
 	}
+	t.Cleanup(second.Close)
 	deferred, ok := leaseRecordFor(t, second.Orders, leaseID)
 	if !ok || deferred.WorkerID != "" ||
 		deferred.ExpiresAtUnixNano != base.Add(negativeAcknowledgmentRetryDelay).UnixNano() {

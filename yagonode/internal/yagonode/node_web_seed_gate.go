@@ -103,3 +103,36 @@ func (s *gatedWebCrawlSeeder) Seed(ctx context.Context, urls []string) {
 func (s *gatedWebCrawlSeeder) admitted() bool {
 	return s.seeder != nil && (s.enabled == nil || s.enabled())
 }
+
+// swarmSeedCrawlAdmission and swarmSeedBoundsSource are the greedy-learning
+// counterparts of the web-discovery sources above. Greedy learning seeds one
+// task per remote result, so it carries the same per-query multiplier and needs
+// the same live throttle; assemblies without runtime toggles keep the boot
+// configuration.
+func swarmSeedCrawlAdmission(
+	toggles *runtimeToggles,
+	config swarmSeedConfig,
+) func() bool {
+	if toggles == nil {
+		return func() bool { return config.Enabled }
+	}
+
+	return toggles.SwarmSeedCrawlEnabled
+}
+
+func swarmSeedBoundsSource(
+	toggles *runtimeToggles,
+	config swarmSeedConfig,
+) func() seedBounds {
+	fixed := seedBounds{depth: config.SeedDepth, maxPages: config.SeedMaxPages}
+	if toggles == nil {
+		return func() seedBounds { return fixed }
+	}
+
+	return func() seedBounds {
+		return seedBounds{
+			depth:    int(toggles.swarmSeedDepth.Load()),
+			maxPages: int(toggles.swarmSeedMaxPages.Load()),
+		}
+	}
+}

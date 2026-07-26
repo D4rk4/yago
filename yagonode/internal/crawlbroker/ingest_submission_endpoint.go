@@ -47,7 +47,7 @@ func (s *exchangeServer) SubmitIngest(
 		finish = s.beginIngest()
 	}
 
-	result := make(chan error, 1)
+	result := make(chan ingestOutcome, 1)
 	delivery := s.authorizedIngestDelivery(
 		batch,
 		len(batchJSON),
@@ -63,18 +63,29 @@ func (s *exchangeServer) SubmitIngest(
 	}
 
 	select {
-	case absorbErr := <-result:
-		if absorbErr != nil {
-			if errors.Is(absorbErr, errLeaseLost) {
-				return nil, status.Error(codes.FailedPrecondition, absorbErr.Error())
+	case outcome := <-result:
+		if outcome.err != nil {
+			if errors.Is(outcome.err, errLeaseLost) {
+				return nil, status.Error(codes.FailedPrecondition, outcome.err.Error())
 			}
-			return nil, status.Error(codes.Unavailable, absorbErr.Error())
+			return nil, status.Error(codes.Unavailable, outcome.err.Error())
 		}
 
-		return &crawlrpc.IngestAck{}, nil
+		return &crawlrpc.IngestAck{
+			Rejected:      outcome.rejectionRule != "",
+			RejectionRule: outcome.rejectionRule,
+		}, nil
 	case <-ctx.Done():
 		return nil, status.FromContextError(ctx.Err()).Err()
 	}
+}
+
+// ingestOutcome is how one absorbed delivery ended. A nil error with a
+// non-empty rejectionRule means the node consumed the batch but refused to
+// store its document, which the crawler must not tally as indexed.
+type ingestOutcome struct {
+	err           error
+	rejectionRule string
 }
 
 func (s *exchangeServer) authorizedIngestDelivery(
@@ -82,7 +93,7 @@ func (s *exchangeServer) authorizedIngestDelivery(
 	batchJSONSize int,
 	authorization leaseAuthorization,
 	finish func(),
-	result chan<- error,
+	result chan<- ingestOutcome,
 ) crawlresults.IngestDelivery {
 	authorizedProfile := new(yagocrawlcontract.CrawlProfile)
 
@@ -90,8 +101,24 @@ func (s *exchangeServer) authorizedIngestDelivery(
 		Batch:         batch,
 		CrawlProfile:  authorizedProfile,
 		BatchJSONSize: batchJSONSize,
-		Ack:           func(context.Context) error { finish(); result <- nil; return nil },
-		Nak:           func(context.Context) error { finish(); result <- errIngestDeferred; return nil },
+		Ack: func(context.Context) error {
+			finish()
+			result <- ingestOutcome{}
+
+			return nil
+		},
+		Reject: func(_ context.Context, rule string) error {
+			finish()
+			result <- ingestOutcome{rejectionRule: rule}
+
+			return nil
+		},
+		Nak: func(context.Context) error {
+			finish()
+			result <- ingestOutcome{err: errIngestDeferred}
+
+			return nil
+		},
 		AuthorizeLeaseSnapshot: func(mutationContext context.Context) error {
 			if !s.sessions.current(authorization.WorkerID, authorization.WorkerSessionID) {
 				return errLeaseLost
@@ -106,7 +133,7 @@ func (s *exchangeServer) authorizedIngestDelivery(
 		},
 		LeaseLost: func(context.Context) error {
 			finish()
-			result <- errLeaseLost
+			result <- ingestOutcome{err: errLeaseLost}
 
 			return nil
 		},

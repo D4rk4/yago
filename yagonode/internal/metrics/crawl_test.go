@@ -35,3 +35,18 @@ func TestCrawlMetricsCountsIngest(t *testing.T) {
 		}
 	}
 }
+
+// A page can be stored and searchable while its durable crawl profile or
+// recrawl entry fails to write. The write is best-effort so it cannot roll back
+// an indexed document, which is exactly why the gap needs a counter to alert on
+// rather than only a log line.
+func TestCrawlMetricsCountScheduleFailures(t *testing.T) {
+	crawl := NewCrawlMetrics(prometheus.NewRegistry())
+
+	crawl.ObserveScheduleFailure()
+	crawl.ObserveScheduleFailure()
+
+	if got := testutil.ToFloat64(crawl.scheduleFailures); got != 2 {
+		t.Fatalf("schedule failures = %v, want 2", got)
+	}
+}

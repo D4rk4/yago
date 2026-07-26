@@ -261,3 +261,118 @@ func TestWebSeedTogglesTolerateAMissingReceiver(t *testing.T) {
 		t.Fatal("a nil toggle set reported seeding as enabled")
 	}
 }
+
+// Greedy learning seeds one task per remote result, so it carries the same
+// per-query multiplier as web discovery and gets the same live throttle. Before
+// this, its switch and bounds were restart-only while the web ones were live.
+func TestSwarmSeedGateAndBoundsFollowTheLiveSettings(t *testing.T) {
+	config := swarmSeedConfig{Enabled: false, SeedDepth: 1, SeedMaxPages: 25}
+	toggles := newRuntimeToggles(nodeConfig{SwarmSeed: config})
+
+	if swarmSeedCrawlAdmission(toggles, config)() {
+		t.Fatal("disabled greedy learning admitted seeding")
+	}
+	toggles.SetSwarmSeedCrawl(true)
+	if !swarmSeedCrawlAdmission(toggles, config)() {
+		t.Fatal("enabling greedy learning did not admit seeding")
+	}
+
+	toggles.SetSwarmSeedDepth(0)
+	toggles.SetSwarmSeedMaxPages(1)
+	if bounds := swarmSeedBoundsSource(toggles, config)(); bounds.depth != 0 ||
+		bounds.maxPages != 1 {
+		t.Fatalf("narrowed greedy-learning bounds = %#v", bounds)
+	}
+}
+
+// Assemblies without runtime toggles keep the boot configuration, so the
+// explanation chain and tests behave as they did.
+func TestSwarmSeedSourcesWithoutTogglesKeepBootConfiguration(t *testing.T) {
+	config := swarmSeedConfig{Enabled: true, SeedDepth: 3, SeedMaxPages: 7}
+
+	if !swarmSeedCrawlAdmission(nil, config)() {
+		t.Fatal("boot-enabled greedy learning was silenced")
+	}
+	if bounds := swarmSeedBoundsSource(nil, config)(); bounds.depth != 3 ||
+		bounds.maxPages != 7 {
+		t.Fatalf("boot bounds = %#v", bounds)
+	}
+}
+
+// All three greedy-learning settings reach the live toggles, mirroring the
+// web-discovery trio.
+func TestSwarmSeedSettingsApplyLive(t *testing.T) {
+	toggles := &runtimeToggles{}
+	autocrawler := autocrawlerDefinitions()
+	settingByKey(t, autocrawler, "swarm.seed.depth").applyLive(toggles, "4")
+	settingByKey(t, autocrawler, "swarm.seed.max_pages").applyLive(toggles, "60")
+	settingByKey(t, extendedGrowthDefinitions(), "swarm.seed.enabled").
+		applyLive(toggles, settingBoolTrue)
+
+	bounds := swarmSeedBoundsSource(toggles, swarmSeedConfig{})()
+	if !toggles.SwarmSeedCrawlEnabled() || bounds.depth != 4 || bounds.maxPages != 60 {
+		t.Fatalf("live greedy-learning settings = %v %#v",
+			toggles.SwarmSeedCrawlEnabled(), bounds)
+	}
+}
+
+// The public result-window lifetime is operator-tunable retention policy and
+// applies live; a nil toggle set reports nothing so the default stands.
+func TestSearchSessionTTLAppliesLive(t *testing.T) {
+	toggles := &runtimeToggles{}
+	settingByKey(t, extendedSettingDefinitions(), "search.session.ttl").
+		applyLive(toggles, "12m")
+	if got := toggles.SearchSessionTTL(); got != 12*time.Minute {
+		t.Fatalf("session ttl = %s, want 12m", got)
+	}
+
+	var absent *runtimeToggles
+	absent.SetSearchSessionTTL(time.Minute)
+	if got := absent.SearchSessionTTL(); got != 0 {
+		t.Fatalf("nil toggles session ttl = %s", got)
+	}
+	if absent.SwarmSeedCrawlEnabled() {
+		t.Fatal("nil toggles reported greedy learning enabled")
+	}
+	absent.SetSwarmSeedCrawl(true)
+	absent.SetSwarmSeedDepth(2)
+	absent.SetSwarmSeedMaxPages(3)
+}
+
+// The result-window lifetime is bounded so one setting cannot pin the session
+// cache open or make a window expire before a reader can page into it.
+func TestSearchSessionTTLNormalizationAndLoading(t *testing.T) {
+	if _, err := normalizeSearchSessionTTL("12m"); err != nil {
+		t.Fatalf("normalize 12m: %v", err)
+	}
+	for _, raw := range []string{"1s", "24h", "nonsense"} {
+		if _, err := normalizeSearchSessionTTL(raw); err == nil {
+			t.Fatalf("normalize(%q) was accepted", raw)
+		}
+	}
+	if _, err := loadSearchSessionTTL(func(string) string { return "9h" }); err == nil {
+		t.Fatal("an out-of-range environment lifetime was accepted")
+	}
+	if _, _, err := loadSeedAndSessionConfigs(
+		func(name string) string {
+			if name == envSearchSessionTTL {
+				return "9h"
+			}
+
+			return ""
+		},
+	); err == nil {
+		t.Fatal("derived load accepted an out-of-range lifetime")
+	}
+	if _, _, err := loadSeedAndSessionConfigs(
+		func(name string) string {
+			if name == envSwarmSeedDepth {
+				return "-1"
+			}
+
+			return ""
+		},
+	); err == nil {
+		t.Fatal("derived load accepted an invalid greedy-learning depth")
+	}
+}

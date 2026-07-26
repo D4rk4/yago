@@ -55,7 +55,11 @@ func seedDueURL(
 		RecrawlIfOlder:  time.Hour,
 	})
 	ctx := context.Background()
-	if err := frontier.RecordProfile(ctx, profile); err != nil {
+	if err := frontier.RecordProfile(
+		ctx,
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	if err := frontier.RecordFetch(ctx, url, profile.Handle, sweepBase); err != nil {

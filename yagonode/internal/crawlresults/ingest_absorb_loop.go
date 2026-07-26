@@ -331,13 +331,31 @@ func (c *IngestConsumer) rejectLowQuality(
 	if c.observer != nil {
 		c.observer.ObserveLowQuality()
 	}
-	slog.DebugContext(ctx, msgIngestLowQuality,
+	// Info, not Debug: this is a silent page loss. Production runs at INFO, so
+	// a Debug line meant an operator watching pages vanish had nothing to grep
+	// and only an aggregate counter to go on.
+	slog.InfoContext(ctx, msgIngestLowQuality,
 		slog.String("sourceUrl", delivery.Batch.SourceURL),
 		slog.String("rule", rule))
-	if err := delivery.Ack(ctx); err != nil {
+	if err := rejectIngestDelivery(ctx, delivery, rule); err != nil {
 		slog.WarnContext(ctx, msgIngestAckFailed,
 			slog.String("sourceUrl", delivery.Batch.SourceURL), slog.Any("error", err))
 	}
+}
+
+// rejectIngestDelivery consumes a delivery whose document was refused, telling
+// the crawler the page was not stored so it is not tallied as indexed. Deliveries
+// without a Reject hook fall back to a plain acknowledgement.
+func rejectIngestDelivery(
+	ctx context.Context,
+	delivery IngestDelivery,
+	rule string,
+) error {
+	if delivery.Reject != nil {
+		return delivery.Reject(ctx, rule)
+	}
+
+	return delivery.Ack(ctx)
 }
 
 // recordFetch feeds the recrawl schedule after a page batch is absorbed. It is
@@ -379,6 +397,9 @@ func (c *IngestConsumer) recordFetch(ctx context.Context, delivery IngestDeliver
 		)
 	}
 	if err != nil {
+		if c.observer != nil {
+			c.observer.ObserveScheduleFailure()
+		}
 		slog.WarnContext(ctx, msgRecrawlRecordFailed,
 			slog.String("sourceUrl", batch.SourceURL), slog.Any("error", err))
 	}

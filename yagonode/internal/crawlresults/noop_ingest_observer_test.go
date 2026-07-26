@@ -9,3 +9,5 @@ func (noopIngestObserver) ObserveDeferred() {}
 func (noopIngestObserver) ObserveRejected() {}
 
 func (noopIngestObserver) ObserveLowQuality() {}
+
+func (noopIngestObserver) ObserveScheduleFailure() {}

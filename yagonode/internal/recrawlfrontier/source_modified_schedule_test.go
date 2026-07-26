@@ -4,12 +4,18 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 func TestSitemapSourceModificationAdvancesInitialRecrawl(t *testing.T) {
 	frontier := openTestFrontier(t)
 	profile := profileWithRecrawl("Sitemap", 24*time.Hour)
-	if err := frontier.RecordProfile(t.Context(), profile); err != nil {
+	if err := frontier.RecordProfile(
+		t.Context(),
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	if err := frontier.RecordFetchWithSourceModified(
@@ -33,7 +39,11 @@ func TestSitemapSourceModificationAdvancesInitialRecrawl(t *testing.T) {
 func TestAdvancingSitemapSourceModificationLearnsChangeInterval(t *testing.T) {
 	frontier := openTestFrontier(t)
 	profile := profileWithRecrawl("Changing sitemap", 24*time.Hour)
-	if err := frontier.RecordProfile(t.Context(), profile); err != nil {
+	if err := frontier.RecordProfile(
+		t.Context(),
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	url := "https://example.org/changing"
@@ -64,7 +74,11 @@ func TestAdvancingSitemapSourceModificationLearnsChangeInterval(t *testing.T) {
 func TestFutureSitemapSourceModificationIsIgnored(t *testing.T) {
 	frontier := openTestFrontier(t)
 	profile := profileWithRecrawl("Future sitemap", 24*time.Hour)
-	if err := frontier.RecordProfile(t.Context(), profile); err != nil {
+	if err := frontier.RecordProfile(
+		t.Context(),
+		profile,
+		yagocrawlcontract.CrawlOrderPriorityNormal,
+	); err != nil {
 		t.Fatalf("record profile: %v", err)
 	}
 	if err := frontier.RecordFetchesWithSourceModified(

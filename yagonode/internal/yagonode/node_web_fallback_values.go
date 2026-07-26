@@ -133,3 +133,13 @@ func normalizeWebFallbackCacheTTL(raw string) (string, error) {
 
 	return value.String(), nil
 }
+
+// normalizeSearchSessionTTL bounds the public result-window lifetime.
+func normalizeSearchSessionTTL(raw string) (string, error) {
+	value, err := parseDurationRange(raw, minimumSearchSessionTTL, maximumSearchSessionTTL)
+	if err != nil {
+		return "", fmt.Errorf("result window lifetime: %w", err)
+	}
+
+	return value.String(), nil
+}

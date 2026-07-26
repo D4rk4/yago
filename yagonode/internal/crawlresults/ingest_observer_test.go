@@ -12,13 +12,14 @@ import (
 )
 
 type recordingObserver struct {
-	absorbed   int
-	deferred   int
-	rejected   int
-	lowQuality int
-	bytes      int
-	urls       int
-	postings   int
+	scheduleFailures int
+	absorbed         int
+	deferred         int
+	rejected         int
+	lowQuality       int
+	bytes            int
+	urls             int
+	postings         int
 }
 
 func (o *recordingObserver) ObserveAbsorbed(bytes, urls, postings int) {
@@ -30,6 +31,10 @@ func (o *recordingObserver) ObserveAbsorbed(bytes, urls, postings int) {
 
 func (o *recordingObserver) ObserveLowQuality() {
 	o.lowQuality++
+}
+
+func (o *recordingObserver) ObserveScheduleFailure() {
+	o.scheduleFailures++
 }
 
 func (o *recordingObserver) ObserveDeferred() { o.deferred++ }

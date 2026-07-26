@@ -16,13 +16,25 @@ const msgCrawlProfileRegistrationFailed = "crawl profile registration failed"
 const crawlProfileDispatchRegistryCapacity = 256
 
 type crawlProfileWriter interface {
-	RecordProfile(context.Context, yagocrawlcontract.CrawlProfile) error
+	RecordProfile(
+		context.Context,
+		yagocrawlcontract.CrawlProfile,
+		yagocrawlcontract.CrawlOrderPriority,
+	) error
+}
+
+// dispatchedProfile is the cached identity of one registration. The priority is
+// part of it because a handle re-dispatched under a different priority must be
+// rewritten: the recorded priority is what later bounds a recrawl's page budget.
+type dispatchedProfile struct {
+	profile  yagocrawlcontract.CrawlProfile
+	priority yagocrawlcontract.CrawlOrderPriority
 }
 
 type crawlProfileDispatchRegistry struct {
 	writer         crawlProfileWriter
 	mu             sync.Mutex
-	recorded       map[string]yagocrawlcontract.CrawlProfile
+	recorded       map[string]dispatchedProfile
 	insertionOrder []string
 	nextEviction   int
 }
@@ -32,7 +44,7 @@ func newCrawlProfileDispatchRegistry(
 ) *crawlProfileDispatchRegistry {
 	return &crawlProfileDispatchRegistry{
 		writer:         writer,
-		recorded:       make(map[string]yagocrawlcontract.CrawlProfile),
+		recorded:       make(map[string]dispatchedProfile),
 		insertionOrder: make([]string, 0, crawlProfileDispatchRegistryCapacity),
 	}
 }
@@ -40,14 +52,16 @@ func newCrawlProfileDispatchRegistry(
 func (r *crawlProfileDispatchRegistry) record(
 	ctx context.Context,
 	profile yagocrawlcontract.CrawlProfile,
+	priority yagocrawlcontract.CrawlOrderPriority,
 ) {
+	dispatched := dispatchedProfile{profile: profile, priority: priority}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if recorded, found := r.recorded[profile.Handle]; found &&
-		reflect.DeepEqual(recorded, profile) {
+		reflect.DeepEqual(recorded, dispatched) {
 		return
 	}
-	if err := r.writer.RecordProfile(ctx, profile); err != nil {
+	if err := r.writer.RecordProfile(ctx, profile, priority); err != nil {
 		slog.WarnContext(
 			ctx,
 			msgCrawlProfileRegistrationFailed,
@@ -60,7 +74,7 @@ func (r *crawlProfileDispatchRegistry) record(
 	if _, found := r.recorded[profile.Handle]; !found {
 		r.recordHandle(profile.Handle)
 	}
-	r.recorded[profile.Handle] = profile
+	r.recorded[profile.Handle] = dispatched
 }
 
 func (r *crawlProfileDispatchRegistry) recordHandle(handle string) {
@@ -84,7 +98,7 @@ func (q crawlProfileRegisteringQueue) PublishOnce(
 	key string,
 	order yagocrawlcontract.CrawlOrder,
 ) (bool, error) {
-	q.registry.record(ctx, order.Profile)
+	q.registry.record(ctx, order.Profile, order.Priority)
 	duplicate, err := q.inner.PublishOnce(ctx, key, order)
 	if err != nil {
 		return duplicate, fmt.Errorf("publish registered crawl order: %w", err)

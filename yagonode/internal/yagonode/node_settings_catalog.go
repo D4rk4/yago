@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 )
@@ -112,6 +113,25 @@ func searchSurfaceDefinitions() []settingDefinition {
 			},
 		},
 		{
+			key:   "search.session.ttl",
+			title: "Result window lifetime",
+			description: "How long a materialized public result window stays " +
+				"navigable, so a reader can page back into it (e.g. 5m).",
+			defaultValue: func(config nodeConfig) string {
+				return config.SearchSessionTTL.String()
+			},
+			normalize: normalizeSearchSessionTTL,
+			apply: func(config nodeConfig, value string) nodeConfig {
+				config.SearchSessionTTL, _ = time.ParseDuration(value)
+
+				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				ttl, _ := time.ParseDuration(value)
+				toggles.SetSearchSessionTTL(ttl)
+			},
+		},
+		{
 			key:   "search.click.capture",
 			title: "Capture result clicks for ranking",
 			description: "Record which result users click to mine implicit " +
@@ -210,6 +230,10 @@ func autocrawlerDefinitions() []settingDefinition {
 
 				return config
 			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				depth, _ := strconv.Atoi(value)
+				toggles.SetSwarmSeedDepth(depth)
+			},
 		},
 		{
 			key:          "swarm.seed.max_pages",
@@ -221,6 +245,10 @@ func autocrawlerDefinitions() []settingDefinition {
 				config.SwarmSeed.SeedMaxPages, _ = strconv.Atoi(value)
 
 				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				pages, _ := strconv.Atoi(value)
+				toggles.SetSwarmSeedMaxPages(pages)
 			},
 		},
 	}
@@ -457,6 +485,9 @@ func extendedGrowthDefinitions() []settingDefinition {
 				config.SwarmSeed.Enabled = value == settingBoolTrue
 
 				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				toggles.SetSwarmSeedCrawl(value == settingBoolTrue)
 			},
 		},
 		{

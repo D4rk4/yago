@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -11,9 +12,46 @@ const (
 	webSeedConcurrentWrites = 2
 	webSeedPendingPerWorker = 64
 	webSeedWriteTimeout     = 10 * time.Second
+	// webSeedResultSetsQueued is how many complete fallback answers the warming
+	// queue must be able to hold. One answer surfaces up to MaxResults URLs and
+	// submits them together, so a capacity fixed independently of MaxResults
+	// silently dropped seeds once a few queries overlapped. The queue is sized
+	// to the larger of its own default and this many result sets.
+	webSeedResultSetsQueued = 4
 )
 
-var webSeedProcessAdmission = newWebSeedAdmission(webSeedConcurrentWrites)
+var (
+	webSeedAdmissionOnce  sync.Once
+	webSeedAdmissionValue *webSeedAdmission
+	webSeedAdmissionSize  atomic.Int64
+)
+
+// SizeSeedAdmission raises the process-wide warming queue so it can hold
+// webSeedResultSetsQueued complete answers of maxResults URLs each. It has no
+// effect once the queue exists, so callers size it before the first search;
+// the queue is process-wide because its workers are, and the largest request
+// wins.
+func SizeSeedAdmission(maxResults int) {
+	wanted := int64(maxResults * webSeedResultSetsQueued)
+	for {
+		current := webSeedAdmissionSize.Load()
+		if wanted <= current || webSeedAdmissionSize.CompareAndSwap(current, wanted) {
+			return
+		}
+	}
+}
+
+func webSeedProcessAdmission() *webSeedAdmission {
+	webSeedAdmissionOnce.Do(func() {
+		pending := max(
+			webSeedConcurrentWrites*webSeedPendingPerWorker,
+			int(webSeedAdmissionSize.Load()),
+		)
+		webSeedAdmissionValue = newWebSeedAdmission(webSeedConcurrentWrites, pending)
+	})
+
+	return webSeedAdmissionValue
+}
 
 type webSeedAdmission struct {
 	mutex    sync.Mutex
@@ -26,12 +64,12 @@ type webSeedWork struct {
 	run func(context.Context)
 }
 
-func newWebSeedAdmission(capacity int) *webSeedAdmission {
+func newWebSeedAdmission(workers, pending int) *webSeedAdmission {
 	admission := &webSeedAdmission{
-		pending:  make(chan webSeedWork, capacity*webSeedPendingPerWorker),
-		admitted: make(map[string]struct{}, capacity*webSeedPendingPerWorker),
+		pending:  make(chan webSeedWork, pending),
+		admitted: make(map[string]struct{}, pending),
 	}
-	for range capacity {
+	for range workers {
 		go admission.run()
 	}
 

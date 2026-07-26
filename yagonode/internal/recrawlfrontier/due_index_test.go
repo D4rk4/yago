@@ -2,9 +2,11 @@ package recrawlfrontier
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -105,7 +107,11 @@ func TestRecordCodecRoundTripsAndRejectsGarbage(t *testing.T) {
 func TestProfileCodecRoundTripsAndRejectsGarbage(t *testing.T) {
 	codec := profileCodec{}
 	profile := profileWithRecrawl("Example", time.Hour)
-	raw, err := codec.Encode(profile)
+	record := profileRecord{
+		CrawlProfile: profile,
+		Priority:     yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery,
+	}
+	raw, err := codec.Encode(record)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -115,10 +121,29 @@ func TestProfileCodecRoundTripsAndRejectsGarbage(t *testing.T) {
 	}
 	if back.Handle != profile.Handle ||
 		back.Name != profile.Name ||
-		back.RecrawlIfOlder != profile.RecrawlIfOlder {
-		t.Fatalf("round trip = %+v, want %+v", back, profile)
+		back.RecrawlIfOlder != profile.RecrawlIfOlder ||
+		back.Priority != yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery {
+		t.Fatalf("round trip = %+v, want %+v", back, record)
 	}
 	if _, err := codec.Decode([]byte("{not json")); err == nil {
 		t.Fatal("expected error decoding garbage")
+	}
+}
+
+// A profile stored before records carried a priority is a bare CrawlProfile
+// object. It must still decode, keeping the ordinary priority it always had, so
+// an upgrade does not strand every scheduled recrawl.
+func TestProfileCodecDecodesRecordWrittenWithoutAPriority(t *testing.T) {
+	legacy, err := json.Marshal(profileWithRecrawl("Example", time.Hour))
+	if err != nil {
+		t.Fatalf("encode legacy profile: %v", err)
+	}
+	back, err := profileCodec{}.Decode(legacy)
+	if err != nil {
+		t.Fatalf("decode legacy profile: %v", err)
+	}
+	if back.Name != "Example" || back.RecrawlIfOlder != time.Hour ||
+		back.Priority != yagocrawlcontract.CrawlOrderPriorityNormal {
+		t.Fatalf("legacy decode = %+v", back)
 	}
 }

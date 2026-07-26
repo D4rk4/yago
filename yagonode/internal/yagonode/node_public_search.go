@@ -281,7 +281,7 @@ func assemblePublicSearcher(
 	ranked := assembleRankingStages(retrieval, assembly)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
 	// runs one deep search, deeper pages slice the cached result list.
-	stable := searchsession.NewStableWindow(ranked)
+	stable := searchsession.NewStableWindow(ranked, assembly.toggles.SearchSessionTTL)
 	pageEvidence := searchlocal.NewPageEvidenceSearcher(
 		stable,
 		searchEvidenceSource(assembly.storage.searchIndex),
@@ -295,23 +295,30 @@ func assemblePublicSearcher(
 			newRemoteIndexCache(assembly.storage, assembly.storageGrowth),
 		)
 	}
-	if assembly.swarmSeed.Enabled && assembly.seedQueue != nil {
+	if assembly.seedQueue != nil {
 		// Greedy learning (YaCy 1.5): crawl what swarm search surfaced, growing
 		// the index from real usage — no document-count ceiling, so a large
-		// index keeps discovering what it and the swarm still lack.
+		// index keeps discovering what it and the swarm still lack. The seeder is
+		// wired whenever a queue exists and gated live, so the console switch and
+		// its bounds apply on the next search rather than after a restart.
+		seeder := newCrawlSeeder(
+			assembly.seedQueue,
+			assembly.storage.documentDirectory,
+			assembly.identity.Hash,
+			seedProfile{
+				name:     swarmSeedProfileName,
+				depth:    assembly.swarmSeed.SeedDepth,
+				maxPages: assembly.swarmSeed.SeedMaxPages,
+				options:  assembly.autocrawlerCrawl,
+			},
+			assembly.maxPagesPerRun,
+		)
+		seeder.bounds = swarmSeedBoundsSource(assembly.toggles, assembly.swarmSeed)
 		search = withSwarmSeedCrawl(
 			search,
-			newCrawlSeeder(
-				assembly.seedQueue,
-				assembly.storage.documentDirectory,
-				assembly.identity.Hash,
-				seedProfile{
-					name:     swarmSeedProfileName,
-					depth:    assembly.swarmSeed.SeedDepth,
-					maxPages: assembly.swarmSeed.SeedMaxPages,
-					options:  assembly.autocrawlerCrawl,
-				},
-				assembly.maxPagesPerRun,
+			newGatedWebCrawlSeeder(
+				seeder,
+				swarmSeedCrawlAdmission(assembly.toggles, assembly.swarmSeed),
 			),
 		)
 	}
@@ -429,6 +436,9 @@ func withWebFallback(
 		webFallbackProviderStageBudget(config),
 	)}
 	if assembly.seedQueue != nil {
+		// One answer submits up to MaxResults URLs at once, so the warming queue
+		// is sized against that rather than against a constant.
+		websearch.SizeSeedAdmission(config.MaxResults)
 		opts = append(opts, websearch.WithSeeder(newGatedWebCrawlSeeder(
 			newWebCrawlSeeder(
 				assembly.seedQueue,

@@ -18,6 +18,7 @@ const (
 	contentParserNoDocumentReason      = "content parser produced no indexable document"
 	pageDirectivesNoindexReason        = "page directives disabled indexing"
 	crawlProfileIndexDisabledReason    = "crawl profile disabled indexing"
+	documentRejectedByNodeReason       = "node content-quality gate rejected the document"
 	documentIndexFailureReason         = "document indexing failed"
 	documentIngestFailureReason        = "document ingest delivery failed"
 	documentRemovalIngestFailureReason = "document removal delivery failed"
@@ -75,4 +76,15 @@ func pageProcessingFailureReason(err error) string {
 	default:
 		return pageFetchFailureReason
 	}
+}
+
+// documentRejectedReason names the node's content-quality rule on the crawl
+// run's per-URL outcome, so an operator seeing a fetched-but-unindexed page can
+// tell why the node refused it.
+func documentRejectedReason(rule string) string {
+	if rule == "" {
+		return documentRejectedByNodeReason
+	}
+
+	return documentRejectedByNodeReason + ": " + rule
 }

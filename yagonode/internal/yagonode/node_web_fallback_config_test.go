@@ -22,7 +22,7 @@ func TestLoadWebFallbackConfigDefaults(t *testing.T) {
 	if config.SeedCrawl {
 		t.Error("seed crawl must be off by default")
 	}
-	if config.SeedDepth != 5 || config.SeedMaxPages != 250 {
+	if config.SeedDepth != 1 || config.SeedMaxPages != 25 {
 		t.Errorf("seed profile = depth %d / %d pages", config.SeedDepth, config.SeedMaxPages)
 	}
 }

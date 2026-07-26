@@ -92,8 +92,12 @@ func (p *GRPCIngestPublisher) Publish(ctx context.Context, batch IngestBatch) er
 	retryWait := p.retryWait
 	retries := 0
 	for {
-		_, err := p.client.SubmitIngest(ctx, msg)
+		ack, err := p.client.SubmitIngest(ctx, msg)
 		if err == nil {
+			if ack.GetRejected() {
+				return &RejectedError{Rule: ack.GetRejectionRule()}
+			}
+
 			return nil
 		}
 		if status.Code(err) == codes.FailedPrecondition {

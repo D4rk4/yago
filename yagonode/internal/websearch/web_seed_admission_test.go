@@ -81,7 +81,7 @@ func TestWebSeedCrawlDoesNotDelaySearchResponse(t *testing.T) {
 
 func TestWebSeedCrawlCoalescesDuplicateURLsWhileWorkerIsBusy(t *testing.T) {
 	seeder := newBlockingWebSeeder()
-	admission := newWebSeedAdmission(1)
+	admission := newWebSeedAdmission(1, webSeedPendingPerWorker)
 	searcher := NewFallbackSearcher(
 		&stubSearcher{},
 		&stubProvider{results: []Result{{Title: "gap", URL: "https://web.example/gap"}}},
@@ -126,7 +126,7 @@ func TestWebSeedCrawlCoalescesDuplicateURLsWhileWorkerIsBusy(t *testing.T) {
 }
 
 func TestWebSeedAdmissionQueuesDistinctURLWhenWorkerIsBusy(t *testing.T) {
-	admission := newWebSeedAdmission(1)
+	admission := newWebSeedAdmission(1, webSeedPendingPerWorker)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	if !admission.try("active", t.Context(), func(context.Context) {
@@ -150,7 +150,7 @@ func TestWebSeedAdmissionQueuesDistinctURLWhenWorkerIsBusy(t *testing.T) {
 }
 
 func TestWebSeedAdmissionBoundsPendingWork(t *testing.T) {
-	admission := newWebSeedAdmission(1)
+	admission := newWebSeedAdmission(1, webSeedPendingPerWorker)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	if !admission.try("active", t.Context(), func(context.Context) {
@@ -190,7 +190,7 @@ func TestWebSeedCrawlDoesNotStartRejectedWork(t *testing.T) {
 }
 
 func TestQueuedWebSeedWorkReceivesItsFullExecutionBudget(t *testing.T) {
-	admission := newWebSeedAdmission(1)
+	admission := newWebSeedAdmission(1, webSeedPendingPerWorker)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	if !admission.try("blocking", t.Context(), func(context.Context) {
@@ -220,7 +220,7 @@ func TestQueuedWebSeedWorkReceivesItsFullExecutionBudget(t *testing.T) {
 
 func TestWebSeedWorkDoesNotRetainRequestContextValues(t *testing.T) {
 	type requestValueKey struct{}
-	admission := newWebSeedAdmission(1)
+	admission := newWebSeedAdmission(1, webSeedPendingPerWorker)
 	observed := make(chan any, 1)
 	requestContext := context.WithValue(t.Context(), requestValueKey{}, "request state")
 	if !admission.try("isolated", requestContext, func(ctx context.Context) {
@@ -239,7 +239,7 @@ func TestWebSeedWorkDoesNotRetainRequestContextValues(t *testing.T) {
 }
 
 func TestWebSeedAdmissionRecoversWorkerPanicAndReleasesURL(t *testing.T) {
-	admission := newWebSeedAdmission(1)
+	admission := newWebSeedAdmission(1, webSeedPendingPerWorker)
 	if !admission.try("panic", t.Context(), func(context.Context) { panic("seed failure") }) {
 		t.Fatal("panicking URL was rejected")
 	}
@@ -285,4 +285,27 @@ func waitForWebSeedAdmissionRelease(
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatalf("web seed URL %q remained admitted", key)
+}
+
+// The warming queue holds whole answers: one fallback answer submits up to
+// MaxResults URLs together, so a capacity fixed independently of MaxResults
+// dropped seeds as soon as a few queries overlapped. The largest requested size
+// wins, and a smaller request never shrinks it.
+func TestSizeSeedAdmissionKeepsTheLargestRequest(t *testing.T) {
+	SizeSeedAdmission(10)
+	if got := webSeedAdmissionSize.Load(); got != 10*webSeedResultSetsQueued {
+		t.Fatalf("admission size = %d", got)
+	}
+	SizeSeedAdmission(4)
+	if got := webSeedAdmissionSize.Load(); got != 10*webSeedResultSetsQueued {
+		t.Fatalf("a smaller request shrank the queue to %d", got)
+	}
+	SizeSeedAdmission(40)
+	if got := webSeedAdmissionSize.Load(); got != 40*webSeedResultSetsQueued {
+		t.Fatalf("a larger request did not grow the queue: %d", got)
+	}
+	if admission := webSeedProcessAdmission(); admission == nil ||
+		admission != webSeedProcessAdmission() {
+		t.Fatal("the process warming queue is not a stable singleton")
+	}
 }

@@ -11,7 +11,7 @@ import (
 func (d heartbeatDelivery) exchangeURLDenylistBootstrap(
 	ctx context.Context,
 ) (*crawlrpc.WorkerHeartbeatResult, error) {
-	heartbeatCtx, cancelHeartbeat := boundedHeartbeatContext(ctx)
+	heartbeatCtx, cancelHeartbeat := d.boundedHeartbeatContext(ctx)
 	defer cancelHeartbeat()
 	result, err := d.client.Heartbeat(heartbeatCtx, &crawlrpc.WorkerHeartbeat{
 		WorkerId:             d.workerID,

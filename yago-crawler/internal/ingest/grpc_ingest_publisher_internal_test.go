@@ -190,3 +190,47 @@ func TestJitteredIngestRetryWait(t *testing.T) {
 		t.Fatalf("fallback wait = %s, want %s", got, wait/2)
 	}
 }
+
+// rejectingSubmitter answers like a node whose content-quality gate consumed the
+// batch but refused to store its document.
+type rejectingSubmitter struct {
+	rule string
+}
+
+func (s rejectingSubmitter) SubmitIngest(
+	context.Context,
+	*crawlrpc.IngestBatchMessage,
+	...grpc.CallOption,
+) (*crawlrpc.IngestAck, error) {
+	return &crawlrpc.IngestAck{Rejected: true, RejectionRule: s.rule}, nil
+}
+
+// A refused document must surface as a typed rejection, not as success. The
+// crawler derives its indexed tally from this return, so reporting nil made
+// every upstream counter treat an unstored page as indexed.
+func TestGRPCIngestPublisherSurfacesNodeRejection(t *testing.T) {
+	publisher := NewGRPCIngestPublisher(rejectingSubmitter{rule: "too-few-words"})
+
+	err := publisher.Publish(context.Background(), testBatch())
+
+	rejected := new(RejectedError)
+	if !errors.As(err, &rejected) {
+		t.Fatalf("publish error = %v, want a rejection", err)
+	}
+	if rejected.Rule != "too-few-words" {
+		t.Fatalf("rejection rule = %q", rejected.Rule)
+	}
+	if got := rejected.Error(); got != "node rejected document: too-few-words" {
+		t.Fatalf("rejection message = %q", got)
+	}
+}
+
+// An ack without the rejection flag stays a plain success, so a node that
+// predates the field keeps its old meaning.
+func TestGRPCIngestPublisherTreatsUnflaggedAckAsStored(t *testing.T) {
+	publisher := NewGRPCIngestPublisher(&fakeSubmitter{})
+
+	if err := publisher.Publish(context.Background(), testBatch()); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+}

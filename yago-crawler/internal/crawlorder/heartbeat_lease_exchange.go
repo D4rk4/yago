@@ -19,7 +19,7 @@ func (d heartbeatDelivery) exchangeForLeases(
 		return d.exchangeURLDenylistBootstrap(ctx)
 	}
 	requestStarted := time.Now()
-	heartbeatCtx, cancelHeartbeat := boundedHeartbeatContext(ctx)
+	heartbeatCtx, cancelHeartbeat := d.boundedHeartbeatContext(ctx)
 	defer cancelHeartbeat()
 	heartbeat := d.leaseHeartbeat(activeLeaseIDs, acknowledged, confirmDeliveries)
 	result, err := d.client.Heartbeat(heartbeatCtx, heartbeat)

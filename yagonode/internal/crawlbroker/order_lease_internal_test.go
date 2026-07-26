@@ -11,14 +11,44 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
+// scriptedClock backs withClock. The broker starts a lease-sweep goroutine that
+// calls nowFunc on its own schedule and is only asked to stop asynchronously, so
+// it can still be running when a later test installs or restores a clock. Both
+// the installed function and the time it reports therefore have to be safe to
+// touch concurrently: the closure is installed once for the whole package run,
+// and the time it reads is guarded.
+var scriptedClock struct {
+	install sync.Once
+	mu      sync.Mutex
+	at      time.Time
+	active  bool
+}
+
 func withClock(t *testing.T) func(time.Time) {
 	t.Helper()
-	var current time.Time
-	restore := nowFunc
-	t.Cleanup(func() { nowFunc = restore })
-	nowFunc = func() time.Time { return current }
+	scriptedClock.install.Do(func() {
+		ambient := nowFunc
+		nowFunc = func() time.Time {
+			scriptedClock.mu.Lock()
+			defer scriptedClock.mu.Unlock()
+			if !scriptedClock.active {
+				return ambient()
+			}
 
-	return func(at time.Time) { current = at }
+			return scriptedClock.at
+		}
+	})
+	setScriptedClock(time.Time{}, true)
+	t.Cleanup(func() { setScriptedClock(time.Time{}, false) })
+
+	return func(at time.Time) { setScriptedClock(at, true) }
+}
+
+func setScriptedClock(at time.Time, active bool) {
+	scriptedClock.mu.Lock()
+	defer scriptedClock.mu.Unlock()
+	scriptedClock.at = at
+	scriptedClock.active = active
 }
 
 func withLeaseIDError(t *testing.T) {
