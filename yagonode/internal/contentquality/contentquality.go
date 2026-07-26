@@ -27,7 +27,28 @@ const (
 	minAlphabeticFraction = 0.8
 	minFunctionWords      = 2
 	unsegmentedSkipShare  = 0.3
+	// loremRunWords is how many consecutive placeholder words mark filler rather
+	// than a page discussing the placeholder.
+	loremRunWords = 8
+	// wordTrimCutset strips the punctuation that clings to a word token.
+	wordTrimCutset = ".,!?\u2026:;\"'()[]\u00ab\u00bb\u2014-"
 )
+
+// loremWords are the classic lorem ipsum tokens; a long unbroken run of them is
+// filler, an isolated mention is a page about typography.
+var loremWords = map[string]bool{
+	"lorem": true, "ipsum": true, "dolor": true, "sit": true, "amet": true,
+	"consectetur": true, "adipiscing": true, "elit": true, "sed": true,
+	"do": true, "eiusmod": true, "tempor": true, "incididunt": true,
+	"ut": true, "labore": true, "et": true, "dolore": true, "magna": true,
+	"aliqua": true, "enim": true, "ad": true, "minim": true, "veniam": true,
+	"quis": true, "nostrud": true, "exercitation": true, "ullamco": true,
+	"laboris": true, "nisi": true, "aliquip": true, "ex": true, "ea": true,
+	"commodo": true, "consequat": true, "duis": true, "aute": true,
+	"irure": true, "in": true, "reprehenderit": true, "voluptate": true,
+	"velit": true, "esse": true, "cillum": true, "eu": true, "fugiat": true,
+	"nulla": true, "pariatur": true,
+}
 
 // topNGramLimits is the maximum share of characters the single most frequent
 // word n-gram may cover (Gopher: 2/3/4-grams at 0.20/0.18/0.16).
@@ -42,10 +63,10 @@ var duplicatedNGramLimits = map[int]float64{
 // RejectionRule names the first quality rule the text violates, or returns ""
 // for text worth indexing.
 func RejectionRule(text string) string {
-	if strings.Contains(strings.ToLower(text), "lorem ipsum") {
+	words := strings.Fields(text)
+	if placeholderText(words) {
 		return "lorem-ipsum"
 	}
-	words := strings.Fields(text)
 	if unsegmentedScript(text) {
 		return ""
 	}
@@ -76,7 +97,7 @@ func wordShapeRule(words []string) string {
 			strings.Contains(word, "...") {
 			symbols++
 		}
-		if stopwords.IsStopword(strings.Trim(word, ".,!?…:;\"'()[]«»—-")) {
+		if stopwords.IsStopword(strings.Trim(word, wordTrimCutset)) {
 			functionWords++
 		}
 	}
@@ -90,11 +111,38 @@ func wordShapeRule(words []string) string {
 	if float64(alphabetic)/float64(len(words)) < minAlphabeticFraction {
 		return "non-alphabetic"
 	}
+	// This rule over-rejects prose in languages the stopword dictionary does not
+	// cover. Skipping the rule when no dictionary word appears is not the fix:
+	// genuine keyword stuffing has no function words either, so the two are
+	// indistinguishable without language detection. Left as is deliberately.
 	if functionWords < minFunctionWords {
 		return "no-function-words"
 	}
 
 	return ""
+}
+
+// placeholderText reports whether filler text makes up a meaningful share of the
+// page. Matching the phrase anywhere discarded every page that merely discusses
+// it — typography guides, CSS documentation, generators, the encyclopedia entry.
+func placeholderText(words []string) bool {
+	if len(words) < loremRunWords {
+		return false
+	}
+	run := 0
+	for _, word := range words {
+		if loremWords[strings.ToLower(strings.Trim(word, wordTrimCutset))] {
+			run++
+			if run >= loremRunWords {
+				return true
+			}
+
+			continue
+		}
+		run = 0
+	}
+
+	return false
 }
 
 func repetitionRule(words []string) string {
@@ -113,53 +161,118 @@ func repetitionRule(words []string) string {
 }
 
 // topNGramCharacterShare is the share of the text's word characters covered by
-// occurrences of the single most frequent n-gram.
+// the most frequent word n-gram (Gopher Table A1). Occurrences of one gram can
+// overlap ("a a a a"), so the words they cover are marked and each character is
+// counted once — the result is a true fraction of the text. A gram seen only
+// once is not repetition, so text with no repeated n-gram scores zero.
 func topNGramCharacterShare(words []string, n int) float64 {
-	grams, total := nGramCounts(words, n)
-	if total == 0 {
+	grams, counts, total := nGramPositions(words, n)
+	if total == 0 || len(grams) == 0 {
 		return 0
 	}
-	best := 0
-	for gram, count := range grams {
-		if chars := count * gramCharacters(gram); chars > best {
-			best = chars
+	top, topCount, topChars := "", 0, 0
+	for gram, count := range counts {
+		if count < 2 || count < topCount {
+			continue
+		}
+		chars := gramCharacters(gram)
+		if count == topCount &&
+			(chars < topChars || (chars == topChars && gram >= top)) {
+			continue
+		}
+		top, topCount, topChars = gram, count, chars
+	}
+	if top == "" {
+		return 0
+	}
+	covered := make([]bool, len(words))
+	for i, gram := range grams {
+		if gram == top {
+			markCovered(covered, i, n)
 		}
 	}
 
-	return float64(best) / float64(total)
+	return float64(coveredCharacters(words, covered)) / float64(total)
 }
 
-// duplicatedNGramCharacterShare is the share of the text's word characters
-// covered by n-grams occurring more than once.
+// duplicatedNGramCharacterShare is the share of the text's word characters that
+// are redundant: inside a repeat of an n-gram already seen earlier in the same
+// text (Gopher Table A1, as implemented by the FineWeb reference pipeline). The
+// first occurrence of a phrase is the page saying something; only its repeats
+// are duplication. A matched repeat advances the scan by n words, so a
+// character sitting inside many overlapping duplicate n-grams is still counted
+// once and the result stays a fraction.
+//
+// Counting every occurrence of every duplicated gram, over a window that slides
+// by one word, made this value exceed 1 on ordinary prose — a documentation
+// page measured 4.075 against a 0.15 limit — so the gate rejected encyclopedia
+// articles and software manuals as repetition spam.
 func duplicatedNGramCharacterShare(words []string, n int) float64 {
-	grams, total := nGramCounts(words, n)
-	if total == 0 {
+	total := characterCount(words)
+	if total == 0 || n <= 0 || len(words) < n {
 		return 0
 	}
-	duplicated := 0
-	for gram, count := range grams {
-		if count > 1 {
-			duplicated += count * gramCharacters(gram)
+	seen := make(map[string]struct{}, len(words))
+	covered := make([]bool, len(words))
+	for i := 0; i+n <= len(words); {
+		gram := strings.Join(words[i:i+n], " ")
+		if _, duplicate := seen[gram]; !duplicate {
+			seen[gram] = struct{}{}
+			i++
+
+			continue
+		}
+		markCovered(covered, i, n)
+		i += n
+	}
+
+	return float64(coveredCharacters(words, covered)) / float64(total)
+}
+
+// nGramPositions lists the text's overlapping word n-grams in order — grams[i]
+// starts at word i — with each distinct gram's occurrence count and the text's
+// total word-character count.
+func nGramPositions(words []string, n int) ([]string, map[string]int, int) {
+	total := characterCount(words)
+	if n <= 0 || len(words) < n {
+		return nil, nil, total
+	}
+	grams := make([]string, 0, len(words)-n+1)
+	counts := make(map[string]int, len(words)-n+1)
+	for i := 0; i+n <= len(words); i++ {
+		gram := strings.Join(words[i:i+n], " ")
+		grams = append(grams, gram)
+		counts[gram]++
+	}
+
+	return grams, counts, total
+}
+
+func markCovered(covered []bool, start, n int) {
+	for i := start; i < start+n && i < len(covered); i++ {
+		covered[i] = true
+	}
+}
+
+// coveredCharacters counts the characters of the marked words, each once.
+func coveredCharacters(words []string, covered []bool) int {
+	characters := 0
+	for i, word := range words {
+		if covered[i] {
+			characters += len([]rune(word))
 		}
 	}
 
-	return float64(duplicated) / float64(total)
+	return characters
 }
 
-func nGramCounts(words []string, n int) (map[string]int, int) {
-	total := 0
+func characterCount(words []string) int {
+	characters := 0
 	for _, word := range words {
-		total += len([]rune(word))
-	}
-	if len(words) < n {
-		return nil, total
-	}
-	grams := make(map[string]int, len(words))
-	for i := 0; i+n <= len(words); i++ {
-		grams[strings.Join(words[i:i+n], " ")]++
+		characters += len([]rune(word))
 	}
 
-	return grams, total
+	return characters
 }
 
 func gramCharacters(gram string) int {
@@ -181,8 +294,12 @@ func unsegmentedScript(text string) bool {
 			continue
 		}
 		letters++
+		// Hangul is deliberately absent: Korean separates words with spaces, so
+		// its token statistics are meaningful and it must face the gate like any
+		// other segmented script. Listing it here let every Korean page, keyword
+		// spam included, skip every rule.
 		if unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana,
-			unicode.Hangul, unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar) {
+			unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar) {
 			unsegmented++
 		}
 	}
