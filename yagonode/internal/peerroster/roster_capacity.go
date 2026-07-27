@@ -27,14 +27,18 @@ func (r *roster) initializeRosterCapacity(ctx context.Context) error {
 }
 
 func (r *roster) trimOverflow(ctx context.Context) (bool, error) {
-	total, err := r.ObservedKnownPeerCount(ctx)
+	// Overflow trimming is housekeeping nobody waits on, so its scans give up their
+	// claim on writer yields; the same counts asked for by the admin console stay
+	// foreground.
+	maintenance := vault.BackgroundRead(ctx)
+	total, err := r.ObservedKnownPeerCount(maintenance)
 	if err != nil {
 		return false, err
 	}
 	if total <= max(r.reservoirCap, 0) {
 		return false, nil
 	}
-	retained, actual, err := r.rosterEntriesWithinCapacity(ctx)
+	retained, actual, err := r.rosterEntriesWithinCapacity(maintenance)
 	if err != nil {
 		return false, err
 	}

@@ -4,10 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"sync"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 )
+
+// knownPeerSamplingInterval rations the roster count behind the known-peer gauge.
+// The count opens a read transaction on every shard, while the roster is touched on
+// every peer exchange and every foreground read makes concurrent writers yield for
+// the whole read-defer budget. Prometheus never scrapes faster than this, so a
+// sample per interval is as fresh as the gauge can be observed anyway.
+const knownPeerSamplingInterval = 5 * time.Second
 
 var errPeerObservationsUnavailable = errors.New("peer observations unavailable")
 
@@ -19,6 +29,17 @@ type observedPeerRoster struct {
 	peerroster.Roster
 	directory peerroster.Directory
 	observer  peerMetricsObserver
+	sampler   *knownPeerSampler
+}
+
+// knownPeerSampler holds the last roster count reported to the gauge. It lives
+// behind a pointer because observedPeerRoster travels by value: every copy has to
+// share one sample, or each would read the vault on its own schedule.
+type knownPeerSampler struct {
+	clock      func() time.Time
+	mutex      sync.Mutex
+	sampledAt  time.Time
+	knownPeers int
 }
 
 type observedKnownPeerCounter interface {
@@ -30,12 +51,29 @@ func observePeerRoster(
 	roster peerroster.Roster,
 	observer peerMetricsObserver,
 ) peerroster.Roster {
+	return observePeerRosterWithClock(ctx, roster, observer, time.Now)
+}
+
+// observePeerRosterWithClock is the sampling-clock seam so tests can drive the window.
+func observePeerRosterWithClock(
+	ctx context.Context,
+	roster peerroster.Roster,
+	observer peerMetricsObserver,
+	clock func() time.Time,
+) peerroster.Roster {
 	if observer == nil {
 		return roster
 	}
 
 	directory, _ := roster.(peerroster.Directory)
-	observed := observedPeerRoster{Roster: roster, directory: directory, observer: observer}
+	observed := observedPeerRoster{
+		Roster:    roster,
+		directory: directory,
+		observer:  observer,
+		sampler:   &knownPeerSampler{clock: clock},
+	}
+	// Sample eagerly so the gauge reports the roster inherited from disk at boot
+	// instead of zero until the first peer exchange.
 	observed.observe(ctx)
 
 	return observed
@@ -137,8 +175,47 @@ func (r observedPeerRoster) ObservedKnownPeerCount(ctx context.Context) (int, er
 }
 
 func (r observedPeerRoster) observe(ctx context.Context) {
+	// The reachable count is served from memory, so it stays exact on every call;
+	// only the persisted known count is sampled.
 	r.observer.ObservePeerRoster(
-		r.KnownPeerCount(ctx),
+		r.sampler.knownPeerCount(ctx, r.ObservedKnownPeerCount),
 		r.ReachablePeerCount(ctx),
 	)
+}
+
+// knownPeerCount reports the newest sample, taking a fresh one only once the
+// sampling interval has elapsed. Claiming the interval under the lock leaves at
+// most one reader counting, so a slow read is never joined by a herd of
+// identical ones; the read itself runs outside the lock because this is reached
+// synchronously from the peer hello handler, whose budget is a second, and a
+// mutex cannot honour a caller's deadline.
+func (s *knownPeerSampler) knownPeerCount(
+	ctx context.Context,
+	count func(context.Context) (int, error),
+) int {
+	s.mutex.Lock()
+	settled := s.knownPeers
+	now := s.clock()
+	if now.Before(s.sampledAt.Add(knownPeerSamplingInterval)) {
+		s.mutex.Unlock()
+
+		return settled
+	}
+	s.sampledAt = now
+	s.mutex.Unlock()
+
+	sampled, err := count(ctx)
+	if err != nil {
+		// A count fails when the read gives up under write pressure. Reporting zero
+		// would make the gauge deny the roster exactly when it is asked to explain a
+		// stall, so the last good sample stands until the next interval.
+		slog.WarnContext(ctx, "known peer sample failed", slog.Any("error", err))
+
+		return settled
+	}
+	s.mutex.Lock()
+	s.knownPeers = sampled
+	s.mutex.Unlock()
+
+	return sampled
 }

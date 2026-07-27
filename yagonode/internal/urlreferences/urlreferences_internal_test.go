@@ -14,6 +14,7 @@ import (
 
 type scriptedEngine struct {
 	buckets      map[vault.Name]map[string][]byte
+	writes       map[vault.Name]int
 	putErrors    map[vault.Name]error
 	deleteErrors map[vault.Name]error
 	scanErrors   map[vault.Name]error
@@ -22,6 +23,7 @@ type scriptedEngine struct {
 func newScriptedEngine() *scriptedEngine {
 	return &scriptedEngine{
 		buckets:      map[vault.Name]map[string][]byte{},
+		writes:       map[vault.Name]int{},
 		putErrors:    map[vault.Name]error{},
 		deleteErrors: map[vault.Name]error{},
 		scanErrors:   map[vault.Name]error{},
@@ -84,6 +86,7 @@ func (b scriptedBucket) Put(key vault.Key, raw []byte) error {
 		return err
 	}
 	b.engine.buckets[b.name][string(key)] = append([]byte(nil), raw...)
+	b.engine.writes[b.name]++
 	return nil
 }
 
@@ -179,6 +182,98 @@ func TestPostingStoredReturnsWriteErrors(t *testing.T) {
 		return references.PostingStored(tx, word, url)
 	}); err == nil {
 		t.Fatal("expected referenced put error")
+	}
+}
+
+func TestPostingStoredWritesReferencedURLOnceForManyWords(t *testing.T) {
+	storage, references, engine := openScriptedReferences(t)
+	url := yagomodel.WordHash("u1")
+
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		if err := references.PostingStored(tx, yagomodel.WordHash("w1"), url); err != nil {
+			return err
+		}
+
+		return references.PostingStored(tx, yagomodel.WordHash("w2"), url)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if writes := engine.writes[referencedURLBucket]; writes != 1 {
+		t.Fatalf("referenced url writes = %d, want 1", writes)
+	}
+	count, err := references.ReferencedURLCount(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("ReferencedURLCount = %d, want 1", count)
+	}
+}
+
+func TestPostingStoredRecordsEveryDistinctURL(t *testing.T) {
+	storage, references, engine := openScriptedReferences(t)
+	first := yagomodel.WordHash("u1")
+	second := yagomodel.WordHash("u2")
+	word := yagomodel.WordHash("w1")
+
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		if err := references.PostingStored(tx, word, first); err != nil {
+			return err
+		}
+
+		return references.PostingStored(tx, word, second)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, url := range []yagomodel.Hash{first, second} {
+		if _, found := engine.buckets[referencedURLBucket][url.String()]; !found {
+			t.Fatalf("referenced url %s was not recorded", url)
+		}
+	}
+	count, err := references.ReferencedURLCount(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("ReferencedURLCount = %d, want 2", count)
+	}
+}
+
+func TestPostingStoredRecordsURLAgainAfterLastPostingPurged(t *testing.T) {
+	storage, references, engine := openScriptedReferences(t)
+	word := yagomodel.WordHash("w1")
+	url := yagomodel.WordHash("u1")
+
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		return references.PostingStored(tx, word, url)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		return references.PostingPurged(tx, word, url)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := engine.buckets[referencedURLBucket][url.String()]; found {
+		t.Fatal("purging the last posting left the referenced url behind")
+	}
+
+	if err := storage.Update(t.Context(), func(tx *vault.Txn) error {
+		return references.PostingStored(tx, word, url)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := engine.buckets[referencedURLBucket][url.String()]; !found {
+		t.Fatal("referenced url was not recorded again after the purge")
+	}
+	count, err := references.ReferencedURLCount(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("ReferencedURLCount = %d, want 1", count)
 	}
 }
 

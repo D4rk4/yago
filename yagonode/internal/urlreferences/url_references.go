@@ -36,8 +36,13 @@ func (r *urlReferences) PostingStored(tx *vault.Txn, word, url yagomodel.Hash) e
 	if err := r.words.Put(tx, wordByURL{url: url, word: word}.key(), struct{}{}); err != nil {
 		return fmt.Errorf("record word by url: %w", err)
 	}
-	if err := r.referenced.Put(tx, vault.Key(url), struct{}{}); err != nil {
-		return fmt.Errorf("record referenced url: %w", err)
+	// The marker is keyed by url alone and carries no value, so every word of a
+	// document would rewrite the same row inside the posting intake transaction
+	// that holds the shard locks longest. Write it only when it is missing.
+	if !r.referenced.Contains(tx, vault.Key(url)) {
+		if err := r.referenced.Put(tx, vault.Key(url), struct{}{}); err != nil {
+			return fmt.Errorf("record referenced url: %w", err)
+		}
 	}
 
 	return nil

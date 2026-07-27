@@ -17,7 +17,9 @@ func (r *countingPeerRoster) ObservePotential(
 func TestPotentialPeerObservationCrossesRosterWrappers(t *testing.T) {
 	base := &countingPeerRoster{}
 	metrics := &recordingPeerMetrics{}
-	observed := observePeerRoster(t.Context(), base, metrics)
+	clock := newPeerRosterClock()
+	observed := observePeerRosterWithClock(t.Context(), base, metrics, clock.Now)
+	clock.advance(knownPeerSamplingInterval)
 	wrapped := newBlockingRoster(observed, newFakePeerBlocks())
 	potential, ok := wrapped.(interface {
 		ObservePotential(context.Context, yagomodel.Seed)

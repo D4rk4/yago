@@ -68,6 +68,37 @@ type recordingPeerMetrics struct {
 	lastLive  int
 }
 
+// peerRosterClock drives the known-peer sampling window from the test instead of
+// waiting out real seconds.
+type peerRosterClock struct {
+	now time.Time
+}
+
+func newPeerRosterClock() *peerRosterClock {
+	return &peerRosterClock{now: time.Unix(1_000_000, 0)}
+}
+
+func (c *peerRosterClock) Now() time.Time { return c.now }
+
+func (c *peerRosterClock) advance(step time.Duration) { c.now = c.now.Add(step) }
+
+// persistedPeerCountRoster records how often the persisted roster size was read,
+// which is the all-shard read transaction the sampler exists to ration.
+type persistedPeerCountRoster struct {
+	countingPeerRoster
+	persistedReads int
+	err            error
+}
+
+func (r *persistedPeerCountRoster) ObservedKnownPeerCount(context.Context) (int, error) {
+	r.persistedReads++
+	if r.err != nil {
+		return 0, r.err
+	}
+
+	return r.known, nil
+}
+
 type observationCountingRoster struct {
 	countingPeerRoster
 	observation peerroster.PeerObservation
@@ -119,14 +150,16 @@ func TestObservePeerRosterReturnsOriginalWithoutObserver(t *testing.T) {
 
 func TestObservedPeerRosterUpdatesCounts(t *testing.T) {
 	ctx := context.Background()
+	clock := newPeerRosterClock()
 	observer := &recordingPeerMetrics{}
-	roster := observePeerRoster(ctx, &countingPeerRoster{}, observer)
+	roster := observePeerRosterWithClock(ctx, &countingPeerRoster{}, observer, clock.Now)
 
 	if observer.calls != 1 {
 		t.Fatalf("initial observations = %d, want 1", observer.calls)
 	}
 
 	roster.Discover(ctx, yagomodel.Seed{Hash: yagomodel.Hash("AAAAAAAAAAAA")})
+	clock.advance(knownPeerSamplingInterval)
 	roster.ConfirmReachable(ctx, yagomodel.Hash("AAAAAAAAAAAA"))
 	if observer.lastKnown != 1 || observer.lastLive != 1 {
 		t.Fatalf(
@@ -136,6 +169,7 @@ func TestObservedPeerRosterUpdatesCounts(t *testing.T) {
 		)
 	}
 
+	clock.advance(knownPeerSamplingInterval)
 	roster.ConfirmUnreachable(ctx, yagomodel.Hash("AAAAAAAAAAAA"))
 	if observer.lastKnown != 0 || observer.lastLive != 0 {
 		t.Fatalf(
@@ -147,8 +181,12 @@ func TestObservedPeerRosterUpdatesCounts(t *testing.T) {
 }
 
 func TestObservedPeerRosterUpdatesCountsForCallerObservation(t *testing.T) {
+	clock := newPeerRosterClock()
 	observer := &recordingPeerMetrics{}
-	roster := observePeerRoster(t.Context(), &countingPeerRoster{}, observer)
+	roster := observePeerRosterWithClock(
+		t.Context(), &countingPeerRoster{}, observer, clock.Now,
+	)
+	clock.advance(knownPeerSamplingInterval)
 
 	roster.ObserveCaller(
 		t.Context(),
@@ -166,8 +204,12 @@ func TestObservedPeerRosterUpdatesCountsForCallerObservation(t *testing.T) {
 }
 
 func TestObservedPeerRosterUpdatesCountsForResponderObservation(t *testing.T) {
+	clock := newPeerRosterClock()
 	observer := &recordingPeerMetrics{}
-	roster := observePeerRoster(t.Context(), &countingPeerRoster{}, observer)
+	roster := observePeerRosterWithClock(
+		t.Context(), &countingPeerRoster{}, observer, clock.Now,
+	)
+	clock.advance(knownPeerSamplingInterval)
 
 	roster.ObserveResponder(
 		t.Context(),
@@ -180,6 +222,71 @@ func TestObservedPeerRosterUpdatesCountsForResponderObservation(t *testing.T) {
 			observer.lastKnown,
 			observer.lastLive,
 		)
+	}
+}
+
+func TestObservedPeerRosterReadsPersistedPeerCountOncePerSamplingInterval(t *testing.T) {
+	clock := newPeerRosterClock()
+	base := &persistedPeerCountRoster{}
+	observer := &recordingPeerMetrics{}
+	roster := observePeerRosterWithClock(t.Context(), base, observer, clock.Now)
+
+	base.known = 7
+	clock.advance(knownPeerSamplingInterval - time.Nanosecond)
+	roster.ConfirmReachable(t.Context(), yagomodel.Hash("AAAAAAAAAAAA"))
+	roster.ConfirmReachable(t.Context(), yagomodel.Hash("BBBBBBBBBBBB"))
+
+	if base.persistedReads != 1 {
+		t.Fatalf(
+			"persisted peer count reads = %d, want only the boot sample",
+			base.persistedReads,
+		)
+	}
+	if observer.lastKnown != 0 {
+		t.Fatalf("known gauge = %d, want the boot sample of 0", observer.lastKnown)
+	}
+	if observer.lastLive != 2 {
+		t.Fatalf("reachable gauge = %d, want 2 after both calls", observer.lastLive)
+	}
+}
+
+func TestObservedPeerRosterRereadsPersistedPeerCountAfterSamplingInterval(t *testing.T) {
+	clock := newPeerRosterClock()
+	base := &persistedPeerCountRoster{}
+	observer := &recordingPeerMetrics{}
+	roster := observePeerRosterWithClock(t.Context(), base, observer, clock.Now)
+
+	base.known = 7
+	clock.advance(knownPeerSamplingInterval)
+	roster.ConfirmReachable(t.Context(), yagomodel.Hash("AAAAAAAAAAAA"))
+
+	if base.persistedReads != 2 {
+		t.Fatalf(
+			"persisted peer count reads = %d, want a fresh sample past the interval",
+			base.persistedReads,
+		)
+	}
+	if observer.lastKnown != 7 {
+		t.Fatalf("known gauge = %d, want the resampled 7", observer.lastKnown)
+	}
+}
+
+func TestObservedPeerRosterKeepsKnownGaugeWhenPersistedCountFails(t *testing.T) {
+	clock := newPeerRosterClock()
+	base := &persistedPeerCountRoster{}
+	base.known = 5
+	observer := &recordingPeerMetrics{}
+	roster := observePeerRosterWithClock(t.Context(), base, observer, clock.Now)
+
+	base.err = errors.New("count timed out")
+	clock.advance(knownPeerSamplingInterval)
+	roster.ConfirmReachable(t.Context(), yagomodel.Hash("AAAAAAAAAAAA"))
+
+	if observer.lastKnown != 5 {
+		t.Fatalf("known gauge = %d, want the last good sample of 5", observer.lastKnown)
+	}
+	if observer.lastLive != 1 {
+		t.Fatalf("reachable gauge = %d, want 1 despite the failed count", observer.lastLive)
 	}
 }
 
