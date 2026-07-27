@@ -1191,3 +1191,38 @@ func TestContentionErrorCarriesVaultSentinel(t *testing.T) {
 		t.Fatal("errShardContended must wrap vault.ErrContended")
 	}
 }
+
+// A corrupted stored value must be refused for the reason that actually
+// applies. The existing checks only prove some error came back, so a decoder
+// that reported a checksum mismatch as an unknown format tag -- or accepted a
+// flipped byte as a different encoding -- would pass them unchanged. The
+// operator reads that reason out of the log to tell a bit flip from a version
+// skew, so pin each refusal to its own sentinel.
+func TestDecodeValueNamesTheCorruptionItFound(t *testing.T) {
+	t.Parallel()
+
+	flipped := encodeValue([]byte("integrity"))
+	flipped[len(flipped)-1] ^= 0xFF
+	if _, err := decodeValue(flipped); !errors.Is(err, errValueChecksum) {
+		t.Fatalf("flipped payload byte = %v, want a checksum refusal", err)
+	}
+
+	truncated := encodeValue([]byte("integrity"))[:3]
+	if _, err := decodeValue(truncated); !errors.Is(err, errValueFormat) {
+		t.Fatalf("truncated header = %v, want a format refusal", err)
+	}
+	if _, err := decodeValue([]byte{0x7F, 0, 0, 0, 0}); !errors.Is(err, errValueFormat) {
+		t.Fatalf("unknown tag = %v, want a format refusal", err)
+	}
+	if _, err := storedValueSize([]byte{0x7F}); !errors.Is(err, errValueFormat) {
+		t.Fatalf("unknown tag size = %v, want a format refusal", err)
+	}
+
+	// An intact value still decodes, so the guards above are refusing damage
+	// rather than everything.
+	intact := encodeValue([]byte("integrity"))
+	decoded, err := decodeValue(intact)
+	if err != nil || string(decoded) != "integrity" {
+		t.Fatalf("intact value = %q, %v", decoded, err)
+	}
+}

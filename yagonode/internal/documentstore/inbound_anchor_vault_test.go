@@ -288,6 +288,45 @@ func TestReplaceOutboundAnchorsBoundsSourcesAndTargets(t *testing.T) {
 	}
 }
 
+func TestOutboundAnchorIdentityAdmitsTheExactURLIdentityLimit(t *testing.T) {
+	// MaximumURLIdentityBytes is an inclusive bound: a URL of exactly that many
+	// bytes is a legal store key, and orderedDocumentKey admits it. Every other
+	// test of this bound sits one byte past it, so tightening the comparison to
+	// "<" would keep the suite green while the longest legal URLs disappeared
+	// from anchor projections, publications, and lineage reservations - a silent
+	// index gap rather than a reported refusal.
+	prefix := "https://target.example/"
+	atLimit := prefix + strings.Repeat("x", yagomodel.MaximumURLIdentityBytes-len(prefix))
+	if len(atLimit) != yagomodel.MaximumURLIdentityBytes {
+		t.Fatalf("identity fixture = %d bytes", len(atLimit))
+	}
+	source := "https://source.example/page"
+	directory, receiver := openDocuments(t)
+	if _, err := receiver.Receive(t.Context(), []Document{{
+		NormalizedURL: atLimit,
+	}}); err != nil {
+		t.Fatalf("receive target at the identity limit: %v", err)
+	}
+	update := replaceAndFinalizeOutboundAnchors(t, receiver, []OutboundAnchorSet{{
+		SourceURL: source,
+		Anchors: []OutboundAnchor{
+			{TargetURL: atLimit, Text: "longest legal target"},
+			{TargetURL: atLimit + "x", Text: "one byte too long"},
+		},
+	}})
+	if len(update.Documents) != 1 || update.Documents[0].NormalizedURL != atLimit {
+		t.Fatalf("identity-limit update = %#v", update)
+	}
+	// The oversized edge is dropped, not published, and it does not take the
+	// legal one with it.
+	assertOutboundAnchorPublicationTargets(t, receiver.(documentVault), source, atLimit)
+	stored, found, err := directory.Document(t.Context(), atLimit)
+	if err != nil || !found || len(stored.Inlinks) != 1 ||
+		stored.Inlinks[0].Text != "longest legal target" {
+		t.Fatalf("target at the identity limit = %#v/%t/%v", stored, found, err)
+	}
+}
+
 func TestReplaceOutboundAnchorsRejectsSeventeenthDistinctSource(t *testing.T) {
 	_, receiver := openDocuments(t)
 	sets := make([]OutboundAnchorSet, MaximumOutboundAnchorSourcesPerReplacement+1)
@@ -298,6 +337,42 @@ func TestReplaceOutboundAnchorsRejectsSeventeenthDistinctSource(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "source limit exceeded") {
 		t.Fatalf("source limit error = %v", err)
 	}
+}
+
+func TestReplaceOutboundAnchorsAdmitsRepeatedSourcesAtTheSourceLimit(t *testing.T) {
+	// The source budget counts distinct sources, not submitted sets: a repeat of
+	// a source already in the batch replaces it and must not consume another
+	// slot. Only the seventeenth-distinct-source refusal is asserted elsewhere,
+	// so counting entries instead of sources would keep that test green while
+	// turning away a legal batch from any crawler that reports one page twice.
+	sets := make([]OutboundAnchorSet, 0, MaximumOutboundAnchorSourcesPerReplacement+1)
+	for index := range MaximumOutboundAnchorSourcesPerReplacement {
+		sets = append(sets, OutboundAnchorSet{
+			SourceURL: fmt.Sprintf("https://source.example/%02d", index),
+			Anchors: []OutboundAnchor{{
+				TargetURL: fmt.Sprintf("https://target.example/%02d", index),
+			}},
+		})
+	}
+	repeated := sets[0]
+	repeated.Anchors = []OutboundAnchor{{TargetURL: "https://target.example/repeat"}}
+	sets = append(sets, repeated)
+	canonical, err := canonicalOutboundAnchorSets(sets)
+	if err != nil || len(canonical) != MaximumOutboundAnchorSourcesPerReplacement {
+		t.Fatalf("canonical sets = %d, %v", len(canonical), err)
+	}
+	// The repeat is the surviving entry for its source, not an extra one.
+	if len(canonical[0].Anchors) != 1 ||
+		canonical[0].Anchors[0].TargetURL != "https://target.example/repeat" {
+		t.Fatalf("repeated source set = %#v", canonical[0])
+	}
+	_, receiver := openDocuments(t)
+	update, err := anchorReceiver(t, receiver).ReplaceOutboundAnchors(t.Context(), sets)
+	if err != nil ||
+		len(update.Finalizations) != MaximumOutboundAnchorSourcesPerReplacement {
+		t.Fatalf("repeated source update = %#v, %v", update, err)
+	}
+	anchorReceiver(t, receiver).ReleaseOutboundAnchors(update.Finalizations)
 }
 
 func TestReplaceOutboundAnchorsHandlesNoopCapacityAndContext(t *testing.T) {

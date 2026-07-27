@@ -16,7 +16,13 @@ func NewSafeSearchSearcher(inner Searcher) Searcher {
 func (s safeSearchSearcher) Search(ctx context.Context, req Request) (Response, error) {
 	response, err := s.inner.Search(ctx, req)
 	if err != nil {
-		return Response{}, fmt.Errorf("safe search inner search: %w", err)
+		// Keep the partial failures the federation deliberately returned
+		// alongside its error. Dropping them replaced four named peer failures
+		// with one opaque stage timeout, losing the diagnosis exactly when the
+		// answer is empty and the operator most needs to know who did not
+		// answer. Results are still discarded: they were never filtered.
+		return Response{Request: req, PartialFailures: response.PartialFailures},
+			fmt.Errorf("safe search inner search: %w", err)
 	}
 	if !req.SafeSearch {
 		return response, nil

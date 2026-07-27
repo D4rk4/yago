@@ -40,7 +40,7 @@ func TestGuardRotatesDueSessionWithoutExtendingAbsoluteExpiry(t *testing.T) {
 	if err != nil || !found || record.CSRFToken != csrf {
 		t.Fatalf("replacement session = %#v, %t, %v", record, found, err)
 	}
-	post := doRequestWithCSRF(surface, http.MethodPost, "/protected", csrf, replacement)
+	post := doRequestWithCSRF(surface, http.MethodPost, csrf, replacement)
 	if post.Code != http.StatusOK {
 		t.Fatalf("rotated csrf status = %d", post.Code)
 	}
@@ -149,6 +149,50 @@ func TestSessionRotationRejectsExpiredAndMissingRecords(t *testing.T) {
 	clock.now = clock.now.Add(31 * time.Second)
 	if _, changed, err := store.rotate(t.Context(), created.Token, record); err != nil || changed {
 		t.Fatalf("missing rotation = %t, %v", changed, err)
+	}
+}
+
+// TestSessionRotationRefusesStaleRecordOverwrite proves rotation is a
+// compare-and-swap and not a blind write: when the stored record no longer
+// matches the one the request read, the rotation is abandoned and the store is
+// left alone. Without the comparison the request would copy its own stale view -
+// the CSRF token and expiry it started with - onto a fresh token and delete the
+// record that had replaced it, resurrecting session state another writer had
+// already retired.
+func TestSessionRotationRefusesStaleRecordOverwrite(t *testing.T) {
+	clock := &mutableClock{now: time.Unix(90_000, 0)}
+	store, err := newSessionStore(testVault(t), time.Hour, clock.Now)
+	if err != nil {
+		t.Fatalf("new session store: %v", err)
+	}
+	created, err := store.create(t.Context(), "admin")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	stale, found, err := store.lookup(t.Context(), created.Token)
+	if err != nil || !found {
+		t.Fatalf("lookup session = %#v, %t, %v", stale, found, err)
+	}
+
+	current := stale
+	current.CSRFToken = "csrf-token-written-by-another-request"
+	if err := store.vault.Update(t.Context(), func(tx *vault.Txn) error {
+		return store.records.Put(tx, vault.Key(hashToken(created.Token)), current)
+	}); err != nil {
+		t.Fatalf("replace stored session: %v", err)
+	}
+
+	clock.now = clock.now.Add(31 * time.Minute)
+	rotated, changed, err := store.rotate(t.Context(), created.Token, stale)
+	if err != nil || changed {
+		t.Fatalf("stale rotation = %#v, %t, %v", rotated, changed, err)
+	}
+	kept, found, err := store.lookup(t.Context(), created.Token)
+	if err != nil || !found || kept.CSRFToken != current.CSRFToken {
+		t.Fatalf("record after refused rotation = %#v, %t, %v", kept, found, err)
+	}
+	if length := sessionStoreLength(t, store); length != 1 {
+		t.Fatalf("session records after refused rotation = %d, want 1", length)
 	}
 }
 

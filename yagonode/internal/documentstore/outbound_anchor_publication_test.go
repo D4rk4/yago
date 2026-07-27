@@ -300,6 +300,32 @@ func TestOutboundAnchorFinalizationRejectsStaleAndInvalidTokens(t *testing.T) {
 	}
 }
 
+func TestOutboundAnchorFinalizationRejectsBlankSourceOnALiveLease(t *testing.T) {
+	// A zero finalization is refused twice over - blank source and missing
+	// lease - so the blank-source case above cannot say which guard spoke, and
+	// it would still pass with the source check deleted. Hand this one a live
+	// lease so only the source check can fire, and pin the refusal by its own
+	// words: an empty source URL would otherwise be published as a real
+	// publication row keyed on nothing, owning every target it names.
+	_, receiver, engine := openScriptedDocuments(t)
+	documents := receiver.(documentVault)
+	lease := newOutboundAnchorLease(func() {}, nil)
+	err := documents.FinalizeOutboundAnchors(t.Context(), []OutboundAnchorFinalization{{
+		sourceURL: "   ",
+		desired:   desiredOutboundAnchorPublication(nil, []string{"https://target.example/"}),
+		lease:     lease,
+	}})
+	if err == nil || !strings.Contains(err.Error(), "source must not be empty") {
+		t.Fatalf("blank finalization source error = %v", err)
+	}
+	if len(engine.buckets[outboundAnchorPublicationBucket]) != 0 {
+		t.Fatalf(
+			"blank source publications = %d",
+			len(engine.buckets[outboundAnchorPublicationBucket]),
+		)
+	}
+}
+
 func TestOutboundAnchorPublicationBoundsIdentitiesAndVirginEmptyWrites(t *testing.T) {
 	_, receiver, engine := openScriptedDocuments(t)
 	documents := receiver.(documentVault)

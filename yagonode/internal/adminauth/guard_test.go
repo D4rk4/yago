@@ -96,14 +96,45 @@ func TestGuardRequiresCSRFForUnsafeMethod(t *testing.T) {
 		t.Fatalf("missing csrf = %d, want 403", missing.Code)
 	}
 
-	req := doRequestWithCSRF(surface, http.MethodPost, "/protected", "wrong", cookie)
+	req := doRequestWithCSRF(surface, http.MethodPost, "wrong", cookie)
 	if req.Code != http.StatusForbidden {
 		t.Fatalf("wrong csrf = %d, want 403", req.Code)
 	}
 
-	ok := doRequestWithCSRF(surface, http.MethodPost, "/protected", csrf, cookie)
+	ok := doRequestWithCSRF(surface, http.MethodPost, csrf, cookie)
 	if ok.Code != http.StatusOK {
 		t.Fatalf("valid csrf = %d, want 200", ok.Code)
+	}
+}
+
+// TestGuardRequiresCSRFForEveryUnsafeMethod proves the CSRF requirement follows
+// the method's safety rather than POST alone. Revoking an API key is a DELETE and
+// settings forms reach the console as PUT or PATCH, so any of those admitted
+// without a matching token would let a cross-site request change admin state on
+// the strength of the operator's cookie. The read-only methods must stay usable
+// without a token, or plain navigation would break.
+func TestGuardRequiresCSRFForEveryUnsafeMethod(t *testing.T) {
+	surface := guardedSurface(t, testService(t))
+	cookie, csrf := loginThroughGuard(t, surface)
+
+	for _, method := range []string{
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodPatch,
+		http.MethodDelete,
+	} {
+		if rec := doRequest(surface, method, "/protected", "", cookie); rec.Code !=
+			http.StatusForbidden {
+			t.Fatalf("%s without a csrf token = %d, want 403", method, rec.Code)
+		}
+		if rec := doRequestWithCSRF(surface, method, csrf, cookie); rec.Code != http.StatusOK {
+			t.Fatalf("%s with the session csrf token = %d, want 200", method, rec.Code)
+		}
+	}
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
+		if rec := doRequest(surface, method, "/protected", "", cookie); rec.Code != http.StatusOK {
+			t.Fatalf("%s without a csrf token = %d, want 200", method, rec.Code)
+		}
 	}
 }
 

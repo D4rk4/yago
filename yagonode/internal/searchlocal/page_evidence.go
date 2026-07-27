@@ -81,7 +81,7 @@ func pageEvidenceFailure(
 	err error,
 ) (searchcore.Response, error) {
 	response.PartialFailures = append(response.PartialFailures, searchcore.PartialFailure{
-		Source: "local-evidence",
+		Source: searchcore.PartialFailureSourceLocalEvidence,
 		Reason: err.Error(),
 	})
 

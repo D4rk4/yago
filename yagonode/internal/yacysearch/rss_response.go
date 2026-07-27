@@ -34,6 +34,16 @@ type rssChannel struct {
 	Items        []rssItem     `xml:"item"`
 	Navigation   rssNavigation `xml:"yacy:navigation"`
 	TotalResults string        `xml:"opensearch:totalResults"`
+	// PartialFailures names the sources that did not answer. RSS was the only
+	// surface that reported a lost source and an empty index identically; the
+	// element sits last and is omitted when nothing failed, so a complete answer
+	// stays byte-identical to what YaCy clients already parse.
+	PartialFailures []rssPartialFailure `xml:"yacy:partialFailure"`
+}
+
+type rssPartialFailure struct {
+	Source string `xml:"source,attr"`
+	Reason string `xml:"reason,attr"`
 }
 
 type rssImage struct {
@@ -125,9 +135,10 @@ func responseRSS(r *http.Request, resp searchcore.Response) rssFeed {
 				Role:        "request",
 				SearchTerms: query,
 			},
-			Items:        responseRSSItems(resp.Results),
-			Navigation:   responseRSSNavigation(buildNavigation(query, resp.Facets)),
-			TotalResults: strconv.Itoa(resp.TotalResults),
+			Items:           responseRSSItems(resp.Results),
+			Navigation:      responseRSSNavigation(buildNavigation(query, resp.Facets)),
+			TotalResults:    strconv.Itoa(resp.TotalResults),
+			PartialFailures: responseRSSPartialFailures(resp.PartialFailures),
 		},
 	}
 }
@@ -197,4 +208,16 @@ func rssDate(raw string) string {
 	}
 
 	return raw
+}
+
+func responseRSSPartialFailures(failures []searchcore.PartialFailure) []rssPartialFailure {
+	if len(failures) == 0 {
+		return nil
+	}
+	rows := make([]rssPartialFailure, 0, len(failures))
+	for _, failure := range failures {
+		rows = append(rows, rssPartialFailure{Source: failure.Source, Reason: failure.Reason})
+	}
+
+	return rows
 }

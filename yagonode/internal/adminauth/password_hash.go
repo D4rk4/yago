@@ -113,6 +113,19 @@ func decodeArgon2id(encoded string) (argon2Params, []byte, []byte, error) {
 	if err != nil {
 		return argon2Params{}, nil, nil, errMalformedHash
 	}
+	// Well-formed base64 is not a well-formed credential. A truncated record
+	// decodes to an empty key, and the derivation below is then asked for a
+	// zero-length result: x/crypto builds its BLAKE2b digest with New(0, nil),
+	// discards the error, and writes through the nil digest, so a corrupted
+	// stored hash turned a login attempt into a segmentation fault instead of a
+	// refusal. The lengths and cost parameters are the ones this package writes,
+	// and the sibling API-key decoder already refuses anything else.
+	if len(salt) != argonSaltLength || len(key) != argonKeyLength {
+		return argon2Params{}, nil, nil, errMalformedHash
+	}
+	if params.memory == 0 || params.iterations == 0 || params.parallelism == 0 {
+		return argon2Params{}, nil, nil, errMalformedHash
+	}
 
 	return params, salt, key, nil
 }

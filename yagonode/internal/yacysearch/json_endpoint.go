@@ -79,6 +79,7 @@ func (e jsonEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.suggestions.Record(req.SubmittedText())
 
 	w.Header().Set("Content-Type", "application/json")
+	markUnprovenZero(w, resp)
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(responseJSON(r, resp))
 }

@@ -175,7 +175,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
     {{if .Reasons}}<details><summary>Why this result?</summary><ul>{{range .Reasons}}<li>{{.}}</li>{{end}}</ul></details>{{end}}
   </li>
   {{else}}
-  {{if not $.Results.UnconfirmedPage}}<p class="meta" role="status">Nothing found.</p>{{end}}
+  {{if not (or $.Results.UnconfirmedPage $.Results.Incomplete)}}<p class="meta" role="status">Nothing found.</p>{{end}}
   {{end}}
   {{if .Results}}</ul>{{end}}
   {{end}}

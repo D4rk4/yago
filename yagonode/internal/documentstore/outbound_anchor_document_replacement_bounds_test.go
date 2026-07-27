@@ -424,6 +424,31 @@ func TestOutboundAnchorMutationBatchesHonorRowsBytesAndOrder(t *testing.T) {
 	}
 }
 
+func TestOutboundAnchorMutationBatchesRejectNegativeEncodedBytes(t *testing.T) {
+	// The row ceiling, the byte ceiling, and the negative-size check all refuse
+	// through this one call, and the negative case above reaches it with the
+	// other mutations already over a one-byte budget, so it passes with the sign
+	// check deleted. Here every other mutation sits inside both limits, so only
+	// the sign check can speak. A negative size subtracts from the running batch
+	// total, which would let a batch grow past the byte budget it is supposed to
+	// respect and hand the vault a transaction larger than it admits.
+	mutations := []outboundAnchorTargetMutation{
+		{targetURL: "a", storeAnchors: true, encodedBytes: 4},
+		{targetURL: "b", storeAnchors: true, encodedBytes: -1},
+	}
+	if _, err := outboundAnchorTargetMutationBatches(mutations, 8, 16); err == nil ||
+		!strings.Contains(err.Error(), "byte limit exceeded") {
+		t.Fatalf("negative mutation size error = %v", err)
+	}
+	// The same shape with a legal size batches cleanly, so the refusal above is
+	// about the sign and not about the limits it was measured against.
+	mutations[1].encodedBytes = 4
+	batches, err := outboundAnchorTargetMutationBatches(mutations, 8, 16)
+	if err != nil || len(batches) != 1 || len(batches[0]) != 2 {
+		t.Fatalf("bounded mutation batches = %#v/%v", batches, err)
+	}
+}
+
 func TestOutboundAnchorPublicationGroupsUseEncodedByteCeiling(t *testing.T) {
 	finalizations := []OutboundAnchorFinalization{
 		{

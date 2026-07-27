@@ -252,12 +252,21 @@ func doRequest(
 	return rec
 }
 
+// guardedTestPath is the only path these helpers exercise: the guard under test
+// keys on the session and token, not on the route.
+const guardedTestPath = "/protected"
+
 func doRequestWithCSRF(
 	handler http.Handler,
-	method, path, csrf string,
+	method, csrf string,
 	cookie *http.Cookie,
 ) *httptest.ResponseRecorder {
-	req := httptest.NewRequestWithContext(context.Background(), method, path, strings.NewReader(""))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		method,
+		guardedTestPath,
+		strings.NewReader(""),
+	)
 	req.AddCookie(cookie)
 	req.Header.Set(csrfHeader, csrf)
 	rec := httptest.NewRecorder()

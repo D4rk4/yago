@@ -13,7 +13,12 @@ import (
 const (
 	interactiveSearchBudget            = 1800 * time.Millisecond
 	interactiveSearchCancellationGrace = 50 * time.Millisecond
-	interactiveSearchConcurrentWork    = 4
+	// interactiveSearchAdmissionWait bounds the wait for a pipeline slot. Waiting
+	// for the whole budget guarantees an empty answer: a caller admitted with no
+	// time left cannot search. Bounding the wait leaves the primary stage its
+	// budget, and a caller that still loses is told the node is at capacity
+	// instead of being handed a zero it cannot distinguish from an empty index.
+	interactiveSearchAdmissionWait = 300 * time.Millisecond
 )
 
 var processInteractiveSearchAdmission = newInteractiveSearchAdmission(
@@ -21,11 +26,12 @@ var processInteractiveSearchAdmission = newInteractiveSearchAdmission(
 )
 
 type interactiveBudgetSearcher struct {
-	inner     searchcore.Searcher
-	budget    time.Duration
-	grace     time.Duration
-	admission *interactiveSearchAdmission
-	panicLog  func(context.Context, string, ...any)
+	inner         searchcore.Searcher
+	budget        time.Duration
+	grace         time.Duration
+	admission     *interactiveSearchAdmission
+	admissionWait time.Duration
+	panicLog      func(context.Context, string, ...any)
 }
 
 type interactiveSearchOutcome struct {
@@ -43,11 +49,12 @@ const (
 
 func withInteractiveSearchBudget(inner searchcore.Searcher) searchcore.Searcher {
 	return interactiveBudgetSearcher{
-		inner:     inner,
-		budget:    interactiveSearchBudget,
-		grace:     interactiveSearchCancellationGrace,
-		admission: processInteractiveSearchAdmission,
-		panicLog:  slog.ErrorContext,
+		inner:         inner,
+		budget:        interactiveSearchBudget,
+		grace:         interactiveSearchCancellationGrace,
+		admission:     processInteractiveSearchAdmission,
+		admissionWait: interactiveSearchAdmissionWait,
+		panicLog:      slog.ErrorContext,
 	}
 }
 
@@ -60,7 +67,7 @@ func (s interactiveBudgetSearcher) Search(
 	searchCtx, searchCancel := context.WithTimeout(hardCtx, s.budget-s.grace)
 	defer searchCancel()
 
-	release, err := s.admission.acquire(searchCtx)
+	release, err := s.admission.acquireWithin(searchCtx, s.admissionWait)
 	if err != nil {
 		return interactiveSearchFailure(ctx, req, searchcore.Response{}, err)
 	}

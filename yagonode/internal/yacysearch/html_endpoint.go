@@ -272,6 +272,7 @@ func (e htmlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.suggestions.Record(req.SubmittedText())
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	markUnprovenZero(w, resp)
 	w.WriteHeader(http.StatusOK)
 	page := responseHTMLWithImpression(r, resp, e.clickCapture)
 	page.Elapsed = fmt.Sprintf("%.2f s", htmlClock().Sub(started).Seconds())

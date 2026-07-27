@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/D4rk4/yago/yagonode/internal/memvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -651,6 +652,61 @@ func TestReceiveBoundsExtractedText(t *testing.T) {
 	}
 	if len(got.ExtractedText) > maxExtractedTextBytes {
 		t.Fatalf("extracted text length = %d", len(got.ExtractedText))
+	}
+}
+
+func TestBoundedExtractedTextKeepsTheLimitAndCutsOnRuneBoundaries(t *testing.T) {
+	// The extracted-text budget bounds storage; it is not a licence to damage
+	// the text it keeps. Text that already fits must survive byte for byte,
+	// otherwise the bound quietly shortens every stored snippet source.
+	exact := strings.Repeat("x", maxExtractedTextBytes)
+	if bounded := boundedText(exact); bounded != exact {
+		t.Fatalf("text at the limit = %d bytes, want %d", len(bounded), len(exact))
+	}
+	// Three-byte runes never align with the limit, so a plain byte slice at
+	// maxExtractedTextBytes lands inside the last rune. Handing that to the
+	// document codec is the corruption this guard exists to prevent: json
+	// marshalling rewrites every invalid byte as U+FFFD, so an oversized page
+	// would come back out of the store mangled rather than merely shortened.
+	oversized := strings.Repeat("€", maxExtractedTextBytes/3+16)
+	if len(oversized) <= maxExtractedTextBytes {
+		t.Fatalf("oversized fixture = %d bytes", len(oversized))
+	}
+	bounded := boundedText(oversized)
+	if len(bounded) > maxExtractedTextBytes {
+		t.Fatalf("bounded text = %d bytes, want at most %d", len(bounded), maxExtractedTextBytes)
+	}
+	if !strings.HasPrefix(oversized, bounded) {
+		t.Fatal("bounded text is not a prefix of the submitted text")
+	}
+	if !utf8.ValidString(bounded) {
+		t.Fatalf("bounded text ends inside a rune at %d bytes", len(bounded))
+	}
+}
+
+func TestReceiveStoresOversizedMultibyteTextWithoutReplacementRunes(t *testing.T) {
+	// Same guard, observed through the store: a document whose extracted text
+	// exceeds the budget must round-trip as a prefix of what was submitted. A
+	// mid-rune cut survives the write and only shows up here, as U+FFFD in the
+	// text that snippets and Tavily raw_content are built from.
+	directory, receiver := openDocuments(t)
+	url := "https://example.org/multibyte"
+	text := strings.Repeat("€", maxExtractedTextBytes/3+16)
+	if _, err := receiver.Receive(t.Context(), []Document{{
+		NormalizedURL: url,
+		ExtractedText: text,
+	}}); err != nil {
+		t.Fatalf("receive: %v", err)
+	}
+	got, found, err := directory.Document(t.Context(), url)
+	if err != nil || !found {
+		t.Fatalf("stored document = %t, %v", found, err)
+	}
+	if strings.ContainsRune(got.ExtractedText, utf8.RuneError) {
+		t.Fatalf("stored text carries replacement runes at %d bytes", len(got.ExtractedText))
+	}
+	if !strings.HasPrefix(text, got.ExtractedText) {
+		t.Fatal("stored text is not a prefix of the submitted text")
 	}
 }
 

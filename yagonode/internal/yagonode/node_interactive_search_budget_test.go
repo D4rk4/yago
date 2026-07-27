@@ -87,11 +87,12 @@ func interactiveBudgetFixture(
 	budget time.Duration,
 ) searchcore.Searcher {
 	return interactiveBudgetSearcher{
-		inner:     inner,
-		budget:    budget,
-		grace:     budget / 2,
-		admission: newInteractiveSearchAdmission(1),
-		panicLog:  discardInteractiveSearchPanic,
+		inner:         inner,
+		budget:        budget,
+		grace:         budget / 2,
+		admission:     newInteractiveSearchAdmission(1),
+		admissionWait: budget / 4,
+		panicLog:      discardInteractiveSearchPanic,
 	}
 }
 
@@ -345,11 +346,16 @@ func TestInteractiveSearchHardDeadlineRendersPortalHTTP200(t *testing.T) {
 	portal.ServeHTTP(response, httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, "/?q=slow", nil,
 	))
-	if response.Code != http.StatusOK || strings.Contains(
-		response.Body.String(),
-		"Search is temporarily unavailable.",
-	) || !strings.Contains(response.Body.String(), "Nothing found.") {
-		t.Fatalf("portal response = %d %q", response.Code, response.Body.String())
+	// The pipeline missed its hard deadline, so the portal still answers 200
+	// rather than an error page -- but it must not print "Nothing found." over a
+	// search that never completed. A deadline is not evidence that the index is
+	// empty, and the banner is what says so.
+	body := response.Body.String()
+	if response.Code != http.StatusOK ||
+		strings.Contains(body, "Search is temporarily unavailable.") ||
+		strings.Contains(body, "Nothing found.") ||
+		!strings.Contains(body, "no complete result set is available") {
+		t.Fatalf("portal response = %d %q", response.Code, body)
 	}
 	close(inner.release)
 	<-inner.finished

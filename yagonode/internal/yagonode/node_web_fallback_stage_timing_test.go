@@ -379,8 +379,13 @@ func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testi
 		processRemoteSearchAdmission = previousRemoteAdmission
 	})
 
+	// Every attempt leaks one remote branch that ignores cancellation and keeps
+	// its admission slot, so the swarm must stop being reached once the slots are
+	// gone. The round count has to exceed the capacity to show that, and the
+	// capacity follows the processor count, so it cannot be a literal.
+	rounds := interactiveSearchConcurrentWork + 2
 	release := make(chan struct{})
-	finished := make(chan struct{}, 6)
+	finished := make(chan struct{}, rounds)
 	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
 	attempts := &productionShapeWebAttempts{}
 	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
@@ -389,7 +394,7 @@ func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testi
 		remote,
 		productionShapeSearchAssembly(client),
 	)
-	for attempt := range 6 {
+	for attempt := range rounds {
 		response, err := searcher.Search(t.Context(), searchcore.Request{
 			Query: "drunklab", Source: searchcore.SourceGlobal, Limit: 10,
 		})
@@ -401,7 +406,7 @@ func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testi
 	if hosts, _ := attempts.snapshot(); len(hosts) != 0 {
 		t.Fatalf("provider hosts = %v", hosts)
 	}
-	if remote.calls.Load() != interactiveSearchConcurrentWork {
+	if int(remote.calls.Load()) != interactiveSearchConcurrentWork {
 		t.Fatalf("remote calls = %d", remote.calls.Load())
 	}
 	close(release)

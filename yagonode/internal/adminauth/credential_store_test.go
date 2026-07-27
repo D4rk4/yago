@@ -3,6 +3,7 @@ package adminauth
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -51,6 +52,69 @@ func TestCredentialStoreVerifyMissingAdmin(t *testing.T) {
 	ok, err := store.verify(context.Background(), "admin", "whatever")
 	if err != nil || ok {
 		t.Fatalf("verify with no admin = %v, %v", ok, err)
+	}
+}
+
+// TestCredentialStoreVerifyEqualizesWorkForUnknownAccounts proves a failed
+// verification spends its Argon2 work whether or not the account exists: a
+// missing record and a username that does not match both hash the presented
+// password against the fixed placeholder, and only a matching username is
+// checked against the stored hash. Returning early instead would make the login
+// response fast exactly when the account is absent, turning response timing into
+// an account-existence oracle for anyone probing the endpoint.
+func TestCredentialStoreVerifyEqualizesWorkForUnknownAccounts(t *testing.T) {
+	const storedHash = "argon2id-hash-of-the-real-operator-password"
+	original := credentialPasswordVerify
+	presented := make([]string, 0, 3)
+	credentialPasswordVerify = func(encoded, password string) (bool, error) {
+		presented = append(presented, encoded)
+
+		return encoded == storedHash && password == "correct-horse", nil
+	}
+	t.Cleanup(func() { credentialPasswordVerify = original })
+
+	ctx := context.Background()
+	engine := newScriptedEngine()
+	store, err := newCredentialStore(scriptedVault(t, engine))
+	if err != nil {
+		t.Fatalf("newCredentialStore: %v", err)
+	}
+	if ok, err := store.verify(ctx, "operator", "correct-horse"); err != nil || ok {
+		t.Fatalf("verify with no admin record = %v, %v", ok, err)
+	}
+	injectRawAdmin(t, engine, "operator", storedHash)
+	if ok, err := store.verify(ctx, "intruder", "correct-horse"); err != nil || ok {
+		t.Fatalf("verify with a mismatched username = %v, %v", ok, err)
+	}
+	if ok, err := store.verify(ctx, "operator", "correct-horse"); err != nil || !ok {
+		t.Fatalf("verify with the stored username = %v, %v", ok, err)
+	}
+	want := []string{dummyPasswordHash, dummyPasswordHash, storedHash}
+	if !slices.Equal(presented, want) {
+		t.Fatalf("hashes verified = %v, want the placeholder twice then the stored hash", presented)
+	}
+}
+
+// TestDummyPasswordHashCostsWhatAStoredHashCosts proves the timing-equalization
+// placeholder is as expensive as a real credential. It is only useful if it
+// drives the same Argon2 parameters and key length as hashPassword; a cheaper
+// placeholder would leave the account-existence timing difference it exists to
+// erase.
+func TestDummyPasswordHashCostsWhatAStoredHashCosts(t *testing.T) {
+	params, salt, key, err := decodeArgon2id(dummyPasswordHash)
+	if err != nil {
+		t.Fatalf("decode placeholder hash: %v", err)
+	}
+	want := argon2Params{
+		memory:      argonMemoryKiB,
+		iterations:  argonIterations,
+		parallelism: argonParallelism,
+	}
+	if params != want {
+		t.Fatalf("placeholder params = %+v, want %+v", params, want)
+	}
+	if len(salt) != argonSaltLength || len(key) != argonKeyLength {
+		t.Fatalf("placeholder salt/key = %d/%d bytes", len(salt), len(key))
 	}
 }
 

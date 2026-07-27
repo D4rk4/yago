@@ -37,7 +37,19 @@ const currentSearchWindowFragment = `{{#if results.incomplete}}` +
 	`{{#if results.results}} On this page: {{results.localCount}} from this node · ` +
 	`{{results.peerCount}} from peers · {{results.webCount}} from the web.{{/if}}</p>`
 
+// A saved theme printed "Nothing found." on a page whose banner already said
+// the result set is incomplete, so an operator's customised portal contradicted
+// itself: no source answered, yet the page asserted the index holds nothing.
+const (
+	legacyNothingFoundFragment = `{{#if results.unconfirmedPage}}{{else}}` +
+		`<p class="meta" role="status">Nothing found.</p>{{/if}}`
+	currentNothingFoundFragment = `{{#if results.unconfirmedPage}}{{else}}` +
+		`{{#if results.incomplete}}{{else}}` +
+		`<p class="meta" role="status">Nothing found.</p>{{/if}}{{/if}}`
+)
+
 func repairLegacySearchTruth(body string) string {
+	body = strings.ReplaceAll(body, legacyNothingFoundFragment, currentNothingFoundFragment)
 	body = strings.ReplaceAll(
 		body,
 		legacyIncompleteSuggestionFragment,

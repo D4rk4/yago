@@ -74,6 +74,43 @@ func TestBootstrapFromEnv(t *testing.T) {
 	}
 }
 
+// TestBootstrapFromEnvRequiresBothCredentials proves a half-supplied bootstrap
+// is refused instead of provisioning an unusable administrator. Either half
+// alone still writes the admin record, and because the login intake rejects an
+// empty username or password nobody can ever sign into that account - while its
+// presence permanently closes the first-run setup page, so the node cannot be
+// recovered through the console either.
+func TestBootstrapFromEnvRequiresBothCredentials(t *testing.T) {
+	ctx := context.Background()
+	for name, credentials := range map[string]credentialsRequest{
+		"username only": {Username: "admin"},
+		"password only": {Password: "correct-horse"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := testService(t)
+			if err := service.BootstrapFromEnv(
+				ctx,
+				credentials.Username,
+				credentials.Password,
+			); err != nil {
+				t.Fatalf("partial bootstrap: %v", err)
+			}
+			present, err := service.creds.exists(ctx)
+			if err != nil || present {
+				t.Fatalf("partial bootstrap created an admin: present=%v err=%v", present, err)
+			}
+		})
+	}
+
+	service := testService(t)
+	if err := service.BootstrapFromEnv(ctx, "admin", "correct-horse"); err != nil {
+		t.Fatalf("complete bootstrap: %v", err)
+	}
+	if present, err := service.creds.exists(ctx); err != nil || !present {
+		t.Fatalf("complete bootstrap = %v, %v", present, err)
+	}
+}
+
 func TestBootstrapFromEnvSurfacesError(t *testing.T) {
 	engine := newScriptedEngine()
 	engine.putErr = errors.New("disk full")

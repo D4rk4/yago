@@ -2,6 +2,7 @@ package yagocrawlcontract
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -94,5 +95,49 @@ func TestCrawlURLDenylistRejectsProtocolBounds(t *testing.T) {
 	}
 	if _, err := NewCrawlURLDenylist(byteOverflow, nil); err == nil {
 		t.Fatal("encoded byte overflow accepted")
+	}
+}
+
+// TestCrawlURLDenylistAcceptsProtocolBounds is the accepting side of every bound
+// refused above; each limit is inclusive. The node and the crawler agree on a
+// denylist by revision, so if one side treated a list sitting exactly on a limit
+// as illegal the crawler would keep rejecting the node's current revision and
+// fall back to fetching the URLs the operator blocked.
+func TestCrawlURLDenylistAcceptsProtocolBounds(t *testing.T) {
+	entries := make([]string, MaximumCrawlURLDenylistEntries)
+	for index := range entries {
+		entries[index] = "https://example.com/" + strconv.Itoa(index)
+	}
+	if _, err := NewCrawlURLDenylist(entries, nil); err != nil {
+		t.Fatalf("entry count at maximum rejected: %v", err)
+	}
+	if _, err := NewCrawlURLDenylist(
+		[]string{strings.Repeat("u", MaximumCrawlURLBytes)},
+		nil,
+	); err != nil {
+		t.Fatalf("URL at maximum length rejected: %v", err)
+	}
+	if _, err := NewCrawlURLDenylist(
+		nil,
+		[]string{strings.Repeat("d", MaximumCrawlURLDenylistDomainBytes)},
+	); err != nil {
+		t.Fatalf("domain at maximum length rejected: %v", err)
+	}
+
+	// The encoded budget is charged per entry as it arrived, before duplicates
+	// collapse, so a repeated URL cannot smuggle a huge payload past the check.
+	// Sizing the entries to divide the budget exactly pins the inclusive edge:
+	// the last admitted byte, and one entry more refused.
+	const encodedEntryBytes = 1024
+	entry := strings.Repeat("u", encodedEntryBytes-5)
+	budget := make([]string, MaximumCrawlURLDenylistBytes/encodedEntryBytes)
+	for index := range budget {
+		budget[index] = entry
+	}
+	if _, err := NewCrawlURLDenylist(budget, nil); err != nil {
+		t.Fatalf("encoded bytes at maximum rejected: %v", err)
+	}
+	if _, err := NewCrawlURLDenylist(append(budget, entry), nil); err == nil {
+		t.Fatal("encoded bytes one entry above maximum accepted")
 	}
 }

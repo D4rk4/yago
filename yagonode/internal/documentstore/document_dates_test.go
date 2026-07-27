@@ -39,6 +39,46 @@ func TestMergeDocumentDatesRejectsInvalidEvidence(t *testing.T) {
 	}
 }
 
+func TestNormalizeDocumentDatesToleratesExactlyTheFutureSkew(t *testing.T) {
+	// maximumFutureDateSkew is the clock-drift allowance a crawler is granted,
+	// so it has to be pinned from both sides. Only the far-future case is
+	// asserted elsewhere: shrinking the allowance to nothing would keep every
+	// existing date test green while discarding legitimate publication dates
+	// from any peer whose clock runs slightly ahead of ours.
+	observed := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	atSkew := observed.Add(maximumFutureDateSkew)
+	tolerated := normalizeDocumentDates(Document{
+		FetchedAt:      observed,
+		PublishedAt:    atSkew,
+		ModifiedAt:     atSkew,
+		DateConfidence: 0.5,
+		DateSource:     "meta",
+	})
+	if !tolerated.PublishedAt.Equal(atSkew) || !tolerated.ModifiedAt.Equal(atSkew) {
+		t.Fatalf("dates at the skew limit = %#v", tolerated)
+	}
+	if tolerated.DateConfidence != 0.5 || tolerated.DateSource != "meta" {
+		t.Fatalf("evidence at the skew limit = %v %q",
+			tolerated.DateConfidence, tolerated.DateSource)
+	}
+	// One nanosecond past the allowance is no longer drift: it is a claim about
+	// the future, and it must take its confidence and source down with it.
+	rejected := normalizeDocumentDates(Document{
+		FetchedAt:      observed,
+		PublishedAt:    atSkew.Add(time.Nanosecond),
+		ModifiedAt:     atSkew.Add(time.Nanosecond),
+		DateConfidence: 0.5,
+		DateSource:     "meta",
+	})
+	if !rejected.PublishedAt.IsZero() || !rejected.ModifiedAt.IsZero() {
+		t.Fatalf("dates past the skew limit = %#v", rejected)
+	}
+	if rejected.DateConfidence != 0 || rejected.DateSource != "" {
+		t.Fatalf("evidence past the skew limit = %v %q",
+			rejected.DateConfidence, rejected.DateSource)
+	}
+}
+
 func TestMergeDocumentDatesDropsModificationBeforePublication(t *testing.T) {
 	published := time.Date(2024, 2, 2, 0, 0, 0, 0, time.UTC)
 	doc := normalizeDocumentDates(Document{

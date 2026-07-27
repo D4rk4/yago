@@ -212,7 +212,7 @@ const defaultResultsBody = `<!doctype html>
     {{#if reasons}}<details><summary>Why this result?</summary><ul>{{#each reasons}}<li>{{this}}</li>{{/each}}</ul></details>{{/if}}
   </li>
   {{else}}
-  {{#if results.unconfirmedPage}}{{else}}<p class="meta" role="status">Nothing found.</p>{{/if}}
+  {{#if results.unconfirmedPage}}{{else}}{{#if results.incomplete}}{{else}}<p class="meta" role="status">Nothing found.</p>{{/if}}{{/if}}
   {{/each}}
   {{#if results.results}}</ul>{{/if}}
   {{/if}}

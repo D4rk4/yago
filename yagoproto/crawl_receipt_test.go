@@ -135,3 +135,28 @@ func TestParseCrawlReceiptRequestBoundsWireFields(t *testing.T) {
 		}
 	}
 }
+
+// The bound above is inclusive, and this is its accepting side. A YaCy peer may
+// legitimately fill a receipt field to its last byte, so an off-by-one here would
+// silently drop those receipts: the remote crawl the peer already performed would
+// never be acknowledged and its queue slot would stay held.
+func TestParseCrawlReceiptRequestAcceptsExactMaximumWireFields(t *testing.T) {
+	t.Parallel()
+
+	for field, maximum := range map[string]int{
+		yagoproto.FieldResult:    yagoproto.MaximumCrawlReceiptResultBytes,
+		yagoproto.FieldReason:    yagoproto.MaximumCrawlReceiptReasonBytes,
+		yagoproto.FieldLURLEntry: yagoproto.MaximumCrawlReceiptMetadataBytes,
+	} {
+		form := url.Values{field: {strings.Repeat("x", maximum)}}
+		got, err := yagoproto.ParseCrawlReceiptRequest(t.Context(), form)
+		if err != nil {
+			t.Errorf("%s at maximum length rejected: %v", field, err)
+
+			continue
+		}
+		if length := len(got.Form().Get(field)); length != maximum {
+			t.Errorf("%s length = %d, want %d", field, length, maximum)
+		}
+	}
+}

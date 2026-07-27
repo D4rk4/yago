@@ -109,6 +109,27 @@ func TestAPIKeyPageSurfacesMalformedIdentifierWithinPage(t *testing.T) {
 	}
 }
 
+// TestAPIKeyPageRejectsEmptyIdentifier proves a record filed under an empty key
+// is refused rather than listed. The empty cursor legitimately means "start of
+// the listing", so an empty identifier passes the cursor shape check and only the
+// explicit emptiness test turns it away: admitted, it would surface as a key the
+// console cannot revoke and, as the continuation cursor of its page, would read
+// as "no more pages" and silently truncate the listing.
+func TestAPIKeyPageRejectsEmptyIdentifier(t *testing.T) {
+	store, _, _ := newTestKeyStore(t)
+	if err := store.vault.Update(context.Background(), func(tx *vault.Txn) error {
+		return store.records.Put(tx, vault.Key(""), apiKeyRecord{
+			SecretHash: hashToken("secret"),
+			Scopes:     []Scope{ScopeAdminRead},
+		})
+	}); err != nil {
+		t.Fatalf("store empty identifier: %v", err)
+	}
+	if _, err := store.page(context.Background(), "", 20); err == nil {
+		t.Fatal("api key record with an empty identifier was accepted")
+	}
+}
+
 func TestAPIKeyPageSurfacesLengthAndReaderErrors(t *testing.T) {
 	store, engine, _ := newTestKeyStore(t)
 	engine.buckets[vault.Name("__lengths__")][string(adminAPIKeysBucket)] = []byte{1}

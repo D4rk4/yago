@@ -85,6 +85,36 @@ func TestParseURIMetadataRowErrors(t *testing.T) {
 	}
 }
 
+// ParseURIMetadataRow answers structural damage, a missing hash column and a bad
+// property value with the same outer sentinel, so the table above cannot tell
+// them apart. The distinction is what a transferURL peer acts on: an invalid
+// property value names the column to blame in the discard log, while a row with
+// no hash column at all is not addressable and is a different failure entirely.
+func TestParseURIMetadataRowNamesInvalidProperties(t *testing.T) {
+	for _, bad := range []string{
+		"{hash=short}",                       // primary hash column
+		"{h=short}",                          // alternate hash column
+		"{hash=MNOPQRSTUVWX,referrer=short}", // optional hash-valued column
+		"{hash=MNOPQRSTUVWX,flags=!}",        // enhanced base64 column
+		"{hash=MNOPQRSTUVWX,dt=}",            // present but empty
+		"{hash=MNOPQRSTUVWX,size=bad}",       // integer column
+	} {
+		if _, err := ParseURIMetadataRow(bad); !errors.Is(err, errInvalidURLMetadataProperty) {
+			t.Errorf(
+				"ParseURIMetadataRow(%q) = %v, want errInvalidURLMetadataProperty",
+				bad,
+				err,
+			)
+		}
+	}
+
+	_, missing := ParseURIMetadataRow("{url=b|aHR0cHM6Ly9leGFtcGxlLm9yZy8}")
+	if !errors.Is(missing, ErrBadURLMetadata) ||
+		errors.Is(missing, errInvalidURLMetadataProperty) {
+		t.Fatalf("missing hash column = %v, want ErrBadURLMetadata only", missing)
+	}
+}
+
 func TestParseURIMetadataRowSkipsEmptyPropertyTokens(t *testing.T) {
 	row, err := ParseURIMetadataRow("{hash=MNOPQRSTUVWX,}")
 	if err != nil {

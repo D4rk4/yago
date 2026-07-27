@@ -144,6 +144,11 @@ func TestPortalDistinguishesIncompleteEmptyResponse(t *testing.T) {
 		strings.Contains(body, "No results matched") {
 		t.Fatal("incomplete response must not claim an honest zero-result search")
 	}
+	// The banner said no source answered while the list below it asserted the
+	// index holds nothing. One page cannot say both.
+	if strings.Contains(body, "Nothing found.") {
+		t.Fatal("incomplete response contradicts its own banner with \"Nothing found.\"")
+	}
 }
 
 func TestPortalSearchErrorIsGeneric(t *testing.T) {

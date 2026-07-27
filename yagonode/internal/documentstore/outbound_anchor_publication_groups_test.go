@@ -76,6 +76,32 @@ func TestOutboundAnchorPublicationGroupsValidateBudgetAndPreserveOrder(t *testin
 	}
 }
 
+func TestOutboundAnchorPublicationGroupsRejectANonPositiveBudgetWithNothingToGroup(
+	t *testing.T,
+) {
+	// The budget check and the per-source ceiling both refuse through this call,
+	// and the zero-budget case above carries finalizations that the ceiling
+	// rejects on its own - so it passes with the budget check deleted. An empty
+	// finalization list takes that cover away: nothing can exceed a ceiling when
+	// there is nothing to measure, and a misconfigured budget must still be
+	// reported rather than answered with "no groups, no error".
+	for _, maximumEncodedBytes := range []int{0, -1} {
+		groups, err := outboundAnchorPublicationGroups(nil, maximumEncodedBytes)
+		if err == nil || !strings.Contains(err.Error(), "byte limit must be positive") {
+			t.Fatalf("budget %d error = %v", maximumEncodedBytes, err)
+		}
+		if groups != nil {
+			t.Fatalf("budget %d groups = %#v", maximumEncodedBytes, groups)
+		}
+	}
+	// One byte is the smallest legal budget: the bound is "positive", not "large
+	// enough for any particular publication", so it must be admitted here even
+	// though no real publication would fit inside it.
+	if groups, err := outboundAnchorPublicationGroups(nil, 1); err != nil || len(groups) != 0 {
+		t.Fatalf("minimum publication budget groups = %#v/%v", groups, err)
+	}
+}
+
 func TestOutboundAnchorPublicationGroupFailureRetainsPendingPublicationsAndReplays(
 	t *testing.T,
 ) {

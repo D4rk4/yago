@@ -49,6 +49,35 @@ func TestServiceCreateAPIKeyRejectsUnknownScope(t *testing.T) {
 	}
 }
 
+// TestServiceCreateAPIKeyClassifiesInvalidScopeSeparately proves the two ways
+// key creation can fail stay distinguishable at the boundary: a rejected scope
+// arrives as ErrInvalidScope, a broken store does not. The console answers off
+// that sentinel - an unknown scope is an operator mistake rendered on the page,
+// anything else is a server error - so collapsing the pair would either hide a
+// failing vault behind "the selected scopes are not valid" or turn a typo into a
+// 500.
+func TestServiceCreateAPIKeyClassifiesInvalidScopeSeparately(t *testing.T) {
+	ctx := context.Background()
+	service := testService(t)
+	if _, err := service.CreateAPIKey(ctx, "x", []string{"storage:wipe"}); !errors.Is(
+		err,
+		ErrInvalidScope,
+	) {
+		t.Fatalf("unknown scope error = %v, want ErrInvalidScope", err)
+	}
+	keys, err := service.ListAPIKeys(ctx)
+	if err != nil || len(keys) != 0 {
+		t.Fatalf("refused scope still minted a key: %#v, %v", keys, err)
+	}
+
+	broken, engine := scriptedService(t)
+	engine.putErr = errors.New("disk full")
+	if _, err := broken.CreateAPIKey(ctx, "ci", []string{string(ScopeSearchRead)}); err == nil ||
+		errors.Is(err, ErrInvalidScope) {
+		t.Fatalf("store failure error = %v, want a failure that is not ErrInvalidScope", err)
+	}
+}
+
 func TestServiceRevokeAPIKeyMissing(t *testing.T) {
 	service := testService(t)
 	existed, err := service.RevokeAPIKey(context.Background(), "does-not-exist")

@@ -32,6 +32,7 @@ func (e rssEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	e.suggestions.Record(req.SubmittedText())
 
 	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
+	markUnprovenZero(w, resp)
 	w.WriteHeader(http.StatusOK)
 	encoder := xml.NewEncoder(w)
 	_ = encoder.EncodeToken(xml.ProcInst{
