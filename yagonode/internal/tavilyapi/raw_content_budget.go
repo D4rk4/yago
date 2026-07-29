@@ -54,8 +54,16 @@ func rawContentResponseError(
 	if errors.Is(err, errRawContentBudgetExceeded) {
 		return http.StatusRequestEntityTooLarge, "raw_content_too_large"
 	}
+	// An answer the node cannot vouch for is not an unavailable service: the
+	// search ran, within its budget, and part of a federated backend did not
+	// answer. 503 claimed the endpoint itself was down, which made Tavily client
+	// libraries raise on the most ordinary outcome a young index has. The
+	// condition is a conflict with the current state of the swarm, so it is
+	// reported as 409 and 503 is left to mean what it says -- the capacity and
+	// admission refusals in search_access.go, search_admission.go, and
+	// raw_content_admission.go.
 	if errors.Is(err, errSearchUnavailable) {
-		return http.StatusServiceUnavailable, "search_unavailable"
+		return http.StatusConflict, "search_unavailable"
 	}
 
 	return http.StatusInternalServerError, defaultCode

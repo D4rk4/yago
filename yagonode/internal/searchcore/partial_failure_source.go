@@ -14,4 +14,10 @@ const (
 	// and swallowed the error, and the incomplete-answer allowlist ignored it.
 	PartialFailureSourceLocalEvidence = "local-evidence"
 	PartialFailureSourceWeb           = string(SourceWeb)
+	// PartialFailureSourceQueryShape marks a stage that had nothing to ask
+	// because of the shape of the caller's own query, not because a source was
+	// lost. Nothing failed and no retry can change the outcome, so a failure
+	// carrying this source is recorded for diagnosis but never counts towards
+	// an answer the node cannot vouch for.
+	PartialFailureSourceQueryShape = "query-shape"
 )

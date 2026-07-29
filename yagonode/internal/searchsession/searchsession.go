@@ -173,7 +173,11 @@ func (s *stableSearcher) store(key string, resp searchcore.Response, searchDepth
 	now := clock()
 	key = strings.Clone(key)
 	resp.Results = boundedResults(resp.Results, retrievalDepth(searchDepth))
-	exhausted := len(resp.PartialFailures) == 0 && resp.TotalResults <= len(resp.Results)
+	// A failure that only describes the caller's query does not leave coverage
+	// unsettled, so it must not keep a complete answer from being marked
+	// exhausted -- an unexhausted session is itself enough to make every empty
+	// page read as an answer the node cannot vouch for.
+	exhausted := resp.LostSourceFailures() == 0 && resp.TotalResults <= len(resp.Results)
 	total := advertisedTotal(resp)
 	if exhausted {
 		total = len(resp.Results)

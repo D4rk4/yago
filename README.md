@@ -149,12 +149,15 @@ its binaries (`yago-node`, `yago-crawler`).
   while a deeper page is being extended. Portal navigation links only to the
   materialized result prefix; an explicitly requested page is preserved until
   a complete retrieval proves that it lies beyond the final page.
-  A Tavily-compatible search with no rows and at least one incomplete source
-  returns HTTP 503 with `Retry-After: 1` while the original caller context
-  remains live. A child or source deadline is therefore retryable while that
-  caller remains live; inherited caller cancellation or deadline retains the
-  existing infrastructure-error path. An honest complete miss remains HTTP 200
-  with an empty result list, and completed partial rows remain HTTP 200.
+  A Tavily-compatible search that retrieved no rows and lost at least one
+  source returns HTTP 409 with `Retry-After: 1` while the original caller
+  context remains live; HTTP 503 on that surface means only a capacity or
+  admission refusal. A child or source deadline is therefore retryable while
+  that caller remains live; inherited caller cancellation or deadline retains
+  the existing infrastructure-error path. An honest complete miss remains HTTP
+  200 with an empty result list, as does a request whose own date, domain, or
+  exact-match filters retained none of the rows that were retrieved, and
+  completed partial rows remain HTTP 200.
   A strict non-facet candidate pass skips relaxed retrieval only when it fills
   the requested result window and reports further strict rows (`Total > window`);
   this preserves relaxed evidence at the exact pagination boundary.

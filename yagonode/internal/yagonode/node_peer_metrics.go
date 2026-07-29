@@ -178,9 +178,24 @@ func (r observedPeerRoster) observe(ctx context.Context) {
 	// The reachable count is served from memory, so it stays exact on every call;
 	// only the persisted known count is sampled.
 	r.observer.ObservePeerRoster(
-		r.sampler.knownPeerCount(ctx, r.ObservedKnownPeerCount),
+		r.knownPeerCount(ctx),
 		r.ReachablePeerCount(ctx),
 	)
+}
+
+// knownPeerCount routes the count through this roster's sampler. Only
+// observePeerRosterWithClock installs one, so a struct literal assembled
+// anywhere else used to fault here on its very first observation -- the
+// sampler's mutex was taken through a nil pointer. A roster without one now
+// counts through a private sampler: it cannot ration reads across copies of
+// the roster, which is all the shared sampler buys, and it cannot crash.
+func (r observedPeerRoster) knownPeerCount(ctx context.Context) int {
+	sampler := r.sampler
+	if sampler == nil {
+		sampler = &knownPeerSampler{clock: time.Now}
+	}
+
+	return sampler.knownPeerCount(ctx, r.ObservedKnownPeerCount)
 }
 
 // knownPeerCount reports the newest sample, taking a fresh one only once the

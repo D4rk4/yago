@@ -315,7 +315,9 @@ func (f *multiTermAbstractFixture) writeSecondary(w http.ResponseWriter) {
 func TestRemoteSearcherReportsNoPeers(t *testing.T) {
 	resp, err := NewSearcher(Config{}).Search(
 		t.Context(),
-		searchcore.Request{Source: searchcore.SourceGlobal, Limit: 10},
+		// Terms matter: without them the fan-out never reaches the peer source at
+		// all, and this case would assert the termless path under the wrong name.
+		searchcore.Request{Terms: []string{"golang"}, Source: searchcore.SourceGlobal, Limit: 10},
 	)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -352,6 +354,12 @@ func TestRemoteSearcherReportsNoQueryTerms(t *testing.T) {
 	}
 	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no query terms" {
 		t.Fatalf("response = %#v", resp)
+	}
+	// The reason stays the operator's diagnosis, but the source must say this is
+	// a property of the query rather than a peer the node failed to reach, or an
+	// empty answer to "site:example.com" advises a retry that cannot help.
+	if source := resp.PartialFailures[0].Source; source != searchcore.PartialFailureSourceQueryShape {
+		t.Fatalf("source = %q, want the query-shape marker", source)
 	}
 }
 

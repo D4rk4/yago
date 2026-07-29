@@ -227,8 +227,26 @@ func (s searcher) searchExact(
 	budget *remoteQueryBudget,
 ) searchcore.Response {
 	hashes := termHashes(req.Terms)
+	if len(hashes) == 0 {
+		// The DHT is a word-hash lookup, so a query carrying no words gives it
+		// nothing to ask. ParseTextQuery consumes site:, inurl: and tld: as
+		// modifiers, so "site:example.com" arrives here termless -- a legitimate
+		// query, not a fault. Reporting it as a lost peer made an empty answer
+		// carry Retry-After and, on the Tavily surface, HTTP 503, advising a retry
+		// that cannot change anything.
+		return searchcore.Response{
+			Request: req,
+			PartialFailures: []searchcore.PartialFailure{{
+				Source: searchcore.PartialFailureSourceQueryShape,
+				Reason: noQueryTermsReason,
+			}},
+		}
+	}
 	peers, noPeersReason := s.remotePeers(ctx, hashes)
 	if len(peers) == 0 {
+		// Unlike a termless query, this one had something to ask and no one to
+		// ask it of. A node with no reachable targets genuinely lacks the swarm's
+		// coverage, so this stays a lost source.
 		return searchcore.Response{
 			Request: req,
 			PartialFailures: []searchcore.PartialFailure{{
@@ -297,8 +315,14 @@ func (s searcher) searchVariants(
 ) searchcore.Response {
 	lists := make([][]searchcore.Result, 0, len(variants))
 	failures := make([]searchcore.PartialFailure, 0, len(variants))
-	for _, variant := range variants {
+	for index, variant := range variants {
 		if ctx.Err() != nil {
+			// The remaining passes never ran, and a fusion missing them is not the
+			// whole answer. Reported by nobody, a truncated fusion carried no
+			// failure at all, so an empty one satisfied UnprovenZero as a truthful
+			// zero and the session layer could store it as a complete result set.
+			failures = append(failures, skippedVariantsFailure(variants[index:], ctx.Err()))
+
 			break
 		}
 		variantReq := req
@@ -332,6 +356,23 @@ func (s searcher) searchVariants(
 	}
 }
 
+// noQueryTermsReason explains a DHT fan-out that never had a word hash to send.
+const noQueryTermsReason = "no query terms"
+
+// skippedVariantsFailure names the morphology passes the swarm deadline cut.
+// The cause is this node's own deadline or its caller's cancellation, never the
+// swarm's, so it is attributed to the local remote stage.
+func skippedVariantsFailure(skipped []string, cause error) searchcore.PartialFailure {
+	return searchcore.PartialFailure{
+		Source: searchcore.PartialFailureSourceRemoteStage,
+		Reason: fmt.Sprintf(
+			"%d query variant(s) skipped before completion: %s",
+			len(skipped),
+			cause,
+		),
+	}
+}
+
 func (s searcher) overallContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, s.overallTimeout)
 }
@@ -346,10 +387,6 @@ func (s searcher) remotePeers(
 	peers := s.peers.SearchTargetPeers(ctx)
 	if len(peers) == 0 {
 		return nil, "no known peers"
-	}
-
-	if len(hashes) == 0 {
-		return nil, "no query terms"
 	}
 
 	selected, err := selectDHTSearchPeers(hashes, peers, dhtSearchPeerConfig{
@@ -687,13 +724,33 @@ func remoteResultIdentity(result searchcore.Result) string {
 	return "url:" + result.URL
 }
 
+// peerFailure names the cause of a failed peer call. A call this node cut
+// itself -- its own outbound response budget, or its own admission gate --
+// is not the peer's doing, and may have been cut before the peer was ever
+// reached. Naming the peer there makes the console and peerSearchFailureTotal
+// count a healthy peer as failing whenever this node is busy, so a local cut
+// is attributed to the local remote stage instead. recordPeerFailure already
+// draws the same line for the peer's reputation; both read it from
+// locallyCutRemoteCall so the two can never disagree.
 func peerFailure(peer yagomodel.Seed, err error) searchcore.PartialFailure {
+	if locallyCutRemoteCall(err) {
+		return searchcore.PartialFailure{
+			Source: searchcore.PartialFailureSourceRemoteStage,
+			Reason: err.Error(),
+		}
+	}
 	source := peer.Hash.String()
 	if source == "" {
 		source = searchcore.PartialFailureSourceRemoteYaCy
 	}
 
 	return searchcore.PartialFailure{Source: source, Reason: err.Error()}
+}
+
+// locallyCutRemoteCall reports that this node, not the peer, ended the call.
+func locallyCutRemoteCall(err error) bool {
+	return errors.Is(err, errRemoteSearchBudgetExhausted) ||
+		errors.Is(err, errRemoteSearchAdmissionCanceled)
 }
 
 func searchResults(

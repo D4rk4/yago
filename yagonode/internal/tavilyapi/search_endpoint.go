@@ -310,9 +310,13 @@ func (e searchEndpoint) searchResponseForCaller(
 	if err != nil {
 		return SearchResponse{}, err
 	}
+	// Availability is decided on what the sources returned, not on what
+	// survived the caller's filters above. A node in a live swarm almost
+	// always loses at least one peer, so scoring the served count here turned
+	// every over-narrow request into a 503 telling the caller to retry.
 	if availabilityErr := searchAvailabilityError(
-		len(results),
-		len(resp.PartialFailures),
+		len(resp.Results),
+		resp.LostSourceFailures(),
 		callerContext.Err(),
 	); availabilityErr != nil {
 		return SearchResponse{}, availabilityErr

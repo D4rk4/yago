@@ -356,8 +356,7 @@ func recordPeerFailure(
 	peer yagomodel.Seed,
 	err error,
 ) {
-	if !errors.Is(err, errRemoteSearchBudgetExhausted) &&
-		!errors.Is(err, errRemoteSearchAdmissionCanceled) {
+	if !locallyCutRemoteCall(err) {
 		reputation.record(peer, observationOutcome(err, false))
 	}
 }

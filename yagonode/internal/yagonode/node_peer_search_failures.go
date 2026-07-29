@@ -16,6 +16,7 @@ func peerSearchFailureTotal(failures []searchcore.PartialFailure) int {
 			searchcore.PartialFailureSourceLocalExactStage,
 			searchcore.PartialFailureSourceFuzzyStage,
 			searchcore.PartialFailureSourceLocalSearch,
+			searchcore.PartialFailureSourceQueryShape,
 			searchcore.PartialFailureSourceWeb:
 			continue
 		}

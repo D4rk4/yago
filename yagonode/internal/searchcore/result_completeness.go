@@ -9,5 +9,22 @@ package searchcore
 // a caller which one it received.
 func (r Response) UnprovenZero() bool {
 	return len(r.Results) == 0 &&
-		(len(r.PartialFailures) > 0 || !r.Availability.Exhausted)
+		(r.LostSourceFailures() > 0 || !r.Availability.Exhausted)
+}
+
+// LostSourceFailures counts the partial failures that stand for a source the
+// node could not get an answer from. A failure describing the caller's own
+// query instead -- a stage that had nothing to ask because the query carried no
+// words -- is diagnosis, not loss: counting it told the caller to retry a query
+// whose outcome is fixed. Availability decisions read this, never the raw
+// length.
+func (r Response) LostSourceFailures() int {
+	lost := 0
+	for _, failure := range r.PartialFailures {
+		if failure.Source != PartialFailureSourceQueryShape {
+			lost++
+		}
+	}
+
+	return lost
 }

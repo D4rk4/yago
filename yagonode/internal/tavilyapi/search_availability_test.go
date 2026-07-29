@@ -43,7 +43,7 @@ func searchAvailabilityEndpointCases() []searchAvailabilityEndpointCase {
 				Source: searchcore.PartialFailureSourceLocalSearch,
 				Reason: "deadline",
 			}}},
-			status: http.StatusServiceUnavailable,
+			status: http.StatusConflict,
 		},
 		{
 			name: "incomplete miss with source error",
@@ -52,7 +52,7 @@ func searchAvailabilityEndpointCases() []searchAvailabilityEndpointCase {
 				Reason: "unavailable",
 			}}},
 			err:    errors.New("source unavailable"),
-			status: http.StatusServiceUnavailable,
+			status: http.StatusConflict,
 		},
 		{
 			name: "source deadline incomplete miss",
@@ -61,7 +61,7 @@ func searchAvailabilityEndpointCases() []searchAvailabilityEndpointCase {
 				Reason: "deadline",
 			}}},
 			err:    context.DeadlineExceeded,
-			status: http.StatusServiceUnavailable,
+			status: http.StatusConflict,
 		},
 		{
 			name: "expired caller incomplete miss",
@@ -133,11 +133,11 @@ func assertSearchAvailabilityEndpointCase(
 		t.Fatalf("status = %d, want %d body=%s",
 			rec.Code, test.status, rec.Body.String())
 	}
-	if test.status == http.StatusServiceUnavailable &&
+	if test.status == http.StatusConflict &&
 		!strings.Contains(rec.Body.String(), `"search unavailable`) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
-	if test.status == http.StatusServiceUnavailable &&
+	if test.status == http.StatusConflict &&
 		rec.Header().Get("Retry-After") != "1" {
 		t.Fatalf("Retry-After = %q", rec.Header().Get("Retry-After"))
 	}

@@ -155,6 +155,47 @@ func TestPortalSourceCarriesBoundedPartialFailureState(t *testing.T) {
 	}
 }
 
+// TestPortalSourceDoesNotCallAQueryShapeMissIncomplete stops the portal
+// contradicting itself. A modifier-only query such as "site:example.com" gives
+// the DHT no word hash to send, and marking that incomplete printed "Some
+// enabled search sources were unavailable ... Please try again" directly above
+// the hint telling the reader to add a search word. Nothing was unavailable and
+// no retry helps.
+func TestPortalSourceDoesNotCallAQueryShapeMissIncomplete(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		PartialFailures: []searchcore.PartialFailure{
+			{Source: searchcore.PartialFailureSourceQueryShape, Reason: "no query terms"},
+		},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "site:example.org", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if results.Incomplete || results.FederationUnavailable || results.PeersFailed != 0 {
+		t.Fatalf("query-shape state = %+v, want a complete answer", results)
+	}
+
+	// The over-permitting guard: a real loss alongside it must still show.
+	lost := &stubPortalSearcher{response: searchcore.Response{
+		PartialFailures: []searchcore.PartialFailure{
+			{Source: searchcore.PartialFailureSourceQueryShape, Reason: "no query terms"},
+			{Source: searchcore.PartialFailureSourceRemoteYaCy, Reason: "no known peers"},
+		},
+	}}
+	results, err = newPortalSource(lost).Search(t.Context(), "site:example.org", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if !results.Incomplete {
+		t.Fatalf(
+			"a lost peer alongside a query-shape note must still read incomplete: %+v",
+			results,
+		)
+	}
+}
+
 func TestPortalSourceLabelsCorpusFacetPopulation(t *testing.T) {
 	t.Parallel()
 

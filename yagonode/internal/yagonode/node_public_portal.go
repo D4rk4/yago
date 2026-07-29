@@ -98,7 +98,7 @@ func (s portalSource) Search(
 		Availability:          portalSearchAvailability(response),
 		PeersFailed:           peerSearchFailureTotal(response.PartialFailures),
 		FederationUnavailable: federationSearchUnavailable(response.PartialFailures),
-		Incomplete:            len(response.PartialFailures) > 0,
+		Incomplete:            response.LostSourceFailures() > 0,
 		Hint:                  modifierhint.Text(response.Request, response.TotalResults),
 	}
 	out.DidYouMean = response.DidYouMean
