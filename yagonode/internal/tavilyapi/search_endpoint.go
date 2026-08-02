@@ -57,6 +57,8 @@ type SearchRequest struct {
 	Days                     *int           `json:"days,omitempty"`
 	StartDate                string         `json:"start_date,omitempty"`
 	EndDate                  string         `json:"end_date,omitempty"`
+	FirstSeenStart           string         `json:"first_seen_start,omitempty"`
+	FirstSeenEnd             string         `json:"first_seen_end,omitempty"`
 	IncludeAnswer            inclusionMode  `json:"include_answer,omitempty"`
 	IncludeRawContent        rawContentMode `json:"include_raw_content,omitempty"`
 	IncludeImages            bool           `json:"include_images,omitempty"`
@@ -294,19 +296,9 @@ func (e searchEndpoint) searchResponseForCaller(
 		return SearchResponse{}, err
 	}
 	resp := completion.response
-	dated := resp.Results
-	if !coreReq.MinDate.IsZero() || !coreReq.MaxDate.IsZero() {
-		// Remote and web results bypass the local index filter; hold them to
-		// the same document-date bounds.
-		dated = make([]searchcore.Result, 0, len(resp.Results))
-		for _, result := range resp.Results {
-			if resultWithinBounds(result.Date, coreReq.MinDate, coreReq.MaxDate) {
-				dated = append(dated, result)
-			}
-		}
-	}
+	bounded := resultsWithinRequestedBounds(resp.Results, coreReq)
 
-	results, images, err := e.responseResults(ctx, req, coreReq, dated)
+	results, images, err := e.responseResults(ctx, req, coreReq, bounded)
 	if err != nil {
 		return SearchResponse{}, err
 	}
@@ -357,29 +349,39 @@ func coreRequest(req SearchRequest) (searchcore.Request, error) {
 		return searchcore.Request{}, badRequest(err.Error())
 	}
 	minDate, maxDate := requestTimeBounds(req)
+	minFirstSeen, maxFirstSeen := requestFirstSeenBounds(req)
 
 	coreReq := searchcore.Request{
-		Query:            query,
-		Terms:            parsed.Terms,
-		ExcludedTerms:    parsed.ExcludedTerms,
-		Phrases:          parsed.Phrases(),
-		Source:           source,
-		Limit:            limit,
-		ContentDomain:    searchcore.ContentDomainText,
-		Language:         parsed.Language,
-		SiteHost:         parsed.SiteHost,
-		IncludeDomains:   normalizedDomains(req.IncludeDomains),
-		ExcludeDomains:   normalizedDomains(req.ExcludeDomains),
-		InURL:            parsed.InURL,
-		TLD:              parsed.TLD,
-		FileType:         parsed.FileType,
-		Verify:           searchcore.VerifyFalse,
-		SafeSearch:       req.SafeSearch,
-		SortByDate:       parsed.SortByDate,
-		Near:             parsed.Near,
+		Query:          query,
+		Terms:          parsed.Terms,
+		ExcludedTerms:  parsed.ExcludedTerms,
+		Phrases:        parsed.Phrases(),
+		Source:         source,
+		Limit:          limit,
+		ContentDomain:  searchcore.ContentDomainText,
+		Language:       parsed.Language,
+		SiteHost:       parsed.SiteHost,
+		IncludeDomains: normalizedDomains(req.IncludeDomains),
+		ExcludeDomains: normalizedDomains(req.ExcludeDomains),
+		InURL:          parsed.InURL,
+		TLD:            parsed.TLD,
+		FileType:       parsed.FileType,
+		Verify:         searchcore.VerifyFalse,
+		SafeSearch:     req.SafeSearch,
+		SortByDate:     parsed.SortByDate,
+		Near:           parsed.Near,
+		// Consent stays true for every Tavily request: the caller reaches a
+		// search API and accepts whatever sources the node is configured to use.
+		// Withdrawing consent here would not suppress the provider anyway, since
+		// a node configured with web fallback enabled or always permits it
+		// without consulting this flag. The refusal for a first-seen-bounded
+		// request therefore lives at the provider stage itself, in
+		// websearch.providerEligible, where it holds for every configuration.
 		AllowWebFallback: true,
 		MinDate:          minDate,
 		MaxDate:          maxDate,
+		MinFirstSeen:     minFirstSeen,
+		MaxFirstSeen:     maxFirstSeen,
 	}
 	if normalizedSearchDepth(req.SearchDepth) == "advanced" {
 		coreReq.Verify = searchcore.VerifyIfExist
@@ -452,6 +454,9 @@ func validateRequestOptions(req SearchRequest) error {
 		return err
 	}
 	if err := validateDateRange(req.StartDate, req.EndDate); err != nil {
+		return err
+	}
+	if err := validateFirstSeenRange(req.FirstSeenStart, req.FirstSeenEnd); err != nil {
 		return err
 	}
 	if err := validateCountry(req.Country); err != nil {
@@ -530,6 +535,30 @@ func validateDateRange(start, end string) error {
 	}
 	if !startTime.IsZero() && !endTime.IsZero() && startTime.After(endTime) {
 		return badRequest("start_date must not be after end_date")
+	}
+
+	return nil
+}
+
+// validateFirstSeenRange checks the first-seen window, a yago extension with no
+// upstream Tavily equivalent. It reads the same YYYY-MM-DD dates as the
+// publication window and rejects a reversed range the same way, but the two
+// windows are independent and neither implies the other.
+func validateFirstSeenRange(start, end string) error {
+	startTime, err := parseOptionalDate(start, "first_seen_start")
+	if err != nil {
+		return err
+	}
+	endTime, err := parseOptionalDate(end, "first_seen_end")
+	if err != nil {
+		return err
+	}
+	// An open-ended window is legal, so only a set end can be overtaken. The end
+	// carries the whole test: an absent start parses to the zero time, which no
+	// parseable end date can precede, so a separate start check would refuse
+	// nothing and no input could prove it still worked.
+	if !endTime.IsZero() && startTime.After(endTime) {
+		return badRequest("first_seen_start must not be after first_seen_end")
 	}
 
 	return nil

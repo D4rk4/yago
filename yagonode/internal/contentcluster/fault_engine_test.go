@@ -24,14 +24,21 @@ type clusterFaultEngine struct {
 	provisionFailure vault.Name
 	putFailure       vault.Name
 	deleteFailure    vault.Name
-	updates          int
-	replayUpdate     func(*clusterFaultEngine)
-	partialUpdate    int
-	partialAfter     int
-	readGateBucket   vault.Name
-	readGateKey      string
-	readGateEntered  chan struct{}
-	readGateRelease  <-chan struct{}
+	// readFailure names a bucket whose reads fail in the storage engine
+	// itself. The real engine reports a stored value that fails its checksum,
+	// carries an unknown format tag, or will not decompress; before the
+	// fingerprint keyspace stopped routing reads through a JSON codec, a
+	// corrupt document reached the same branch by failing to decode, and that
+	// is no longer possible.
+	readFailure     vault.Name
+	updates         int
+	replayUpdate    func(*clusterFaultEngine)
+	partialUpdate   int
+	partialAfter    int
+	readGateBucket  vault.Name
+	readGateKey     string
+	readGateEntered chan struct{}
+	readGateRelease <-chan struct{}
 }
 
 type clusterFaultTxn struct {
@@ -238,6 +245,22 @@ func (b *clusterFaultBucket) Get(key vault.Key) []byte {
 	}
 
 	return append([]byte(nil), b.transaction.buckets[b.name][string(key)]...)
+}
+
+// ReadValue makes the double able to express a storage read failure, which is
+// what the real engine reports for a corrupt stored value. Without an injected
+// failure it must answer exactly as Get does, since implementing this interface
+// is what decides which path the vault takes for every read in every test.
+func (b *clusterFaultBucket) ReadValue(key vault.Key) ([]byte, bool, error) {
+	if b.name == b.transaction.engine.readFailure {
+		return nil, false, errInjectedClusterVault
+	}
+	raw := b.Get(key)
+	if raw == nil {
+		return nil, false, nil
+	}
+
+	return raw, true, nil
 }
 
 func (b *clusterFaultBucket) Put(key vault.Key, raw []byte) error {

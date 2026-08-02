@@ -97,6 +97,8 @@ func TestSearchEndpointReturnsTavilyShape(t *testing.T) {
 		"time_range":"week",
 		"start_date":"2026-01-01",
 		"end_date":"2026-07-02",
+		"first_seen_start":"2026-01-01",
+		"first_seen_end":"2026-07-02",
 		"country":"united states",
 		"auto_parameters":true,
 		"include_usage":true,
@@ -661,6 +663,24 @@ func badRequestOptionCases() []badRequestCase {
 			name:   "date order",
 			method: http.MethodPost,
 			body:   `{"query":"go","start_date":"2026-07-03","end_date":"2026-07-02"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "first seen start",
+			method: http.MethodPost,
+			body:   `{"query":"go","first_seen_start":"2026-7-2"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "first seen end",
+			method: http.MethodPost,
+			body:   `{"query":"go","first_seen_end":"2026-7-2"}`,
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "first seen order",
+			method: http.MethodPost,
+			body:   `{"query":"go","first_seen_start":"2026-07-03","first_seen_end":"2026-07-02"}`,
 			code:   http.StatusBadRequest,
 		},
 	}

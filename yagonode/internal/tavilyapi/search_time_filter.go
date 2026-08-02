@@ -3,6 +3,8 @@ package tavilyapi
 import (
 	"strings"
 	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
 // timeFilterClock feeds time_range resolution; tests substitute a scripted
@@ -39,6 +41,22 @@ func requestTimeBounds(req SearchRequest) (time.Time, time.Time) {
 	return time.Time{}, time.Time{}
 }
 
+// requestFirstSeenBounds resolves the first-seen window, which asks when this
+// node first saw a document rather than when the document was published. It is
+// a yago extension, so it is stated explicitly and only explicitly: time_range,
+// days, and topic keep their upstream publication-recency meaning and never
+// produce a first-seen bound. Both values were validated earlier.
+func requestFirstSeenBounds(req SearchRequest) (time.Time, time.Time) {
+	start, _ := parseOptionalDate(req.FirstSeenStart, "first_seen_start")
+	end, _ := parseOptionalDate(req.FirstSeenEnd, "first_seen_end")
+	if !end.IsZero() {
+		// Include the whole end day.
+		end = end.Add(24*time.Hour - time.Nanosecond)
+	}
+
+	return start, end
+}
+
 // timeRangeWindow maps the documented time_range values onto durations.
 func timeRangeWindow(value string) time.Duration {
 	switch strings.ToLower(strings.TrimSpace(value)) {
@@ -53,6 +71,39 @@ func timeRangeWindow(value string) time.Duration {
 	default:
 		return 0
 	}
+}
+
+// resultsWithinRequestedBounds holds the served rows to the caller's own time
+// windows. Remote and web rows bypassed the local index filter, so the
+// document-date bounds are re-applied to them here.
+//
+// A first-seen bound is different in kind. First-seen is when this node saw the
+// document, peers neither send nor receive it, so a row this node does not hold
+// carries no first-seen time at all and cannot be shown to fall inside the
+// window. Such a row therefore drops under an active first-seen bound, which is
+// the same refusal the index applies to a document with no first-seen time.
+// Retrieval itself is unchanged: local and peer stages still run, and a caller
+// whose own window keeps nothing gets an honest empty answer, not a failure.
+func resultsWithinRequestedBounds(
+	results []searchcore.Result,
+	req searchcore.Request,
+) []searchcore.Result {
+	firstSeenBounded := req.FirstSeenBounded()
+	if req.MinDate.IsZero() && req.MaxDate.IsZero() && !firstSeenBounded {
+		return results
+	}
+	bounded := make([]searchcore.Result, 0, len(results))
+	for _, result := range results {
+		if !resultWithinBounds(result.Date, req.MinDate, req.MaxDate) {
+			continue
+		}
+		if firstSeenBounded && !result.StoredLocally() {
+			continue
+		}
+		bounded = append(bounded, result)
+	}
+
+	return bounded
 }
 
 // resultWithinBounds keeps remote and web results honest too: their document

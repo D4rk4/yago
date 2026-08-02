@@ -41,6 +41,21 @@ func TestFreshnessProfileUsesStructuredDateIntent(t *testing.T) {
 	}
 }
 
+// TestFreshnessProfileIgnoresFirstSeenBounds pins that a first-seen window does
+// not reshape publication-age decay. The decay half-lives are consumed against
+// an age measured from the publication date, so deriving them from a discovery
+// window would tune freshness by whatever the crawler happened to touch last.
+func TestFreshnessProfileIgnoresFirstSeenBounds(t *testing.T) {
+	now := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
+	adaptive := freshnessProfileFor(searchcore.Request{}, nil, now)
+	firstSeen := freshnessProfileFor(searchcore.Request{
+		MinFirstSeen: now.Add(-20 * 24 * time.Hour), MaxFirstSeen: now,
+	}, nil, now)
+	if firstSeen != adaptive {
+		t.Fatalf("first-seen profile = %#v, want the adaptive profile %#v", firstSeen, adaptive)
+	}
+}
+
 func TestFreshnessProfileAdaptsToCandidateDates(t *testing.T) {
 	now := time.Date(2026, 7, 11, 0, 0, 0, 0, time.UTC)
 	neutral := freshnessProfileFor(searchcore.Request{}, []searchcore.Result{{

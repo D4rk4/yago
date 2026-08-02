@@ -266,6 +266,18 @@ func (s *FallbackSearcher) providerEligible(req searchcore.Request) bool {
 	if req.ContentDomain != "" && req.ContentDomain != searchcore.ContentDomainText {
 		return false
 	}
+	// A first-seen-bounded request asks when this node first saw a page, which
+	// only this node's own index knows. Provider rows are not held here, so every
+	// one of them is dropped again by the caller's window: running the provider
+	// would send the query to an external engine, spend the shared provider
+	// budget, and add its latency to buy rows that cannot qualify. Same rule as
+	// the vertical above — a request shape the provider cannot answer does not
+	// buy a call. The cost is that such a request also seeds no crawl URLs; a
+	// request without the bound still does, and seeding is what makes pages
+	// locally held and so first-seen at all.
+	if req.FirstSeenBounded() {
+		return false
+	}
 	if s.permit == nil || !s.permit(req) {
 		return false
 	}

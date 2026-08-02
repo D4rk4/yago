@@ -41,17 +41,30 @@ type storedCandidateProjection struct {
 	ContentSafety          documentstore.ContentSafetyEvidence  `json:"x"`
 	PublishedAt            time.Time                            `json:"d,omitempty"`
 	DateConfidence         float64                              `json:"dc,omitempty"`
-	Author                 string                               `json:"a,omitempty"`
-	AuthorComplete         bool                                 `json:"ac"`
-	Keywords               string                               `json:"k,omitempty"`
-	Publisher              string                               `json:"p,omitempty"`
-	Language               string                               `json:"l,omitempty"`
-	LanguageComplete       bool                                 `json:"lc"`
-	ContentType            string                               `json:"m,omitempty"`
-	ContentTypeComplete    bool                                 `json:"mc"`
-	Size                   int                                  `json:"z,omitempty"`
-	HasImages              bool                                 `json:"ih,omitempty"`
-	Images                 []documentstore.ImageMetadata        `json:"i,omitempty"`
+	// FirstSeenAt carries the document's raw first-seen time. Unlike
+	// PublishedAt above there is no evidence rule to resolve: it records when
+	// this node first saw the page, which is either known or absent.
+	//
+	// FirstSeenComplete says the payload's writer knew the field at all. A
+	// payload written before it existed leaves the key out, and an absent key
+	// decodes to the same zero time a document with no first-seen time carries,
+	// so the two are indistinguishable from the value alone. Reading that zero
+	// as "never seen" would refuse every already-indexed document under an
+	// active first-seen bound, so supports below declines such a payload and the
+	// caller reads the stored document instead.
+	FirstSeenAt         time.Time                     `json:"f,omitempty"`
+	FirstSeenComplete   bool                          `json:"fc"`
+	Author              string                        `json:"a,omitempty"`
+	AuthorComplete      bool                          `json:"ac"`
+	Keywords            string                        `json:"k,omitempty"`
+	Publisher           string                        `json:"p,omitempty"`
+	Language            string                        `json:"l,omitempty"`
+	LanguageComplete    bool                          `json:"lc"`
+	ContentType         string                        `json:"m,omitempty"`
+	ContentTypeComplete bool                          `json:"mc"`
+	Size                int                           `json:"z,omitempty"`
+	HasImages           bool                          `json:"ih,omitempty"`
+	Images              []documentstore.ImageMetadata `json:"i,omitempty"`
 }
 
 type searchHitProjection struct {
@@ -112,6 +125,8 @@ func newStoredCandidateProjection(doc documentstore.Document) storedCandidatePro
 		ContentSafety:          doc.ContentSafety,
 		PublishedAt:            publishedAt,
 		DateConfidence:         dateConfidence,
+		FirstSeenAt:            doc.FirstSeenAt,
+		FirstSeenComplete:      true,
 		Author:                 author,
 		AuthorComplete:         authorComplete,
 		Keywords:               keywords,
@@ -189,6 +204,9 @@ func (p storedCandidateProjection) supports(req SearchRequest) bool {
 	if req.Author != "" && !p.AuthorComplete {
 		return false
 	}
+	if firstSeenBounded(req) && !p.FirstSeenComplete {
+		return false
+	}
 	if req.Language != "" && !p.LanguageComplete {
 		return false
 	}
@@ -215,6 +233,7 @@ func (p storedCandidateProjection) document(hitID string) documentstore.Document
 		ContentType:       p.ContentType,
 		PublishedAt:       p.PublishedAt,
 		DateConfidence:    p.DateConfidence,
+		FirstSeenAt:       p.FirstSeenAt,
 		ClusterID:         p.ClusterID,
 		RepresentativeURL: p.RepresentativeURL,
 		Images:            images,

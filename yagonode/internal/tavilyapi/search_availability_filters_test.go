@@ -32,6 +32,16 @@ func answeredWithLostPeer() searchcore.Response {
 	}
 }
 
+// peerAnsweredWithLostPeer is the same ordinary shape answered by a peer instead
+// of from local storage. First-seen is local by nature -- peers neither send nor
+// receive it -- so this is the row a first-seen window must drop.
+func peerAnsweredWithLostPeer() searchcore.Response {
+	response := answeredWithLostPeer()
+	response.Results[0].Source = searchcore.SourceRemote
+
+	return response
+}
+
 func serveSearchBody(
 	t *testing.T,
 	response searchcore.Response,
@@ -64,36 +74,52 @@ func serveSearchBody(
 func TestSearchServesEmptyAnswerWhenCallerFiltersMatchNothing(t *testing.T) {
 	withScriptedFilterClock(t)
 	for _, test := range []struct {
-		name string
-		body string
+		name     string
+		body     string
+		response searchcore.Response
 	}{
 		{
-			name: "date bound",
-			body: `{"query":"golang","time_range":"week"}`,
+			name:     "date bound",
+			body:     `{"query":"golang","time_range":"week"}`,
+			response: answeredWithLostPeer(),
 		},
 		{
-			name: "news topic default bound",
-			body: `{"query":"golang","topic":"news"}`,
+			name:     "news topic default bound",
+			body:     `{"query":"golang","topic":"news"}`,
+			response: answeredWithLostPeer(),
 		},
 		{
-			name: "explicit start date",
-			body: `{"query":"golang","start_date":"2026-01-01"}`,
+			name:     "explicit start date",
+			body:     `{"query":"golang","start_date":"2026-01-01"}`,
+			response: answeredWithLostPeer(),
 		},
 		{
-			name: "excluded domain",
-			body: `{"query":"golang","exclude_domains":["blocked.example"]}`,
+			name:     "excluded domain",
+			body:     `{"query":"golang","exclude_domains":["blocked.example"]}`,
+			response: answeredWithLostPeer(),
 		},
 		{
-			name: "included domain matching nothing",
-			body: `{"query":"golang","include_domains":["allowed.example"]}`,
+			name:     "included domain matching nothing",
+			body:     `{"query":"golang","include_domains":["allowed.example"]}`,
+			response: answeredWithLostPeer(),
 		},
 		{
-			name: "exact match phrase absent",
-			body: `{"query":"golang \"phrase that never appears\"","exact_match":true}`,
+			name:     "exact match phrase absent",
+			body:     `{"query":"golang \"phrase that never appears\"","exact_match":true}`,
+			response: answeredWithLostPeer(),
+		},
+		{
+			// A first-seen window that retains no row is the same kind of
+			// deterministic zero: the sources answered, and the caller's own
+			// window kept nothing. It must not be reported as an unavailable
+			// search, and it must not advise a retry.
+			name:     "first-seen window",
+			body:     `{"query":"golang","first_seen_start":"2026-01-01"}`,
+			response: peerAnsweredWithLostPeer(),
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			rec := serveSearchBody(t, answeredWithLostPeer(), test.body)
+			rec := serveSearchBody(t, test.response, test.body)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 			}

@@ -119,6 +119,8 @@ func (s localSearcher) indexRequestWithWeights(
 		ContentDomain:      string(req.ContentDomain),
 		MinDate:            req.MinDate,
 		MaxDate:            req.MaxDate,
+		MinFirstSeen:       req.MinFirstSeen,
+		MaxFirstSeen:       req.MaxFirstSeen,
 		FileType:           req.FileType,
 		InURL:              req.InURL,
 		TLD:                req.TLD,

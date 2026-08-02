@@ -36,6 +36,8 @@ func cacheKey(req SearchRequest) string {
 	writeCacheField(&builder, req.ContentDomain)
 	writeCacheTime(&builder, req.MinDate)
 	writeCacheTime(&builder, req.MaxDate)
+	writeCacheTime(&builder, req.MinFirstSeen)
+	writeCacheTime(&builder, req.MaxFirstSeen)
 	writeCacheField(&builder, req.FileType)
 	writeCacheField(&builder, req.InURL)
 	writeCacheField(&builder, req.TLD)

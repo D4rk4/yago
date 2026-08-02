@@ -57,8 +57,14 @@ type Request struct {
 	// WithFacets asks the local index for facet counts over every match.
 	WithFacets bool
 	// MinDate and MaxDate bound results by document date when non-zero.
-	MinDate          time.Time
-	MaxDate          time.Time
+	MinDate time.Time
+	MaxDate time.Time
+	// MinFirstSeen and MaxFirstSeen bound results by the time this node first
+	// saw the document, which is unrelated to publication: a document with no
+	// publication date at all still has a first-seen time, and a document
+	// published years ago can have been first seen today.
+	MinFirstSeen     time.Time
+	MaxFirstSeen     time.Time
 	Offset           int
 	ContentDomain    ContentDomain
 	Language         string

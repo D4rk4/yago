@@ -480,7 +480,11 @@ func allowsDocumentLocation(doc documentstore.Document, req SearchRequest, host 
 	if req.TLD != "" && !hostMatchesTLD(host, req.TLD) {
 		return false
 	}
-	return allowsDocumentDate(doc, req)
+	if !allowsDocumentDate(doc, req) {
+		return false
+	}
+
+	return allowsFirstSeen(doc, req)
 }
 
 func allowsSafeDocument(doc documentstore.Document, contentDomain string) bool {
@@ -522,6 +526,44 @@ func allowsDocumentDate(doc documentstore.Document, req SearchRequest) bool {
 	}
 
 	return true
+}
+
+// allowsFirstSeen applies the optional first-seen bounds, which ask when this
+// node first saw the document rather than when it was published. Both bounds
+// are inclusive, and a document carrying no first-seen time does not qualify
+// under an active bound — the same rule allowsDocumentDate applies to an
+// undated document, because an unknown value cannot be shown to be inside the
+// requested window. Every stored document carries a first-seen time, so that
+// refusal only reaches a record written before the field existed.
+func allowsFirstSeen(doc documentstore.Document, req SearchRequest) bool {
+	if !firstSeenBounded(req) {
+		return true
+	}
+	if doc.FirstSeenAt.IsZero() {
+		return false
+	}
+	// The start bound carries no is-set test because none could ever refuse
+	// anything: an absent start is the zero time, and the refusal above leaves
+	// only first-seen times strictly after it. The end bound does need one, since
+	// every real first-seen time is after the zero time and an unguarded
+	// comparison would refuse every document under an open end.
+	if doc.FirstSeenAt.Before(req.MinFirstSeen) {
+		return false
+	}
+	if !req.MaxFirstSeen.IsZero() && doc.FirstSeenAt.After(req.MaxFirstSeen) {
+		return false
+	}
+
+	return true
+}
+
+// firstSeenBounded reports whether either half of the first-seen window is set.
+// Three sites need the same answer — the filter above, the disk backend's
+// post-filter decision, and the stored-projection support test — and they must
+// agree: a bound that reaches the filter without reaching the projection test
+// reads a field the projection may not carry.
+func firstSeenBounded(req SearchRequest) bool {
+	return !req.MinFirstSeen.IsZero() || !req.MaxFirstSeen.IsZero()
 }
 
 func includedDomain(host string, domains []string) bool {

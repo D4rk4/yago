@@ -155,6 +155,12 @@ func TestCachedSearchIndexSeparatesFilters(t *testing.T) {
 	addCacheVariant(filterVariants, "MaxDate", base, func(req *SearchRequest) {
 		req.MaxDate = time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	})
+	addCacheVariant(filterVariants, "MinFirstSeen", base, func(req *SearchRequest) {
+		req.MinFirstSeen = time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	})
+	addCacheVariant(filterVariants, "MaxFirstSeen", base, func(req *SearchRequest) {
+		req.MaxFirstSeen = time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	})
 	addCacheVariant(filterVariants, "FileType", base, func(req *SearchRequest) {
 		req.FileType = "pdf"
 	})
@@ -265,6 +271,8 @@ func completeCachedSearchRequest() SearchRequest {
 		ContentDomain:      "text",
 		MinDate:            time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC),
 		MaxDate:            time.Date(2025, 11, 30, 0, 0, 0, 0, time.UTC),
+		MinFirstSeen:       time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC),
+		MaxFirstSeen:       time.Date(2025, 10, 31, 0, 0, 0, 0, time.UTC),
 		FileType:           "html",
 		InURL:              "guide",
 		TLD:                "org",
@@ -371,6 +379,12 @@ func cacheRequestFilterFieldVariants(base SearchRequest) map[string]SearchReques
 	})
 	addCacheVariant(variants, "MaxDate", base, func(req *SearchRequest) {
 		req.MaxDate = req.MaxDate.Add(time.Hour)
+	})
+	addCacheVariant(variants, "MinFirstSeen", base, func(req *SearchRequest) {
+		req.MinFirstSeen = req.MinFirstSeen.Add(time.Hour)
+	})
+	addCacheVariant(variants, "MaxFirstSeen", base, func(req *SearchRequest) {
+		req.MaxFirstSeen = req.MaxFirstSeen.Add(time.Hour)
 	})
 	addCacheVariant(variants, "FileType", base, func(req *SearchRequest) {
 		req.FileType = "pdf"

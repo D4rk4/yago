@@ -372,6 +372,7 @@ func hasPostFilters(req SearchRequest) bool {
 		!req.Until.IsZero() ||
 		!req.MinDate.IsZero() ||
 		!req.MaxDate.IsZero() ||
+		firstSeenBounded(req) ||
 		req.Author != "" ||
 		req.Near ||
 		contentDomainNeedsPostFilter(req.ContentDomain) ||

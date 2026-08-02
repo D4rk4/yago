@@ -276,6 +276,8 @@ func TestPseudoRelevanceSecondPassPreservesRequestControls(t *testing.T) {
 		WithFacets:       true,
 		MinDate:          time.Unix(10, 0),
 		MaxDate:          time.Unix(20, 0),
+		MinFirstSeen:     time.Unix(30, 0),
+		MaxFirstSeen:     time.Unix(40, 0),
 		Offset:           9,
 		ContentDomain:    ContentDomainImage,
 		Language:         "en",

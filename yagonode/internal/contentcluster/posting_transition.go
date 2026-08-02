@@ -106,7 +106,7 @@ func (i *Index) visiblePosting(
 	}
 	visible := make([]string, 0, len(posting.URLs))
 	for _, url := range posting.URLs {
-		record, found, err := i.projectedFingerprint(tx, url)
+		record, found, err := i.projectedFingerprintMatch(tx, url)
 		if err != nil {
 			return postingRecord{}, err
 		}
@@ -141,11 +141,11 @@ func (i *Index) recordPostings(record fingerprintRecord) []postingProjection {
 	return postings
 }
 
-func postingMatches(record fingerprintRecord, projection postingProjection) bool {
+func postingMatches(record fingerprintMatch, projection postingProjection) bool {
 	if projection.exact {
 		return record.ContentHash == string(projection.key)
 	}
-	if len(record.Shingles) == 0 || len(projection.key) != 2 {
+	if !record.HasShingles || len(projection.key) != 2 {
 		return false
 	}
 	bands := fingerprintBands(record.Fingerprint)

@@ -167,31 +167,67 @@ func TestNormalizeProjectedClusterReportsStorageFailures(t *testing.T) {
 	})
 }
 
-func TestProjectedRepresentativeReportsContextAndFingerprintFailures(t *testing.T) {
-	t.Run("context", func(t *testing.T) {
-		index, _ := openFaultIndex(t, Limits{})
-		cancelled, cancel := context.WithCancel(context.Background())
-		cancel()
-		err := index.vault.View(t.Context(), func(tx *vault.Txn) error {
-			_, err := index.projectedRepresentative(tx, cancelled, []string{"member"})
+// TestAttachProjectedClusterFoldsTheAttachedRecordIn pins the equivalence the
+// second full pass used to provide: attaching a record must leave the same
+// representative the old recompute-from-every-member code chose. The three
+// cases are the ones where a fold can diverge from a recompute -- a new cluster
+// with no incumbent, an attachment that must lose to the incumbent, and one
+// that must beat it.
+func TestAttachProjectedClusterFoldsTheAttachedRecordIn(t *testing.T) {
+	attach := func(t *testing.T, incumbent *fingerprintRecord, arriving fingerprintRecord) string {
+		t.Helper()
+		index, engine := openFaultIndex(t, Limits{})
+		members := []string(nil)
+		if incumbent != nil {
+			putRawFingerprint(t, engine, *incumbent)
+			members = append(members, incumbent.URL)
+			putRawCluster(t, engine, clusterRecord{ID: "cluster", Members: members})
+		}
+		putRawFingerprint(t, engine, arriving)
+		if err := index.vault.Update(t.Context(), func(tx *vault.Txn) error {
+			return index.attachProjectedCluster(tx, t.Context(), arriving)
+		}); err != nil {
+			t.Fatalf("attach: %v", err)
+		}
+		var stored clusterRecord
+		if err := index.vault.View(t.Context(), func(tx *vault.Txn) error {
+			record, found, err := index.clusters.Get(tx, vault.Key("cluster"))
+			if err != nil || !found {
+				t.Fatalf("read stored cluster: found=%v err=%v", found, err)
+			}
+			stored = record
 
-			return err
-		})
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("representative context error = %v", err)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		return stored.Representative.URL
+	}
+
+	weak := fingerprintRecord{URL: "https://weak.example", ClusterID: "cluster", Quality: 1}
+	strong := fingerprintRecord{URL: "https://strong.example", ClusterID: "cluster", Quality: 9}
+	// blank carries the scalars betterRepresentative ranks lowest, so it loses
+	// to the zero representativeRecord an empty cluster starts with -- every
+	// field compares equal until the URL tiebreak, and no URL sorts before "".
+	// A first member therefore has to be seeded unconditionally, not merely
+	// offered to betterRepresentative, and only a record shaped like this one
+	// can tell the two apart.
+	blank := fingerprintRecord{URL: "https://blank.example", ClusterID: "cluster"}
+
+	t.Run("first member becomes the representative", func(t *testing.T) {
+		if got := attach(t, nil, blank); got != blank.URL {
+			t.Fatalf("representative = %q, want %q", got, blank.URL)
 		}
 	})
-	t.Run("fingerprint read", func(t *testing.T) {
-		index, engine := openFaultIndex(t, Limits{})
-		url := "https://representative-read.example"
-		engine.putRaw(fingerprintBucketName, vault.Key(url), []byte("{"))
-		err := index.vault.View(t.Context(), func(tx *vault.Txn) error {
-			_, err := index.projectedRepresentative(tx, t.Context(), []string{url})
-
-			return err
-		})
-		if err == nil {
-			t.Fatal("corrupt representative fingerprint succeeded")
+	t.Run("a weaker arrival leaves the incumbent", func(t *testing.T) {
+		if got := attach(t, &strong, weak); got != strong.URL {
+			t.Fatalf("representative = %q, want %q", got, strong.URL)
+		}
+	})
+	t.Run("a stronger arrival takes over", func(t *testing.T) {
+		if got := attach(t, &weak, strong); got != strong.URL {
+			t.Fatalf("representative = %q, want %q", got, strong.URL)
 		}
 	})
 }
@@ -332,10 +368,10 @@ func TestVisiblePostingFiltersInvalidAndBoundedMembers(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if postingMatches(fingerprintRecord{}, postingProjection{key: vault.Key{0}}) {
+	if postingMatches(fingerprintMatch{}, postingProjection{key: vault.Key{0}}) {
 		t.Fatal("empty fingerprint matched a band posting")
 	}
-	record := fingerprintRecord{Shingles: []uint64{1}, Fingerprint: 1}
+	record := fingerprintMatch{HasShingles: true, Fingerprint: 1}
 	if postingMatches(record, postingProjection{key: vault.Key{0}}) {
 		t.Fatal("malformed band posting matched")
 	}

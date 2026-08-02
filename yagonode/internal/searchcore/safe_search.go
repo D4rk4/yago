@@ -14,6 +14,11 @@ func NewSafeSearchSearcher(inner Searcher) Searcher {
 }
 
 func (s safeSearchSearcher) Search(ctx context.Context, req Request) (Response, error) {
+	// The error path below reads response.PartialFailures on purpose. Response is
+	// a struct value, not a pointer, so on that path it is the zero value and the
+	// field reads as a nil slice: there is nothing to dereference and the panic
+	// the rule warns about cannot occur.
+	// nosemgrep: trailofbits.go.invalid-usage-of-modified-variable.invalid-usage-of-modified-variable
 	response, err := s.inner.Search(ctx, req)
 	if err != nil {
 		// Keep the partial failures the federation deliberately returned

@@ -91,6 +91,24 @@ func (i *Index) projectedFingerprint(
 	return i.publishedFingerprint(tx, url)
 }
 
+// projectedFingerprintMatch is projectedFingerprint for the posting path: same
+// precedence of an in-flight transition over the published entry, same absence,
+// but reading only the fields postingMatches compares.
+func (i *Index) projectedFingerprintMatch(
+	tx *vault.Txn,
+	url string,
+) (fingerprintMatch, bool, error) {
+	transition, found, err := i.fingerprints.transitionMatch(tx, url)
+	if err != nil {
+		return fingerprintMatch{}, false, err
+	}
+	if found {
+		return transition.Current, transition.CurrentFound, nil
+	}
+
+	return i.fingerprints.match(tx, vault.Key(url))
+}
+
 func (i *Index) attachProjectedCluster(
 	tx *vault.Txn,
 	ctx context.Context,
@@ -107,9 +125,23 @@ func (i *Index) attachProjectedCluster(
 	if len(cluster.Members) > i.limits.MaximumClusterMembers {
 		return fmt.Errorf("content cluster %q reached its member limit", record.ClusterID)
 	}
-	cluster.Representative, err = i.projectedRepresentative(tx, ctx, cluster.Members)
+	// resolveCluster already chose the best representative among the members it
+	// could see, and normalizeProjectedCluster stores that choice unchanged, so
+	// it is authoritative. The only member it cannot have seen is the record
+	// being attached. Folding that one record in replaces a second full pass
+	// over the cluster: at up to MaximumClusterMembers members each carrying up
+	// to MaximumShingles shingles, re-reading every member to re-derive four
+	// scalars was the dominant cost of absorbing a page.
+	attached, visible, err := i.projectedFingerprint(tx, record.URL)
 	if err != nil {
-		return err
+		return fmt.Errorf("read projected fingerprint: %w", err)
+	}
+	if !visible {
+		return fmt.Errorf("content fingerprint %q is missing", record.URL)
+	}
+	candidate := representativeFrom(attached)
+	if !found || betterRepresentative(candidate, cluster.Representative) {
+		cluster.Representative = candidate
 	}
 	if err := i.clusters.Put(tx, vault.Key(cluster.ID), cluster); err != nil {
 		return fmt.Errorf("store projected content cluster: %w", err)
@@ -142,33 +174,4 @@ func (i *Index) normalizeProjectedCluster(
 	}
 
 	return nil
-}
-
-func (i *Index) projectedRepresentative(
-	tx *vault.Txn,
-	ctx context.Context,
-	members []string,
-) (representativeRecord, error) {
-	var representative representativeRecord
-	for position, url := range members {
-		if err := ctx.Err(); err != nil {
-			return representativeRecord{}, fmt.Errorf(
-				"choose projected representative: %w",
-				err,
-			)
-		}
-		record, found, err := i.projectedFingerprint(tx, url)
-		if err != nil {
-			return representativeRecord{}, fmt.Errorf("read projected fingerprint: %w", err)
-		}
-		if !found {
-			return representativeRecord{}, fmt.Errorf("content fingerprint %q is missing", url)
-		}
-		candidate := representativeFrom(record)
-		if position == 0 || betterRepresentative(candidate, representative) {
-			representative = candidate
-		}
-	}
-
-	return representative, nil
 }

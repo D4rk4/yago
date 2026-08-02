@@ -681,6 +681,21 @@ func TestParallelSearcherKeepsEgressGuards(t *testing.T) {
 				Query: "gap", ContentDomain: searchcore.ContentDomainImage,
 			},
 		},
+		{
+			// The parallel mode runs the provider alongside local retrieval on
+			// every query, so a first-seen window would pay for a discarded
+			// external search on each one.
+			name: "first seen start", permit: enabled,
+			request: searchcore.Request{
+				Query: "gap", MinFirstSeen: time.Date(2026, 7, 20, 8, 0, 0, 0, time.UTC),
+			},
+		},
+		{
+			name: "first seen end", permit: enabled,
+			request: searchcore.Request{
+				Query: "gap", MaxFirstSeen: time.Date(2026, 7, 20, 8, 0, 0, 0, time.UTC),
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

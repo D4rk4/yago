@@ -15,7 +15,7 @@ func registerFingerprintKeyspace(v *vault.Vault) (*fingerprintKeyspace, error) {
 	entries, err := vault.RegisterKeyspace(
 		v,
 		fingerprintBucketName,
-		jsonCodec[json.RawMessage]{},
+		rawJSONCodec{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("register fingerprint keyspace: %w", err)
@@ -52,28 +52,62 @@ func (k *fingerprintKeyspace) transition(
 	tx *vault.Txn,
 	url string,
 ) (fingerprintTransition, bool, error) {
-	raw, found, err := k.entries.Get(tx, transitionKey(url))
+	return readTransitionShape(k.entries, tx, url, func(t fingerprintTransition) (string, string) {
+		return t.URL, t.Token
+	})
+}
+
+// match reads only the fields posting visibility compares. See fingerprintMatch
+// for why the shingle vector is not built.
+func (k *fingerprintKeyspace) match(
+	tx *vault.Txn,
+	key vault.Key,
+) (fingerprintMatch, bool, error) {
+	return readFingerprintShape[fingerprintMatch](k.entries, tx, key)
+}
+
+func (k *fingerprintKeyspace) transitionMatch(
+	tx *vault.Txn,
+	url string,
+) (fingerprintTransitionMatch, bool, error) {
+	return readTransitionShape(
+		k.entries,
+		tx,
+		url,
+		func(t fingerprintTransitionMatch) (string, string) { return t.URL, t.Token },
+	)
+}
+
+// readTransitionShape reads a transition entry into either the full shape or
+// the reduced one. The two differ only in how much of each embedded fingerprint
+// they build, so the read, the decode failure and the identity check have to
+// stay identical between them -- sharing this function is what guarantees that,
+// rather than a comment asking two copies to be kept in step.
+func readTransitionShape[Shape any](
+	entries *vault.Keyspace[json.RawMessage],
+	tx *vault.Txn,
+	url string,
+	identity func(Shape) (string, string),
+) (Shape, bool, error) {
+	var zero Shape
+	raw, found, err := entries.Get(tx, transitionKey(url))
 	if err != nil || !found {
 		if err != nil {
-			return fingerprintTransition{}, false, fmt.Errorf(
-				"read fingerprint transition: %w",
-				err,
-			)
+			return zero, false, fmt.Errorf("read fingerprint transition: %w", err)
 		}
 
-		return fingerprintTransition{}, false, nil
+		return zero, false, nil
 	}
-	var transition fingerprintTransition
-	if err := json.Unmarshal(raw, &transition); err != nil {
-		return fingerprintTransition{}, false, fmt.Errorf("decode fingerprint transition: %w", err)
+	var shape Shape
+	if err := json.Unmarshal(raw, &shape); err != nil {
+		return zero, false, fmt.Errorf("decode fingerprint transition: %w", err)
 	}
-	if transition.URL != url || transition.Token == "" {
-		return fingerprintTransition{}, false, fmt.Errorf(
-			"fingerprint transition identity is invalid",
-		)
+	storedURL, token := identity(shape)
+	if storedURL != url || token == "" {
+		return zero, false, fmt.Errorf("fingerprint transition identity is invalid")
 	}
 
-	return transition, true, nil
+	return shape, true, nil
 }
 
 func (k *fingerprintKeyspace) putTransition(
@@ -114,20 +148,32 @@ func readFingerprintRecord(
 	tx *vault.Txn,
 	key vault.Key,
 ) (fingerprintRecord, bool, error) {
+	return readFingerprintShape[fingerprintRecord](entries, tx, key)
+}
+
+// readFingerprintShape reads a stored fingerprint into either the full record
+// or the reduced match shape, so both see the same absence and the same decode
+// failure.
+func readFingerprintShape[Shape any](
+	entries *vault.Keyspace[json.RawMessage],
+	tx *vault.Txn,
+	key vault.Key,
+) (Shape, bool, error) {
+	var zero Shape
 	raw, found, err := entries.Get(tx, key)
 	if err != nil || !found {
 		if err != nil {
-			return fingerprintRecord{}, false, fmt.Errorf("read fingerprint entry: %w", err)
+			return zero, false, fmt.Errorf("read fingerprint entry: %w", err)
 		}
 
-		return fingerprintRecord{}, false, nil
+		return zero, false, nil
 	}
-	var record fingerprintRecord
-	if err := json.Unmarshal(raw, &record); err != nil {
-		return fingerprintRecord{}, false, fmt.Errorf("decode content fingerprint: %w", err)
+	var shape Shape
+	if err := json.Unmarshal(raw, &shape); err != nil {
+		return zero, false, fmt.Errorf("decode content fingerprint: %w", err)
 	}
 
-	return record, true, nil
+	return shape, true, nil
 }
 
 func putFingerprintRecord(

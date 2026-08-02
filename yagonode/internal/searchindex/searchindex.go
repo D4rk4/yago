@@ -73,6 +73,13 @@ type SearchRequest struct {
 	// MinDate and MaxDate bound results by document date when non-zero.
 	MinDate time.Time
 	MaxDate time.Time
+	// MinFirstSeen and MaxFirstSeen bound results by the document's first-seen
+	// time when non-zero. That is when this node first saw the document, not
+	// when the document was published: an undated download or category page
+	// still has a first-seen time, and a decade-old page first crawled today
+	// has a recent one.
+	MinFirstSeen time.Time
+	MaxFirstSeen time.Time
 	// FileType keeps only documents whose file type — classified from the
 	// Content-Type with the URL extension as a fallback — matches; InURL keeps
 	// only documents whose URL contains the substring; TLD keeps only documents
