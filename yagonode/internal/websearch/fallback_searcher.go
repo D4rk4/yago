@@ -54,7 +54,10 @@ func (s *FallbackSearcher) Search(
 		return resp, nil
 	}
 	results, provErr := s.searchProvider(ctx, req, req.Limit)
-	results = verifiedWebResults(req, results)
+	// See ParallelSearcher.Search: seeding takes the engines' accepted rows,
+	// before the caller's own constraints narrow what is served.
+	discovered := relevantWebResults(req, results)
+	results = resultsMatchingConstraints(req, discovered)
 	if provErr != nil {
 		logProviderFailure(ctx, provErr)
 		resp.PartialFailures = append(resp.PartialFailures, webProviderFailure())
@@ -66,8 +69,8 @@ func (s *FallbackSearcher) Search(
 	clearPrimaryMissRecoveryForWebAnswer(&resp, webResults)
 	resp.Results = webResults
 	resp.TotalResults = len(resp.Results)
-	if s.seeder != nil && len(results) > 0 {
-		s.seedWebResults(ctx, results)
+	if s.seeder != nil && len(discovered) > 0 {
+		s.seedWebResults(ctx, discovered)
 	}
 
 	return resp, nil

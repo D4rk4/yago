@@ -8,15 +8,30 @@ import (
 )
 
 func verifiedWebResults(req searchcore.Request, results []Result) []Result {
-	if req.Verify != searchcore.VerifyFalse {
-		terms := req.Terms
-		if len(terms) == 0 {
-			terms = searchcore.ParseTextQuery(req.Query).Terms
-		}
-		results = resultsMentioningTerms(terms, results)
+	return resultsMatchingConstraints(req, relevantWebResults(req, results))
+}
+
+// relevantWebResults keeps the provider rows that answer the query, and stops
+// there. It is the half of verification that crawl seeding must respect: a row
+// the engines returned for an unrelated page is not a discovery, it is noise,
+// and seeding it would crawl whatever a provider happened to pad its answer
+// with.
+//
+// The other half, resultsMatchingConstraints, applies what this caller asked to
+// be served -- an include or exclude domain, an excluded term, an inurl. Those
+// say nothing about whether a page is worth having. Gating seeding on them made
+// a constrained request discover nothing at all, silently, because the seeder
+// cannot tell an empty list from a provider that returned none.
+func relevantWebResults(req searchcore.Request, results []Result) []Result {
+	if req.Verify == searchcore.VerifyFalse {
+		return results
+	}
+	terms := req.Terms
+	if len(terms) == 0 {
+		terms = searchcore.ParseTextQuery(req.Query).Terms
 	}
 
-	return resultsMatchingConstraints(req, results)
+	return resultsMentioningTerms(terms, results)
 }
 
 func VerifiedForQuery(query string, results []Result) []Result {

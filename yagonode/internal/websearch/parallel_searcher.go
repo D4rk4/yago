@@ -91,12 +91,21 @@ func (s *ParallelSearcher) Search(
 	if primary.err != nil {
 		primary.response = failedParallelPrimaryResponse(primary.response)
 	}
-	provider.results = verifiedWebResults(req, provider.results)
+	// Seeding takes what the engines accepted, before the caller's constraints
+	// narrow it. Those constraints -- an include or exclude domain, an excluded
+	// term, an inurl -- express what this caller wanted served, not what is
+	// worth crawling: a page the provider found and verified against the query
+	// is a discovery whether or not it survives one caller's site filter.
+	// Seeding from the narrowed set made a constrained request discover
+	// nothing, and did so silently, because an empty list is indistinguishable
+	// from a provider that returned none.
+	discovered := relevantWebResults(req, provider.results)
+	provider.results = resultsMatchingConstraints(req, discovered)
 	if provider.err != nil {
 		primary.response = failedParallelProviderResponse(ctx, primary.response, provider.err)
 	}
-	if s.fallback.seeder != nil && len(provider.results) > 0 {
-		s.fallback.seedWebResults(ctx, provider.results)
+	if s.fallback.seeder != nil && len(discovered) > 0 {
+		s.fallback.seedWebResults(ctx, discovered)
 	}
 	webResults := toCoreResults(provider.results, req.Limit)
 	if len(primary.response.Results) > 0 || len(webResults) > 0 {

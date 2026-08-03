@@ -214,3 +214,93 @@ func TestFallbackCascadeAcceptsRawQuotedQuery(t *testing.T) {
 		t.Fatalf("response = %#v provider calls = %d", response, provider.calls)
 	}
 }
+
+// TestSeedingSurvivesTheCallersOwnConstraints separates the two halves of
+// verification. Relevance decides whether a page is a discovery at all, and
+// seeding must respect it -- the sibling test above pins that an unrelated row
+// is never seeded. The caller's constraints decide what this request wanted
+// served, and seeding must not respect them: a page the provider found and
+// verified is worth crawling whether or not one caller narrowed the answer to a
+// single site.
+//
+// Before the split, a constrained request discovered nothing and said nothing.
+// The seeder received an empty list, which is indistinguishable in the journal
+// from a provider that returned none, so a node could seed no crawl for hours
+// while its provider was answering normally.
+func TestSeedingSurvivesTheCallersOwnConstraints(t *testing.T) {
+	provider := &stubProvider{results: []Result{
+		{Title: "Montelibero wiki", URL: "https://monte.wiki/en/Montelibero"},
+		{Title: "Montelibero org", URL: "https://montelibero.org/"},
+	}}
+	seeder := &stubSeeder{done: make(chan struct{})}
+	searcher := NewFallbackSearcher(&stubSearcher{}, provider, enabled, WithSeeder(seeder))
+
+	// The caller wants only one host served; both rows answer the query.
+	resp, err := searcher.Search(context.Background(), searchcore.Request{
+		Query: "montelibero", Terms: []string{"montelibero"}, Limit: 10,
+		IncludeDomains: []string{"monte.wiki"},
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].URL != "https://monte.wiki/en/Montelibero" {
+		t.Fatalf("served = %#v, want only the requested host", resp.Results)
+	}
+	// Seeding is spawned per URL and runs asynchronously, so waiting for the
+	// first call and reading the slice would race the second: an earlier
+	// version of this test did exactly that and passed on timing alone.
+	deadline := time.After(2 * time.Second)
+	for {
+		seeder.mutex.Lock()
+		seeded := append([]string(nil), seeder.urls...)
+		seeder.mutex.Unlock()
+		if len(seeded) == 2 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("seeded %v, want both discoveries regardless of the host filter", seeded)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// TestParallelSeedingSurvivesTheCallersOwnConstraints is the sibling of the
+// test above for the searcher a node actually runs when web fallback is set to
+// "always". The two searchers keep their own copy of the seeding decision, so a
+// fix applied to one leaves the other narrowing discoveries by the caller's
+// filter -- which is the configuration the reference deployment runs.
+func TestParallelSeedingSurvivesTheCallersOwnConstraints(t *testing.T) {
+	provider := &stubProvider{results: []Result{
+		{Title: "Montelibero wiki", URL: "https://monte.wiki/en/Montelibero"},
+		{Title: "Montelibero org", URL: "https://montelibero.org/"},
+	}}
+	seeder := &stubSeeder{done: make(chan struct{})}
+	primary := &stubSearcher{resp: searchcore.Response{
+		Results:      []searchcore.Result{{Title: "Local", URL: "https://local.example/"}},
+		TotalResults: 1,
+	}}
+	searcher := NewParallelSearcher(primary, provider, enabled, WithSeeder(seeder))
+
+	if _, err := searcher.Search(context.Background(), searchcore.Request{
+		Query: "montelibero", Terms: []string{"montelibero"}, Limit: 10,
+		IncludeDomains: []string{"monte.wiki"},
+	}); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for {
+		seeder.mutex.Lock()
+		seeded := append([]string(nil), seeder.urls...)
+		seeder.mutex.Unlock()
+		if len(seeded) == 2 {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("seeded %v, want both discoveries regardless of the host filter", seeded)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
