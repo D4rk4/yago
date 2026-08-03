@@ -183,3 +183,60 @@ func TestWebSearchFailureReason(t *testing.T) {
 		}
 	}
 }
+
+// TestProviderFailureIsVisibleAtProductionLogLevel pins the level, not the
+// text. Both provider-failure records were written at Debug, and a node runs at
+// Info, so on a deployment where the provider failed on half of all searches
+// the only trace was an aggregate outage warning with a bucketed reason: the
+// per-engine record that names the engine and says whether it was rate limited
+// never reached the journal at all. A handler admitting Info and above is the
+// whole point of the test -- under the old level it captures nothing.
+func TestProviderFailureIsVisibleAtProductionLogLevel(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	provider := NewDDGSProvider(DDGSConfig{
+		Client: &http.Client{Transport: roundTripFunc(func(*http.Request) (
+			*http.Response,
+			error,
+		) {
+			return nil, errors.New("dial refused")
+		})},
+		Backend: backendDuckDuckGo,
+		Now:     fixedClock(),
+	})
+	primary := &stubSearcher{resp: searchcore.Response{
+		Results:      []searchcore.Result{{Title: "Local", URL: "https://local.example/"}},
+		TotalResults: 1,
+	}}
+	if _, err := NewParallelSearcher(primary, provider, enabled).Search(
+		t.Context(),
+		searchcore.Request{Query: "private-search-phrase", Limit: 10},
+	); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	logged := output.String()
+	for _, want := range []string{
+		msgFallbackFailed,
+		"web-search engine attempt",
+		// The engine and its rate-limit state are what distinguish a blocked
+		// scrape from a throttled one; a bucketed reason alone cannot.
+		`"engine":"`,
+		`"rateLimited":`,
+	} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("production log level lost %q: %s", want, logged)
+		}
+	}
+	// Raising the level must not raise the query with it.
+	for _, secret := range []string{"private-search-phrase", "private+search+phrase", "?q="} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("visible log exposed %q: %s", secret, logged)
+		}
+	}
+}

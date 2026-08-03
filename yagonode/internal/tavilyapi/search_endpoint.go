@@ -306,12 +306,24 @@ func (e searchEndpoint) searchResponseForCaller(
 	// survived the caller's filters above. A node in a live swarm almost
 	// always loses at least one peer, so scoring the served count here turned
 	// every over-narrow request into a 503 telling the caller to retry.
-	if availabilityErr := searchAvailabilityError(
-		len(resp.Results),
-		resp.LostSourceFailures(),
-		callerContext.Err(),
-	); availabilityErr != nil {
-		return SearchResponse{}, availabilityErr
+	//
+	// A first-seen window is the exception, because it is not applied above: it
+	// is pushed into the index and applied during retrieval, so by the time
+	// resp.Results reaches this line it has already been narrowed by the
+	// caller's own filter. Scoring it here reports the caller's window as a
+	// lost source -- the same confusion this rule removed for the date and
+	// domain filters, which are applied after retrieval and therefore leave the
+	// count intact. Until the window's removals are counted separately from the
+	// sources' answers, a bounded request cannot be scored this way, and the
+	// specification already says such a window answers 200 with an empty list.
+	if !coreReq.FirstSeenBounded() {
+		if availabilityErr := searchAvailabilityError(
+			len(resp.Results),
+			resp.LostSourceFailures(),
+			callerContext.Err(),
+		); availabilityErr != nil {
+			return SearchResponse{}, availabilityErr
+		}
 	}
 	applyCanonicalRankScores(results)
 

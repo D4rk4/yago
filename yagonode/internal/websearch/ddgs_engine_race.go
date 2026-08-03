@@ -165,7 +165,11 @@ func (r *engineRace) evaluate(attempts []engineAttempt) []Result {
 				attempt.results = r.provider.accept(r.query.submittedText, attempt.results)
 			}
 		}
-		slog.DebugContext(r.ctx, "web-search engine attempt",
+		// Info, not Debug: this is the only record that says why the provider
+		// stage was lost, and production runs at Info. Every field here is
+		// derived from the engine and its counts, never from the query, so the
+		// line stays safe to emit at a level operators actually read.
+		slog.InfoContext(r.ctx, "web-search engine attempt",
 			slog.String("engine", attempt.backend.name),
 			slog.Int("fetched", fetched),
 			slog.Int("accepted", len(attempt.results)),

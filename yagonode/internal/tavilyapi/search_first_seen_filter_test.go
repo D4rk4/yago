@@ -238,3 +238,61 @@ func TestDocumentDateBoundsKeepRemoteRows(t *testing.T) {
 		t.Fatalf("first-seen window kept %+v, want only the locally stored row", kept)
 	}
 }
+
+// TestFirstSeenWindowThatRetainsNothingAnswers200 pins the rule that made a
+// live node refuse every first-seen query it could not fill.
+//
+// Availability is scored on what the sources returned rather than on what
+// survived the caller's filters, which is what keeps an over-narrow date or
+// domain request from being reported as a lost source. A first-seen window is
+// different in kind: it is pushed into the index and applied during retrieval,
+// so the count reaching the availability rule has already been narrowed by the
+// caller's own filter. On a swarm node at least one source is almost always
+// lost, so the pair -- zero retained, one source lost -- refused with HTTP 409
+// every time the window happened to keep nothing, which is exactly what the
+// specification says must answer 200 with an empty list.
+func TestFirstSeenWindowThatRetainsNothingAnswers200(t *testing.T) {
+	t.Parallel()
+
+	endpoint, search, _ := firstSeenSearchEndpoint()
+	// Retrieval returns nothing, which is what a live node produces: the window
+	// is applied inside the index, so rows it excludes never reach the response
+	// at all. A row that arrives and is dropped afterwards would leave the
+	// availability count non-zero and prove nothing about the exemption.
+	search.response.Results = nil
+	search.response.PartialFailures = []searchcore.PartialFailure{{
+		Source: "remote-yacy", Reason: "peer timed out",
+	}}
+
+	resp, err := endpoint.searchResponse(
+		t.Context(),
+		SearchRequest{Query: "golang", FirstSeenStart: "2026-07-01"},
+		time.Unix(100, 0),
+		"id-empty-window",
+	)
+	if err != nil {
+		t.Fatalf("a window that retained nothing must not refuse: %v", err)
+	}
+	if len(resp.Results) != 0 {
+		t.Fatalf("results = %+v, want an empty list", resp.Results)
+	}
+
+	// The same zero-with-a-lost-source shape still refuses without a window, so
+	// the exemption is scoped to the filter retrieval applies rather than
+	// disabling the availability rule outright. Retrieval itself has to return
+	// nothing here: a row that arrives and is dropped later never reaches the
+	// rule as a zero.
+	control, controlSearch, _ := firstSeenSearchEndpoint()
+	controlSearch.response.Results = nil
+	controlSearch.response.PartialFailures = []searchcore.PartialFailure{{
+		Source: "remote-yacy", Reason: "peer timed out",
+	}}
+	if _, err = control.searchResponse(
+		t.Context(),
+		SearchRequest{Query: "golang"},
+		time.Unix(100, 0),
+		"id-no-window",
+	); err == nil {
+		t.Fatal("an unbounded request that retrieved nothing must still refuse")
+	}
+}

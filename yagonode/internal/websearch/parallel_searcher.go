@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -230,11 +229,7 @@ func failedParallelProviderResponse(
 	response searchcore.Response,
 	err error,
 ) searchcore.Response {
-	slog.DebugContext(
-		ctx,
-		msgFallbackFailed,
-		slog.String("reason", webSearchFailureReason(err)),
-	)
+	logProviderFailure(ctx, err)
 	response.PartialFailures = append(response.PartialFailures, webProviderFailure())
 
 	return response
