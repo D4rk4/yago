@@ -7,6 +7,8 @@ import (
 
 const msgWebSeedWiring = "web-search crawl seeding wiring"
 
+const msgWebSeedGateClosed = "web-search crawl seeding gate closed"
+
 // reportWebSeedWiring states, once per assembly, whether web-discovery seeding
 // can run at all and why not when it cannot. Until this existed an operator had
 // no way to tell "seeding is switched off" from "seeding is broken": the seed
@@ -95,6 +97,11 @@ func (s *gatedWebCrawlSeeder) AdmitCrawlSeedURL(raw string) (string, bool) {
 
 func (s *gatedWebCrawlSeeder) Seed(ctx context.Context, urls []string) {
 	if !s.admitted() {
+		// A closed toggle used to look exactly like an empty result set. The
+		// wiring record at startup reports the configured value, not this one,
+		// and the two diverge the moment an operator flips the console switch.
+		slog.InfoContext(ctx, msgWebSeedGateClosed, slog.Int("urls", len(urls)))
+
 		return
 	}
 	s.seeder.Seed(ctx, urls)

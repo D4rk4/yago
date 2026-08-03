@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	msgFallbackFailed  = "web-search fallback provider failed"
-	msgWebSeedRejected = "web-search crawl seeding saturated"
-	msgWebSeedPanicked = "web-search crawl seeding panicked"
-	webResultDecay     = 0.01
+	msgFallbackFailed    = "web-search fallback provider failed"
+	msgWebSeedRejected   = "web-search crawl seeding saturated"
+	msgWebSeedConsidered = "web-search crawl seeding considered"
+	msgWebSeedPanicked   = "web-search crawl seeding panicked"
+	webResultDecay       = 0.01
 )
 
 type FallbackSearcher struct {

@@ -118,6 +118,15 @@ func (a *webSeedAdmission) execute(work webSeedWork) {
 
 func (s *FallbackSearcher) seedWebResults(ctx context.Context, results []Result) {
 	urls := resultURLs(results, s.seeder)
+	// Every step below this point was silent. A seeder that admitted no URL, a
+	// live toggle that refused, and a provider that returned nothing all left
+	// the same trace -- none -- so a node could seed no crawl for hours while
+	// its provider answered normally, and the journal could not tell an
+	// operator which of the three was happening. The counts are derived from
+	// the rows and their URLs, never from the query.
+	slog.InfoContext(ctx, msgWebSeedConsidered,
+		slog.Int("results", len(results)),
+		slog.Int("admitted", len(urls)))
 	rejected := 0
 	for _, url := range urls {
 		if !s.spawnSeedWork(url, ctx, func(seedContext context.Context) {

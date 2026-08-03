@@ -2,6 +2,7 @@ package yagonode
 
 import (
 	"context"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 const (
 	msgWebSeedFailed       = "web-search crawl seeding failed"
 	msgWebSeedPublished    = "web-search crawl seed published"
+	msgWebSeedOutcome      = "web-search crawl seeding outcome"
 	webSeedProfileName     = "web-fallback-seed"
 	webSeedPresenceTimeout = 50 * time.Millisecond
 )
@@ -113,14 +115,32 @@ func newCrawlSeeder(
 }
 
 func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
+	unusable, known, published := 0, 0, 0
 	for _, raw := range urls {
 		target, admitted := s.AdmitCrawlSeedURL(raw)
-		if !admitted || s.stored(ctx, target) {
+		if !admitted {
+			unusable++
+
+			continue
+		}
+		if s.stored(ctx, target) {
+			known++
+
 			continue
 		}
 		instant := s.now()
 		s.publishWebDiscoveryOrder(ctx, target, instant)
+		published++
 	}
+	// Skipping an already-stored page is the seeder working, and skipping an
+	// unusable URL is too, but both were indistinguishable from a seeder that
+	// never ran. Without these counts the only way to tell why nothing was
+	// crawled was to read the code and guess.
+	slog.InfoContext(ctx, msgWebSeedOutcome,
+		slog.Int("urls", len(urls)),
+		slog.Int("published", published),
+		slog.Int("alreadyStored", known),
+		slog.Int("unusableUrl", unusable))
 }
 
 func (*webCrawlSeeder) AdmitCrawlSeedURL(raw string) (string, bool) {

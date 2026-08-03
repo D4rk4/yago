@@ -1,7 +1,10 @@
 package websearch
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -304,3 +307,53 @@ func TestParallelSeedingSurvivesTheCallersOwnConstraints(t *testing.T) {
 		}
 	}
 }
+
+// TestSeedingRecordsWhyNothingTravelled pins the record that makes an idle
+// seeder diagnosable. Every refusal below the searcher was silent: a closed
+// live toggle refuses inside AdmitCrawlSeedURL, so resultURLs returns an empty
+// list and Seed is never reached at all, which in the journal looked exactly
+// like a provider that returned nothing. The pair of counts is what separates
+// them -- rows arrived, none was admitted -- and without it the only way to
+// tell was to read the code and guess, which is what this took.
+func TestSeedingRecordsWhyNothingTravelled(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	provider := &stubProvider{results: []Result{
+		{Title: "Montelibero wiki", URL: "https://monte.wiki/en/Montelibero"},
+		{Title: "Montelibero org", URL: "https://montelibero.org/"},
+	}}
+	// A seeder that admits nothing, which is what a closed gate looks like from
+	// here.
+	searcher := NewFallbackSearcher(
+		&stubSearcher{}, provider, enabled, WithSeeder(refusingSeeder{}))
+
+	if _, err := searcher.Search(context.Background(), searchcore.Request{
+		Query: "montelibero", Terms: []string{"montelibero"}, Limit: 10,
+	}); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	logged := output.String()
+	if !strings.Contains(logged, msgWebSeedConsidered) {
+		t.Fatalf("no seeding record: %s", logged)
+	}
+	if !strings.Contains(logged, `"results":2`) || !strings.Contains(logged, `"admitted":0`) {
+		t.Fatalf("record must show rows arriving and none admitted: %s", logged)
+	}
+	for _, secret := range []string{"montelibero", "?q="} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("seeding record exposed %q: %s", secret, logged)
+		}
+	}
+}
+
+type refusingSeeder struct{}
+
+func (refusingSeeder) Seed(context.Context, []string) {}
+
+func (refusingSeeder) AdmitCrawlSeedURL(string) (string, bool) { return "", false }
