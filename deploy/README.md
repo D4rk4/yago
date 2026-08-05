@@ -469,7 +469,15 @@ Main-vault startup reports each sequential shard open and the subsequent RWI
 word-filter initialization as stable JSON records on standard output, which the
 service journal captures. Successful
 completion is INFO; a degraded filter completion is WARN and includes its shard
-total. A binary that
+total. Before the filter phase, the node also enforces a bucket-only structural
+root in every vault shard. Ordinary root values are moved atomically into an
+internal quarantine; exact RWI rows are replayed to their current shard without
+overwriting conflicts, and unknown or conflicting evidence is retained. A WARN
+record named `vault root record recovery completed` reports the isolated,
+restored, already-present, conflict, and retained totals. A nonzero retained
+total is evidence preservation, not a startup failure; keep the vault and
+existing backups intact when investigating it. No setting or manual migration
+is required. A binary that
 supports clean-shutdown freelist checkpoints must complete one orderly shutdown
 before later planned restarts can load those checkpoints directly. Its first
 start after upgrading from an older binary can therefore still perform the full

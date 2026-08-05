@@ -3,6 +3,7 @@ package shardvault
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -79,6 +80,9 @@ func (e *engine) shardCountBytes() int64 {
 }
 
 func (e *engine) splitLocked(ctx context.Context) (bool, error) {
+	if err := e.recoverRootRecordsLocked(ctx, slog.Default()); err != nil {
+		return false, fmt.Errorf("recover root records before split: %w", err)
+	}
 	oldLevel, oldSplit := e.level, e.split
 	n := (1 << oldLevel) + oldSplit
 	if n >= maxShards {
@@ -192,6 +196,9 @@ func copyMovedRecords(ctx context.Context, src, dst *bolt.DB, level, n int) erro
 	}
 	err = src.View(func(tx *bolt.Tx) error {
 		return tx.ForEach(func(name []byte, sb *bolt.Bucket) error {
+			if sb == nil {
+				return fmt.Errorf("%w: key %x", errStructuralRootRecord, name)
+			}
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return fmt.Errorf("context: %w", ctxErr)
 			}
@@ -379,7 +386,10 @@ func seekStart(cursor *bolt.Cursor, seek []byte) ([]byte, []byte) {
 func bucketNames(db *bolt.DB) ([][]byte, error) {
 	var names [][]byte
 	err := db.View(func(tx *bolt.Tx) error {
-		return tx.ForEach(func(name []byte, _ *bolt.Bucket) error {
+		return tx.ForEach(func(name []byte, bucket *bolt.Bucket) error {
+			if bucket == nil {
+				return fmt.Errorf("%w: key %x", errStructuralRootRecord, name)
+			}
 			names = append(names, append([]byte{}, name...))
 
 			return nil

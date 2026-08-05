@@ -53,6 +53,9 @@ func migrateLegacy(legacyPath string, target *engine) error {
 
 	return legacy.View(func(tx *bolt.Tx) error { //nolint:wrapcheck // wrapped by OpenAt.
 		return tx.ForEach(func(name []byte, bucket *bolt.Bucket) error {
+			if bucket == nil {
+				return fmt.Errorf("%w: key %x", errStructuralRootRecord, name)
+			}
 			return copyLegacyBucket(target, vault.Name(name), bucket)
 		})
 	})

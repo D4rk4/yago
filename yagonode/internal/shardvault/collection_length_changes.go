@@ -41,6 +41,23 @@ func (t *shardTxn) recordCollectionLengthChange(
 	if err != nil {
 		return err
 	}
+	var additionDelta uint64
+	var removalDelta uint64
+	if addition {
+		additionDelta = 1
+	} else {
+		removalDelta = 1
+	}
+
+	return applyCollectionLengthChanges(tx, collection, additionDelta, removalDelta)
+}
+
+func applyCollectionLengthChanges(
+	tx *bolt.Tx,
+	collection vault.Name,
+	additionDelta uint64,
+	removalDelta uint64,
+) error {
 	changes, err := createCollectionLengthChangesBucket(tx, []byte(collectionLengthChangesBucket))
 	if err != nil {
 		return fmt.Errorf("create collection length changes: %w", err)
@@ -49,17 +66,14 @@ func (t *shardTxn) recordCollectionLengthChange(
 	if err != nil {
 		return err
 	}
-	if addition {
-		if additions == ^uint64(0) {
-			return errors.New("collection length additions overflow")
-		}
-		additions++
-	} else {
-		if removals == ^uint64(0) {
-			return errors.New("collection length removals overflow")
-		}
-		removals++
+	if ^uint64(0)-additions < additionDelta {
+		return errors.New("collection length additions overflow")
 	}
+	if ^uint64(0)-removals < removalDelta {
+		return errors.New("collection length removals overflow")
+	}
+	additions += additionDelta
+	removals += removalDelta
 	if err := storeCollectionLengthChanges(
 		changes,
 		[]byte(collection),

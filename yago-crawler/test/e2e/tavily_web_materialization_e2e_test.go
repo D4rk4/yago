@@ -367,7 +367,7 @@ func (acceptance *tavilyDockerAcceptance) requireIncompleteMiss() {
 		"search_depth": "basic",
 		"max_results":  5,
 	})
-	if status != http.StatusServiceUnavailable || headers.Get("Retry-After") != "1" {
+	if status != http.StatusConflict || headers.Get("Retry-After") != "1" {
 		acceptance.t.Fatalf(
 			"incomplete miss = status %d retry %q body=%s",
 			status,

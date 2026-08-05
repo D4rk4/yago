@@ -544,7 +544,12 @@ its binaries (`yago-node`, `yago-crawler`).
   storage usage and hands you the exact commands.
 - Storage: a sharded, compressed, quota-bounded vault (bbolt + zstd) where
   losing one shard file loses 1/N of the keyspace, never the store; shard
-  integrity checks and index-orphan healing run at startup. Exact collection
+  integrity checks and index-orphan healing run at startup. The bbolt root is
+  enforced as a bucket-only structural tree before every application commit.
+  If an unclean storage event leaves ordinary values there, startup isolates
+  them durably before split or compaction, restores only exact RWI rows to their
+  current shards, never overwrites a conflicting posting, and retains unknown
+  evidence for operator inspection instead of guessing. Exact collection
   length deltas are recorded on each record's physical shard instead of one
   global writer hotspot, grouped crawler postings commit in retryable chunks of
   at most 8,192, and DHT transfer tallies are coalesced before persistence. If

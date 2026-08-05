@@ -70,7 +70,9 @@ var (
 	runNode          = run
 	openRuntimeVault = func(path string, quotaBytes int64) (*vault.Vault, error) {
 		return shardvault.OpenAt(path, quotaBytes,
-			shardvault.WithWordFilter(rwi.PostingsBucket, yagomodel.HashLength))
+			shardvault.WithWordFilter(rwi.PostingsBucket, yagomodel.HashLength),
+			shardvault.WithRootRecordRecovery(rwi.PostingsBucket, rwi.RecognizesPosting),
+		)
 	}
 	assembleRuntimeNode      = assembleNode
 	buildRuntimeEgressClient = newRuntimeEgressClient

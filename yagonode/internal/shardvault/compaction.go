@@ -3,6 +3,7 @@ package shardvault
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
 	bolt "go.etcd.io/bbolt"
@@ -35,6 +36,12 @@ const (
 // over-full shard at a time (ADR-0036 C).
 func (e *engine) Compact(ctx context.Context) (vault.CompactResult, error) {
 	var result vault.CompactResult
+	e.globalGate.Lock()
+	recoveryErr := e.recoverRootRecordsLocked(ctx, slog.Default())
+	e.globalGate.Unlock()
+	if recoveryErr != nil {
+		return result, fmt.Errorf("recover root records before compaction: %w", recoveryErr)
+	}
 	// Snapshot the count under the gate: a concurrent split can grow e.shards, and
 	// any shard added after this point is compacted on the next pass.
 	e.globalGate.RLock()
@@ -107,6 +114,9 @@ func worthCompacting(size, free int64) bool {
 // compactInto copies the live pages of src into a fresh temporary file at tmp,
 // clearing any stale leftover first. It does not touch src beyond reading it.
 func compactInto(src *bolt.DB, tmp string) error {
+	if err := validateStructuralRoot(src); err != nil {
+		return err
+	}
 	if err := os.Remove(tmp); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("clear stale compaction file: %w", err)
 	}

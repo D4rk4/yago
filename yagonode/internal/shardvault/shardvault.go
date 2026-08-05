@@ -128,6 +128,11 @@ func openEngineWithStartupProgress(
 	for _, opt := range opts {
 		opt(e)
 	}
+	if err := e.recoverRootRecordsLocked(context.Background(), progress.logger); err != nil {
+		closeShards(shards)
+
+		return nil, fmt.Errorf("recover vault root records: %w", err)
+	}
 	var wordFilterStarted time.Time
 	if e.wordFilterBucket != "" {
 		wordFilterStarted = progress.wordFilterBuilding(len(e.shards))
@@ -239,8 +244,9 @@ type engine struct {
 	// wordFilterBucket and wordFilterWidth name the filtered collection and its
 	// term-key prefix length, injected by the assembly layer so the engine stays
 	// independent of the RWI key layout. An empty bucket disables the filters.
-	wordFilterBucket vault.Name
-	wordFilterWidth  int
+	wordFilterBucket   vault.Name
+	wordFilterWidth    int
+	rootRecordRecovery *rootRecordRecovery
 }
 
 var errShardContended = fmt.Errorf("shard contended: %w", vault.ErrContended)
@@ -600,6 +606,16 @@ func (t *shardTxn) releaseLocks() {
 // commit commits every touched shard; on the first failure the remaining
 // open transactions roll back so no shard stays write-locked.
 func (t *shardTxn) commit() error {
+	for shard, tx := range t.open {
+		if tx == nil {
+			continue
+		}
+		if err := validateStructuralRootTransaction(tx); err != nil {
+			t.rollback()
+
+			return fmt.Errorf("validate shard %d before commit: %w", shard+1, err)
+		}
+	}
 	var failed error
 	for _, tx := range t.open {
 		if tx == nil {

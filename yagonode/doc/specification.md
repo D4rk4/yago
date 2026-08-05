@@ -658,6 +658,21 @@ it is not an assumed deployment dependency.
   as a separate phase through structured JSON on standard output. A
   successful completion SHALL use INFO; a completion with degraded filters
   SHALL use WARN and include the degraded-shard total.
+* Every serving-vault bbolt root SHALL contain buckets only. Each application
+  update SHALL validate that invariant before committing. Startup, shard split,
+  and compaction SHALL atomically move any ordinary root values into a flat
+  durable quarantine before maintenance reads the structural tree. A row MAY
+  leave quarantine only when its key is exactly a word hash followed by a URL
+  hash, its stored value decodes as an RWI posting, and the posting URL hash
+  equals the key suffix. Recovery SHALL commit the original stored bytes to the
+  currently routed `rwi` bucket before deleting quarantine evidence, SHALL NOT
+  overwrite a different live value, SHALL change collection length only for a
+  missing insertion, and SHALL converge after interruption at either commit.
+  Invalid, malformed, and conflicting evidence SHALL remain verbatim in
+  quarantine. Split, compaction, commit, and retained legacy migration SHALL
+  return an error for an unresolved structural-root record rather than panic.
+  Any intervention SHALL emit one stable WARN record carrying isolated,
+  restored, already-present, conflict, and retained totals.
 * Concurrent storage-capacity preflights SHALL share one successful live-byte observation for at most one second and SHALL compare it with the current quota on every call. Exact usage reads SHALL remain exact and SHALL refresh the shared observation. A newer exact observation SHALL supersede an older in-flight preflight. One non-context measurement failure SHALL be returned to its leader and every current waiter but SHALL NOT be cached for a later caller wave. A cancellation or deadline from the measurement leader SHALL allow a healthy waiter to open one replacement measurement; a cancelled waiter SHALL return promptly. The preflight is advisory; commit-time operating-system capacity failures SHALL remain final backpressure.
 * A sharded-vault collection length SHALL remain exact without making every
   mutation write one shared counter shard. The retained legacy length SHALL be
