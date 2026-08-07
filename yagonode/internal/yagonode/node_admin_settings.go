@@ -60,6 +60,7 @@ func loadRuntimeSettings(
 		)
 	}
 	config = applyBindOverrides(config, overrides)
+	config = withAutomaticDiscoveryExecutionLimits(config)
 	startupSettings := config
 	config, err = resolvePeerIdentity(ctx, storage, config)
 	if err != nil {

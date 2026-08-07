@@ -49,6 +49,7 @@ var crawlerPrivateNetworkRoots = []netip.Prefix{
 }
 
 type CrawlerRuntimePolicy struct {
+	AutomaticDiscoveryLimits  []AutomaticDiscoveryExecutionLimit
 	AllowPrivateNetworks      bool
 	AllowedPrivateCIDRs       []netip.Prefix
 	BrowserFailureThreshold   int
@@ -139,7 +140,10 @@ func FormatCrawlerPrivateCIDRs(prefixes []netip.Prefix) string {
 }
 
 func (policy CrawlerRuntimePolicy) Equal(other CrawlerRuntimePolicy) bool {
-	return policy.AllowPrivateNetworks == other.AllowPrivateNetworks &&
+	return slices.Equal(
+		policy.AutomaticDiscoveryLimits,
+		other.AutomaticDiscoveryLimits,
+	) && policy.AllowPrivateNetworks == other.AllowPrivateNetworks &&
 		FormatCrawlerPrivateCIDRs(policy.AllowedPrivateCIDRs) ==
 			FormatCrawlerPrivateCIDRs(other.AllowedPrivateCIDRs) &&
 		policy.BrowserFailureThreshold == other.BrowserFailureThreshold &&

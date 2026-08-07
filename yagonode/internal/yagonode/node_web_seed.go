@@ -115,7 +115,7 @@ func newCrawlSeeder(
 }
 
 func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
-	unusable, known, published := 0, 0, 0
+	unusable, known, published, coalesced, failed := 0, 0, 0, 0, 0
 	for _, raw := range urls {
 		target, admitted := s.AdmitCrawlSeedURL(raw)
 		if !admitted {
@@ -129,8 +129,14 @@ func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
 			continue
 		}
 		instant := s.now()
-		s.publishWebDiscoveryOrder(ctx, target, instant)
-		published++
+		switch s.publishWebDiscoveryOrder(ctx, target, instant) {
+		case webSeedPublicationPublished:
+			published++
+		case webSeedPublicationCoalesced:
+			coalesced++
+		case webSeedPublicationFailed:
+			failed++
+		}
 	}
 	// Skipping an already-stored page is the seeder working, and skipping an
 	// unusable URL is too, but both were indistinguishable from a seeder that
@@ -139,6 +145,8 @@ func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
 	slog.InfoContext(ctx, msgWebSeedOutcome,
 		slog.Int("urls", len(urls)),
 		slog.Int("published", published),
+		slog.Int("coalesced", coalesced),
+		slog.Int("failed", failed),
 		slog.Int("alreadyStored", known),
 		slog.Int("unusableUrl", unusable))
 }

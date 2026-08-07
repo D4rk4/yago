@@ -60,6 +60,10 @@ func (f *Frontier) prepareRunCheckpoint(
 	if err != nil {
 		return runCheckpointPreparation{}, err
 	}
+	snapshot, err = f.enforceRecoveredRunDepth(ctx, seed, profile, snapshot, persistent)
+	if err != nil {
+		return runCheckpointPreparation{}, err
+	}
 	snapshot, err = f.enforceRecoveredRunPageBudget(ctx, seed, profile, snapshot, persistent)
 	if err != nil {
 		return runCheckpointPreparation{}, err

@@ -26,6 +26,9 @@ func CrawlerRuntimePolicyToProto(
 	frontierStateMaximumBytes := policy.FrontierStateMaximumBytes
 
 	return &crawlrpc.CrawlerRuntimePolicy{
+		AutomaticDiscoveryLimits: automaticDiscoveryExecutionLimitsToProto(
+			policy.AutomaticDiscoveryLimits,
+		),
 		AllowPrivateNetworks:       policy.AllowPrivateNetworks,
 		AllowedPrivateCidrs:        prefixes,
 		BrowserFailureThreshold:    crawlerRuntimePolicyUint32(policy.BrowserFailureThreshold),
@@ -87,7 +90,20 @@ func CrawlerRuntimePolicyFromProtoWithFallback(
 	if message.FrontierStateMaxBytes != nil {
 		frontierStateMaximumBytes = message.GetFrontierStateMaxBytes()
 	}
+	automaticDiscoveryExecutionLimits := append(
+		[]AutomaticDiscoveryExecutionLimit(nil),
+		fallback.AutomaticDiscoveryLimits...,
+	)
+	if len(message.GetAutomaticDiscoveryLimits()) > 0 {
+		automaticDiscoveryExecutionLimits, err = automaticDiscoveryExecutionLimitsFromProto(
+			message.GetAutomaticDiscoveryLimits(),
+		)
+		if err != nil {
+			return CrawlerRuntimePolicy{}, err
+		}
+	}
 	policy := CrawlerRuntimePolicy{
+		AutomaticDiscoveryLimits:  automaticDiscoveryExecutionLimits,
 		AllowPrivateNetworks:      message.GetAllowPrivateNetworks(),
 		AllowedPrivateCIDRs:       prefixes,
 		BrowserFailureThreshold:   int(message.GetBrowserFailureThreshold()),
@@ -196,6 +212,12 @@ func crawlerRuntimePolicyUint32(value int) uint32 {
 	parsed, _ := strconv.ParseUint(strconv.Itoa(value), 10, 32)
 
 	return uint32(parsed)
+}
+
+func crawlerRuntimePolicyUint64(value int) uint64 {
+	parsed, _ := strconv.ParseUint(strconv.Itoa(value), 10, 64)
+
+	return parsed
 }
 
 func crawlerRuntimePolicyMilliseconds(value time.Duration) uint64 {

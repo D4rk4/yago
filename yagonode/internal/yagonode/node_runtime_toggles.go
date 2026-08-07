@@ -54,6 +54,7 @@ type runtimeToggles struct {
 	crawlerMaximumRedirects      atomic.Value
 	crawlerMaximumActiveRuns     atomic.Value
 	crawlerMaxPagesPerRun        atomic.Value
+	crawlerDefaultPageBudget     atomic.Int64
 	automaticDiscoveryPriority   atomic.Value
 	crawlerStorageReservedFree   atomic.Int64
 	crawlerStorageRecovery       atomic.Int64
@@ -88,6 +89,7 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.storagePressureRecovery.Store(config.StoragePressureRecoveryBytes)
 	toggles.crawlerStorageReservedFree.Store(config.Crawl.StorageReservedFreeBytes)
 	toggles.crawlerStorageRecovery.Store(config.Crawl.StoragePressureRecoveryBytes)
+	toggles.crawlerDefaultPageBudget.Store(int64(config.Crawl.MaxPagesPerRun))
 	toggles.crawlerRuntimePolicy = config.Crawl.RuntimePolicy
 	toggles.loggingLevel.Store(int64(config.LoggingLevel))
 
@@ -263,12 +265,14 @@ func (t *runtimeToggles) SetSwarmSeedCrawl(enabled bool) {
 func (t *runtimeToggles) SetSwarmSeedDepth(depth int) {
 	if t != nil {
 		t.swarmSeedDepth.Store(int64(depth))
+		t.refreshAutomaticDiscoveryExecutionLimits()
 	}
 }
 
 func (t *runtimeToggles) SetSwarmSeedMaxPages(pages int) {
 	if t != nil {
 		t.swarmSeedMaxPages.Store(int64(pages))
+		t.refreshAutomaticDiscoveryExecutionLimits()
 	}
 }
 
@@ -277,6 +281,7 @@ func (t *runtimeToggles) SetSwarmSeedMaxPages(pages int) {
 func (t *runtimeToggles) SetWebSeedDepth(depth int) {
 	if t != nil {
 		t.webSeedDepth.Store(int64(depth))
+		t.refreshAutomaticDiscoveryExecutionLimits()
 	}
 }
 
@@ -285,6 +290,7 @@ func (t *runtimeToggles) SetWebSeedDepth(depth int) {
 func (t *runtimeToggles) SetWebSeedMaxPages(pages int) {
 	if t != nil {
 		t.webSeedMaxPages.Store(int64(pages))
+		t.refreshAutomaticDiscoveryExecutionLimits()
 	}
 }
 

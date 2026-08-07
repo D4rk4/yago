@@ -68,6 +68,7 @@ const (
 var DefaultUserAgent = "yago-crawler/" + version + " (+https://github.com/D4rk4/yago/)"
 
 type CrawlConfig struct {
+	AutomaticDiscoveryLimits     []yagocrawlcontract.AutomaticDiscoveryExecutionLimit
 	Workers                      int
 	ProcessPagesPerSecond        uint32
 	MaxActiveRuns                int

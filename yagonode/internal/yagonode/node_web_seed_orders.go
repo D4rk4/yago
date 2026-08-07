@@ -17,7 +17,7 @@ func (s *webCrawlSeeder) publishWebDiscoveryOrder(
 	ctx context.Context,
 	target string,
 	instant time.Time,
-) {
+) webSeedPublication {
 	bounds := s.bounds()
 	profile := s.profile
 	profile.MaxDepth = bounds.depth
@@ -28,7 +28,7 @@ func (s *webCrawlSeeder) publishWebDiscoveryOrder(
 	)
 	profile.MaxPagesPerRun = &maximum
 	profile = yagocrawlcontract.NewCrawlProfile(profile)
-	s.publishWebSeedOrder(ctx, target, s.webSeedOrder(target, instant, profile))
+	return s.publishWebSeedOrder(ctx, target, s.webSeedOrder(target, instant, profile))
 }
 
 func (s *webCrawlSeeder) webSeedOrder(
@@ -54,7 +54,7 @@ func (s *webCrawlSeeder) publishWebSeedOrder(
 	ctx context.Context,
 	identity string,
 	order yagocrawlcontract.CrawlOrder,
-) {
+) webSeedPublication {
 	var err error
 	for attempt := range webSeedPublishAttempts {
 		duplicate, publishErr := s.queue.PublishOnce(ctx, identity, order)
@@ -67,7 +67,11 @@ func (s *webCrawlSeeder) publishWebSeedOrder(
 				slog.Bool("coalesced", duplicate),
 			)
 
-			return
+			if duplicate {
+				return webSeedPublicationCoalesced
+			}
+
+			return webSeedPublicationPublished
 		}
 		if attempt+1 < webSeedPublishAttempts &&
 			!waitWebSeedRetry(ctx, webSeedRetryDelay*time.Duration(1<<attempt)) {
@@ -84,6 +88,8 @@ func (s *webCrawlSeeder) publishWebSeedOrder(
 		slog.String("url", identity),
 		slog.Any("error", err),
 	)
+
+	return webSeedPublicationFailed
 }
 
 func waitWebSeedRetry(ctx context.Context, delay time.Duration) bool {

@@ -128,6 +128,9 @@ its binaries (`yago-node`, `yago-crawler`).
   under — before admission, so a page already indexed is not re-seeded under a
   second spelling. A one-at-a-time recovery intent protects durable publication, which
   coalesces a normalized URL only while its task is pending or leased.
+  Seed accounting distinguishes a new publication, an existing coalesced task,
+  and a failed publication, so a deduplicated URL is not reported as a newly
+  created task.
   Acknowledgement, terminal failure, or cancellation first persists a settlement
   intent; retry or startup finishes any partial lease transition and identity
   release idempotently. A later search can then retry without delaying the
@@ -316,6 +319,11 @@ its binaries (`yago-node`, `yago-crawler`).
   scraping uses a trusted local tunnel or proxy. Fixed-cardinality browser-pool
   metrics expose acquisition time, ready/busy/cooling session state, and
   slot-deadline/cooldown/launch/render failures without URL or error-text labels.
+  The policy also carries current per-profile automatic-discovery limits. A
+  reduced web or swarm page cap gracefully rebuilds the crawler session and
+  recovers pending, leased, and checkpointed automatic work under the new cap
+  while preserving its durable order identity; explicit manual budgets remain
+  unchanged.
 - **Atomic node-side crawl control**: `yago-node` keeps its order queue, leases,
   settlements, controls, and terminal-run delivery state in
   `${YAGO_DATA_DIR}/crawlbroker.db`. One bbolt transaction can therefore move a
@@ -443,6 +451,8 @@ its binaries (`yago-node`, `yago-crawler`).
   All six controls — each path's on/off switch, crawl depth, and page cap —
   apply live, so enabling seeding starts publishing on the next search and
   narrowing either bound applies to the next seeded order without a restart.
+  Reduced page caps also reconcile already outstanding automatic work through
+  the crawler runtime policy instead of leaving the stored order at its old cap.
   Startup logs whether seeding can run and which condition blocks it. Surfaced fallback URLs use two background workers,
   at most 128 pending warming jobs, and a ten-second deadline beginning when each
   job starts. A full

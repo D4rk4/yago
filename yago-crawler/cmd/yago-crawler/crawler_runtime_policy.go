@@ -4,6 +4,10 @@ import "github.com/D4rk4/yago/yagocrawlcontract"
 
 func (config ServiceConfig) runtimePolicy() yagocrawlcontract.CrawlerRuntimePolicy {
 	return yagocrawlcontract.CrawlerRuntimePolicy{
+		AutomaticDiscoveryLimits: append(
+			[]yagocrawlcontract.AutomaticDiscoveryExecutionLimit(nil),
+			config.Crawl.AutomaticDiscoveryLimits...,
+		),
 		AllowPrivateNetworks:      config.EgressAllowLAN,
 		AllowedPrivateCIDRs:       config.EgressAllowedCIDRs,
 		BrowserFailureThreshold:   config.Crawl.BrowserFailureThreshold,
@@ -28,6 +32,10 @@ func (config ServiceConfig) runtimePolicy() yagocrawlcontract.CrawlerRuntimePoli
 func (config ServiceConfig) withRuntimePolicy(
 	policy yagocrawlcontract.CrawlerRuntimePolicy,
 ) ServiceConfig {
+	config.Crawl.AutomaticDiscoveryLimits = append(
+		[]yagocrawlcontract.AutomaticDiscoveryExecutionLimit(nil),
+		policy.AutomaticDiscoveryLimits...,
+	)
 	config.EgressAllowLAN = policy.AllowPrivateNetworks
 	config.EgressAllowedCIDRs = append(config.EgressAllowedCIDRs[:0], policy.AllowedPrivateCIDRs...)
 	config.Crawl.BrowserFailureThreshold = policy.BrowserFailureThreshold

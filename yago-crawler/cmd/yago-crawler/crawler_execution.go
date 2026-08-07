@@ -81,6 +81,9 @@ func (execution crawlerExecution) lifecycle(
 	).WithProgressReporter(progress).
 		WithRunTally(execution.tally).
 		WithMaximumDepth(cfg.Crawl.MaxDepth).
+		WithAutomaticDiscoveryExecutionLimits(
+			cfg.Crawl.AutomaticDiscoveryLimits,
+		).
 		WithGrowthAdmission(execution.growthAdmission).
 		WithActiveRunAdmission(execution.activeRuns)
 

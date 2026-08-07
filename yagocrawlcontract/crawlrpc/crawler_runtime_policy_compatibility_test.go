@@ -4,10 +4,36 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
+
+func TestCrawlerRuntimePolicyAutomaticDiscoveryLimitsAreAdditive(t *testing.T) {
+	descriptor := crawlrpc.File_crawlexchange_proto.Messages().ByName(
+		"CrawlerRuntimePolicy",
+	)
+	field := descriptor.Fields().ByName("automatic_discovery_limits")
+	if field == nil || field.Number() != 21 || field.Cardinality() != protoreflect.Repeated {
+		t.Fatalf("automatic discovery limits descriptor = %+v, want repeated field 21", field)
+	}
+	wire, err := proto.Marshal(&crawlrpc.CrawlerRuntimePolicy{
+		AutomaticDiscoveryLimits: []*crawlrpc.AutomaticDiscoveryExecutionLimit{{
+			ProfileName:         "web-fallback-seed",
+			MaximumDepth:        1,
+			MaximumPagesPerHost: 25,
+			MaximumPagesPerRun:  25,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal current automatic discovery limits: %v", err)
+	}
+	legacy := emptyLegacyMessageDescriptor(t, "CrawlerRuntimePolicy")
+	if err := proto.Unmarshal(wire, dynamicpb.NewMessage(legacy)); err != nil {
+		t.Fatalf("legacy decoder rejected automatic discovery limits: %v", err)
+	}
+}
 
 func TestCrawlerRuntimePolicyBrowserSandboxIsAdditiveAndPresent(t *testing.T) {
 	descriptor := crawlrpc.File_crawlexchange_proto.Messages().ByName(

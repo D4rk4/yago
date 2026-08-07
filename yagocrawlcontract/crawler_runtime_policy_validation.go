@@ -9,6 +9,7 @@ import (
 
 func (policy CrawlerRuntimePolicy) Validate() error {
 	for _, validate := range []func(CrawlerRuntimePolicy) error{
+		validateAutomaticDiscoveryExecutionLimits,
 		validateCrawlerRuntimeAccess,
 		validateCrawlerRuntimeLimits,
 		validateCrawlerRuntimeTiming,

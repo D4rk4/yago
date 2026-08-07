@@ -168,6 +168,14 @@ message CrawlerRuntimePolicy {
   optional uint64 frontier_state_max_bytes = 18;
   optional uint64 storage_reserved_free_bytes = 19;
   optional uint64 storage_pressure_hysteresis_bytes = 20;
+  repeated AutomaticDiscoveryExecutionLimit automatic_discovery_limits = 21;
+}
+
+message AutomaticDiscoveryExecutionLimit {
+  string profile_name = 1;
+  uint32 maximum_depth = 2;
+  uint64 maximum_pages_per_host = 3;
+  uint64 maximum_pages_per_run = 4;
 }
 
 message CrawlURLDenylist {

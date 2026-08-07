@@ -41,6 +41,7 @@ type CrawlOrderConsumer struct {
 	growthAdmission GrowthAdmission
 	activeRuns      *ActiveRunAdmission
 	maximumDepth    int
+	limits          crawlOrderExecutionLimits
 }
 
 type GrowthAdmission interface {

@@ -506,6 +506,9 @@ func (s *frontierState) accept(
 		)
 		return false, false
 	}
+	if candidate.depth > profile.Profile.MaxDepth {
+		return false, false
+	}
 	if _, seen := run.visited[candidate.normURL]; seen {
 		return false, true
 	}

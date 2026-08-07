@@ -324,6 +324,17 @@ hysteresis fields keep their current bootstrap or effective values when an older
 policy-capable node omits them. An older node without that additive RPC leaves
 the environment bootstrap in use.
 
+The runtime policy also carries the current limits for named web- and
+swarm-discovery profiles. The crawler intersects those limits with a matching
+automatic order when it compiles the profile and preserves the stored profile
+handle. A reduced limit requests the same graceful restart; checkpoint recovery
+first discards pending pages beyond the current depth and then discards excess
+newest pages beyond the current whole-run ceiling. It retains the oldest
+eligible work, completed totals, visited history, and durable order identity.
+Manual and unmatched profiles keep their recorded page budgets. An older
+policy-capable node that omits these additive limits leaves the order's stored
+profile in force.
+
 The Index URL/domain denylist is also authoritative crawler policy. Before the
 order stream opens, the crawler obtains one bounded revisioned snapshot from the
 node and fails closed until it has a valid policy. Heartbeats transfer a new

@@ -396,6 +396,14 @@ it is not an assumed deployment dependency.
   automatic crawl task, including every admitted host. The ordinary crawler
   whole-run maximum MAY reduce that task cap but SHALL NOT increase it. The
   automatic task cap SHALL also remain its per-host ceiling.
+* The node SHALL carry the current named swarm- and web-discovery depth,
+  per-host, and whole-run ceilings in its typed crawler runtime policy. A
+  current crawler SHALL apply those ceilings when compiling a matching
+  automatic-discovery order without changing the stored profile handle or
+  order identity. A reduced whole-run ceiling SHALL request graceful worker
+  session recovery and SHALL bound pending, leased, and checkpointed work, not
+  only orders created after the setting change. Manual and recrawl profiles
+  SHALL retain their recorded budgets.
 * Recovery of a historical automatic-discovery checkpoint whose missing,
   unlimited, or broader whole-run value exceeds its positive per-host ceiling
   SHALL derive the stricter task cap. Excess pending pages SHALL be removed

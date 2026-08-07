@@ -64,17 +64,30 @@ func TestControlRegistryRuntimePolicyValidatesAndClones(t *testing.T) {
 	registry := newControlRegistry()
 	policy := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
 	policy.AllowedPrivateCIDRs = []netip.Prefix{netip.MustParsePrefix("10.4.0.0/16")}
+	policy.AutomaticDiscoveryLimits = []yagocrawlcontract.AutomaticDiscoveryExecutionLimit{
+		{
+			ProfileName:         "web-fallback-seed",
+			MaximumDepth:        1,
+			MaximumPagesPerHost: 25,
+			MaximumPagesPerRun:  25,
+		},
+	}
 	if !registry.SetRuntimePolicy(policy) {
 		t.Fatal("valid runtime policy rejected")
 	}
 	policy.AllowedPrivateCIDRs[0] = netip.MustParsePrefix("10.5.0.0/16")
+	policy.AutomaticDiscoveryLimits[0].MaximumPagesPerRun = 50
 	if got := registry.RuntimePolicy().AllowedPrivateCIDRs[0].String(); got != "10.4.0.0/16" {
 		t.Fatalf("registry policy mutated through input slice: %s", got)
 	}
 	copy := registry.RuntimePolicy()
 	copy.AllowedPrivateCIDRs[0] = netip.MustParsePrefix("10.6.0.0/16")
+	copy.AutomaticDiscoveryLimits[0].MaximumPagesPerRun = 75
 	if got := registry.RuntimePolicy().AllowedPrivateCIDRs[0].String(); got != "10.4.0.0/16" {
 		t.Fatalf("registry policy mutated through output slice: %s", got)
+	}
+	if got := registry.RuntimePolicy().AutomaticDiscoveryLimits[0].MaximumPagesPerRun; got != 25 {
+		t.Fatalf("registry execution limit mutated through a shared slice: %d", got)
 	}
 	if !registry.SetRuntimePolicy(registry.RuntimePolicy()) {
 		t.Fatal("equal runtime policy rejected")

@@ -121,6 +121,9 @@ func (f *Frontier) acceptWithAdmissionWindowLocked(
 		return false, false
 	}
 	profile := run.profiles[candidate.profileHandle]
+	if candidate.depth > profile.Profile.MaxDepth {
+		return false, false
+	}
 	if window.visited[admission.position] {
 		return false, true
 	}

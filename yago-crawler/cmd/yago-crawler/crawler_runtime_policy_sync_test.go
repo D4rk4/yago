@@ -26,6 +26,14 @@ func TestReadCrawlerRuntimePolicyOverridesBootstrapBeforeAssembly(t *testing.T) 
 	policy.BrowserPath = "/opt/firefox/firefox"
 	policy.MetricsAddress = "127.0.0.1:9101"
 	policy.UserAgent = "policy-agent"
+	policy.AutomaticDiscoveryLimits = []yagocrawlcontract.AutomaticDiscoveryExecutionLimit{
+		{
+			ProfileName:         "web-fallback-seed",
+			MaximumDepth:        2,
+			MaximumPagesPerHost: 25,
+			MaximumPagesPerRun:  25,
+		},
+	}
 	message, err := yagocrawlcontract.CrawlerRuntimePolicyToProto(policy)
 	if err != nil {
 		t.Fatalf("encode policy: %v", err)
@@ -78,6 +86,14 @@ func TestReadLegacyCrawlerRuntimePolicyPreservesSandboxBootstrap(t *testing.T) {
 	config.MetricsAddr = "127.0.0.1:9100"
 	config.StorageReservedFreeBytes = 3 << 30
 	config.StoragePressureHysteresisBytes = 512 << 20
+	config.Crawl.AutomaticDiscoveryLimits = []yagocrawlcontract.AutomaticDiscoveryExecutionLimit{
+		{
+			ProfileName:         "web-fallback-seed",
+			MaximumDepth:        1,
+			MaximumPagesPerHost: 25,
+			MaximumPagesPerRun:  25,
+		},
+	}
 	resolved, err := readCrawlerRuntimePolicy(t.Context(), config)
 	if err != nil {
 		t.Fatalf("read legacy policy: %v", err)
@@ -87,7 +103,8 @@ func TestReadLegacyCrawlerRuntimePolicyPreservesSandboxBootstrap(t *testing.T) {
 		resolved.MetricsAddr != config.MetricsAddr ||
 		resolved.StorageReservedFreeBytes != config.StorageReservedFreeBytes ||
 		resolved.StoragePressureHysteresisBytes !=
-			config.StoragePressureHysteresisBytes {
+			config.StoragePressureHysteresisBytes ||
+		len(resolved.Crawl.AutomaticDiscoveryLimits) != 1 {
 		t.Fatalf("legacy node erased crawler bootstrap facilities: %+v", resolved)
 	}
 }

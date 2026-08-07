@@ -78,9 +78,11 @@ func (t *runtimeToggles) ApplyCrawlerMaxPagesPerRun(value int) {
 	if t == nil {
 		return
 	}
+	t.crawlerDefaultPageBudget.Store(int64(value))
 	if sink, ok := t.crawlerMaxPagesPerRun.Load().(func(int)); ok {
 		sink(value)
 	}
+	t.refreshAutomaticDiscoveryExecutionLimits()
 }
 
 func (t *runtimeToggles) SetAutomaticDiscoveryPrioritySink(sink func(bool)) {

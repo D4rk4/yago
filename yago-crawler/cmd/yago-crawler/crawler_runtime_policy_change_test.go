@@ -27,6 +27,14 @@ func (recorder *frontierStateMaximumPolicyRecorder) SetStateMaximumBytes(value u
 func TestCrawlerRuntimePolicyChangeAppliesSandboxWithoutRestart(t *testing.T) {
 	effective := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
 	effective.AllowedPrivateCIDRs = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	effective.AutomaticDiscoveryLimits = []yagocrawlcontract.AutomaticDiscoveryExecutionLimit{
+		{
+			ProfileName:         "web-fallback-seed",
+			MaximumDepth:        1,
+			MaximumPagesPerHost: 25,
+			MaximumPagesPerRun:  25,
+		},
+	}
 	browser := &browserSandboxPolicyRecorder{}
 	restarts := 0
 	change := newCrawlerRuntimePolicyChange(effective, browser, nil, func() { restarts++ })
@@ -45,10 +53,14 @@ func TestCrawlerRuntimePolicyChangeAppliesSandboxWithoutRestart(t *testing.T) {
 		t.Fatalf("effective policy = %+v, want %+v", current, updated)
 	}
 	current.AllowedPrivateCIDRs[0] = netip.MustParsePrefix("10.2.0.0/16")
+	current.AutomaticDiscoveryLimits[0].MaximumPagesPerRun = 1
 	if !change.Current().AllowedPrivateCIDRs[0].Contains(
 		netip.MustParseAddr("10.1.0.1"),
 	) {
 		t.Fatal("effective policy escaped through the current snapshot")
+	}
+	if change.Current().AutomaticDiscoveryLimits[0].MaximumPagesPerRun != 25 {
+		t.Fatal("automatic discovery policy escaped through the current snapshot")
 	}
 }
 

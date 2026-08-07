@@ -85,6 +85,10 @@ func cloneCrawlerRuntimePolicy(
 	policy yagocrawlcontract.CrawlerRuntimePolicy,
 ) yagocrawlcontract.CrawlerRuntimePolicy {
 	policy.AllowedPrivateCIDRs = append([]netip.Prefix(nil), policy.AllowedPrivateCIDRs...)
+	policy.AutomaticDiscoveryLimits = append(
+		[]yagocrawlcontract.AutomaticDiscoveryExecutionLimit(nil),
+		policy.AutomaticDiscoveryLimits...,
+	)
 
 	return policy
 }

@@ -499,8 +499,15 @@ take precedence over the environment-derived defaults. The three web-discovery
 knobs — `web.fallback.seed_crawl`, `web.fallback.seed_depth`, and
 `web.fallback.seed_max_pages` — apply live: enabling seeding starts publishing
 orders on the next search, and narrowing the depth or page cap bounds the very
-next order, so an operator can throttle a seed backlog without a restart. The
-swarm-seed equivalents still take effect on restart. That tab contains
+next order. The swarm-seed equivalents apply live as well. A page-cap change is
+also carried in the crawler runtime policy for both named automatic-discovery
+profiles. Connected crawlers gracefully rebuild their working session and
+recover pending or leased work under the current cap, so a durable task does not
+keep a broader limit merely because it was created before the setting changed.
+Recovery removes already-pending pages beyond the current depth before applying
+the current whole-run page ceiling; new seed requests beyond the compiled depth
+are refused at admission.
+That tab contains
 separate Crawler, Automatic discovery, and Document formats fieldsets. The
 legacy `/admin/autocrawler` URLs redirect to this tab and do not keep a second
 settings surface.
@@ -517,6 +524,8 @@ automatic-discovery publication. A normalized URL is coalesced only while its
 order is pending or leased. Acknowledgement, terminal failure, or cancellation
 stages a durable settlement intent before releasing the identity so a partial
 write or restart can finish idempotently and a later surfaced result can retry.
+The seeding outcome reports a new publication, an existing coalesced task, and a
+failed publication separately; a coalesced URL does not create a second task.
 Successful ingest uses the live lease's complete crawl profile and attempts to
 persist that profile before recording the fetch. A profile or schedule write
 failure is logged and cannot reject or roll back the already indexed document.
@@ -529,8 +538,9 @@ manual and scheduled profile. A swarm- or web-discovery task uses the smaller
 of its dedicated automatic-task cap and this global cap when the global value
 is positive; global `0` never removes the dedicated automatic cap. Recrawls
 retain the profile value under which the URL was first scheduled.
-Configuration → Crawler changes the default live for subsequent tasks, and the
-manual crawl form can override it per task. A value of `0` is deliberately
+Configuration → Crawler changes the default live for subsequent manual tasks and
+the current execution ceiling for automatic-discovery tasks; the manual crawl
+form can override it per task. A value of `0` is deliberately
 unlimited for profiles that do not carry a separate dedicated cap.
 Manual and recrawl profiles retain the whole-run value recorded in the
 profile. A recrawl is re-dispatched under the priority its profile was first
@@ -544,6 +554,11 @@ the oldest pending work. Completed totals, visited history, and per-host
 admission facts remain unchanged. Durable discarded-page accounting makes the
 operation idempotent across repeated crashes; when completed work already meets
 the cap, recovery removes every pending page and settles the task successfully.
+The runtime-policy field carrying named automatic-discovery limits is additive.
+A current crawler preserves its local bootstrap when an older node omits the
+field, while an older crawler ignores it and continues using the limit recorded
+in each order. Upgrade the node and crawler together when existing automatic
+work must be reconciled to a newly reduced Admin cap.
 
 Automatic-discovery orders carry explicit priority metadata. With
 `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY=true`, the durable queue selects at
