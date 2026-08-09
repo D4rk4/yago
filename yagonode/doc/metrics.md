@@ -115,6 +115,16 @@ next successful sample, normally after about ten seconds. Console requests and
 ten-second HTMX refreshes read the bounded ring and do not gather metrics or
 inspect the host directly.
 
+The Overview page has a separate process-local diagnostic refreshed with its
+existing fifteen-second status fragment. On Linux, one `/proc/self/status`
+snapshot supplies resident set (`VmRSS`), anonymous RSS (`RssAnon`),
+file-backed RSS (`RssFile`), and shared-memory RSS (`RssShmem`); the Go runtime
+supplies heap object bytes. Linux RSS is the sum of the three resident classes.
+Go heap objects are an allocation measure rather than another RSS component, so
+operators must not add that value to RSS. Each value remains independently
+available or unavailable. This direct snapshot does not change the sampled
+System Monitor history or add a Prometheus series.
+
 The host-memory display pairs `sysinfo` total RAM with Linux
 `/proc/meminfo` `MemAvailable`, the kernel estimate of memory available to new
 applications without swapping. Its used value is `total - available`, so

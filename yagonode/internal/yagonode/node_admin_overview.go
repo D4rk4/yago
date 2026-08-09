@@ -11,6 +11,7 @@ type overviewSource struct {
 	report         nodestatus.Report
 	localDocuments overviewLocalDocuments
 	peerType       localPeerClassification
+	processMemory  processMemoryDiagnostics
 }
 
 func newOverviewSource(report nodestatus.Report) overviewSource {
@@ -29,6 +30,10 @@ func (s overviewSource) Overview(ctx context.Context) adminui.Overview {
 	receivedWords, receivedWordsKnown := seedTransferStatistic(seed.ReceivedWordCount)
 	sentURLs, sentURLsKnown := seedTransferStatistic(seed.SentURLCount)
 	receivedURLs, receivedURLsKnown := seedTransferStatistic(seed.ReceivedURLCount)
+	processMemory := adminui.ProcessMemory{}
+	if s.processMemory != nil {
+		processMemory = s.processMemory.ProcessMemory()
+	}
 
 	return adminui.Overview{
 		PeerName: name,
@@ -56,5 +61,6 @@ func (s overviewSource) Overview(ctx context.Context) adminui.Overview {
 		SentURLsKnown:           sentURLsKnown,
 		ReceivedURLs:            receivedURLs,
 		ReceivedURLsKnown:       receivedURLsKnown,
+		ProcessMemory:           processMemory,
 	}
 }

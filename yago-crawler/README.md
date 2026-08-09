@@ -59,7 +59,11 @@ same-worker reconnect, so a delayed heartbeat cannot leave parked work waiting
 indefinitely on an otherwise healthy stream. That stream-attempt cancellation
 also interrupts a confirmed delivery waiting behind local active-run admission,
 so a live crawler reopens its logical session after a node process restart rather
-than remaining attached to a dead delivery attempt. Each ordinary delivery is
+than remaining attached to a dead delivery attempt. If an admitted frontier job
+no longer has its exact confirmed grant, the crawler suspends that lease-bound
+run, retains its durable checkpoint, and releases its active-task slot so replay
+can recover it. A run already rebound to a confirmed replacement lease remains
+active. Each ordinary delivery is
 confirmed with a heartbeat that targets its lease; the node does not claim or
 send another order for that session until the renewal succeeds. Confirmation
 occurs before the payload is decoded, so an undecodable order remains a tracked

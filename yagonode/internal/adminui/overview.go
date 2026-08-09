@@ -32,6 +32,7 @@ type Overview struct {
 	SentURLsKnown           bool
 	ReceivedURLs            int64
 	ReceivedURLsKnown       bool
+	ProcessMemory           ProcessMemory
 }
 
 // OverviewSource supplies the live overview snapshot on each request.
@@ -39,7 +40,7 @@ type OverviewSource interface {
 	Overview(ctx context.Context) Overview
 }
 
-var overviewFuncs = template.FuncMap{"dur": humanDuration}
+var overviewFuncs = template.FuncMap{"bytes": formatByteSize, "dur": humanDuration}
 
 func humanDuration(seconds int) string {
 	if seconds <= 0 {

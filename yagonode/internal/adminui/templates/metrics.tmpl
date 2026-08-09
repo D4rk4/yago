@@ -36,6 +36,19 @@
     </table>
   </div>
   <div class="cds-tile">
+    <h2 class="cds-h2">Memory diagnostics</h2>
+    <table class="cds-table">
+      <tbody>
+        <tr><th scope="row">Process resident set (RSS)</th><td>{{if .ProcessMemory.ResidentAvailable}}{{bytes .ProcessMemory.ResidentBytes}}{{else}}Unavailable{{end}}</td></tr>
+        <tr><th scope="row">Anonymous RSS</th><td>{{if .ProcessMemory.AnonymousAvailable}}{{bytes .ProcessMemory.AnonymousBytes}}{{else}}Unavailable{{end}}</td></tr>
+        <tr><th scope="row">File-backed RSS</th><td>{{if .ProcessMemory.FileBackedAvailable}}{{bytes .ProcessMemory.FileBackedBytes}}{{else}}Unavailable{{end}}</td></tr>
+        <tr><th scope="row">Shared-memory RSS</th><td>{{if .ProcessMemory.SharedMemoryAvailable}}{{bytes .ProcessMemory.SharedMemoryBytes}}{{else}}Unavailable{{end}}</td></tr>
+        <tr><th scope="row">Go heap objects</th><td>{{if .ProcessMemory.GoHeapObjectsAvailable}}{{bytes .ProcessMemory.GoHeapObjectsBytes}}{{else}}Unavailable{{end}}</td></tr>
+      </tbody>
+    </table>
+    <p class="cds-muted">Linux RSS is the sum of anonymous, file-backed, and shared resident memory. Go heap objects are a runtime allocation measure, not an additional RSS component; do not add them to RSS.</p>
+  </div>
+  <div class="cds-tile">
     <h2 class="cds-h2">Index transfer totals</h2>
     <div class="cds-scroll-x">
       <table class="cds-table">

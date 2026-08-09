@@ -510,7 +510,11 @@ its binaries (`yago-node`, `yago-crawler`).
   crawler fleet, can be disabled by config).
 - Overview and Index use the authoritative local Bleve document count. Overview
   separately labels YaCy URL metadata records because those populations can
-  differ. The Crawler monitor combines every profile in one 20-row-paged view;
+  differ. Overview also refreshes a Linux process-memory diagnostic every 15
+  seconds: resident set (RSS), anonymous RSS, file-backed RSS, shared-memory
+  RSS, and Go heap objects. The heap value is a runtime allocation measure, not
+  an additional RSS component. The Crawler monitor combines every profile in
+  one 20-row-paged view;
   totals and health use the complete snapshot, and each running row keeps its
   controls plus the effective pages-per-minute value together.
 - First-run **setup wizard**, CSRF everywhere, strict CSP, login rate

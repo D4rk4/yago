@@ -230,8 +230,8 @@ func TestConsoleOverviewRendersUnavailableStatisticsWithoutFalseZeros(t *testing
 	t.Parallel()
 
 	got := do(t, New(Options{Overview: fakeOverview{snap: Overview{}}}), "/admin/overview")
-	if count := strings.Count(mainRegion(t, got.body), "Unavailable"); count != 8 {
-		t.Fatalf("unavailable overview statistics = %d, want 8", count)
+	if count := strings.Count(mainRegion(t, got.body), "Unavailable"); count != 13 {
+		t.Fatalf("unavailable overview statistics = %d, want 13", count)
 	}
 }
 

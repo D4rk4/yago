@@ -110,7 +110,9 @@ func (p *Pipeline) run(acceptCtx, fetchCtx context.Context) {
 		}
 		jobContext, release, granted := p.grantedJobContext(fetchCtx, job)
 		if !granted {
-			p.frontier.Abandon(job)
+			if suspendUngrantedRun(p.frontier, job) {
+				continue
+			}
 			if !waitForLeaseAdmissionChange(
 				acceptCtx,
 				leaseAvailabilityChanges,

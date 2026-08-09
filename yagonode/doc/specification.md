@@ -771,7 +771,16 @@ it is not an assumed deployment dependency.
   idempotency identity bound to the operator action and continuation. The node
   SHALL NOT scan or queue extraction refresh automatically and SHALL expose no
   environment or runtime-setting knob for it.
-* Overview and Index SHALL use the local full-text backend's document count as the authoritative local index population. Overview SHALL report YaCy URL metadata records as a separately labelled population.
+* Overview and Index SHALL use the local full-text backend's document count as
+  the authoritative local index population. Overview SHALL report YaCy URL
+  metadata records as a separately labelled population.
+* Overview SHALL refresh one process-memory snapshot at the existing metrics
+  interval. On Linux it SHALL report `VmRSS`, `RssAnon`, `RssFile`, and
+  `RssShmem` from `/proc/self/status` as resident set, anonymous, file-backed,
+  and shared-memory RSS. It SHALL report Go heap object bytes separately as a
+  runtime allocation measure and SHALL NOT present that value as an additional
+  RSS component. A missing, malformed, or overflowing individual observation
+  SHALL render as unavailable without hiding the remaining observations.
 * The admin UI SHALL use IBM Carbon and SHALL be comparable by category to original YaCy administration without copying the legacy servlet UI.
 * Native `yago-v2` P2P, if added, SHALL be optional and SHALL NOT change legacy `/yacy/*` compatibility behavior.
 
@@ -838,7 +847,11 @@ it is not an assumed deployment dependency.
   Every crawler heartbeat RPC SHALL have a one-second client deadline. If an
   active lease is omitted, expires, or otherwise loses its local grant, the
   crawler SHALL cancel and reconnect its order stream so the same worker can
-  adopt the parked lease without waiting for another transport failure. An
+  adopt the parked lease without waiting for another transport failure. A
+  frontier job that no longer has its exact local lease grant SHALL suspend only
+  that lease-bound in-memory run, retain its checkpoint, and release its
+  active-run admission. It SHALL NOT suspend a run already rebound to another
+  confirmed lease. An
   ordinary delivery SHALL consume one session-scoped delivery credit after its
   durable claim. The node SHALL NOT claim or send the next order for that session
   until a successful heartbeat renews the current lease or a successful
