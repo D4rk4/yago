@@ -97,11 +97,44 @@ func TestAcquireWithinStopsWhenTheCallerGoesAway(t *testing.T) {
 	}
 	defer release()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go cancel()
-	if _, err := admission.acquireWithin(ctx, time.Minute); !errors.Is(err, context.Canceled) {
-		t.Fatalf("error = %v, want the caller's cancellation", err)
+	base, cancel := context.WithCancel(context.Background())
+	ctx := observedAdmissionWaitContext{
+		Context:      base,
+		doneObserved: make(chan struct{}, 1),
 	}
+	result := make(chan error, 1)
+	go func() {
+		_, acquireErr := admission.acquireWithin(ctx, time.Minute)
+		result <- acquireErr
+	}()
+	select {
+	case <-ctx.doneObserved:
+	case <-time.After(time.Second):
+		t.Fatal("admission wait did not observe caller cancellation")
+	}
+	cancel()
+	select {
+	case acquireErr := <-result:
+		if !errors.Is(acquireErr, context.Canceled) {
+			t.Fatalf("error = %v, want the caller's cancellation", acquireErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("admission wait did not stop after caller cancellation")
+	}
+}
+
+type observedAdmissionWaitContext struct {
+	context.Context
+	doneObserved chan struct{}
+}
+
+func (ctx observedAdmissionWaitContext) Done() <-chan struct{} {
+	select {
+	case ctx.doneObserved <- struct{}{}:
+	default:
+	}
+
+	return ctx.Context.Done()
 }
 
 // A caller that does not state its wait must not be told the node is full while
