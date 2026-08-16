@@ -98,6 +98,7 @@ func startNodeBrokerWithLaunch(
 				hostConfig.ReadonlyRootfs = true
 				hostConfig.CapDrop = []string{"ALL"}
 				hostConfig.SecurityOpt = append(hostConfig.SecurityOpt, "no-new-privileges")
+				constrainNodeMemory(hostConfig)
 			},
 			WaitingFor: wait.ForHTTP("/health").
 				WithPort(nodeOpsPort + "/tcp").
@@ -109,6 +110,7 @@ func startNodeBrokerWithLaunch(
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
 	dumpLogsOnFailure(t, "node", container)
+	requireNodeMemoryLimit(t, ctx, container)
 
 	return nodeBroker{
 		opsURL:          mappedBaseURL(t, ctx, container, nodeOpsPort),

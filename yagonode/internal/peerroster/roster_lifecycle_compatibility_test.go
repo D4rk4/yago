@@ -202,10 +202,10 @@ func TestRosterLifecycleIntegrityRejectsValidStateCorruption(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			key := string(r.key(peer.Hash))
-			corrupt(engine.buckets[peerLifecyclesBucket][key])
+			lifecycleKey := r.key(peer.Hash)
+			corrupt(engine.buckets[peerLifecyclesBucket][string(lifecycleKey)])
 			if _, err := (rosterLifecycleCodec{}).Decode(
-				engine.buckets[peerLifecyclesBucket][key],
+				engine.buckets[peerLifecyclesBucket][string(lifecycleKey)],
 			); err != nil {
 				t.Fatalf("corruption was not structurally valid: %v", err)
 			}
@@ -213,7 +213,7 @@ func TestRosterLifecycleIntegrityRejectsValidStateCorruption(t *testing.T) {
 
 			reopened := reopenScriptedRoster(t, engine, func() time.Time { return now })
 			assertConservativeLifecycle(t, reopened, peer.Hash, now)
-			if _, found := engine.buckets[peerLifecyclesBucket][key]; found {
+			if _, found := engine.buckets[peerLifecyclesBucket][string(lifecycleKey)]; found {
 				t.Fatal("corrupt lifecycle survived restart cleanup")
 			}
 		})

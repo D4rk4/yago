@@ -29,7 +29,7 @@ const (
 	diskShardCount = 8
 	// diskMaxSegmentDocs bounds merged scorch segments; MaxSegmentSize is
 	// measured in documents, not bytes.
-	diskMaxSegmentDocs = 400_000
+	diskMaxSegmentDocs = 100_000
 	diskSnapshotsKept  = 3
 	// diskReclaimDeletesWeight biases scorch merge selection toward segments
 	// carrying the most deleted documents, above the 2.0 default but below the
@@ -74,9 +74,10 @@ func diskShardPath(root string, shard int) string {
 }
 
 var (
-	newBleveDisk    = newBleveShard
-	openBleveDisk   = bleve.Open
-	removeBleveDisk = os.RemoveAll
+	newBleveDisk                      = newBleveShard
+	openBleveDisk                     = bleve.Open
+	removeBleveDisk                   = os.RemoveAll
+	persistBleveDiskSegmentGeneration = persistCurrentBleveSegmentGeneration
 )
 
 // newBleveShard creates one scorch shard with the bounded merge policy. The
@@ -89,13 +90,7 @@ func newBleveShard(path string, indexMapping mapping.IndexMapping) (bleve.Index,
 		indexMapping,
 		scorch.Name,
 		scorch.Name,
-		map[string]interface{}{
-			"scorchMergePlanOptions": map[string]interface{}{
-				"MaxSegmentSize":       diskMaxSegmentDocs,
-				"ReclaimDeletesWeight": diskReclaimDeletesWeight,
-			},
-			"numSnapshotsToKeep": diskSnapshotsKept,
-		},
+		bleveDiskScorchConfiguration(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create scorch shard: %w", err)
@@ -117,6 +112,9 @@ func NewBleveDiskIndex(
 	}
 	if directory == nil {
 		return nil, fmt.Errorf("document directory required")
+	}
+	if err := requireCurrentBleveSegmentGeneration(path, stored != nil); err != nil {
+		return nil, err
 	}
 
 	rebuildCoordinator := newBleveRebuildCoordinator(
@@ -157,6 +155,15 @@ func NewBleveDiskIndex(
 
 			return nil, err
 		}
+	}
+	if rebuild {
+		if err := persistBleveDiskSegmentGeneration(path); err != nil {
+			closeBleveShards(shards)
+
+			return nil, err
+		}
+	}
+	if rebuild && stored != nil {
 		if err := completeBleveRebuild(path); err != nil {
 			closeBleveShards(shards)
 
@@ -476,26 +483,6 @@ func openOrCreateBleveDisk(
 			return nil, false, time.Time{}, fmt.Errorf("restart bleve index rebuild: %w", err)
 		}
 	}
-	if legacy, info := legacyBleveLayout(root); legacy {
-		if !canRebuild {
-			// Without a rebuild source the legacy index keeps serving as a
-			// single shard in its compatibility mode.
-			index, err := openBleveDisk(root)
-			if err != nil {
-				return nil, false, time.Time{}, fmt.Errorf("open bleve index shard: %w", err)
-			}
-
-			return []bleve.Index{index}, false, info.ModTime().UTC(), nil
-		}
-		if err := rebuildRequirement.require(); err != nil {
-			return nil, false, time.Time{}, err
-		}
-		// A legacy single bleve index (or an unreadable remnant) occupies the
-		// root: rebuild it into the sharded layout from the stored documents.
-		if err := removeBleveDisk(root); err != nil {
-			return nil, false, time.Time{}, fmt.Errorf("retire legacy bleve index: %w", err)
-		}
-	}
 	shards, rebuild, updatedAt, err := openOrCreateBleveShards(
 		root,
 		canRebuild,
@@ -538,23 +525,6 @@ func openOrCreateBleveShards(
 	}
 
 	return shards, rebuild, updatedAt, nil
-}
-
-// legacyBleveLayout reports whether the root holds a pre-shard layout: a
-// single bleve index directory or an unreadable non-directory remnant.
-func legacyBleveLayout(root string) (bool, os.FileInfo) {
-	info, err := os.Stat(root)
-	if err != nil {
-		return false, nil
-	}
-	if !info.IsDir() {
-		return true, info
-	}
-	if _, err := os.Stat(filepath.Join(root, "index_meta.json")); err == nil {
-		return true, info
-	}
-
-	return false, info
 }
 
 func openOrCreateBleveShard(path string, canRebuild bool) (bleve.Index, bool, time.Time, error) {

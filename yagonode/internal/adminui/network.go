@@ -64,6 +64,7 @@ type NetworkStatus struct {
 	PublicReachabilitySource     string
 	PublicReachabilityObservedAt string
 	BlockingReason               string
+	CrawlBlocksDistribution      bool
 	OwnFlags                     []NetworkFlag
 	Gates                        []NetworkGate
 	KnownPeers                   int

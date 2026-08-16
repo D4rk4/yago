@@ -66,7 +66,9 @@ func TestWebCrawlSeederPublishesTheCrawlerPageMaximum(t *testing.T) {
 	}
 	maximum := orders[0].Profile.MaxPagesPerRun
 	if maximum == nil {
-		t.Fatal("published order carries no max pages per run")
+		t.Error("published order carries no max pages per run")
+
+		return
 	}
 	if *maximum != 5 {
 		t.Fatalf("published max pages per run = %d, want the crawler maximum 5", *maximum)

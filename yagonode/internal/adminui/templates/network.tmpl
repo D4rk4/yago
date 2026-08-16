@@ -32,7 +32,7 @@
 </form>
 {{end}}
 {{if and (not .Network.DHTOpen) .Network.BlockingReason}}
-<div class="cds-inline-notification" role="status">DHT distribution gate closed: {{.Network.BlockingReason}}</div>
+<div class="cds-inline-notification" role="status">DHT distribution gate closed: {{.Network.BlockingReason}}{{if .Network.CrawlBlocksDistribution}} Automatic and swarm-seed profiles count as active crawls. Wait until the crawl queue is empty, or <a href="/admin/configuration#panel-swarm">enable Distribute while crawling</a> and restart the node.{{end}}</div>
 {{end}}
 {{if .Network.OwnFlags}}
 <h2 class="cds-h2">Advertised to swarm</h2>

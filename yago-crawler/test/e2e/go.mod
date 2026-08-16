@@ -1,6 +1,6 @@
 module github.com/D4rk4/yago/yago-crawler/test/e2e
 
-go 1.26
+go 1.26.6
 
 require (
 	github.com/D4rk4/yago/yagocrawlcontract v0.0.0

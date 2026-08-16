@@ -241,6 +241,13 @@ known/unknown tri-state with source and observation time. Admin Network renders
 the same named gates and public-reachability evidence without turning
 `Unconfirmed` into `Unreachable` or a DHT blocking reason.
 
+Automatic-discovery and swarm-seed profiles are active crawls for gate 7 even
+when every custom profile was cancelled. To reopen distribution, either wait
+until the crawl broker has no pending or leased work, or enable **Distribute
+while crawling** in Admin → Configuration → Swarm and restart the node. The
+active-crawl notification on Admin Network links to that exact setting; other
+closed gates do not show this remediation.
+
 The direct public endpoint self-test calls
 `/yacy/query.html?object=rwicount&youare=<local-peer-hash>`. It is eligible as
 operational reachability evidence only when `YAGO_PUBLIC_SELF_TEST_URL`

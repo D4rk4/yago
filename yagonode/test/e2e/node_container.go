@@ -79,6 +79,7 @@ func startNode(
 				hostConfig.ReadonlyRootfs = true
 				hostConfig.CapDrop = []string{"ALL"}
 				hostConfig.SecurityOpt = append(hostConfig.SecurityOpt, "no-new-privileges")
+				constrainNodeMemory(hostConfig)
 			},
 		},
 	})
@@ -87,6 +88,7 @@ func startNode(
 	}
 	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
 	dumpLogsOnFailure(t, "node", container)
+	requireNodeMemoryLimit(t, ctx, container)
 	nodeURL := hostURL(t, ctx, container)
 	if !waitFor(20*time.Second, func() bool {
 		return probe.OK(ctx, nodeURL+"/yacy/query.html?object=rwicount")

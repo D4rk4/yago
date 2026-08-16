@@ -80,3 +80,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0059](0059-use-snowball-rules-for-bounded-surface-generation.md) | Use Snowball rules for bounded surface generation | Accepted |
 | [0060](0060-admit-managed-growth-by-filesystem-reserve.md) | Admit managed growth by filesystem reserve | Accepted |
 | [0061](0061-record-collection-length-on-record-shards.md) | Record collection length changes on record shards | Accepted |
+| [0062](0062-rebuild-pre-fix-zapx-segments-and-bound-scorch-memory.md) | Rebuild pre-fix zapx segments and bound Scorch merge memory | Accepted |

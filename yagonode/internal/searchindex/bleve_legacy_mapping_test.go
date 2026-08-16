@@ -62,23 +62,15 @@ func TestNewBleveDiskIndexMigratesLegacyMapping(t *testing.T) {
 	}
 }
 
-func TestBleveDiskIndexServesLegacyMappingWithoutRebuildSource(t *testing.T) {
+func TestBleveDiskIndexRefusesLegacyMappingWithoutRebuildSource(t *testing.T) {
 	path := writeLegacySearchIndex(t)
 
-	index, err := NewBleveDiskIndex(t.Context(), path, newFakeDocumentDirectory(), nil)
-	if err != nil {
-		t.Fatalf("NewBleveDiskIndex: %v", err)
-	}
-	t.Cleanup(func() { _ = index.Close() })
-
-	if index.analyzerScope || index.storedCandidates {
-		t.Fatal("legacy index without a rebuild source claimed current mapping")
-	}
-	results, err := index.Search(t.Context(), SearchRequest{Query: "golang", MaxResults: 5})
-	if err != nil {
-		t.Fatalf("Search on legacy index: %v", err)
-	}
-	if results.Total != 0 {
-		t.Fatalf("results = %#v", results)
+	if _, err := NewBleveDiskIndex(
+		t.Context(),
+		path,
+		newFakeDocumentDirectory(),
+		nil,
+	); err == nil {
+		t.Fatal("legacy index without a rebuild source was opened")
 	}
 }

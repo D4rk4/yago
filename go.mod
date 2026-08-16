@@ -1,3 +1,3 @@
 module github.com/D4rk4/yago
 
-go 1.26
+go 1.26.6

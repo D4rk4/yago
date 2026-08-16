@@ -8,6 +8,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
+	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
 	"github.com/D4rk4/yago/yagonode/internal/seedimport"
 )
@@ -70,6 +71,7 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 		PublicReachabilitySource:     report.State.PublicReachabilitySource,
 		PublicReachabilityObservedAt: report.State.PublicReachabilityObservedAt,
 		BlockingReason:               report.BlockingReason,
+		CrawlBlocksDistribution:      crawlBlocksDHTDistribution(report.Gates),
 		Gates:                        adminNetworkGates(report.Gates),
 		Seedlists:                    s.adminSeedlists(ctx),
 	}
@@ -86,6 +88,17 @@ func (s networkSource) Network(ctx context.Context) adminui.NetworkStatus {
 	}
 
 	return status
+}
+
+func crawlBlocksDHTDistribution(results []dhtGateResultResponse) bool {
+	for _, result := range results {
+		if result.Name == string(dhtexchange.GateCrawlIdle) &&
+			!result.Open && result.Reason == dhtexchange.GateCrawlActiveReason {
+			return true
+		}
+	}
+
+	return false
 }
 
 func adminReachabilityObservedAt(observedAt time.Time) string {

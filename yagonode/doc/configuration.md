@@ -206,7 +206,7 @@ required.
 | `YAGO_GREETS_PER_CYCLE` | `16` | How many peers to greet in each announce cycle. |
 | `YAGO_NETWORK_DHT` | `true` | Enables the sender-side DHT gate equivalent to YaCy `network.unit.dht`. |
 | `YAGO_DHT_DISTRIBUTION` | `true` | Enables the sender-side DHT distribution gate equivalent to YaCy `allowDistributeIndex`. |
-| `YAGO_DHT_ALLOW_WHILE_CRAWLING` | `false` | Allows outbound DHT distribution while local crawling is active. |
+| `YAGO_DHT_ALLOW_WHILE_CRAWLING` | `false` | Allows outbound DHT distribution while local crawling is active. Admin key: `dht.allow_while_crawling` in Configuration → Swarm; takes effect after restart. Automatic-discovery and swarm-seed profiles count as active crawls until their pending and leased queue work is empty. |
 | `YAGO_DHT_ALLOW_WHILE_INDEXING` | `true` | Allows outbound DHT distribution while local indexing is active. |
 | `YAGO_DHT_DISTRIBUTION_INTERVAL` | `10s` | How often the outbound DHT scheduler runs a distribution cycle. |
 | `YAGO_DHT_REDUNDANCY` | `3` | Number of DHT target peers per vertical partition for outbound transfer and global remote search. Accepted values are `1` through `16`; the default matches YaCy freeworld senior peers. |

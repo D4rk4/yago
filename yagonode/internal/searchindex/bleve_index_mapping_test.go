@@ -16,6 +16,15 @@ func (nilMappingIndex) Mapping() mapping.IndexMapping {
 	return nil
 }
 
+type searchMappingProbeIndex struct {
+	bleveIndexContract
+	indexMapping mapping.IndexMapping
+}
+
+func (index searchMappingProbeIndex) Mapping() mapping.IndexMapping {
+	return index.indexMapping
+}
+
 func TestNewSearchIndexMappingTunesFields(t *testing.T) {
 	indexMapping, err := newSearchIndexMapping()
 	if err != nil {
@@ -55,6 +64,13 @@ func TestStoredCandidateProjectionRejectsAbsentMapping(t *testing.T) {
 	if supportsStoredCandidateProjection(nilMappingIndex{}) ||
 		supportsAnalyzerScope(nilMappingIndex{}) {
 		t.Fatal("nil mapping supports current fields")
+	}
+}
+
+func TestCurrentMappingSupportRejectsAbsentFields(t *testing.T) {
+	index := searchMappingProbeIndex{indexMapping: mapping.NewIndexMapping()}
+	if supportsAnalyzerScope(index) || supportsStoredCandidateProjection(index) {
+		t.Fatal("mapping without current fields was accepted")
 	}
 }
 

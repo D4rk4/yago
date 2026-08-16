@@ -126,6 +126,7 @@ func TestBleveDiskIndexCreatesReopensAndSearches(t *testing.T) {
 		stored.scans != 1 {
 		t.Fatalf("stats = %#v scans=%d", stats, stored.scans)
 	}
+	requireBleveSegmentGenerationCurrent(t, indexPath)
 
 	results, err := index.Search(t.Context(), SearchRequest{
 		Query:      "golang",
@@ -371,6 +372,23 @@ func TestNewBleveDiskIndexReturnsOpenCreateAndRebuildErrors(t *testing.T) {
 	}
 }
 
+func TestNewBleveDiskIndexReturnsSegmentGenerationPersistenceError(t *testing.T) {
+	want := errors.New("generation failed")
+	original := persistBleveDiskSegmentGeneration
+	t.Cleanup(func() { persistBleveDiskSegmentGeneration = original })
+	persistBleveDiskSegmentGeneration = func(string) error { return want }
+
+	index, err := NewBleveDiskIndex(
+		t.Context(),
+		filepath.Join(t.TempDir(), "search.bleve"),
+		newFakeDocumentDirectory(),
+		nil,
+	)
+	if index != nil || !errors.Is(err, want) {
+		t.Fatalf("index=%v error=%v, want %v", index, err, want)
+	}
+}
+
 func TestNewBleveDiskIndexReturnsRepairErrors(t *testing.T) {
 	sentinel := errors.New("failed")
 	path := filepath.Join(t.TempDir(), "search.bleve")
@@ -393,7 +411,7 @@ func TestNewBleveDiskIndexReturnsRepairErrors(t *testing.T) {
 		t.Context(),
 		path,
 		newFakeDocumentDirectory(),
-		nil,
+		&fakeStoredDocuments{},
 	); !errors.Is(
 		err,
 		sentinel,
@@ -409,7 +427,7 @@ func TestNewBleveDiskIndexReturnsRepairErrors(t *testing.T) {
 		t.Context(),
 		path,
 		newFakeDocumentDirectory(),
-		nil,
+		&fakeStoredDocuments{},
 	); !errors.Is(
 		err,
 		sentinel,

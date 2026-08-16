@@ -1,6 +1,6 @@
 module github.com/D4rk4/yago/yagoproto
 
-go 1.26
+go 1.26.6
 
 require github.com/D4rk4/yago/yagomodel v0.0.0
 

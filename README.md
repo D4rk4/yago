@@ -3,7 +3,7 @@
 <p align="center"><b>Your own federated search engine — one Go binary away.</b></p>
 
 <p align="center">
-  <img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white">
+  <img alt="Go 1.26.6" src="https://img.shields.io/badge/Go-1.26.6-00ADD8?logo=go&logoColor=white">
   <img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue">
   <img alt="Status alpha" src="https://img.shields.io/badge/status-alpha-orange">
   <img alt="YaCy protocol" src="https://img.shields.io/badge/YaCy%20P2P-wire%20compatible-6f42c1">
@@ -388,8 +388,14 @@ its binaries (`yago-node`, `yago-crawler`).
   candidate scans avoid full document bodies; peer and
   web responses, index results, paging sessions, background cache writes, and
   host-link snapshots have process-wide byte or admission limits. `/metrics`
-  exposes Go heap plus process RSS for pre-OOM alerts. Interactive searches have
-  a hard 1.8-second response deadline and four process-wide outer execution
+  exposes Go heap plus process RSS for pre-OOM alerts.
+  Scorch flushes at most 32 MiB of in-memory segment input through one persister
+  worker per shard, and merged segments stop at 100,000 documents. An existing
+  full-text index without the current corrected-writer generation is rebuilt
+  from the document store before Scorch can decode it; without that rebuild
+  source, startup refuses the index instead of opening pre-fix segments.
+  Interactive searches have a hard 1.8-second response deadline and four
+  process-wide outer execution
   slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that
   deadline, and an exact-stage capacity retry may wait for its rescue slot for at
   most 500 milliseconds. Endpoint-owned deadline, capacity, and operational failures are carried
@@ -492,7 +498,8 @@ its binaries (`yago-node`, `yago-crawler`).
   health), Network (peers, seedlists, news,
   blocking, an evidence-backed public-endpoint check whose current peer
   classification is authoritative and whose explicitly configured direct query
-  runs only when no peer observation exists, and the complete sortable
+  runs only when no peer observation exists, active-crawl DHT-gate guidance
+  linking to the exact restart-required setting, and the complete sortable
   roster paged at exactly 20 peers), Index (browse, bounded per-document stored
   evidence including extraction generation, explicit bounded outdated-extraction
   recrawl, node/crawler storage-reserve status, delete, blacklist, export,
@@ -619,7 +626,7 @@ remains the default.
 
 ## 🚀 Quick start
 
-Requirements: Docker (or Podman); for source builds, Go 1.26.
+Requirements: Docker (or Podman); for source builds, Go 1.26.6.
 
 ```sh
 export YAGO_SEARCH_API_KEY='replace-with-a-long-random-secret'

@@ -85,7 +85,8 @@ func TestCJKChineseAnalyzerCanonicalizesTraditionalTextAtOriginalOffsets(t *test
 	for _, term := range []string{"搜索", "软件"} {
 		token := findCJKToken(tokens, term, analysis.Double)
 		if token == nil {
-			t.Fatalf("canonical token %q missing from %v", term, cjkTokenTerms(tokens))
+			t.Errorf("canonical token %q missing from %v", term, cjkTokenTerms(tokens))
+			continue
 		}
 		if token.Start < 0 || token.End > len(text) ||
 			len([]rune(text[token.Start:token.End])) != 2 {

@@ -434,6 +434,14 @@ the resident working set for the mapped vault and Bleve shards. A limit below
 the live set causes reclaim or GC churn and cannot repair an unbounded data
 structure.
 
+The Scorch disk backend uses one persister worker per shard and admits at most
+32 MiB of in-memory segment input to each worker. Its merge planner caps output
+segments at 100,000 documents. The current-source container lifecycle gate runs
+every node under an exact 4 GiB Docker memory limit with swap disabled at the
+container boundary, then exercises indexing and independent node/crawler
+restarts. These bounds limit application working memory; file-backed vault and
+index pages remain reclaimable kernel residency and still appear in RSS.
+
 ## Full-text schema rebuilds
 
 An upgrade that changes the embedded Bleve mapping rebuilds all eight search
@@ -456,6 +464,26 @@ indexed total, batch total, and elapsed milliseconds. Rebuild writes use
 merge I/O, and temporary disk use still scale with the stored corpus. An
 interrupted rebuild still restarts from the beginning; the progress records are
 operational evidence, not a resumable checkpoint or Admin progress control.
+
+The first start after upgrading from v0.0.35 or earlier also rebuilds an existing
+index that lacks the corrected zapx segment-generation stamp. This prevents
+segments written by zapx v17.1.2 from reaching its unbounded posting decoder;
+that writer could encode a wrong chunk offset when a posting range between two
+nonempty ranges was empty. The node persists the ordinary rebuild marker before
+opening Scorch, writes `search.bleve.segment-generation` only after the complete
+document-store rebuild succeeds, and clears the rebuild marker last. A node
+without stored documents refuses an unstamped index because it has no
+authoritative rebuild source. A new or already stamped index is not rebuilt for
+this reason.
+
+Before intentionally starting v0.0.35 or an earlier binary after a corrected
+generation has been written, stop both services and remove only
+`search.bleve.segment-generation`. The older binary does not understand that
+file and can append pre-fix segments while leaving it falsely current. Removing
+the file does not remove search data, but it ensures that a later upgrade to
+v0.0.36 or newer performs another complete document-store rebuild before
+opening the mixed-writer index. Do not restore or copy the generation file from
+a newer index onto an index that an older binary has opened.
 
 For a bare-metal package upgrade, use the stopped two-service backup so the
 crawler frontier and node broker queue share one recovery point, install the
