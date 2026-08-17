@@ -97,12 +97,40 @@ func TestBleveRebuildStateLifecycle(t *testing.T) {
 	}
 }
 
+func TestBleveRebuildRequirementPreservesExistingState(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "search.bleve")
+	if err := requireBleveRebuild(root); err != nil {
+		t.Fatal(err)
+	}
+	originalWrite := writeBleveRebuildState
+	t.Cleanup(func() { writeBleveRebuildState = originalWrite })
+	writeAttempts := 0
+	writeBleveRebuildState = func(string, []byte, os.FileMode) error {
+		writeAttempts++
+
+		return errors.New("existing state rewritten")
+	}
+
+	if err := requireBleveRebuild(root); err != nil {
+		t.Fatalf("existing rebuild state: %v", err)
+	}
+	if writeAttempts != 0 {
+		t.Fatalf("existing rebuild state writes = %d", writeAttempts)
+	}
+	value, err := os.ReadFile(bleveRebuildStatePath(root))
+	if err != nil || string(value) != "required\n" {
+		t.Fatalf("existing rebuild state=%q error=%v", value, err)
+	}
+}
+
 func TestBleveRebuildStateIOFailures(t *testing.T) {
 	originalStat := statBleveRebuildState
+	originalMakeDirectory := makeBleveRebuildStateDirectory
 	originalWrite := writeBleveRebuildState
 	originalRemoveState := removeBleveRebuildState
 	t.Cleanup(func() {
 		statBleveRebuildState = originalStat
+		makeBleveRebuildStateDirectory = originalMakeDirectory
 		writeBleveRebuildState = originalWrite
 		removeBleveRebuildState = originalRemoveState
 	})
@@ -113,6 +141,16 @@ func TestBleveRebuildStateIOFailures(t *testing.T) {
 		t.Fatalf("inspect state error = %v", err)
 	}
 	statBleveRebuildState = originalStat
+	makeBleveRebuildStateDirectory = func(string, os.FileMode) error { return want }
+	if err := requireBleveRebuild(
+		filepath.Join(t.TempDir(), "search.bleve"),
+	); !errors.Is(
+		err,
+		want,
+	) {
+		t.Fatalf("create state directory error = %v", err)
+	}
+	makeBleveRebuildStateDirectory = originalMakeDirectory
 
 	blocked := filepath.Join(t.TempDir(), "blocked")
 	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {

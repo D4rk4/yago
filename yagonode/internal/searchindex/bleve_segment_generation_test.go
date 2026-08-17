@@ -223,3 +223,28 @@ func TestBleveSegmentGenerationAdmissionRejectsRebuildStateFailure(t *testing.T)
 		t.Fatalf("rebuild state error = %v, want %v", err, want)
 	}
 }
+
+func TestBleveSegmentGenerationAdmissionPreservesPendingRebuild(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "search.bleve")
+	if err := os.WriteFile(root, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireBleveRebuild(root); err != nil {
+		t.Fatal(err)
+	}
+	originalWrite := writeBleveRebuildState
+	t.Cleanup(func() { writeBleveRebuildState = originalWrite })
+	writeAttempts := 0
+	writeBleveRebuildState = func(string, []byte, os.FileMode) error {
+		writeAttempts++
+
+		return errors.New("pending rebuild rewritten")
+	}
+
+	if err := requireCurrentBleveSegmentGeneration(root, true); err != nil {
+		t.Fatalf("pending rebuild: %v", err)
+	}
+	if writeAttempts != 0 {
+		t.Fatalf("pending rebuild writes = %d", writeAttempts)
+	}
+}

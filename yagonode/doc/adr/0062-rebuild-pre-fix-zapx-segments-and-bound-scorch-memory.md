@@ -35,7 +35,9 @@ persists the ordinary rebuild marker and rebuilds from stored documents. Startup
 refuses the old index when stored documents are unavailable. A successful
 rebuild writes the generation file with mode 0600 before clearing the rebuild
 marker; an interruption therefore repeats the rebuild instead of serving a
-partial or pre-fix index.
+partial or pre-fix index. Treat an already-present marker as a completed durable
+requirement without reopening or rewriting it, including when an operator staged
+the marker under a different owner before starting the service.
 
 Configure each of the eight Scorch shards with one persister worker, a 32 MiB
 maximum in-memory merge input per worker, and a 100,000-document merged-segment

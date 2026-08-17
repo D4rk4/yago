@@ -474,7 +474,10 @@ opening Scorch, writes `search.bleve.segment-generation` only after the complete
 document-store rebuild succeeds, and clears the rebuild marker last. A node
 without stored documents refuses an unstamped index because it has no
 authoritative rebuild source. A new or already stamped index is not rebuilt for
-this reason.
+this reason. If the rebuild marker already exists, startup treats that durable
+requirement as complete and does not reopen, truncate, or rewrite the file. This
+allows an interrupted rebuild or an operator-staged marker to proceed even when
+the service account did not create the marker.
 
 Before intentionally starting v0.0.35 or an earlier binary after a corrected
 generation has been written, stop both services and remove only

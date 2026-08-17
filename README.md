@@ -393,7 +393,9 @@ its binaries (`yago-node`, `yago-crawler`).
   worker per shard, and merged segments stop at 100,000 documents. An existing
   full-text index without the current corrected-writer generation is rebuilt
   from the document store before Scorch can decode it; without that rebuild
-  source, startup refuses the index instead of opening pre-fix segments.
+  source, startup refuses the index instead of opening pre-fix segments. An
+  already-present rebuild marker is accepted without reopening or rewriting it,
+  so an interrupted or operator-staged recovery remains idempotent.
   Interactive searches have a hard 1.8-second response deadline and four
   process-wide outer execution
   slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that

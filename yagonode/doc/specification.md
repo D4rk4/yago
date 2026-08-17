@@ -647,8 +647,10 @@ it is not an assumed deployment dependency.
   generation. Missing or stale evidence SHALL persist the ordinary rebuild
   marker before Scorch opens, rebuild from the authoritative document store,
   persist the current generation only after the complete rebuild, and clear the
-  rebuild marker last. Startup SHALL refuse an old index when no rebuild source
-  exists. A new or current-generation index SHALL remain unchanged.
+  rebuild marker last. An already-present marker SHALL satisfy the persist step
+  without being opened, truncated, or rewritten. Startup SHALL refuse an old
+  index when no rebuild source exists. A new or current-generation index SHALL
+  remain unchanged.
 * Each Scorch shard SHALL use one in-memory persister worker with at most 32 MiB
   of segment input per flush, and SHALL cap a merged segment at 100,000
   documents. The current-source container lifecycle gate SHALL apply an exact

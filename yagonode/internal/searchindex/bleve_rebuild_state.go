@@ -10,9 +10,10 @@ import (
 const bleveRebuildStateSuffix = ".rebuild-required"
 
 var (
-	statBleveRebuildState   = os.Stat
-	writeBleveRebuildState  = os.WriteFile
-	removeBleveRebuildState = os.Remove
+	statBleveRebuildState          = os.Stat
+	makeBleveRebuildStateDirectory = os.MkdirAll
+	writeBleveRebuildState         = os.WriteFile
+	removeBleveRebuildState        = os.Remove
 )
 
 type bleveRebuildRequirement struct {
@@ -86,7 +87,17 @@ func (r *bleveRebuildRequirement) require() error {
 }
 
 func requireBleveRebuild(root string) error {
-	if err := os.MkdirAll(filepath.Dir(bleveRebuildStatePath(root)), 0o750); err != nil {
+	pending, err := bleveRebuildPending(root)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return nil
+	}
+	if err := makeBleveRebuildStateDirectory(
+		filepath.Dir(bleveRebuildStatePath(root)),
+		0o750,
+	); err != nil {
 		return fmt.Errorf("create bleve rebuild state directory: %w", err)
 	}
 	if err := writeBleveRebuildState(
