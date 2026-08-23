@@ -85,6 +85,8 @@ Feature catalog: Maintain `FEATURES.md` in the workspace root. It describes proj
 
 Code structure: Follow OCP. Add features in new files and connect them through the smallest seam; do not grow existing files.
 
+Code quality: Do not write spaghetti code. Keep control flow, state ownership, and dependencies explicit. Each orchestration function coordinates one bounded workflow; move independent decisions behind narrow typed boundaries, avoid cross-layer state mutation and callback chains, and refactor before a change introduces tangled branching or cyclic package knowledge.
+
 Module boundaries: Keep YaCy value types in `yagomodel`, wire protocol DTOs and endpoint vocabulary in `yagoproto`, node runtime/storage/P2P/search/ops behavior in `yagonode`, crawler worker behavior in `yago-crawler`, and node-crawler message contracts in `yagocrawlcontract`. Do not mix crawler runtime code into the node except through the contract and narrow node-side crawl orchestration.
 
 Crawler product identity: The canonical module directory and import path, command, binary, systemd and Compose service, container image, and GHCR repository are all `yago-crawler`. Crawler environment variables use the `YAGO_CRAWLER_` prefix. The legacy `yagocrawler` and `YAGOCRAWLER_` spellings may appear only in immutable historical release facts or explicit upgrade-migration code and documentation; do not add runtime aliases or new references under those names.

@@ -523,7 +523,9 @@ its binaries (`yago-node`, `yago-crawler`).
   seconds: resident set (RSS), anonymous RSS, file-backed RSS, shared-memory
   RSS, and Go heap objects. The heap value is a runtime allocation measure, not
   an additional RSS component. The Crawler monitor combines every profile in
-  one 20-row-paged view;
+  one 20-row-paged view and refreshes a textual Connected or Disconnected
+  crawler-fleet state with the connected-process count; a disconnected state
+  states that queued orders remain pending until a crawler connects;
   totals and health use the complete snapshot, and each running row keeps its
   controls plus the effective pages-per-minute value together.
 - First-run **setup wizard**, CSRF everywhere, strict CSP, login rate

@@ -299,12 +299,13 @@ type crawlRunPageData struct {
 // crawlMonitorView wraps the crawl monitor snapshot with the per-request data the
 // control buttons need: the CSRF token and whether control actions are wired.
 type crawlMonitorView struct {
-	Monitor      CrawlMonitor
-	Pagination   CrawlRunPagination
-	Health       CrawlHealth
-	CSRF         string
-	Controllable bool
-	Details      bool
+	Monitor           CrawlMonitor
+	Pagination        CrawlRunPagination
+	Health            CrawlHealth
+	CrawlerConnection crawlConnectionView
+	CSRF              string
+	Controllable      bool
+	Details           bool
 }
 
 type configPageData struct {
@@ -1787,12 +1788,13 @@ func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 	pagination := buildCrawlRunPagination(monitor.Runs, r.FormValue("cpage"))
 
 	return &crawlMonitorView{
-		Monitor:      monitor,
-		Pagination:   pagination,
-		Health:       crawlHealth(monitor),
-		CSRF:         csrfToken(r),
-		Controllable: c.control != nil,
-		Details:      c.crawlRunDetails != nil,
+		Monitor:           monitor,
+		Pagination:        pagination,
+		Health:            crawlHealth(monitor),
+		CrawlerConnection: buildCrawlConnectionView(c.crawlerFetchActivity),
+		CSRF:              csrfToken(r),
+		Controllable:      c.control != nil,
+		Details:           c.crawlRunDetails != nil,
 	}
 }
 

@@ -63,7 +63,13 @@ func sampleMonitor() CrawlMonitor {
 func TestConsoleCrawlRendersMonitor(t *testing.T) {
 	t.Parallel()
 
-	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: sampleMonitor()}})
+	console := New(Options{
+		Crawl:   &fakeCrawl{},
+		Monitor: fakeMonitor{snap: sampleMonitor()},
+		CrawlerFetchActivity: fixedCrawlerFetchActivity{activity: CrawlerFetchActivity{
+			ConnectedCrawlers: 1,
+		}},
+	})
 	got := do(t, console, "/admin/crawl")
 	if got.status != http.StatusOK {
 		t.Fatalf("status %d", got.status)
@@ -72,7 +78,8 @@ func TestConsoleCrawlRendersMonitor(t *testing.T) {
 		"Crawl monitor", "news-crawl", "cds-tag--info", "7 pending, 2 leased",
 		"Crawl results and rejections", "Robots-denied", "currently retained in this monitor",
 		"Whole-run max (pages)", "Per-host max (pages)", ">900<", ">250<",
-		"one page can increment both",
+		"one page can increment both", "Crawler connection:", ">Connected<",
+		"1 crawler connected.",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("crawl page missing %q", want)

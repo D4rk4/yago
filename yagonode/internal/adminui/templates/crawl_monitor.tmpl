@@ -3,6 +3,11 @@
      hx-swap="outerHTML" role="region" aria-label="Crawl monitor">
   <h2 class="cds-h2">Crawl monitor</h2>
   <p class="cds-muted">Run totals, immutable effective caps, and rates cover the crawl tasks currently retained in this monitor. Fetched counts accepted response bodies; the failed count additionally includes fetch or processing failures, so one page can increment both after parsing fails.</p>
+  <p role="status" aria-label="Crawler connection">
+    <strong>Crawler connection:</strong>
+    <span class="cds-tag cds-tag--{{.CrawlerConnection.Tag}}">{{.CrawlerConnection.State}}</span>
+    <span class="cds-muted">{{.CrawlerConnection.Detail}}</span>
+  </p>
   <p>
     <button class="cds-btn cds-btn--ghost" type="button"
             hx-get="{{.Pagination.RefreshURL}}" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>

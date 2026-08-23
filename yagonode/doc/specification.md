@@ -737,6 +737,11 @@ it is not an assumed deployment dependency.
 * The admin Crawler monitor SHALL render the unified all-profile run snapshot in
   pages of exactly 20 rows, while totals and health remain based on the complete
   snapshot. Its selected page SHALL survive periodic refreshes and run controls.
+* The admin Crawler monitor SHALL render a textual Connected or Disconnected
+  crawler-fleet state from the current typed runtime snapshot on every monitor
+  refresh. It SHALL show the connected crawler count and SHALL state that queued
+  orders remain pending when no crawler is connected. Color SHALL NOT be the
+  only carrier of the connection state.
 * The admin Crawler page SHALL provide durable named crawl-profile create, update,
   apply, list, and delete operations. The library SHALL retain at most 128 profiles;
   names SHALL contain at most 80 UTF-8 bytes and be unique after canonical case and
