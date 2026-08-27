@@ -10,7 +10,7 @@ TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
 
-.PHONY: tools proto-tools proto tidy tidy-check fmt fmt-check lint vet arch test cover coverage-check-test cover-check build verify compose-images e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
+.PHONY: tools proto-tools proto tidy tidy-check fmt fmt-check lint vet arch test cover coverage-check-test go-module-download-test cover-check build verify compose-images e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
 
 PROTOC ?= protoc
 PROTO_MODULE := github.com/D4rk4/yago/yagocrawlcontract
@@ -93,6 +93,9 @@ cover:
 coverage-check-test:
 	@./tools/require-exact-coverage-test
 
+go-module-download-test:
+	@sh deploy/test-go-module-download.sh
+
 cover-check:
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
@@ -130,7 +133,7 @@ proto:
 peer-hash:
 	cd yagonode && $(GO) run ./cmd/yago-peer-hash
 
-verify: tidy-check fmt-check vet lint arch coverage-check-test test cover-check build
+verify: tidy-check fmt-check vet lint arch coverage-check-test go-module-download-test test cover-check build
 
 e2e-node-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build \

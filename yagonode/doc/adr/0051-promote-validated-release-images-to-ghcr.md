@@ -34,6 +34,11 @@ separate publication job reloads those archives, verifies their configuration,
 root filesystem, architecture, and release identity again, pushes the platform
 manifests without rebuilding, and creates one Docker Schema 2
 multi-architecture manifest list per product.
+Both product Dockerfiles use one bounded module downloader before compilation.
+It retains the default Go checksum-database authentication on every attempt,
+retries a failed download twice after two- and four-second pauses, and fails the
+image build after the third failure. The retry changes transport timing only;
+it never accepts an unauthenticated module or changes the pinned module graph.
 The public packages are:
 
 - `ghcr.io/d4rk4/yago-node:vX.Y.Z`;
@@ -125,6 +130,9 @@ gates.
 Operators receive one exact-version reference per product and may pin the
 manifest-list digest for deployment. The release workflow now depends on GitHub
 Actions, workflow artifacts, GHCR, OIDC, and GitHub's attestation service.
+Transient Go proxy or checksum-service transport failures can consume two
+bounded retries without discarding checksum verification; a persistent outage
+still stops the native image matrix and therefore stops publication.
 GitHub's documented defaults do not replace observed anonymous verification.
 Package settings provide the required manual path only when a package remains
 private; the package REST and GraphQL surfaces do not provide a supported

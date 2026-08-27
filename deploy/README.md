@@ -626,6 +626,10 @@ Linux amd64/arm64 matrix builds both product containers with
 Docker-reported architecture, OCI source and revision labels, exact binary
 versions, and bundled Firefox executable, then scans both images with Trivy
 0.72.0 for HIGH or CRITICAL vulnerabilities, secrets, and misconfigurations.
+Each product Dockerfile uses the same checksum-authenticated Go module download
+boundary. A failed download is attempted at most three times with two- and
+four-second pauses; checksum verification remains enabled on every attempt and
+an exhausted boundary fails the native image job.
 Each native job exports a checksum-protected archive of its validated images as
 a short-lived workflow artifact. After every matrix member succeeds, a separate job verifies
 and reloads those archives, rechecks their release identity, publishes the two

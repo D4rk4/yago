@@ -549,7 +549,10 @@ its binaries (`yago-node`, `yago-crawler`).
   crawler images carry OCI source and revision labels when the caller supplies
   `SOURCE_REVISION`, so two images can be traced to the same source commit. The
   crawler image also selects the fixed Alpine OpenSSL `3.5.8-r0` runtime
-  packages explicitly instead of inheriting an older base-image revision.
+  packages explicitly instead of inheriting an older base-image revision. Both
+  image builds share a checksum-authenticated Go module downloader that retries
+  two transport failures with bounded pauses and still fails closed on the
+  third failure.
 - Release tags build and smoke-test both product images natively on amd64 and
   arm64, then reject HIGH or CRITICAL findings from the pinned Trivy image
   scan. Their validated configuration and root-filesystem identities are

@@ -17,10 +17,11 @@ COPY yago-crawler/go.mod yago-crawler/
 COPY yagoegress/go.mod yagoegress/
 COPY yagomodel/go.mod yagomodel/
 COPY yagoproto/go.mod yagoproto/
+COPY deploy/download-go-modules.sh deploy/
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go mod download
+    sh deploy/download-go-modules.sh
 
 COPY . .
 
