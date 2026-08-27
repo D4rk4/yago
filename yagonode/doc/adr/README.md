@@ -85,3 +85,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0064](0064-advance-the-bleve-writer-generation-before-open.md) | Advance the Bleve writer generation before open | Accepted |
 | [0065](0065-read-exact-document-presence-by-physical-shard.md) | Read exact document presence by physical shard | Accepted |
 | [0066](0066-read-visible-search-evidence-as-a-document-set.md) | Read visible search evidence as a document set | Accepted |
+| [0067](0067-bound-persisted-search-read-amplification.md) | Bound persisted search read amplification | Accepted |

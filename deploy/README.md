@@ -436,11 +436,16 @@ structure.
 
 The Scorch disk backend uses one persister worker per shard and admits at most
 32 MiB of in-memory segment input to each worker. Its merge planner caps output
-segments at 100,000 documents. The current-source container lifecycle gate runs
-every node under an exact 4 GiB Docker memory limit with swap disabled at the
-container boundary, then exercises indexing and independent node/crawler
-restarts. These bounds limit application working memory; file-backed vault and
-index pages remain reclaimable kernel residency and still appear in RSS.
+segments at 100,000 documents. Before listeners open, a fragmented existing
+index measures its complete footprint, applies the normal storage-growth reserve
+with that amount as temporary headroom, and force-merges one shard at a time.
+Insufficient headroom leaves the valid source snapshots in place and refuses
+startup. An already bounded index performs no merge or reserve check. The
+current-source container lifecycle gate runs every node under an exact 4 GiB
+Docker memory limit with swap disabled at the container boundary, then exercises
+indexing and independent node/crawler restarts. These bounds limit application
+working memory; file-backed vault and index pages remain reclaimable kernel
+residency and still appear in RSS.
 
 ## Full-text schema rebuilds
 

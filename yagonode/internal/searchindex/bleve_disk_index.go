@@ -117,10 +117,11 @@ func NewBleveDiskIndex(
 		return nil, err
 	}
 
+	rebuildAdmission := firstBleveRebuildGrowthAdmission(rebuildAdmissions)
 	rebuildCoordinator := newBleveRebuildCoordinator(
 		path,
 		directory,
-		firstBleveRebuildGrowthAdmission(rebuildAdmissions),
+		rebuildAdmission,
 	)
 	shards, rebuild, updatedAt, err := openOrCreateBleveDisk(
 		path,
@@ -171,7 +172,11 @@ func NewBleveDiskIndex(
 		}
 		rebuildCoordinator.complete(ctx)
 	}
-	out.warm(ctx)
+	if err := out.prepareBleveReads(ctx, path, rebuildAdmission); err != nil {
+		closeBleveShards(shards)
+
+		return nil, err
+	}
 
 	return out, nil
 }
@@ -288,32 +293,7 @@ func (b *BleveDiskIndex) searchHits(
 		return b.searchCompleteHits(ctx, req, indexedDocuments)
 	}
 
-	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(
-		req,
-		b.multilingual,
-		b.analyzerScope,
-	))
-	searchRequest.Size = diskSearchSize(req.MaxResults, indexedDocuments)
-	searchRequest.Explain = req.Explain || req.IncludeFieldScores
-	searchRequest.IncludeLocations = false
-	searchRequest.Fields = storedSearchFields(req, b.storedCandidates)
-	result, err := b.alias.SearchInContext(ctx, searchRequest)
-	if err != nil {
-		return SearchResultSet{}, nil, fmt.Errorf(
-			"search documents: %w",
-			bleveSearchOperationError(ctx, err),
-		)
-	}
-	if err := bleveSearchCompletionError(ctx, result); err != nil {
-		return SearchResultSet{}, nil, fmt.Errorf("search documents: %w", err)
-	}
-
-	set, orphans, err := b.collectHits(ctx, req, result)
-	if err != nil {
-		return SearchResultSet{}, nil, err
-	}
-
-	return set, orphans, nil
+	return b.searchRequestedHits(ctx, req, indexedDocuments)
 }
 
 // collectHits hydrates the bleve hits into results. Hydrating a hit is a
@@ -582,6 +562,13 @@ func diskSearchSize(maxResults int, indexedDocuments int) int {
 	size := max(maxResults*4, maxResults)
 	size = min(size, bleveSearchHitCap)
 	size = min(size, indexedDocuments)
+	return max(size, 0)
+}
+
+func diskRequestedSearchSize(maxResults int, indexedDocuments int) int {
+	size := min(maxResults, bleveSearchHitCap)
+	size = min(size, indexedDocuments)
+
 	return max(size, 0)
 }
 

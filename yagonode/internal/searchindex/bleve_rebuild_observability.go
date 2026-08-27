@@ -86,14 +86,17 @@ func (c *bleveRebuildCoordinator) prepare(ctx context.Context) error {
 	if source, ok := c.admission.(bleveRebuildStorageObservationSource); ok {
 		observation = source.RebuildStorageObservation()
 	}
-	if admission, ok := c.admission.(bleveRebuildHeadroomAdmission); ok && estimateAvailable {
-		if err := admission.CheckGrowthWithHeadroom(estimatedBytes); err != nil {
+	usedHeadroom, err := checkBleveGrowthAdmission(
+		c.admission,
+		estimatedBytes,
+		estimateAvailable,
+	)
+	if err != nil {
+		if usedHeadroom {
 			return fmt.Errorf("check bleve rebuild storage headroom: %w", err)
 		}
-	} else if c.admission != nil {
-		if err := c.admission.CheckGrowth(); err != nil {
-			return fmt.Errorf("check bleve rebuild storage growth: %w", err)
-		}
+
+		return fmt.Errorf("check bleve rebuild storage growth: %w", err)
 	}
 	c.documentsTotal = documentsTotal
 	c.estimatedBytes = estimatedBytes

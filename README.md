@@ -395,7 +395,11 @@ its binaries (`yago-node`, `yago-crawler`).
   host-link snapshots have process-wide byte or admission limits. `/metrics`
   exposes Go heap plus process RSS for pre-OOM alerts.
   Scorch flushes at most 32 MiB of in-memory segment input through one persister
-  worker per shard, and merged segments stop at 100,000 documents. An existing
+  worker per shard, and merged segments stop at 100,000 documents. Before the
+  index becomes available, a fragmented shard passes the existing filesystem
+  reserve check and consolidates one shard at a time toward one root segment per
+  100,000 documents; an unbounded stalled merge or changed document total
+  refuses startup, while an already bounded shard is left untouched. An existing
   v0.0.38 full-text index advances its corrected-writer generation before Bleve
   v2.6.1 opens it and does not rebuild. An index with missing, malformed, or
   unknown generation evidence is rebuilt from the document store before Scorch
@@ -406,8 +410,10 @@ its binaries (`yago-node`, `yago-crawler`).
   per requested result page. Each phase groups those identities by physical
   vault shard and reads distinct shards concurrently through independently owned
   read-only transactions while preserving exact stored-row validation and input
-  order. Bleve's overfetch tail remains untouched unless missing stored documents
-  require another bounded page; ordinary full-document hydration remains lazy.
+  order. The first ordinary Bleve request asks for exactly the visible candidate
+  count. Only a confirmed missing stored document with an unseen Bleve tail
+  opens the established fourfold bounded retry; ordinary full-document hydration
+  remains lazy.
   Interactive searches have a hard 1.8-second response deadline and four
   process-wide outer execution
   slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that
@@ -416,6 +422,11 @@ its binaries (`yago-node`, `yago-crawler`).
   as partial evidence instead of replacing completed rows with an unavailable
   page; an unexpired successful session may instead be served with the current
   failure evidence, and timed-out work retains its slot until it exits.
+  These limits protect one process; they do not manufacture CPU capacity. A
+  deployment that expects hundreds of simultaneous searches must validate a
+  cold synchronized burst on its actual corpus and CPU allocation, then provide
+  enough independent read capacity to keep every process below that measured
+  bound. The current release does not add a replicated-read service boundary.
   Conflicting vault updates serialize behind writer-only admission while read
   snapshots remain available; served-result denylist checks use an immutable
   in-memory snapshot even after a completed search stage's context ends,
