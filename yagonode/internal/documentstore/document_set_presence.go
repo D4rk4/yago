@@ -21,28 +21,29 @@ func (d documentVault) DocumentsExist(
 	defer releaseURLs()
 	found := make([]bool, len(normalizedURLs))
 	err = d.vault.View(ctx, func(tx *vault.Txn) error {
-		for index, normalizedURL := range normalizedURLs {
-			if err := ctx.Err(); err != nil {
-				return fmt.Errorf("context: %w", err)
-			}
-			location, present, err := d.locateStoredDocument(tx, normalizedURL)
-			if err != nil {
-				return err
-			}
-			if !present {
-				continue
-			}
-			if location.admission == 0 {
-				found[index] = true
-
-				continue
-			}
-			key, err := orderedDocumentKey(location.admission, normalizedURL)
-			if err != nil {
-				return err
-			}
-			found[index] = d.orderedDocuments.Contains(tx, key)
+		keys := documentPresenceKeys(normalizedURLs)
+		admissions, located, err := d.documentLocations.Values(ctx, tx, keys)
+		if err != nil {
+			return fmt.Errorf("read document locations: %w", err)
 		}
+		selection, err := selectStoredDocumentPresence(
+			normalizedURLs,
+			keys,
+			admissions,
+			located,
+		)
+		if err != nil {
+			return err
+		}
+		orderedPresence, err := d.orderedDocuments.Presence(ctx, tx, selection.orderedKeys)
+		if err != nil {
+			return fmt.Errorf("read ordered document presence: %w", err)
+		}
+		legacyPresence, err := d.legacyDocuments.Presence(ctx, tx, selection.legacyKeys)
+		if err != nil {
+			return fmt.Errorf("read legacy document presence: %w", err)
+		}
+		selection.record(found, orderedPresence, legacyPresence)
 
 		return nil
 	})

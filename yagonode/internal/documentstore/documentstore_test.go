@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 
@@ -20,6 +21,9 @@ type scriptedDocumentEngine struct {
 	putErrors       map[vault.Name]error
 	putCommitErrors map[vault.Name]error
 	delErrors       map[vault.Name]error
+	presenceErrors  map[vault.Name]error
+	presenceReads   map[vault.Name]int
+	presenceMu      sync.Mutex
 	backgroundView  bool
 	views           int
 	replayNext      bool
@@ -38,6 +42,8 @@ func newScriptedDocumentEngine() *scriptedDocumentEngine {
 		putErrors:       map[vault.Name]error{},
 		putCommitErrors: map[vault.Name]error{},
 		delErrors:       map[vault.Name]error{},
+		presenceErrors:  map[vault.Name]error{},
+		presenceReads:   map[vault.Name]int{},
 	}
 }
 
