@@ -426,6 +426,13 @@ its binaries (`yago-node`, `yago-crawler`).
   predictably cold index. The loaded pages remain reclaimable, so a
   latency-sensitive target must budget memory for active root bytes, page
   tables, heap, and vault residency.
+  Ordinary analyzer-scoped disk retrieval first collects a complete unscored
+  union of positive lexical matches with a 32,769th sentinel. A set that
+  exhausts at 32,768 documents or fewer is reranked by the unchanged scoped
+  query; an over-limit or incomplete set retains exhaustive retrieval instead
+  of truncating recall. Explicit diagnostic explanations also retain the
+  exhaustive path. This removes avoidable analyzer-scope work without changing
+  identities, ordering, BM25 scores, field scores, or totals.
   Interactive searches have a hard 1.8-second response deadline and four
   process-wide outer execution
   slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that
@@ -435,7 +442,10 @@ its binaries (`yago-node`, `yago-crawler`).
   page; an unexpired successful session may instead be served with the current
   failure evidence, and timed-out work retains its slot until it exits.
   These limits protect one process; they do not manufacture CPU capacity. A
-  deployment that expects hundreds of simultaneous searches must validate a
+  disk index admits `max(1, GOMAXPROCS / 8)` active reads because each request
+  already fans across all eight Scorch shards; additional requests wait only
+  within their existing stage context. A deployment that expects hundreds of
+  simultaneous searches must validate a
   cold synchronized burst on its actual corpus and CPU allocation, then provide
   enough independent read capacity to keep every process below that measured
   bound. The current release does not add a replicated-read service boundary.

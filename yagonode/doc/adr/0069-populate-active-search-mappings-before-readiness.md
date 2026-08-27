@@ -4,7 +4,8 @@ Date: 2026-08-27
 
 ## Status
 
-Accepted
+Accepted; analyzer-scoped retrieval amended by
+[ADR-0070](0070-bound-analyzer-scoped-search-with-complete-lexical-candidates.md)
 
 Amends [ADR-0068](0068-load-active-search-segments-before-readiness.md).
 

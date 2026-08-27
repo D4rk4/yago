@@ -462,6 +462,17 @@ length and admission width do not create scoring capacity. A replicated-read
 runtime remains a separate topology change and requires its own accepted ADR,
 Docker, systemd, and package work before implementation.
 
+Ordinary analyzer-scoped reads use a complete content-first candidate stage.
+The node requests a 32,769th sentinel and restricts exact BM25 reranking only
+when the candidate union exhausts at 32,768 documents or fewer; incomplete and
+broader sets retain exhaustive retrieval. Explicit diagnostic explanations also
+retain the exhaustive path. Each process admits
+`max(1, GOMAXPROCS / 8)` active disk reads because one request already fans
+across all eight Scorch shards. Waiting consumes only the request's existing
+stage context. On a four-CPU process this is one active disk read, so deploy
+independently measured read replicas for a simultaneous-request objective rather
+than widening the queue.
+
 The current-source container lifecycle gate runs every node under an exact 4 GiB
 Docker memory limit with swap disabled at the container boundary, then exercises
 indexing and independent node/crawler restarts. These bounds limit application

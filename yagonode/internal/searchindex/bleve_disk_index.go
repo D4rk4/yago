@@ -42,19 +42,20 @@ const (
 )
 
 type BleveDiskIndex struct {
-	mu               sync.RWMutex
-	mutationMu       sync.Mutex
-	updatedAtMu      sync.RWMutex
-	shards           []bleve.Index
-	alias            bleve.Index
-	documents        documentstore.DocumentDirectory
-	documentPresence documentstore.DocumentPresence
-	updatedAt        time.Time
-	closed           bool
-	multilingual     bool
-	analyzerScope    bool
-	storedCandidates bool
-	now              func() time.Time
+	mu                  sync.RWMutex
+	mutationMu          sync.Mutex
+	updatedAtMu         sync.RWMutex
+	shards              []bleve.Index
+	alias               bleve.Index
+	documents           documentstore.DocumentDirectory
+	documentPresence    documentstore.DocumentPresence
+	updatedAt           time.Time
+	closed              bool
+	multilingual        bool
+	analyzerScope       bool
+	storedCandidates    bool
+	searchReadAdmission chan struct{}
+	now                 func() time.Time
 }
 
 // diskShard picks the shard for one document id.
@@ -140,15 +141,16 @@ func NewBleveDiskIndex(
 
 	documentPresence, _ := directory.(documentstore.DocumentPresence)
 	out := &BleveDiskIndex{
-		shards:           shards,
-		alias:            bleve.NewIndexAlias(shards...),
-		documents:        directory,
-		documentPresence: documentPresence,
-		updatedAt:        updatedAt,
-		multilingual:     supportsMultilingualAnalyzers(shards[0]),
-		analyzerScope:    supportsAnalyzerScope(shards[0]),
-		storedCandidates: supportsStoredCandidateProjection(shards[0]),
-		now:              time.Now,
+		shards:              shards,
+		alias:               bleve.NewIndexAlias(shards...),
+		documents:           directory,
+		documentPresence:    documentPresence,
+		updatedAt:           updatedAt,
+		multilingual:        supportsMultilingualAnalyzers(shards[0]),
+		analyzerScope:       supportsAnalyzerScope(shards[0]),
+		storedCandidates:    supportsStoredCandidateProjection(shards[0]),
+		searchReadAdmission: newBleveDiskSearchReadAdmission(),
+		now:                 time.Now,
 	}
 	if rebuild && stored != nil {
 		if err := out.rebuild(ctx, stored, rebuildCoordinator); err != nil {
@@ -275,6 +277,11 @@ func (b *BleveDiskIndex) searchHits(
 	if req.Query == "" || req.MaxResults <= 0 {
 		return SearchResultSet{}, nil, nil
 	}
+	releaseSearchRead, err := b.admitSearchRead(ctx)
+	if err != nil {
+		return SearchResultSet{}, nil, err
+	}
+	defer releaseSearchRead()
 
 	b.mu.RLock()
 	defer b.mu.RUnlock()
