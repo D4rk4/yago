@@ -272,8 +272,13 @@ func TestReleaseContainerPromotionUsesValidatedArchivesWithoutRebuild(t *testing
 	if err != nil {
 		t.Fatalf("read release container publication: %v", err)
 	}
+	pushContents, err := os.ReadFile("../../../deploy/push-release-container.sh")
+	if err != nil {
+		t.Fatalf("read release container push: %v", err)
+	}
 	exportText := string(exportContents)
 	publishText := string(publishContents)
+	pushText := string(pushContents)
 	for _, required := range []string{
 		`docker save --output`,
 		`sha256sum "$archive_name"`,
@@ -287,7 +292,7 @@ func TestReleaseContainerPromotionUsesValidatedArchivesWithoutRebuild(t *testing
 	for _, required := range []string{
 		`sha256sum -c`,
 		`docker load --input`,
-		`docker push`,
+		`push-release-container.sh`,
 		`ghcr.io/d4rk4/yago-node`,
 		`ghcr.io/d4rk4/yago-crawler`,
 		`docker buildx imagetools create`,
@@ -303,6 +308,9 @@ func TestReleaseContainerPromotionUsesValidatedArchivesWithoutRebuild(t *testing
 	}
 	if strings.Contains(publishText, `docker build `) || strings.Contains(publishText, `:latest`) {
 		t.Fatal("release container publication rebuilds an image or creates a moving tag")
+	}
+	if !strings.Contains(pushText, `docker push "$release_reference"`) {
+		t.Fatal("release container push does not publish the exact child reference")
 	}
 	if strings.Contains(publishText, `--annotation`) ||
 		strings.Contains(publishText, `oci.image.index`) {

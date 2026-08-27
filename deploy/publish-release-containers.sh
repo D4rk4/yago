@@ -4,6 +4,7 @@ set -eu
 version="${1:?release version}"
 source_revision="${2:?source revision}"
 archive_directory="${3:?archive directory}"
+publication_directory=$(CDPATH= cd "$(dirname "$0")" && pwd)
 
 printf '%s\n' "$version" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 printf '%s\n' "$source_revision" | grep -Eq '^[0-9a-f]{40}$'
@@ -34,7 +35,7 @@ release_child_digest() {
 	reference_state=$(release_reference_state "$release_reference")
 	if test "$reference_state" = missing; then
 		docker tag "$local_image" "$release_reference"
-		docker push "$release_reference" >&2
+		sh "$publication_directory/push-release-container.sh" "$release_reference" >&2
 	fi
 	docker pull --platform "linux/${architecture}" "$release_reference" >&2
 	test "$(docker image inspect --format '{{ .Id }}' "$release_reference")" = "$expected_image_identity"

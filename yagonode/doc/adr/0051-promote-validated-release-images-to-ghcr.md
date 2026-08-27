@@ -75,6 +75,15 @@ existing final manifest only when its amd64 and arm64 child digests match
 exactly. The final gate uses a fresh empty Docker credential directory to pull
 both the semantic-version tag and its recorded digest for both products.
 
+Within one publication job, an architecture-child push normally runs once. If
+the registry explicitly reports that a blob is unavailable while publishing the
+child, restart the same authenticated content-addressed push after two and four
+seconds, then fail after the third refusal. Any unrelated error, including an
+authorization refusal, fails immediately. After a successful command, pull the
+child and match its exact local image identity, architecture, source, revision,
+and manifest digest before composing a final manifest list. This retry changes
+transport timing only and never rebuilds or substitutes an image.
+
 ## Historical release container backfill
 
 Release v0.0.10 used a temporary `workflow_dispatch` path from `main` because
@@ -133,6 +142,9 @@ Actions, workflow artifacts, GHCR, OIDC, and GitHub's attestation service.
 Transient Go proxy or checksum-service transport failures can consume two
 bounded retries without discarding checksum verification; a persistent outage
 still stops the native image matrix and therefore stops publication.
+An unavailable registry blob can consume two bounded child-push restarts without
+changing the validated image; a persistent refusal or any unrelated error still
+stops publication before final manifests or attestations.
 GitHub's documented defaults do not replace observed anonymous verification.
 Package settings provide the required manual path only when a package remains
 private; the package REST and GraphQL surfaces do not provide a supported

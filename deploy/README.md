@@ -660,6 +660,15 @@ product. It attaches and verifies GitHub-hosted provenance for each final
 manifest-list digest before the GitHub Release is published. Container packages remain
 separate from the six GitHub Release file assets.
 
+Each architecture child normally performs one authenticated push. If the
+registry reports that the child manifest references an unavailable blob, the
+same content-addressed push restarts after two and four seconds and stops after
+the third refusal. An authorization or any other registry failure stops after
+its first attempt. A successful push is not trusted on command exit alone: the
+workflow pulls the exact reference and matches image identity, architecture,
+source, revision, and manifest digest to the validated archive before composing
+the final manifest list.
+
 The complete `vX.Y.Z` tag is the only operator-facing image reference;
 immutable `vX.Y.Z-amd64` and `vX.Y.Z-arm64` staging references exist only to
 compose the manifest list. CI does not create `latest`, major-only, minor-only, branch,
@@ -699,10 +708,12 @@ The approved job uses an empty Docker credential directory to pull both the
 exact tag and its digest before it can succeed. Remove the environment's
 one-time required-reviewer rule only after that anonymous gate proves the new
 package public. Existing public package names need no visibility change.
-A retry accepts an existing architecture tag or manifest list only when its
-image identity, labels, platforms, and child digests match the validated
-archives; registry authorization, network, and server failures stop publication
-rather than being interpreted as a missing tag.
+A later workflow attempt accepts an existing architecture tag or manifest list
+only when its image identity, labels, platforms, and child digests match the
+validated archives. Within one publication job, only an explicit unavailable-
+blob refusal restarts the identical child push, at most twice. Registry
+authorization and every other ambiguous failure stop publication rather than
+being interpreted as a missing tag or a successful upload.
 
 Create the one-time environment protection before pushing the tag that first
 uses a package name:

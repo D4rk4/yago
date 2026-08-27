@@ -587,7 +587,11 @@ its binaries (`yago-node`, `yago-crawler`).
   promoted without a rebuild into public, provenance-attested
   multi-architecture manifest lists at `ghcr.io/d4rk4/yago-node:vX.Y.Z` and
   `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`. Releases publish no `latest` or shortened
-  version alias; deployments can pin the recorded manifest-list digest.
+  version alias; deployments can pin the recorded manifest-list digest. If the
+  registry refuses a child manifest because one of its blobs is temporarily
+  unavailable, the same authenticated content-addressed push restarts at most
+  twice with bounded pauses. Other failures stop immediately, and every
+  successful child is still pulled and matched to its validated image identity.
 - Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
   SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
   structured logs (never secrets), and a durable event store fed through a
