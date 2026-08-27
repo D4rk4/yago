@@ -4,7 +4,8 @@ Date: 2026-08-27
 
 ## Status
 
-Accepted
+Accepted; mapping residency amended by
+[ADR-0069](0069-populate-active-search-mappings-before-readiness.md)
 
 ## Context
 

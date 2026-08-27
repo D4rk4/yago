@@ -444,11 +444,15 @@ startup. An already bounded index performs no merge or reserve check. The node
 then reads only the active persisted Scorch roots sequentially through one
 4 MiB window while holding one shard snapshot and one file. This happens on
 every start before lexical warm-up and readiness, including when no merge was
-needed. A cancellation, read, or close failure refuses startup. The read does
-not alter the index, but first readiness is delayed by the active root bytes and
-available storage throughput. Those pages remain reclaimable file cache and
-count toward cgroup residency; leave memory for the complete active roots plus
-the measured heap, vault working set, and operating-system headroom.
+needed. Before releasing each snapshot, startup requires the active file and
+its live zapx mapping to have equal length and accesses one byte at every
+operating-system page boundary through that mapping. A cancellation, missing
+mapping, size disagreement, read, or close failure refuses startup. Neither
+pass alters the index, but first readiness is delayed by the active root bytes,
+storage throughput, and mapping population. Those pages remain reclaimable file
+cache and count toward cgroup residency; leave memory for the complete active
+roots, their page tables, the measured heap, vault working set, and
+operating-system headroom.
 
 Cache loading removes avoidable first-query storage faults but is not a
 single-replica throughput guarantee. Validate synchronized cold requests on the

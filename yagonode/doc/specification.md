@@ -698,13 +698,17 @@ it is not an assumed deployment dependency.
 * After rebuild and segment consolidation, the disk backend SHALL hold one
   referenced Scorch snapshot at a time and sequentially read every nonempty
   active persisted root through one bounded reusable window before lexical
-  warm-up and readiness. It SHALL keep at most one root file open, check startup
-  cancellation between reads, and refuse startup on acquisition, open, read,
-  close, cancellation, invalid-reader, or no-progress failure. It SHALL NOT read
-  inactive retained snapshots or modify segment bytes. The resulting pages
+  warm-up and readiness. Before releasing that snapshot, it SHALL require every
+  persisted active segment to expose its live mapping, require the file and
+  mapping lengths to agree, and access one byte at every operating-system page
+  boundary through the mapping. It SHALL keep at most one root file open, check
+  startup cancellation between reads and mapping pages, and refuse startup on
+  acquisition, open, read, close, cancellation, invalid-reader, unavailable
+  mapping, size disagreement, or no-progress failure. It SHALL NOT read inactive
+  retained snapshots, pin pages, or modify segment bytes. The resulting pages
   remain reclaimable operating-system cache; deployments claiming a cold-search
-  latency budget SHALL leave enough memory for active roots and validate CPU and
-  cache capacity on their actual corpus.
+  latency budget SHALL leave enough memory for active roots and their page
+  tables and SHALL validate CPU and cache capacity on their actual corpus.
 * The node SHALL generate snippets from the document store where document text is available.
 * The node SHALL support bounded quoted-phrase preference plus ordered and unordered proximity evidence through the local stored-position path.
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.

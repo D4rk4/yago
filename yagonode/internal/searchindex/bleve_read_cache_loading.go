@@ -26,7 +26,7 @@ type bleveReadCacheFile interface {
 }
 
 type bleveReadCacheSnapshot interface {
-	activeSegmentPaths() []string
+	activeSegments() ([]bleveReadCacheActiveSegment, error)
 	Close() error
 }
 
@@ -36,10 +36,6 @@ type bleveReadCacheShard interface {
 
 type bleveReadCacheSnapshotSource interface {
 	Reader() (bleveindex.IndexReader, error)
-}
-
-type bleveReadCachePersistedSegment interface {
-	Path() string
 }
 
 type scorchBleveReadCacheShard struct {
@@ -56,8 +52,10 @@ type bleveReadCacheLoading struct {
 }
 
 type bleveReadCacheLoadingReport struct {
-	segments int
-	bytes    uint64
+	segments        int
+	bytes           uint64
+	mappingPages    uint64
+	mappingEvidence uint64
 }
 
 func loadBleveReadCache(ctx context.Context, indexes []bleve.Index) error {
@@ -75,6 +73,8 @@ func loadBleveReadCache(ctx context.Context, indexes []bleve.Index) error {
 		slog.Int("shards", len(shards)),
 		slog.Int("segments", report.segments),
 		slog.Uint64("bytes", report.bytes),
+		slog.Uint64("mappingPages", report.mappingPages),
+		slog.Uint64("mappingEvidence", report.mappingEvidence),
 	)
 
 	return nil
@@ -108,6 +108,8 @@ func (l bleveReadCacheLoading) run(ctx context.Context) (bleveReadCacheLoadingRe
 		}
 		report.segments += loaded.segments
 		report.bytes += loaded.bytes
+		report.mappingPages += loaded.mappingPages
+		report.mappingEvidence ^= loaded.mappingEvidence
 	}
 
 	return report, nil
@@ -121,8 +123,12 @@ func (l bleveReadCacheLoading) loadSnapshot(
 	defer func() {
 		err = errors.Join(err, snapshot.Close())
 	}()
-	for position, path := range snapshot.activeSegmentPaths() {
-		loaded, loadErr := loadBleveReadCacheSegment(ctx, path, window, l.open)
+	segments, err := snapshot.activeSegments()
+	if err != nil {
+		return bleveReadCacheLoadingReport{}, err
+	}
+	for position, segment := range segments {
+		loaded, loadErr := loadBleveReadCacheSegment(ctx, segment.path, window, l.open)
 		if loadErr != nil {
 			return bleveReadCacheLoadingReport{}, fmt.Errorf(
 				"load active segment %d: %w",
@@ -130,8 +136,28 @@ func (l bleveReadCacheLoading) loadSnapshot(
 				loadErr,
 			)
 		}
+		if loaded != uint64(len(segment.mapping)) {
+			return bleveReadCacheLoadingReport{}, fmt.Errorf(
+				"load active segment %d: file and mapping size differ",
+				position,
+			)
+		}
+		mapping, mappingErr := populateBleveReadMapping(
+			ctx,
+			segment.mapping,
+			os.Getpagesize(),
+		)
+		if mappingErr != nil {
+			return bleveReadCacheLoadingReport{}, fmt.Errorf(
+				"populate active segment %d mapping: %w",
+				position,
+				mappingErr,
+			)
+		}
 		report.segments++
 		report.bytes += loaded
+		report.mappingPages += mapping.pages
+		report.mappingEvidence ^= mapping.evidence
 	}
 
 	return report, nil
@@ -214,31 +240,8 @@ func openScorchBleveReadCacheSnapshot(
 	)
 }
 
-func (s scorchBleveReadCacheSnapshot) activeSegmentPaths() []string {
-	segments := s.snapshot.Segments()
-	paths := make([]string, 0, len(segments))
-	for _, segment := range segments {
-		path, persisted := bleveReadCacheSegmentPath(segment.Segment())
-		if persisted {
-			paths = append(paths, path)
-		}
-	}
-
-	return paths
-}
-
 func (s scorchBleveReadCacheSnapshot) Close() error {
 	return wrapBleveReadCacheSnapshotClose(s.snapshot.Close())
-}
-
-func bleveReadCacheSegmentPath(segment any) (string, bool) {
-	persisted, ok := segment.(bleveReadCachePersistedSegment)
-	if !ok {
-		return "", false
-	}
-	path := persisted.Path()
-
-	return path, path != ""
 }
 
 func bleveReadCacheBytes(read, window int) (uint64, error) {

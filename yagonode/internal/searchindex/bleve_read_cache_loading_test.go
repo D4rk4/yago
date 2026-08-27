@@ -30,14 +30,68 @@ func (p *bleveReadCacheShardProbe) snapshot() (bleveReadCacheSnapshot, error) {
 }
 
 type bleveReadCacheSnapshotProbe struct {
-	paths      []string
-	closeError error
-	closeCalls int
-	onClose    func()
+	paths       []string
+	activeError error
+	closeError  error
+	closeCalls  int
+	onClose     func()
 }
 
-func (p *bleveReadCacheSnapshotProbe) activeSegmentPaths() []string {
-	return p.paths
+func (p *bleveReadCacheSnapshotProbe) activeSegments() (
+	[]bleveReadCacheActiveSegment,
+	error,
+) {
+	if p.activeError != nil {
+		return nil, p.activeError
+	}
+	segments := make([]bleveReadCacheActiveSegment, 0, len(p.paths))
+	for _, path := range p.paths {
+		segments = append(segments, bleveReadCacheActiveSegment{
+			path:    path,
+			mapping: make([]byte, len(path)),
+		})
+	}
+
+	return segments, nil
+}
+
+func TestBleveReadCacheLoadingReturnsActiveSegmentFailure(t *testing.T) {
+	sentinel := errors.New("active segments failed")
+	snapshot := &bleveReadCacheSnapshotProbe{activeError: sentinel}
+	loading := bleveReadCacheLoading{
+		shards: []bleveReadCacheShard{&bleveReadCacheShardProbe{value: snapshot}},
+	}
+
+	if _, err := loading.run(t.Context()); !errors.Is(err, sentinel) {
+		t.Fatalf("loading error=%v", err)
+	}
+	if snapshot.closeCalls != 1 {
+		t.Fatalf("snapshot closes=%d", snapshot.closeCalls)
+	}
+}
+
+func TestBleveReadCacheLoadingReturnsMappingCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	snapshot := &bleveReadCacheSnapshotProbe{paths: []string{"segment"}}
+	file := &bleveReadCacheFileProbe{
+		reads: []bleveReadCacheFileRead{{bytes: len("segment"), err: io.EOF}},
+		onRead: func(int) {
+			cancel()
+		},
+	}
+	loading := bleveReadCacheLoading{
+		shards: []bleveReadCacheShard{&bleveReadCacheShardProbe{value: snapshot}},
+		open: func(string) (bleveReadCacheFile, error) {
+			return file, nil
+		},
+	}
+
+	if _, err := loading.run(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("loading error=%v", err)
+	}
+	if file.closeCalls != 1 || snapshot.closeCalls != 1 {
+		t.Fatalf("closes=%d,%d", file.closeCalls, snapshot.closeCalls)
+	}
 }
 
 func (p *bleveReadCacheSnapshotProbe) Close() error {
@@ -108,11 +162,16 @@ func (p *differentBleveReadCacheReaderProbe) Close() error {
 }
 
 type bleveReadCachePersistedSegmentProbe struct {
-	path string
+	path    string
+	mapping []byte
 }
 
 func (p bleveReadCachePersistedSegmentProbe) Path() string {
 	return p.path
+}
+
+func (p bleveReadCachePersistedSegmentProbe) Data() []byte {
+	return p.mapping
 }
 
 func TestBleveReadCacheLoadingLoadsActiveSegmentsSequentially(t *testing.T) {
@@ -144,7 +203,8 @@ func TestBleveReadCacheLoadingLoadsActiveSegmentsSequentially(t *testing.T) {
 	if !slices.Equal(opened, []string{"alpha", "bravo", "charlie"}) {
 		t.Fatalf("open order=%v", opened)
 	}
-	if report.segments != 3 || report.bytes != uint64(len("alphabravocharlie")) {
+	if report.segments != 3 || report.bytes != uint64(len("alphabravocharlie")) ||
+		report.mappingPages != 3 {
 		t.Fatalf("report=%#v", report)
 	}
 	if first.closeCalls != 1 || second.closeCalls != 1 {
@@ -426,22 +486,6 @@ func TestOpenScorchBleveReadCacheSnapshotClosesDifferentReader(t *testing.T) {
 	}
 }
 
-func TestBleveReadCacheSegmentPathSelectsOnlyPersistedPath(t *testing.T) {
-	path, persisted := bleveReadCacheSegmentPath(bleveReadCachePersistedSegmentProbe{
-		path: "/index/segment.zap",
-	})
-	if !persisted || path != "/index/segment.zap" {
-		t.Fatalf("path=%q persisted=%v", path, persisted)
-	}
-	path, persisted = bleveReadCacheSegmentPath(bleveReadCachePersistedSegmentProbe{})
-	if persisted || path != "" {
-		t.Fatalf("empty path=%q persisted=%v", path, persisted)
-	}
-	if path, persisted := bleveReadCacheSegmentPath(struct{}{}); persisted || path != "" {
-		t.Fatalf("volatile path=%q persisted=%v", path, persisted)
-	}
-}
-
 func TestBleveReadCacheBytesAcceptsSizeWithinWindow(t *testing.T) {
 	converted, err := bleveReadCacheBytes(42, 42)
 	if err != nil || converted != 42 {
@@ -532,14 +576,18 @@ func TestLoadBleveReadCacheUsesOnlyActiveScorchRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths := snapshot.activeSegmentPaths()
+	segments, err := snapshot.activeSegments()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := snapshot.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(paths) != 1 || filepath.Ext(paths[0]) != ".zap" {
-		t.Fatalf("active paths=%v", paths)
+	if len(segments) != 1 || filepath.Ext(segments[0].path) != ".zap" {
+		t.Fatalf("active segments=%v", segments)
 	}
-	if _, err := os.Stat(paths[0]); err != nil {
+	if info, err := os.Stat(segments[0].path); err != nil ||
+		info.Size() != int64(len(segments[0].mapping)) {
 		t.Fatal(err)
 	}
 	if err := loadBleveReadCache(t.Context(), []bleve.Index{shard}); err != nil {
@@ -586,18 +634,21 @@ func TestPrepareBleveReadsRefusesMissingActiveRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths := snapshot.activeSegmentPaths()
+	segments, err := snapshot.activeSegments()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := snapshot.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(paths) != 1 {
-		t.Fatalf("active paths=%v", paths)
+	if len(segments) != 1 {
+		t.Fatalf("active segments=%v", segments)
 	}
-	missing := paths[0] + ".missing"
-	if err := os.Rename(paths[0], missing); err != nil {
+	missing := segments[0].path + ".missing"
+	if err := os.Rename(segments[0].path, missing); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.Rename(missing, paths[0]) })
+	t.Cleanup(func() { _ = os.Rename(missing, segments[0].path) })
 	index := &BleveDiskIndex{shards: []bleve.Index{shard}, alias: bleve.NewIndexAlias(shard)}
 	if err := index.prepareBleveReads(t.Context(), root, nil); err == nil ||
 		!strings.Contains(err.Error(), "open active segment") {
