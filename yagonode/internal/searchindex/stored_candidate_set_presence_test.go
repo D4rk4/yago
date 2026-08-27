@@ -3,6 +3,8 @@ package searchindex
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/blevesearch/bleve/v2"
@@ -18,7 +20,9 @@ type batchPresenceDocumentDirectory struct {
 	documentCalls   int
 	documentError   error
 	batchError      error
+	batchErrorAt    int
 	result          []bool
+	batches         [][]string
 }
 
 func (d *batchPresenceDocumentDirectory) Document(
@@ -52,7 +56,8 @@ func (d *batchPresenceDocumentDirectory) DocumentsExist(
 	normalizedURLs []string,
 ) ([]bool, error) {
 	d.batchCalls++
-	if d.batchError != nil {
+	d.batches = append(d.batches, append([]string(nil), normalizedURLs...))
+	if d.batchError != nil && (d.batchErrorAt == 0 || d.batchCalls == d.batchErrorAt) {
 		return nil, d.batchError
 	}
 	if d.result != nil {
@@ -254,6 +259,116 @@ func TestCollectHitsUsesPreparedStoredCandidatePresence(t *testing.T) {
 	}
 }
 
+func TestCollectHitsBoundsInitialStoredCandidatePresencePage(t *testing.T) {
+	documents := storedCandidatePageDocuments(200)
+	directory := newBatchPresenceDocumentDirectory(documents)
+	index := &BleveDiskIndex{
+		documents:        directory,
+		documentPresence: directory,
+		storedCandidates: true,
+	}
+	result, orphans, err := index.collectHits(
+		t.Context(),
+		SearchRequest{MaxResults: 50, CandidateOnly: true},
+		storedCandidateSearchResult(t, documents),
+	)
+	if err != nil || len(result.Results) != 50 || result.Total != 200 || len(orphans) != 0 {
+		t.Fatalf("result=%#v orphans=%v error=%v", result, orphans, err)
+	}
+	requirePresenceBatches(t, directory, documentIdentities(documents[:50]))
+	if directory.documentCalls != 0 || directory.individualCalls != 0 {
+		t.Fatalf(
+			"document calls=%d individual calls=%d",
+			directory.documentCalls,
+			directory.individualCalls,
+		)
+	}
+}
+
+func TestCollectHitsKeepsExactStoredCandidatePresencePage(t *testing.T) {
+	documents := storedCandidatePageDocuments(3)
+	directory := newBatchPresenceDocumentDirectory(documents)
+	index := &BleveDiskIndex{
+		documents:        directory,
+		documentPresence: directory,
+		storedCandidates: true,
+	}
+	result, orphans, err := index.collectHits(
+		t.Context(),
+		SearchRequest{MaxResults: 3, CandidateOnly: true},
+		storedCandidateSearchResult(t, documents),
+	)
+	if err != nil || len(result.Results) != 3 || result.Total != 3 || len(orphans) != 0 {
+		t.Fatalf("result=%#v orphans=%v error=%v", result, orphans, err)
+	}
+	requirePresenceBatches(t, directory, documentIdentities(documents))
+}
+
+func TestCollectHitsLoadsNextStoredCandidatePresencePageForOrphan(t *testing.T) {
+	documents := storedCandidatePageDocuments(6)
+	directory := newBatchPresenceDocumentDirectory(documents)
+	delete(directory.documents, documents[1].NormalizedURL)
+	index := &BleveDiskIndex{
+		documents:        directory,
+		documentPresence: directory,
+		storedCandidates: true,
+	}
+	result, orphans, err := index.collectHits(
+		t.Context(),
+		SearchRequest{MaxResults: 3, CandidateOnly: true},
+		storedCandidateSearchResult(t, documents),
+	)
+	if err != nil || len(result.Results) != 3 || result.Total != 5 ||
+		!slices.Equal(orphans, []string{documents[1].NormalizedURL}) {
+		t.Fatalf("result=%#v orphans=%v error=%v", result, orphans, err)
+	}
+	requirePresenceBatches(
+		t,
+		directory,
+		documentIdentities(documents[:3]),
+		documentIdentities(documents[3:]),
+	)
+	wantResults := []string{
+		documents[0].NormalizedURL,
+		documents[2].NormalizedURL,
+		documents[3].NormalizedURL,
+	}
+	if !slices.Equal(searchResultIdentities(result.Results), wantResults) {
+		t.Fatalf(
+			"result identities=%v, want=%v",
+			searchResultIdentities(result.Results),
+			wantResults,
+		)
+	}
+}
+
+func TestCollectHitsRejectsSecondStoredCandidatePresencePageCancellation(t *testing.T) {
+	documents := storedCandidatePageDocuments(4)
+	directory := newBatchPresenceDocumentDirectory(documents)
+	delete(directory.documents, documents[0].NormalizedURL)
+	directory.batchError = context.Canceled
+	directory.batchErrorAt = 2
+	index := &BleveDiskIndex{
+		documents:        directory,
+		documentPresence: directory,
+		storedCandidates: true,
+	}
+	_, _, err := index.collectHits(
+		t.Context(),
+		SearchRequest{MaxResults: 2, CandidateOnly: true},
+		storedCandidateSearchResult(t, documents),
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("second presence page error=%v, want=%v", err, context.Canceled)
+	}
+	requirePresenceBatches(
+		t,
+		directory,
+		documentIdentities(documents[:2]),
+		documentIdentities(documents[2:]),
+	)
+}
+
 func TestCollectHitsRejectsStoredCandidatePresenceFailure(t *testing.T) {
 	document := documentstore.Document{NormalizedURL: "https://example.org/failure"}
 	want := errors.New("batch presence failed")
@@ -296,4 +411,75 @@ func storedCandidateSetHits(
 	}
 
 	return hits
+}
+
+func storedCandidatePageDocuments(total int) []documentstore.Document {
+	documents := make([]documentstore.Document, total)
+	for index := range documents {
+		documents[index] = documentstore.Document{
+			NormalizedURL: fmt.Sprintf("https://example.org/candidate/%03d", index),
+			Title:         fmt.Sprintf("Candidate %03d", index),
+		}
+	}
+
+	return documents
+}
+
+func newBatchPresenceDocumentDirectory(
+	documents []documentstore.Document,
+) *batchPresenceDocumentDirectory {
+	directory := &batchPresenceDocumentDirectory{
+		documents: make(map[string]documentstore.Document, len(documents)),
+	}
+	for _, document := range documents {
+		directory.documents[document.NormalizedURL] = document
+	}
+
+	return directory
+}
+
+func storedCandidateSearchResult(
+	t *testing.T,
+	documents []documentstore.Document,
+) *bleve.SearchResult {
+	t.Helper()
+
+	return &bleve.SearchResult{
+		Total: uint64(len(documents)),
+		Hits:  storedCandidateSetHits(t, documents...),
+	}
+}
+
+func documentIdentities(documents []documentstore.Document) []string {
+	identities := make([]string, len(documents))
+	for index, document := range documents {
+		identities[index] = document.NormalizedURL
+	}
+
+	return identities
+}
+
+func searchResultIdentities(results []SearchResult) []string {
+	identities := make([]string, len(results))
+	for index, result := range results {
+		identities[index] = result.DocumentID
+	}
+
+	return identities
+}
+
+func requirePresenceBatches(
+	t *testing.T,
+	directory *batchPresenceDocumentDirectory,
+	want ...[]string,
+) {
+	t.Helper()
+	if len(directory.batches) != len(want) {
+		t.Fatalf("presence batches=%v, want=%v", directory.batches, want)
+	}
+	for index := range want {
+		if !slices.Equal(directory.batches[index], want[index]) {
+			t.Fatalf("presence batch %d=%v, want=%v", index, directory.batches[index], want[index])
+		}
+	}
 }

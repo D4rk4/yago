@@ -9,41 +9,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
-type preparedSearchHitProjections struct {
-	projections []searchHitProjection
-	found       []bool
-}
-
-func (b *BleveDiskIndex) prepareSearchHitProjections(
-	ctx context.Context,
-	hits []*search.DocumentMatch,
-	req SearchRequest,
-) (preparedSearchHitProjections, error) {
-	if !b.supportsSearchHitProjectionSet(req) {
-		return preparedSearchHitProjections{}, nil
-	}
-	projections, found, err := b.loadSearchHitProjections(ctx, hits, req)
-	if err != nil {
-		return preparedSearchHitProjections{}, err
-	}
-
-	return preparedSearchHitProjections{projections: projections, found: found}, nil
-}
-
-func (prepared preparedSearchHitProjections) load(
-	ctx context.Context,
-	index *BleveDiskIndex,
-	position int,
-	hit *search.DocumentMatch,
-	req SearchRequest,
-) (searchHitProjection, bool, error) {
-	if prepared.projections == nil {
-		return index.loadSearchHitProjectionIndividually(ctx, hit, req)
-	}
-
-	return prepared.projections[position], prepared.found[position], nil
-}
-
 func (b *BleveDiskIndex) loadSearchHitProjections(
 	ctx context.Context,
 	hits []*search.DocumentMatch,

@@ -398,7 +398,9 @@ its binaries (`yago-node`, `yago-crawler`).
   already-present rebuild marker is accepted without reopening or rewriting it,
   so an interrupted or operator-staged recovery remains idempotent. Stored
   candidate identities are checked through one ordered document-vault snapshot
-  per bounded hit set, while ordinary full-document hydration remains lazy.
+  per requested result page. Bleve's overfetch tail remains untouched unless
+  missing stored documents require another bounded page; ordinary full-document
+  hydration remains lazy.
   Interactive searches have a hard 1.8-second response deadline and four
   process-wide outer execution
   slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that
