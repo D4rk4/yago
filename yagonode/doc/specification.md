@@ -661,6 +661,17 @@ it is not an assumed deployment dependency.
   requests a stored projection cannot answer SHALL retain the lazy full-document
   path. Ordinary non-candidate search SHALL NOT hydrate documents beyond a full
   page when neither facets nor post-filters require them.
+* A disk-backed stored-evidence pass SHALL hydrate at most ten visible local
+  results through one URL read-lock scope and one logical document-vault
+  snapshot when the directory supports document-set reads. Location values and
+  the derived ordered or legacy document values SHALL use independently owned
+  read-only transactions per touched physical shard. Returned documents SHALL
+  remain position-aligned and SHALL be authoritative only when their embedded
+  normalized URL exactly matches the requested identity. Missing or corrupt
+  rows SHALL retain the established orphan behavior; operational failures and
+  cancellation SHALL remain failures. A directory without the set capability
+  SHALL retain the one-document compatibility path. The Bleve overfetch tail
+  SHALL remain unhydrated.
 * Each Scorch shard SHALL use one in-memory persister worker with at most 32 MiB
   of segment input per flush, and SHALL cap a merged segment at 100,000
   documents. The current-source container lifecycle gate SHALL apply an exact

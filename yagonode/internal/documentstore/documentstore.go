@@ -95,6 +95,14 @@ type DocumentDirectory interface {
 	Count(ctx context.Context) (int, error)
 }
 
+type DocumentSetDirectory interface {
+	DocumentDirectory
+	Documents(
+		ctx context.Context,
+		normalizedURLs []string,
+	) ([]Document, []bool, error)
+}
+
 type DocumentPresence interface {
 	DocumentExists(ctx context.Context, normalizedURL string) (bool, error)
 }

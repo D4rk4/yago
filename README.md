@@ -226,6 +226,11 @@ its binaries (`yago-node`, `yago-crawler`).
   visible-field evidence pass while the request context remains live. Invalid
   or empty visible text, unavailable analyzer infrastructure, and rows not
   completed before cancellation or deadline retain bounded structural matching.
+  Disk-backed local evidence hydrates at most ten visible documents through one
+  URL-boundary scope and one logical vault snapshot. The sharded vault reads
+  their location and exact ordered or legacy rows concurrently by physical
+  shard while preserving result order, strict deadline fallback, and legacy
+  compatibility.
   Local and swarm retrieval use parsed bare terms; eligible web search receives
   the bounded original operator-bearing query and verifies supported structured
   constraints again on returned rows.

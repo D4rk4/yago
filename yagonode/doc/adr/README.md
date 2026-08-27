@@ -84,3 +84,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0063](0063-serve-before-rwi-word-filter-rebuild.md) | Serve before rebuilding RWI shard filters | Accepted |
 | [0064](0064-advance-the-bleve-writer-generation-before-open.md) | Advance the Bleve writer generation before open | Accepted |
 | [0065](0065-read-exact-document-presence-by-physical-shard.md) | Read exact document presence by physical shard | Accepted |
+| [0066](0066-read-visible-search-evidence-as-a-document-set.md) | Read visible search evidence as a document set | Accepted |

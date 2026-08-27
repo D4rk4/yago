@@ -45,6 +45,9 @@ func (b *BleveDiskIndex) SearchEvidence(
 	if closed {
 		return nil, fmt.Errorf("search index closed")
 	}
+	if documents, ok := b.documents.(documentstore.DocumentSetDirectory); ok {
+		return b.searchEvidenceFromDocumentSet(ctx, req, results, documents)
+	}
 
 	orphans := make([]string, 0)
 	enriched, err := searchEvidenceResults(ctx, req, results, func(index int) (
