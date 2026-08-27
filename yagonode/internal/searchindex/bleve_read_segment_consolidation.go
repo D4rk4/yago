@@ -69,6 +69,9 @@ func (b *BleveDiskIndex) prepareBleveReads(
 	if err := consolidateBleveReadSegments(ctx, root, b.shards, admission); err != nil {
 		return err
 	}
+	if err := loadBleveReadCache(ctx, b.shards); err != nil {
+		return err
+	}
 	b.warm(ctx)
 
 	return nil

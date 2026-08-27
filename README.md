@@ -414,6 +414,14 @@ its binaries (`yago-node`, `yago-crawler`).
   count. Only a confirmed missing stored document with an unseen Bleve tail
   opens the established fourfold bounded retry; ordinary full-document hydration
   remains lazy.
+  After any startup rebuild and bounded segment consolidation, the node holds
+  one Scorch snapshot at a time and sequentially loads every active persisted
+  root into the operating-system page cache before lexical warm-up and
+  readiness. It never reads inactive retained snapshots or changes segment
+  bytes. Cancellation or any snapshot, file, read, or close failure refuses
+  startup instead of exposing a predictably cold index. The loaded pages remain
+  reclaimable, so a latency-sensitive target must budget memory for active root
+  bytes as well as heap and vault residency.
   Interactive searches have a hard 1.8-second response deadline and four
   process-wide outer execution
   slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that

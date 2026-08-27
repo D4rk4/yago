@@ -440,8 +440,25 @@ segments at 100,000 documents. Before listeners open, a fragmented existing
 index measures its complete footprint, applies the normal storage-growth reserve
 with that amount as temporary headroom, and force-merges one shard at a time.
 Insufficient headroom leaves the valid source snapshots in place and refuses
-startup. An already bounded index performs no merge or reserve check. The
-current-source container lifecycle gate runs every node under an exact 4 GiB
+startup. An already bounded index performs no merge or reserve check. The node
+then reads only the active persisted Scorch roots sequentially through one
+4 MiB window while holding one shard snapshot and one file. This happens on
+every start before lexical warm-up and readiness, including when no merge was
+needed. A cancellation, read, or close failure refuses startup. The read does
+not alter the index, but first readiness is delayed by the active root bytes and
+available storage throughput. Those pages remain reclaimable file cache and
+count toward cgroup residency; leave memory for the complete active roots plus
+the measured heap, vault working set, and operating-system headroom.
+
+Cache loading removes avoidable first-query storage faults but is not a
+single-replica throughput guarantee. Validate synchronized cold requests on the
+actual corpus and CPU allocation. Size a latency-sensitive read tier so each
+independently measured replica stays below its cold CPU and cache bound; queue
+length and admission width do not create scoring capacity. A replicated-read
+runtime remains a separate topology change and requires its own accepted ADR,
+Docker, systemd, and package work before implementation.
+
+The current-source container lifecycle gate runs every node under an exact 4 GiB
 Docker memory limit with swap disabled at the container boundary, then exercises
 indexing and independent node/crawler restarts. These bounds limit application
 working memory; file-backed vault and index pages remain reclaimable kernel

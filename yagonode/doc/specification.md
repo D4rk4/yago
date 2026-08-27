@@ -695,6 +695,16 @@ it is not an assumed deployment dependency.
   preflight or merge. The current-source container lifecycle gate SHALL apply an
   exact 4 GiB node memory limit while exercising indexing and independent node
   and crawler restarts.
+* After rebuild and segment consolidation, the disk backend SHALL hold one
+  referenced Scorch snapshot at a time and sequentially read every nonempty
+  active persisted root through one bounded reusable window before lexical
+  warm-up and readiness. It SHALL keep at most one root file open, check startup
+  cancellation between reads, and refuse startup on acquisition, open, read,
+  close, cancellation, invalid-reader, or no-progress failure. It SHALL NOT read
+  inactive retained snapshots or modify segment bytes. The resulting pages
+  remain reclaimable operating-system cache; deployments claiming a cold-search
+  latency budget SHALL leave enough memory for active roots and validate CPU and
+  cache capacity on their actual corpus.
 * The node SHALL generate snippets from the document store where document text is available.
 * The node SHALL support bounded quoted-phrase preference plus ordered and unordered proximity evidence through the local stored-position path.
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.
