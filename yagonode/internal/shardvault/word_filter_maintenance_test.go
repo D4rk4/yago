@@ -217,23 +217,15 @@ func TestWordFilterMaintenanceWaitAcceptsTimeAndRefusesCancellation(t *testing.T
 	}
 }
 
-func TestWordFilterPublicationRefusesCancellationWhileGateWaits(t *testing.T) {
+func TestWordFilterPublicationRefusesCancellationAfterGateAcquisition(t *testing.T) {
 	e := pendingWordFilterEngine(t)
 	putWord(t, e, "word0001", "url")
-	entered, returned, release := observeWordFilterConstructionReturn(t)
-	ctx, cancel := context.WithCancel(t.Context())
-	result := make(chan error, 1)
-	go func() { result <- e.optimizeWordFilter(ctx, e.route(testBucket, vault.Key("word0001url"))) }()
-	waitForConstruction(t, entered, nil)
-	e.globalGate.Lock()
-	release()
-	waitForConstruction(t, returned, nil)
-	cancel()
-	e.globalGate.Unlock()
-	if err := <-result; !errors.Is(err, context.Canceled) {
+	ctx := &cancellationRaceContext{Context: t.Context(), cancelAt: 5}
+	index := e.route(testBucket, vault.Key("word0001url"))
+	if err := e.optimizeWordFilter(ctx, index); !errors.Is(err, context.Canceled) {
 		t.Fatalf("publication error = %v, want context cancellation", err)
 	}
-	if !e.wordFilters[e.route(testBucket, vault.Key("word0001url"))].degraded {
+	if !e.wordFilters[index].degraded {
 		t.Fatal("cancelled publication replaced the conservative filter")
 	}
 	if err := e.Close(); err != nil {
@@ -291,28 +283,6 @@ func blockWordFilterConstruction(t *testing.T) (<-chan struct{}, func()) {
 	})
 
 	return entered, func() { releaseOnce.Do(func() { close(release) }) }
-}
-
-func observeWordFilterConstructionReturn(t *testing.T) (<-chan struct{}, <-chan struct{}, func()) {
-	t.Helper()
-	original := buildFuse
-	entered := make(chan struct{}, 1)
-	returned := make(chan struct{}, 1)
-	release := make(chan struct{})
-	var releaseOnce sync.Once
-	buildFuse = func(keys []uint64) (*xorfilter.BinaryFuse[uint8], error) {
-		entered <- struct{}{}
-		<-release
-		returned <- struct{}{}
-
-		return original(keys)
-	}
-	t.Cleanup(func() {
-		releaseOnce.Do(func() { close(release) })
-		buildFuse = original
-	})
-
-	return entered, returned, func() { releaseOnce.Do(func() { close(release) }) }
 }
 
 func waitForConstruction(t *testing.T, entered <-chan struct{}, failures <-chan error) {
