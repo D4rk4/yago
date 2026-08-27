@@ -108,10 +108,12 @@ module graph as indirect dependencies of bleve:
    checkpoint, sync, and close failures together. An unclean stop leaves the
    no-freelist marker intact, so bbolt reconstructs by scanning the shard on the
    next open. Open shards sequentially and emit stable structured INFO records
-   before and after each one, followed by distinct word-filter initialization
-   records; successful completion is INFO, while degraded completion is WARN and
-   carries the degraded-shard total. The structured logger writes to standard
-   output, which systemd and container runtimes collect.
+   before and after each one. Install conservative word filters without scanning,
+   then build them through one owned post-open worker using bounded snapshots.
+   Maintenance start and successful completion are DEBUG; a failed shard remains
+   conservative and completion is WARN with the degraded-shard total. The
+   structured logger writes to standard output, which systemd and container
+   runtimes collect.
 
 ## Consequences
 
@@ -132,8 +134,8 @@ module graph as indirect dependencies of bleve:
   after upgrading still scans because no prior checkpoint exists. Crash
   recovery, a failed checkpoint, or an event writer that remains
   active after the bounded shutdown grace retains scan-based recovery, and
-  startup progress identifies the exact shard or word-filter phase still
-  running.
+  startup progress identifies the exact shard still opening; word-filter
+  maintenance no longer blocks the serving boundary.
 - Follow-up: STOR-02 implements shardvault, STOR-03 the index sharding,
   STOR-04 the quarantine and integrity checks; an offline `reshard` command
   covers future N changes.

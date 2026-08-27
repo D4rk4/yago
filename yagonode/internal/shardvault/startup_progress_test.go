@@ -33,8 +33,11 @@ func TestOpenReportsStableSequentialShardAndWordFilterProgress(t *testing.T) {
 	var output bytes.Buffer
 	clock := intervalStartupClock(time.Unix(100, 0), time.Second)
 	progress := startupProgress{
-		logger: slog.New(slog.NewJSONHandler(&output, nil)),
-		clock:  clock,
+		logger: slog.New(slog.NewJSONHandler(
+			&output,
+			&slog.HandlerOptions{Level: slog.LevelDebug},
+		)),
+		clock: clock,
 	}
 	reopened, err := openEngineWithStartupProgress(
 		directory,
@@ -45,6 +48,8 @@ func TestOpenReportsStableSequentialShardAndWordFilterProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen engine: %v", err)
 	}
+	reopened.startWordFilterMaintenance()
+	waitForWordFilterMaintenance(t, reopened)
 	if err := reopened.Close(); err != nil {
 		t.Fatalf("close reopened engine: %v", err)
 	}
@@ -98,14 +103,14 @@ func assertStartupWordFilterRecords(t *testing.T, records []map[string]any) {
 	building := records[0]
 	built := records[1]
 	if building["msg"] != vaultWordFilterBuildingMessage ||
-		building["level"] != "INFO" ||
+		building["level"] != "DEBUG" ||
 		building["total"] != float64(minShards) ||
 		building["completed"] != float64(0) ||
 		building["duration"] != float64(0) {
 		t.Fatalf("word-filter building record = %#v", building)
 	}
 	if built["msg"] != vaultWordFilterCompleteMessage ||
-		built["level"] != "INFO" ||
+		built["level"] != "DEBUG" ||
 		built["total"] != float64(minShards) ||
 		built["completed"] != float64(minShards) ||
 		built["degradedShards"] != float64(0) ||
@@ -144,7 +149,10 @@ func TestOpenWithoutWordFilterOmitsWordFilterPhase(t *testing.T) {
 func TestOpenAtPublishesRuntimeStartupProgress(t *testing.T) {
 	previous := slog.Default()
 	var output bytes.Buffer
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(
+		&output,
+		&slog.HandlerOptions{Level: slog.LevelDebug},
+	)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	legacyPath := filepath.Join(t.TempDir(), "storage.db")
@@ -161,8 +169,8 @@ func TestOpenAtPublishesRuntimeStartupProgress(t *testing.T) {
 	}
 
 	records := decodeStartupRecords(t, output.Bytes())
-	if len(records) != minShards*2+2 {
-		t.Fatalf("records = %d, want %d", len(records), minShards*2+2)
+	if len(records) < minShards*2+1 || len(records) > minShards*2+2 {
+		t.Fatalf("records = %d, want %d or %d", len(records), minShards*2+1, minShards*2+2)
 	}
 	assertStartupRecord(
 		t,
@@ -171,17 +179,23 @@ func TestOpenAtPublishesRuntimeStartupProgress(t *testing.T) {
 		0,
 		shardPath(legacyPath+".vault", 0),
 	)
-	if records[minShards*2]["msg"] != vaultWordFilterBuildingMessage ||
+	if records[minShards*2]["msg"] != vaultWordFilterBuildingMessage {
+		t.Fatalf("word-filter record = %#v", records[minShards*2])
+	}
+	if len(records) == minShards*2+2 &&
 		records[minShards*2+1]["msg"] != vaultWordFilterCompleteMessage {
-		t.Fatalf("word-filter records = %#v", records[minShards*2:])
+		t.Fatalf("word-filter completion record = %#v", records[minShards*2+1])
 	}
 }
 
 func TestWordFilterCompletionWarnsAboutDegradedShards(t *testing.T) {
 	var output bytes.Buffer
 	progress := startupProgress{
-		logger: slog.New(slog.NewJSONHandler(&output, nil)),
-		clock:  intervalStartupClock(time.Unix(300, 0), time.Second),
+		logger: slog.New(slog.NewJSONHandler(
+			&output,
+			&slog.HandlerOptions{Level: slog.LevelDebug},
+		)),
+		clock: intervalStartupClock(time.Unix(300, 0), time.Second),
 	}
 	started := progress.wordFilterBuilding(minShards)
 	progress.wordFilterInitialized(started, minShards, 2)

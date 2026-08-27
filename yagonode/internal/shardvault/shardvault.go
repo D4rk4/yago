@@ -68,6 +68,7 @@ func vaultOverEngine(shardEngine *engine) (*vault.Vault, error) {
 
 		return nil, fmt.Errorf("initialize sharded storage: %w", err)
 	}
+	shardEngine.startWordFilterMaintenance()
 
 	return vaulted, nil
 }
@@ -133,18 +134,7 @@ func openEngineWithStartupProgress(
 
 		return nil, fmt.Errorf("recover vault root records: %w", err)
 	}
-	var wordFilterStarted time.Time
-	if e.wordFilterBucket != "" {
-		wordFilterStarted = progress.wordFilterBuilding(len(e.shards))
-	}
-	degradedWordFilters := e.initWordFilters()
-	if e.wordFilterBucket != "" {
-		progress.wordFilterInitialized(
-			wordFilterStarted,
-			len(e.shards),
-			degradedWordFilters,
-		)
-	}
+	e.installConservativeWordFilters(progress)
 
 	return e, nil
 }
@@ -244,9 +234,10 @@ type engine struct {
 	// wordFilterBucket and wordFilterWidth name the filtered collection and its
 	// term-key prefix length, injected by the assembly layer so the engine stays
 	// independent of the RWI key layout. An empty bucket disables the filters.
-	wordFilterBucket   vault.Name
-	wordFilterWidth    int
-	rootRecordRecovery *rootRecordRecovery
+	wordFilterBucket      vault.Name
+	wordFilterWidth       int
+	wordFilterMaintenance *wordFilterMaintenance
+	rootRecordRecovery    *rootRecordRecovery
 }
 
 var errShardContended = fmt.Errorf("shard contended: %w", vault.ErrContended)

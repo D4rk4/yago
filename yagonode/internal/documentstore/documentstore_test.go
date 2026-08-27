@@ -21,6 +21,7 @@ type scriptedDocumentEngine struct {
 	putCommitErrors map[vault.Name]error
 	delErrors       map[vault.Name]error
 	backgroundView  bool
+	views           int
 	replayNext      bool
 	commitFirst     bool
 	commitError     error
@@ -98,6 +99,7 @@ func (e *scriptedDocumentEngine) View(ctx context.Context, fn func(vault.EngineT
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
+	e.views++
 	e.backgroundView = vault.IsBackgroundRead(ctx)
 	return fn(scriptedDocumentTxn{engine: e})
 }

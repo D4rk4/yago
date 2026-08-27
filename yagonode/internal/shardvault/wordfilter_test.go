@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/FastFilter/xorfilter"
 	bolt "go.etcd.io/bbolt"
@@ -30,12 +31,35 @@ func openFilterEngineAt(t *testing.T, dir string) *engine {
 	if err != nil {
 		t.Fatalf("openEngine: %v", err)
 	}
+	e.startWordFilterMaintenance()
+	waitForWordFilterMaintenance(t, e)
 	t.Cleanup(func() { _ = e.Close() })
 	if err := e.Provision(testBucket); err != nil {
 		t.Fatalf("provision: %v", err)
 	}
 
 	return e
+}
+
+func waitForWordFilterMaintenance(t *testing.T, e *engine) {
+	t.Helper()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.NewTimer(5 * time.Second)
+	defer timeout.Stop()
+	for {
+		e.wordFilterMaintenance.lock.Lock()
+		idle := len(e.wordFilterMaintenance.pending) == 0 && e.wordFilterMaintenance.active == 0
+		e.wordFilterMaintenance.lock.Unlock()
+		if idle {
+			return
+		}
+		select {
+		case <-ticker.C:
+		case <-timeout.C:
+			t.Fatal("word filter maintenance did not become idle")
+		}
+	}
 }
 
 // putWord stores one posting whose term prefix is word (exactly testWordWidth
@@ -190,12 +214,13 @@ func TestBuildWordFilterReportsCollectError(t *testing.T) {
 	}
 
 	e := &engine{wordFilterBucket: testBucket, wordFilterWidth: testWordWidth}
-	if filter := e.buildWordFilter(db); !filter.degraded {
-		t.Fatal("a shard whose keys cannot be read must degrade to matching everything")
-	}
 	e.shards = []*bolt.DB{db}
-	if degraded := e.initWordFilters(); degraded != 1 {
-		t.Fatalf("degraded filters = %d, want 1", degraded)
+	e.installConservativeWordFilters(startupProgress{})
+	e.startWordFilterMaintenance()
+	waitForWordFilterMaintenance(t, e)
+	e.stopWordFilterMaintenance()
+	if !e.wordFilters[0].degraded {
+		t.Fatal("a shard whose keys cannot be read must degrade to matching everything")
 	}
 }
 
@@ -239,9 +264,10 @@ func TestRebuildWordFilterFoldsSideSet(t *testing.T) {
 	idx := e.route(testBucket, vault.Key("word0001url"))
 
 	// A feature-off engine's rebuild is a no-op and must not panic.
-	(&engine{}).rebuildWordFilter(0)
+	(&engine{}).scheduleWordFilterRebuild(0)
 
-	e.rebuildWordFilter(idx)
+	e.scheduleWordFilterRebuild(idx)
+	waitForWordFilterMaintenance(t, e)
 	if got := scanWord(t, e, "word0001"); got != 1 {
 		t.Fatalf("after rebuild word0001 scan = %d, want 1", got)
 	}

@@ -62,7 +62,7 @@ func (progress startupProgress) wordFilterBuilding(total int) time.Time {
 	started := progress.clock()
 	progress.logger.LogAttrs(
 		context.Background(),
-		slog.LevelInfo,
+		slog.LevelDebug,
 		vaultWordFilterBuildingMessage,
 		slog.Int("total", total),
 		slog.Int("completed", 0),
@@ -76,7 +76,7 @@ func (progress startupProgress) wordFilterInitialized(
 	started time.Time,
 	total, degraded int,
 ) {
-	level := slog.LevelInfo
+	level := slog.LevelDebug
 	if degraded > 0 {
 		level = slog.LevelWarn
 	}

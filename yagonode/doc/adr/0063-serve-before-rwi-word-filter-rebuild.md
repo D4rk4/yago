@@ -4,7 +4,7 @@ Date: 2026-08-17
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -44,14 +44,14 @@ remapping by a writer
 
 ## Decision
 
-When implemented, opening a configured RWI vault will allocate one conservative
+Opening a configured RWI vault allocates one conservative
 filter per shard without scanning the RWI bucket. Every conservative filter will
 answer “maybe”, so startup cannot skip a shard and cannot lose a result. Vault
 recovery, the document store, Bleve generation admission, and readiness checks
 remain mandatory; only the optional RWI acceleration phase leaves the listener
 critical path.
 
-Filter construction will run as bounded maintenance after serving begins:
+Filter construction runs as bounded maintenance after the vault opens:
 
 1. Install conservative filters before accepting writes.
 2. Build at most one shard at a time from short, paged bbolt snapshots. Do not
@@ -65,7 +65,7 @@ Filter construction will run as bounded maintenance after serving begins:
    Cancellation and engine close must stop and join the maintenance work before
    shard databases close.
 
-The first implementation will not persist filters. Persistence is a separate
+The implementation does not persist filters. Persistence is a separate
 follow-up and is admissible only with an exact shard-freshness protocol and
 durable side-set coverage. A stale serialized filter must never be trusted.
 
@@ -74,7 +74,7 @@ internal correctness and startup-availability boundary: one worker, one shard,
 bounded pages, and conservative fallback. It adds no service, listener, wire
 field, storage dependency, or YaCy behavior.
 
-Implementation tests must prove both directions:
+Tests prove both directions:
 
 - a conservative filter admits an existing posting and a concurrent new term;
 - an honest empty scan remains empty rather than becoming an error;
@@ -113,6 +113,12 @@ The 4 GiB objective remains a capacity target rather than a production hard
 cap. Removing the eager scan avoids its startup cache spike; separate lifecycle
 tests must still inspect steady-state node and crawler memory.
 
-This proposed record does not claim an implementation or release. Code, tests,
-operator documentation, feature catalog updates, full verification, and release
-evidence remain required before the status can become Accepted.
+The implementation lives in
+`internal/shardvault/word_filter_maintenance.go`. It installs the conservative
+parallel filter set before legacy migration can write, starts one owned worker
+only after the vault boundary is ready, reads at most 4,096 records per bbolt
+snapshot, yields at page boundaries to interactive reads and admitted writes,
+and publishes under the engine's exclusive gate while retaining the live side
+set. Split and compaction schedule the same bounded maintenance instead of
+rebuilding a filter synchronously. Engine close cancels and joins the worker
+before closing any shard.

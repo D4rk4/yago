@@ -104,11 +104,11 @@ The storage engine must not depend on the RWI package (an architecture
 boundary), so the assembly layer injects the filtered bucket name and the
 term-prefix width through a `WithWordFilter` open option. Without it the filters
 stay off and reads never skip, so the optimization is opt-in at the wiring layer
-and existing callers are unchanged. The baseline builds filters eagerly at open
-(deterministic, simplest to reason about); a lazy background build and on-disk
-persistence of the fuse are recorded as later optimizations — persistence is only
-safe if paired with side-set persistence, since a crash between the two would
-drop results.
+and existing callers are unchanged. ADR-0063 supersedes the eager-open timing:
+open installs conservative filters, and one owned background worker builds them
+from bounded snapshots after the vault boundary is ready. On-disk persistence
+remains excluded unless it is paired with exact filter freshness and durable
+side-set coverage, since a crash between the two would drop results.
 
 ## Consequences
 
@@ -117,11 +117,11 @@ drop results.
   fan-out cost was growing.
 - Memory cost is about nine bits per distinct term key per shard, plus the
   side-set between rebuilds.
-- Open pays one term-key scan per shard to build the filters. A clean shutdown
-  checkpoints bbolt freelists so a planned restart avoids their recovery scan;
-  the filter scan remains and is reported as its own startup phase. Successful
-  completion is INFO; degraded completion is WARN with the degraded-shard total.
-  Lazy build remains available as a follow-up for a large index.
+- Open installs conservative filters without a term-key scan. One background
+  worker scans one shard at a time through bounded bbolt snapshots after open;
+  successful start and completion records are DEBUG, while a failed shard stays
+  conservative and produces WARN evidence. Serving and correct RWI answers do
+  not wait for the accelerator.
 - One new third-party dependency (`xorfilter`), justified above; no wire-format,
   peer-protocol, or on-disk-layout change — the filters are an in-memory read
   accelerator rebuilt from the shards.
@@ -137,10 +137,9 @@ drop results.
   side-set/rebuild dance by supporting mutation, but costs more bits, adds work to
   the delete hot path, and complicates the concurrency story — for deletes that
   are rare and already stale-positive-safe. Rejected.
-- **Persist the fuse on disk.** Avoids the open-time scan, but is unsafe unless
+- **Persist the fuse on disk.** Avoids the background scan, but is unsafe unless
   the in-memory side-set is persisted too; a crash between a side-set add and its
-  persistence would drop results. Deferred behind the safe rebuild-at-open
-  baseline.
+  persistence would drop results. Deferred behind an exact freshness protocol.
 - **Hand-roll the fuse construction.** Avoids the dependency but re-creates a
   peeling algorithm whose failure path cannot be honestly covered and whose bugs
   drop results silently. Rejected in favor of the authors' library.

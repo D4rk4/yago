@@ -76,7 +76,9 @@ func TestRootRecordRecoveryUpdatesLiveWordFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open filtered engine: %v", err)
 	}
-	t.Cleanup(func() { closeShards(engine.shards) })
+	engine.startWordFilterMaintenance()
+	waitForWordFilterMaintenance(t, engine)
+	t.Cleanup(func() { _ = engine.Close() })
 	key := []byte("hhhhhhhhhhhhhhhhhhhhhhhh")
 	stored := encodeValue(payload)
 	destination := engine.route(testBucket, key)

@@ -14,6 +14,7 @@ type shardShutdownOperations struct {
 }
 
 func (e *engine) Close() error {
+	e.stopWordFilterMaintenance()
 	e.globalGate.Lock()
 	defer e.globalGate.Unlock()
 

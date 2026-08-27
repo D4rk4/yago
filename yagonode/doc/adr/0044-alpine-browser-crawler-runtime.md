@@ -20,8 +20,10 @@ Use the Docker Official Image `alpine:3.24.1`, pinned to manifest digest
 `sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b`,
 for the crawler runtime. Install the Alpine v3.24 packages
 `firefox-esr=140.12.0-r0`, `ca-certificates=20260611-r0`, and
-`font-liberation=2.1.5-r2`. These versions are available for both release
-architectures, `amd64` and `arm64`.
+`font-liberation=2.1.5-r2`. Explicitly select `libcrypto3=3.5.8-r0` and
+`libssl3=3.5.8-r0` so browser dependencies cannot retain the vulnerable
+OpenSSL 3.5.7 packages inherited from the pinned base. These versions are
+available for both release architectures, `amd64` and `arm64`.
 
 Alpine Linux is distributed under multiple open-source licenses. Firefox ESR is
 MPL-2.0 with GPL and LGPL components, CA certificates are MPL-2.0 and MIT, and
@@ -48,4 +50,6 @@ must pass the image scan and container e2e suite.
 
 - [Alpine Docker Official Image](https://hub.docker.com/_/alpine)
 - [Alpine Firefox ESR package](https://pkgs.alpinelinux.org/package/v3.24/community/x86_64/firefox-esr)
+- [Alpine OpenSSL package](https://pkgs.alpinelinux.org/package/v3.24/main/aarch64/libcrypto3)
 - [Alpine Firefox installation](https://wiki.alpinelinux.org/wiki/Firefox)
+- [OpenSSL 3.5 vulnerability history](https://www.openssl-library.org/news/vulnerabilities-3.6/)

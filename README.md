@@ -391,11 +391,14 @@ its binaries (`yago-node`, `yago-crawler`).
   exposes Go heap plus process RSS for pre-OOM alerts.
   Scorch flushes at most 32 MiB of in-memory segment input through one persister
   worker per shard, and merged segments stop at 100,000 documents. An existing
-  full-text index without the current corrected-writer generation is rebuilt
-  from the document store before Scorch can decode it; without that rebuild
-  source, startup refuses the index instead of opening pre-fix segments. An
+  v0.0.38 full-text index advances its corrected-writer generation before Bleve
+  v2.6.1 opens it and does not rebuild. An index with missing, malformed, or
+  unknown generation evidence is rebuilt from the document store before Scorch
+  can decode it; without that rebuild source, startup refuses the index. An
   already-present rebuild marker is accepted without reopening or rewriting it,
-  so an interrupted or operator-staged recovery remains idempotent.
+  so an interrupted or operator-staged recovery remains idempotent. Stored
+  candidate identities are checked through one ordered document-vault snapshot
+  per bounded hit set, while ordinary full-document hydration remains lazy.
   Interactive searches have a hard 1.8-second response deadline and four
   process-wide outer execution
   slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that
@@ -544,7 +547,9 @@ its binaries (`yago-node`, `yago-crawler`).
   engineering memo.
 - Docker builds pin every builder and runtime base by digest. The node and
   crawler images carry OCI source and revision labels when the caller supplies
-  `SOURCE_REVISION`, so two images can be traced to the same source commit.
+  `SOURCE_REVISION`, so two images can be traced to the same source commit. The
+  crawler image also selects the fixed Alpine OpenSSL `3.5.8-r0` runtime
+  packages explicitly instead of inheriting an older base-image revision.
 - Release tags build and smoke-test both product images natively on amd64 and
   arm64, then reject HIGH or CRITICAL findings from the pinned Trivy image
   scan. Their validated configuration and root-filesystem identities are
@@ -584,11 +589,13 @@ its binaries (`yago-node`, `yago-crawler`).
   path does not persist bbolt freelists; a clean shutdown checkpoints each one
   durably so planned restarts load them directly, while an unclean stop retains
   bbolt's full recovery scan. Stable INFO records show each sequential shard
-  open and the separate word-filter initialization as structured JSON on
-  standard output, captured by the systemd or container service log. A
-  successful filter completion is INFO; a degraded shard changes
-  that completion to WARN and reports the degraded-shard total. Node shutdown
-  gives event persistence a bounded drain and
+  open as structured JSON on standard output, captured by the systemd or
+  container service log. Startup installs conservative RWI word filters without
+  scanning their buckets, so optional acceleration cannot delay listeners. One
+  owned worker builds one shard at a time from snapshots of at most 4,096
+  records and yields to live reads and writes between pages. Successful worker
+  progress is DEBUG; a failed shard stays conservative and produces WARN
+  evidence. Node shutdown gives event persistence a bounded drain and
   cancellation grace before the checkpoint. If a writer still remains active,
   it reports an error and skips vault close so the next start follows bbolt's
   scan-based recovery path. The shipped supervisors allow a successful clean

@@ -1,12 +1,10 @@
 package shardvault
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/FastFilter/xorfilter"
 	"github.com/cespare/xxhash/v2"
-	bolt "go.etcd.io/bbolt"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -77,94 +75,6 @@ func (f *wordFilter) add(key uint64) {
 		f.side = make(map[uint64]struct{})
 	}
 	f.side[key] = struct{}{}
-}
-
-// initWordFilters builds a filter for every shard when the feature is configured;
-// without WithWordFilter it is a no-op and reads never skip. It runs at open,
-// before the store serves, so it needs no gate.
-func (e *engine) initWordFilters() int {
-	if e.wordFilterBucket == "" {
-		return 0
-	}
-	e.wordFilters = make([]*wordFilter, len(e.shards))
-	degraded := 0
-	for i, db := range e.shards {
-		e.wordFilters[i] = e.buildWordFilter(db)
-		if e.wordFilters[i].degraded {
-			degraded++
-		}
-	}
-
-	return degraded
-}
-
-// rebuildWordFilter rebuilds one shard's filter from its current keys, folding
-// any side-set additions into a fresh static filter. Called under the exclusive
-// gate after a shard's contents are rewritten (compaction).
-func (e *engine) rebuildWordFilter(index int) {
-	if e.wordFilterBucket == "" {
-		return
-	}
-	e.wordFilters[index] = e.buildWordFilter(e.shards[index])
-}
-
-// appendWordFilter builds and appends a filter for a newly split-in shard,
-// preserving the len(wordFilters)==len(shards) invariant. Called under the
-// exclusive gate.
-func (e *engine) appendWordFilter(db *bolt.DB) {
-	if e.wordFilterBucket == "" {
-		return
-	}
-	e.wordFilters = append(e.wordFilters, e.buildWordFilter(db))
-}
-
-// buildWordFilter reads one shard's term-key prefixes and constructs its static
-// fuse filter. An empty shard yields a filter that matches nothing (so it is
-// skipped until a key is added); a read or construction failure yields a
-// degraded filter that matches everything (so the shard is never skipped).
-func (e *engine) buildWordFilter(db *bolt.DB) *wordFilter {
-	keys, err := e.collectWordKeys(db)
-	if err != nil {
-		return &wordFilter{degraded: true}
-	}
-	if len(keys) == 0 {
-		return &wordFilter{}
-	}
-	static, err := buildFuse(keys)
-	if err != nil {
-		return &wordFilter{degraded: true}
-	}
-
-	return &wordFilter{static: static}
-}
-
-// collectWordKeys reads the distinct term-key prefixes of one shard's filtered
-// bucket, hashed to uint64 for the fuse filter.
-func (e *engine) collectWordKeys(db *bolt.DB) ([]uint64, error) {
-	seen := make(map[uint64]struct{})
-	if err := db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(e.wordFilterBucket))
-		if bucket == nil {
-			return nil
-		}
-		cursor := bucket.Cursor()
-		for key, _ := cursor.First(); key != nil; key, _ = cursor.Next() {
-			if len(key) >= e.wordFilterWidth {
-				seen[xxhash.Sum64(key[:e.wordFilterWidth])] = struct{}{}
-			}
-		}
-
-		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("scan word keys: %w", err)
-	}
-
-	keys := make([]uint64, 0, len(seen))
-	for hash := range seen {
-		keys = append(keys, hash)
-	}
-
-	return keys, nil
 }
 
 // noteWordKey records a freshly written term key in its shard's filter side-set

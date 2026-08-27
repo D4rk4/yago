@@ -39,7 +39,9 @@ FROM docker.io/library/alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0b
 RUN apk add --no-cache \
     ca-certificates=20260611-r0 \
     firefox-esr=140.12.0-r0 \
-    font-liberation=2.1.5-r2
+    font-liberation=2.1.5-r2 \
+    libcrypto3=3.5.8-r0 \
+    libssl3=3.5.8-r0
 
 ENV HOME=/tmp \
     XDG_CACHE_HOME=/tmp/.cache \

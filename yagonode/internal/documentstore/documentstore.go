@@ -99,6 +99,11 @@ type DocumentPresence interface {
 	DocumentExists(ctx context.Context, normalizedURL string) (bool, error)
 }
 
+type DocumentSetPresence interface {
+	DocumentPresence
+	DocumentsExist(ctx context.Context, normalizedURLs []string) ([]bool, error)
+}
+
 type StoredDocuments interface {
 	StoredDocuments(ctx context.Context, visit func(Document) (bool, error)) error
 }

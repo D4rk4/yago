@@ -334,37 +334,12 @@ func (d documentVault) DocumentExists(
 	ctx context.Context,
 	normalizedURL string,
 ) (bool, error) {
-	releaseURL, err := d.urlBoundaries.lockReads(ctx, []string{normalizedURL})
+	found, err := d.DocumentsExist(ctx, []string{normalizedURL})
 	if err != nil {
 		return false, err
 	}
-	defer releaseURL()
-	var found bool
-	err = d.vault.View(ctx, func(tx *vault.Txn) error {
-		location, present, err := d.locateStoredDocument(tx, normalizedURL)
-		if err != nil || !present {
-			found = false
 
-			return err
-		}
-		if location.admission == 0 {
-			found = true
-
-			return nil
-		}
-		key, err := orderedDocumentKey(location.admission, normalizedURL)
-		if err != nil {
-			return err
-		}
-		found = d.orderedDocuments.Contains(tx, key)
-
-		return nil
-	})
-	if err != nil {
-		return false, fmt.Errorf("document presence: %w", err)
-	}
-
-	return found, nil
+	return found[0], nil
 }
 
 func (d documentVault) Delete(ctx context.Context, normalizedURL string) (bool, error) {

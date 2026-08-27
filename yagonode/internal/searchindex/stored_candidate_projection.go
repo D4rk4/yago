@@ -264,6 +264,23 @@ func (b *BleveDiskIndex) loadSearchHitProjection(
 	hit *search.DocumentMatch,
 	req SearchRequest,
 ) (searchHitProjection, bool, error) {
+	projections, found, err := b.loadSearchHitProjections(
+		ctx,
+		[]*search.DocumentMatch{hit},
+		req,
+	)
+	if err != nil {
+		return searchHitProjection{}, false, err
+	}
+
+	return projections[0], found[0], nil
+}
+
+func (b *BleveDiskIndex) loadSearchHitProjectionIndividually(
+	ctx context.Context,
+	hit *search.DocumentMatch,
+	req SearchRequest,
+) (searchHitProjection, bool, error) {
 	if req.CandidateOnly && b.storedCandidates {
 		candidate, err := decodeStoredCandidateProjection(hit)
 		if err == nil && candidate.supports(req) && b.documentPresence != nil {

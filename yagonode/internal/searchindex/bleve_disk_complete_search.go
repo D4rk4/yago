@@ -165,16 +165,17 @@ func (accumulator *completeSearchAccumulator) collect(
 	req SearchRequest,
 	page *bleve.SearchResult,
 ) error {
-	for _, hit := range page.Hits {
-		projection, found, err := index.loadSearchHitProjection(ctx, hit, req)
-		if err != nil {
-			return fmt.Errorf("load search document: %w", err)
-		}
-		if !found {
+	projections, found, err := index.loadSearchHitProjections(ctx, page.Hits, req)
+	if err != nil {
+		return fmt.Errorf("load search document: %w", err)
+	}
+	for hitIndex, hit := range page.Hits {
+		if !found[hitIndex] {
 			accumulator.orphans = append(accumulator.orphans, hit.ID)
 
 			continue
 		}
+		projection := projections[hitIndex]
 		if !allowsDocument(projection.document, req) {
 			continue
 		}
@@ -223,15 +224,16 @@ func (b *BleveDiskIndex) finalCompleteResults(
 	req SearchRequest,
 	hits []*search.DocumentMatch,
 ) ([]SearchResult, error) {
+	projections, found, err := b.loadSearchHitProjections(ctx, hits, req)
+	if err != nil {
+		return nil, fmt.Errorf("reload final search document: %w", err)
+	}
 	results := make([]SearchResult, 0, len(hits))
-	for _, hit := range hits {
-		projection, found, err := b.loadSearchHitProjection(ctx, hit, req)
-		if err != nil {
-			return nil, fmt.Errorf("reload final search document: %w", err)
-		}
-		if !found {
+	for index, hit := range hits {
+		if !found[index] {
 			continue
 		}
+		projection := projections[index]
 		mapped, err := projection.result(ctx, hit, req)
 		if err != nil {
 			return nil, err

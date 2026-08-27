@@ -10,7 +10,10 @@ import (
 
 const bleveSegmentGenerationSuffix = ".segment-generation"
 
-var bleveSegmentGeneration = []byte("zapx-v17-empty-chunk-offsets-v1\n")
+var (
+	bleveSegmentGeneration      = []byte("bleve-v2.6.1-zapx-v17.2.3-v2\n")
+	writeBleveSegmentGeneration = os.WriteFile
+)
 
 func bleveSegmentGenerationPath(root string) string {
 	return filepath.Clean(root) + bleveSegmentGenerationSuffix
@@ -29,25 +32,7 @@ func bleveSegmentGenerationIsCurrent(root string) (bool, error) {
 }
 
 func requireCurrentBleveSegmentGeneration(root string, canRebuild bool) error {
-	present, err := bleveIndexRootPresent(root)
-	if err != nil {
-		return err
-	}
-	if !present {
-		return nil
-	}
-	current, err := bleveSegmentGenerationIsCurrent(root)
-	if err != nil {
-		return err
-	}
-	if current {
-		return nil
-	}
-	if !canRebuild {
-		return fmt.Errorf("unstamped bleve index requires a document rebuild source")
-	}
-
-	return requireBleveRebuild(root)
+	return admitBleveSegmentGeneration(root, canRebuild)
 }
 
 func bleveIndexRootPresent(root string) (bool, error) {
@@ -80,7 +65,7 @@ func bleveIndexRootPresent(root string) (bool, error) {
 }
 
 func persistCurrentBleveSegmentGeneration(root string) error {
-	if err := os.WriteFile(
+	if err := writeBleveSegmentGeneration(
 		bleveSegmentGenerationPath(root),
 		bleveSegmentGeneration,
 		0o600,

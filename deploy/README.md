@@ -466,27 +466,34 @@ interrupted rebuild still restarts from the beginning; the progress records are
 operational evidence, not a resumable checkpoint or Admin progress control.
 
 The first start after upgrading from v0.0.35 or earlier also rebuilds an existing
-index that lacks the corrected zapx segment-generation stamp. This prevents
-segments written by zapx v17.1.2 from reaching its unbounded posting decoder;
-that writer could encode a wrong chunk offset when a posting range between two
+index that lacks the first corrected zapx segment-generation stamp. This keeps
+segments written by zapx v17.1.2 away from its unbounded posting decoder; that
+writer could encode a wrong chunk offset when a posting range between two
 nonempty ranges was empty. The node persists the ordinary rebuild marker before
 opening Scorch, writes `search.bleve.segment-generation` only after the complete
 document-store rebuild succeeds, and clears the rebuild marker last. A node
 without stored documents refuses an unstamped index because it has no
-authoritative rebuild source. A new or already stamped index is not rebuilt for
-this reason. If the rebuild marker already exists, startup treats that durable
-requirement as complete and does not reopen, truncate, or rewrite the file. This
-allows an interrupted rebuild or an operator-staged marker to proceed even when
-the service account did not create the marker.
+authoritative rebuild source. If the rebuild marker already exists, startup
+treats that durable requirement as complete and does not reopen, truncate, or
+rewrite the file.
 
-Before intentionally starting v0.0.35 or an earlier binary after a corrected
-generation has been written, stop both services and remove only
-`search.bleve.segment-generation`. The older binary does not understand that
-file and can append pre-fix segments while leaving it falsely current. Removing
-the file does not remove search data, but it ensures that a later upgrade to
-v0.0.36 or newer performs another complete document-store rebuild before
-opening the mixed-writer index. Do not restore or copy the generation file from
-a newer index onto an index that an older binary has opened.
+Bleve v2.6.1 reads the exact v0.0.38 writer generation. Its first startup replaces
+that marker with the new generation before Scorch opens and does not rebuild the
+index. The marker transition is fatal on write failure. A current marker is not
+rewritten, while missing, malformed, and unknown evidence still follows the
+rebuild path above.
+
+Bleve v2.6.1 output is not rollback-readable by the v0.0.38 dependency stack.
+After both services are stopped, v0.0.38 safely treats the new marker as unknown
+and rebuilds the derived index from the document vault before opening it. A
+v0.0.35 or earlier binary has no generation admission and must not see the new
+index. Restore a compatible stopped backup, or move `search.bleve`,
+`search.bleve.segment-generation`, and `search.bleve.rebuild-required` together
+to an operator-chosen quarantine outside the active data root before starting
+that older node; it will rebuild the missing index from stored documents. Keep
+enough free space for the rebuild and retain the quarantine until rollback is
+validated. Never copy or relabel a generation file to make unlike writers look
+compatible.
 
 For a bare-metal package upgrade, use the stopped two-service backup so the
 crawler frontier and node broker queue share one recovery point, install the
@@ -496,11 +503,13 @@ the normal restart window for a mapping-changing release until the same corpus
 size has been timed on representative storage and the maintenance window covers
 the measured rebuild.
 
-Main-vault startup reports each sequential shard open and the subsequent RWI
-word-filter initialization as stable JSON records on standard output, which the
-service journal captures. Successful
-completion is INFO; a degraded filter completion is WARN and includes its shard
-total. Before the filter phase, the node also enforces a bucket-only structural
+Main-vault startup reports each sequential shard open as stable INFO JSON
+records on standard output, which the service journal captures. It then installs
+conservative RWI word filters without scanning and continues toward listeners.
+One owned worker builds one shard at a time from snapshots of at most 4,096
+records; worker start and successful completion are DEBUG, while a failed shard
+stays conservative and produces WARN evidence. Before that maintenance starts,
+the node also enforces a bucket-only structural
 root in every vault shard. Ordinary root values are moved atomically into an
 internal quarantine; exact RWI rows are replayed to their current shard without
 overwriting conflicts, and unknown or conflicting evidence is retained. A WARN
@@ -513,7 +522,8 @@ supports clean-shutdown freelist checkpoints must complete one orderly shutdown
 before later planned restarts can load those checkpoints directly. Its first
 start after upgrading from an older binary can therefore still perform the full
 scan, as does every start after an unclean stop. The in-memory word filters are
-rebuilt on every start even when the freelists load directly. The shipped
+rebuilt in the background on every start even when the freelists load directly;
+they cannot delay node readiness. The shipped
 Compose and systemd definitions allow up to 15 minutes for the node to finish
 draining event persistence and checkpointing its shards; ordinary exits return
 sooner. Event persistence gets five seconds to drain and five more seconds to
@@ -759,7 +769,9 @@ runtime health checks.
 Both product Dockerfiles pin the Go builder and final runtime base images by
 SHA-256 digest. Base-image changes are therefore explicit source changes rather
 than mutable-tag resolution at build time. The readable tags remain beside the
-digests so operators can see the selected release.
+digests so operators can see the selected release. The crawler Dockerfile also
+pins its Alpine OpenSSL runtime libraries to `3.5.8-r0`; package-index movement
+cannot silently choose another revision during a release build.
 
 Release CI supplies `VERSION` and `SOURCE_REVISION` from the exact tag and
 source commit. Set `SOURCE_REVISION` explicitly when building another source

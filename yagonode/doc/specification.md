@@ -644,13 +644,23 @@ it is not an assumed deployment dependency.
   bounded 16-document shard batches.
 * Before opening an existing full-text index, the Bleve backend SHALL require
   evidence that its segments were written by the current corrected zapx
-  generation. Missing or stale evidence SHALL persist the ordinary rebuild
-  marker before Scorch opens, rebuild from the authoritative document store,
-  persist the current generation only after the complete rebuild, and clear the
-  rebuild marker last. An already-present marker SHALL satisfy the persist step
-  without being opened, truncated, or rewritten. Startup SHALL refuse an old
-  index when no rebuild source exists. A new or current-generation index SHALL
-  remain unchanged.
+  generation. The exact immediately preceding corrected generation MAY advance
+  its marker before Scorch opens and continue without a rebuild when the new
+  reader has passed the logical compatibility gate; a failed transition SHALL
+  refuse startup. Missing, malformed, or other stale evidence SHALL persist the
+  ordinary rebuild marker before Scorch opens, rebuild from the authoritative
+  document store, persist the current generation only after the complete
+  rebuild, and clear the rebuild marker last. An already-present rebuild marker
+  SHALL satisfy the persist step without being opened, truncated, or rewritten.
+  Startup SHALL refuse an old index when no rebuild source exists. A new or
+  current-generation index SHALL remain unchanged.
+* A stored-candidate search SHALL validate its bounded Bleve hit set through one
+  ordered document-vault snapshot when the document directory supports set
+  presence. The result SHALL remain aligned with every requested URL, including
+  entries after a missing URL. Missing rows SHALL remain orphan candidates;
+  requests a stored projection cannot answer SHALL retain the lazy full-document
+  path. Ordinary non-candidate search SHALL NOT hydrate documents beyond a full
+  page when neither facets nor post-filters require them.
 * Each Scorch shard SHALL use one in-memory persister worker with at most 32 MiB
   of segment input per flush, and SHALL cap a merged segment at 100,000
   documents. The current-source container lifecycle gate SHALL apply an exact
@@ -676,10 +686,18 @@ it is not an assumed deployment dependency.
   transaction or hand vault close to a goroutine that can outlive process
   return. Startup SHALL open shards sequentially and emit stable INFO records
   before and after each open with human ordinal, completed and total shards,
-  path, byte size, and duration, then SHALL report word-filter initialization
-  as a separate phase through structured JSON on standard output. A
-  successful completion SHALL use INFO; a completion with degraded filters
-  SHALL use WARN and include the degraded-shard total.
+  path, byte size, and duration. A configured RWI filter SHALL then install one
+  conservative answer per shard without scanning the RWI bucket and SHALL NOT
+  delay the serving boundary. One owned worker SHALL build one shard at a time
+  after open through bbolt snapshots of at most 4,096 records. It SHALL yield at
+  page boundaries to interactive reads and admitted writes, retain concurrent
+  term writes in the existing side set, and publish a completed filter only
+  under the engine's exclusive gate. Split and compaction SHALL schedule this
+  maintenance rather than scan synchronously. Cancellation, collection failure,
+  construction failure, and close SHALL leave the conservative answer in place;
+  close SHALL cancel and join the worker before closing shards. Worker start and
+  successful completion SHALL use DEBUG; failure SHALL use WARN and include the
+  degraded-shard total.
 * Every serving-vault bbolt root SHALL contain buckets only. Each application
   update SHALL validate that invariant before committing. Startup, shard split,
   and compaction SHALL atomically move any ordinary root values into a flat

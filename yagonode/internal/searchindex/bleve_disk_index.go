@@ -326,20 +326,24 @@ func (b *BleveDiskIndex) collectHits(
 	req SearchRequest,
 	result *bleve.SearchResult,
 ) (SearchResultSet, []string, error) {
+	projections, err := b.prepareSearchHitProjections(ctx, result.Hits, req)
+	if err != nil {
+		return SearchResultSet{}, nil, fmt.Errorf("load search document: %w", err)
+	}
 	results := make([]SearchResult, 0, min(req.MaxResults, len(result.Hits)))
 	facets := newFacetCollector(req.WithFacets)
 	scanAll := req.WithFacets || hasPostFilters(req)
 	total := 0
 	var orphans []string
-	for _, hit := range result.Hits {
+	for index, hit := range result.Hits {
 		if !scanAll && len(results) >= req.MaxResults {
 			break
 		}
-		projection, found, err := b.loadSearchHitProjection(ctx, hit, req)
+		projection, present, err := projections.load(ctx, b, index, hit, req)
 		if err != nil {
 			return SearchResultSet{}, nil, fmt.Errorf("load search document: %w", err)
 		}
-		if !found {
+		if !present {
 			orphans = append(orphans, hit.ID)
 
 			continue

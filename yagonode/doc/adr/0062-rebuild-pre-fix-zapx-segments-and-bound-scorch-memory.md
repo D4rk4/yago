@@ -6,6 +6,10 @@ Date: 2026-08-16
 
 Accepted
 
+ADR-0064 advances the dependency and writer generation. The Scorch memory
+bounds and the rule that pre-fix segments require a document-store rebuild
+remain in force.
+
 ## Context
 
 A production v0.0.35 node failed in a Scorch merge after a CRC-valid zap segment
