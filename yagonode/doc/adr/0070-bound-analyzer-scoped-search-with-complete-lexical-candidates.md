@@ -8,6 +8,8 @@ Accepted
 
 Amends [ADR-0069](0069-populate-active-search-mappings-before-readiness.md).
 
+Amended by [ADR-0071](0071-route-complete-candidates-to-owning-search-shards.md).
+
 ## Context
 
 Release v0.0.48 populated every active Scorch mapping before readiness, but

@@ -142,7 +142,7 @@ func NewBleveDiskIndex(
 	documentPresence, _ := directory.(documentstore.DocumentPresence)
 	out := &BleveDiskIndex{
 		shards:              shards,
-		alias:               bleve.NewIndexAlias(shards...),
+		alias:               newBleveDiskSearchAlias(shards),
 		documents:           directory,
 		documentPresence:    documentPresence,
 		updatedAt:           updatedAt,

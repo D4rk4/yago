@@ -427,12 +427,17 @@ its binaries (`yago-node`, `yago-crawler`).
   latency-sensitive target must budget memory for active root bytes, page
   tables, heap, and vault residency.
   Ordinary analyzer-scoped disk retrieval first collects a complete unscored
-  union of positive lexical matches with a 32,769th sentinel. A set that
+  union of positive lexical matches with a 32,769th sentinel. Per term, exact
+  analyzer-token duplicates share one candidate clause; unavailable analyzers
+  and every CJK dictionary branch remain independent. A set that
   exhausts at 32,768 documents or fewer is reranked by the unchanged scoped
-  query; an over-limit or incomplete set retains exhaustive retrieval instead
-  of truncating recall. Explicit diagnostic explanations also retain the
-  exhaustive path. This removes avoidable analyzer-scope work without changing
-  identities, ordering, BM25 scores, field scores, or totals.
+  query. Each Bleve child resolves only the candidate identities it originally
+  produced, while the same alias performs scoring and result merge. Ambiguous
+  ownership, an over-limit set, or an incomplete set retains the conservative
+  established path instead of truncating recall. Explicit diagnostic
+  explanations also retain the exhaustive path. This removes avoidable
+  analyzer and cross-shard work without changing identities, ordering, BM25
+  scores, field scores, or totals.
   Interactive searches have a hard 1.8-second response deadline and four
   process-wide outer execution
   slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that
@@ -448,7 +453,11 @@ its binaries (`yago-node`, `yago-crawler`).
   simultaneous searches must validate a
   cold synchronized burst on its actual corpus and CPU allocation, then provide
   enough independent read capacity to keep every process below that measured
-  bound. The current release does not add a replicated-read service boundary.
+  bound. The current production-copy capacity arithmetic starts at eight active
+  four-CPU read replicas for 200 synchronized requests inside the ordinary
+  600-millisecond exact-stage budget, plus one for N+1 operation. This remains a
+  validation target, not a production guarantee. The current release does not
+  add a replicated-read service boundary.
   Conflicting vault updates serialize behind writer-only admission while read
   snapshots remain available; served-result denylist checks use an immutable
   in-memory snapshot even after a completed search stage's context ends,

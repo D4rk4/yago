@@ -30,17 +30,14 @@ func (b *BleveDiskIndex) searchLexicalCandidateHitPage(
 	if len(candidates.Hits) == 0 {
 		return candidates, nil
 	}
-	identities := make([]string, len(candidates.Hits))
-	for position, hit := range candidates.Hits {
-		identities[position] = hit.ID
-	}
-	identityQuery := bleve.NewDocIDQuery(identities)
-	identityQuery.SetBoost(0)
 
 	return b.executeRequestedHitPage(
 		ctx,
 		req,
-		bleve.NewConjunctionQuery(query, identityQuery),
+		bleve.NewConjunctionQuery(
+			query,
+			bleveLexicalCandidateIdentityQuery(b.shards, candidates.Hits),
+		),
 		size,
 	)
 }
@@ -121,10 +118,17 @@ func bleveLexicalCandidateQuery(
 	weights := req.Weights.orDefault()
 	clauses := make([]blevequery.Query, 0, len(terms))
 	for _, term := range terms {
+		termAnalyzers := distinctLexicalCandidateAnalyzers(term, analyzers)
 		if req.Fuzzy {
-			clauses = append(clauses, fuzzyCrossFieldTermClause(term, analyzers, weights))
+			clauses = append(
+				clauses,
+				fuzzyCrossFieldTermClause(term, termAnalyzers, weights),
+			)
 		} else {
-			clauses = append(clauses, crossFieldTermClause(term, analyzers, weights, 1))
+			clauses = append(
+				clauses,
+				crossFieldTermClause(term, termAnalyzers, weights, 1),
+			)
 		}
 	}
 	if len(clauses) == 1 {
