@@ -122,7 +122,7 @@ func (b *BleveDiskIndex) completeSearchPage(
 	searchRequest.Explain = req.Explain || req.IncludeFieldScores
 	searchRequest.IncludeLocations = false
 	searchRequest.Fields = storedSearchFields(req, b.storedCandidates)
-	page, err := b.alias.SearchInContext(ctx, searchRequest)
+	page, err := b.readSearchPage(ctx, searchRequest)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"search documents: %w",

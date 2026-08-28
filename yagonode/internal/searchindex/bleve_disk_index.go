@@ -277,12 +277,6 @@ func (b *BleveDiskIndex) searchHits(
 	if req.Query == "" || req.MaxResults <= 0 {
 		return SearchResultSet{}, nil, nil
 	}
-	releaseSearchRead, err := b.admitSearchRead(ctx)
-	if err != nil {
-		return SearchResultSet{}, nil, err
-	}
-	defer releaseSearchRead()
-
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	if b.closed {

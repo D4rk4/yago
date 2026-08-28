@@ -3,30 +3,11 @@ package searchindex
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 )
 
 type acquiredCanceledSearchContext struct{}
-
-type observedSearchContext struct {
-	context.Context
-	checked chan struct{}
-	once    sync.Once
-}
-
-func (ctx *observedSearchContext) Err() error {
-	ctx.once.Do(func() { close(ctx.checked) })
-	switch ctx.Context.Err() {
-	case context.Canceled:
-		return context.Canceled
-	case context.DeadlineExceeded:
-		return context.DeadlineExceeded
-	default:
-		return nil
-	}
-}
 
 func (acquiredCanceledSearchContext) Deadline() (time.Time, bool) { return time.Time{}, false }
 
@@ -38,19 +19,17 @@ func (acquiredCanceledSearchContext) Err() error {
 
 func (acquiredCanceledSearchContext) Value(any) any { return nil }
 
-func TestBleveDiskSearchReadParallelismFollowsShardCapacity(t *testing.T) {
+func TestBleveDiskSearchReadParallelismTracksProcessors(t *testing.T) {
 	for name, test := range map[string]struct {
 		processors int
-		shards     int
 		want       int
 	}{
-		"bounded minimum": {processors: 4, shards: 8, want: 1},
-		"one shard":       {processors: 4, shards: 1, want: 4},
-		"two searches":    {processors: 16, shards: 8, want: 2},
-		"invalid inputs":  {processors: 0, shards: 0, want: 1},
+		"four processors":    {processors: 4, want: 4},
+		"sixteen processors": {processors: 16, want: 16},
+		"invalid input":      {processors: 0, want: 1},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got := bleveDiskSearchReadParallelism(test.processors, test.shards)
+			got := bleveDiskSearchReadParallelism(test.processors)
 			if got != test.want {
 				t.Fatalf("parallelism=%d, want=%d", got, test.want)
 			}
@@ -82,21 +61,19 @@ func TestBleveDiskSearchReadAdmissionHonorsCancellationAndRelease(t *testing.T) 
 	}
 }
 
-func TestBleveDiskSearchReturnsCanceledReadAdmission(t *testing.T) {
+func TestBleveDiskSearchPageReturnsCanceledReadAdmission(t *testing.T) {
 	admission := make(chan struct{}, 1)
 	admission <- struct{}{}
 	index := &BleveDiskIndex{searchReadAdmission: admission}
-	base, cancel := context.WithCancelCause(t.Context())
-	ctx := &observedSearchContext{Context: base, checked: make(chan struct{})}
+	ctx, cancel := context.WithCancelCause(t.Context())
 	result := make(chan error, 1)
+	started := make(chan struct{})
 	go func() {
-		_, err := index.Search(
-			ctx,
-			SearchRequest{Query: "needle", MaxResults: 1},
-		)
+		close(started)
+		_, err := index.readSearchPage(ctx, nil)
 		result <- err
 	}()
-	<-ctx.checked
+	<-started
 	cause := errors.New("search read queue elapsed")
 	cancel(cause)
 	select {

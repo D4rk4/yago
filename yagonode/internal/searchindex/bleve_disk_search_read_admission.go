@@ -9,12 +9,12 @@ import (
 func newBleveDiskSearchReadAdmission() chan struct{} {
 	return make(
 		chan struct{},
-		bleveDiskSearchReadParallelism(runtime.GOMAXPROCS(0), diskShardCount),
+		bleveDiskSearchReadParallelism(runtime.GOMAXPROCS(0)),
 	)
 }
 
-func bleveDiskSearchReadParallelism(processors int, shards int) int {
-	return max(1, processors/max(1, shards))
+func bleveDiskSearchReadParallelism(processors int) int {
+	return max(1, processors)
 }
 
 func (b *BleveDiskIndex) admitSearchRead(

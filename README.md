@@ -447,17 +447,20 @@ its binaries (`yago-node`, `yago-crawler`).
   page; an unexpired successful session may instead be served with the current
   failure evidence, and timed-out work retains its slot until it exits.
   These limits protect one process; they do not manufacture CPU capacity. A
-  disk index admits `max(1, GOMAXPROCS / 8)` active reads because each request
-  already fans across all eight Scorch shards; additional requests wait only
-  within their existing stage context. A deployment that expects hundreds of
-  simultaneous searches must validate a
-  cold synchronized burst on its actual corpus and CPU allocation, then provide
-  enough independent read capacity to keep every process below that measured
-  bound. The current production-copy capacity arithmetic starts at six active
-  four-CPU read replicas for 200 synchronized requests inside the ordinary
-  600-millisecond exact-stage budget, plus one for N+1 operation. This remains a
-  validation target, not a production guarantee. The current release does not
-  add a replicated-read service boundary.
+  disk index admits `max(1, GOMAXPROCS)` native Bleve pages and releases each
+  admission before document presence, projection, filtering, or evidence work.
+  A delayed native page therefore consumes only its own slot, and delayed
+  projection consumes none. Additional native pages wait only within their
+  existing stage context. A deployment that expects hundreds of simultaneous
+  searches must validate a cold synchronized full-request burst on its actual
+  corpus and CPU allocation, then provide enough independent read capacity to
+  keep every process below that measured bound. A production-copy candidate-only
+  round completed 200 synchronized requests on four processors in 1.0924
+  seconds with p99 1.0892 seconds. It does not include live document evidence
+  and cannot size the final read tier. Replicas require independent processors
+  and independently owned index state; extra processes on the same four CPUs or
+  one mutable Scorch directory do not add capacity. The current release does
+  not add a replicated-read service boundary.
   Conflicting vault updates serialize behind writer-only admission while read
   snapshots remain available; served-result denylist checks use an immutable
   in-memory snapshot even after a completed search stage's context ends,

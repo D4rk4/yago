@@ -43,10 +43,10 @@ improved from 54.03 milliseconds to 6.43 milliseconds with the same 51 returned
 hits and total of 113.
 
 On four processors, 200 mixed same-snapshot requests completed in 3.331 seconds
-with one admitted request and 2.757 to 2.957 seconds with wider admissions. The
-single-request width remains the stable local boundary because one alias search
-already fans across eight shards. This measurement improves the capacity input;
-it does not make one replica a 200-request tier.
+with one admitted request and 2.757 to 2.957 seconds with wider admissions.
+ADR-0073 later replaced that whole-search single-width admission after
+production proved it created a convoy outside native Bleve work. This historical
+measurement did not make one replica a 200-request tier.
 
 ## Decision
 
@@ -82,13 +82,11 @@ query so their public explanation tree remains unchanged. Field-score extraction
 continues through the exact same-snapshot path and must remain equal to the
 exhaustive result.
 
-Keep the existing per-process disk-read admission. For initial replicated-read
-planning, use the slower 3.331-second 200-request round and the ordinary
-600-millisecond exact-stage budget: `3.331 / 0.600 = 5.55`. Six active four-CPU
-read replicas are the initial validation target and N+1 starts at seven. This is
-capacity arithmetic, not a production guarantee. Representative cold HTTP
-service time, balanced routing, replica freshness, and loss of one replica must
-all pass before claiming the target.
+ADR-0073 replaces the whole-search single-request admission with a
+processor-sized native-page admission. Its new production-copy measurement is
+the current local candidate-capacity evidence. Representative cold HTTP service
+time, balanced routing, replica freshness, and loss of one replica must still
+pass before claiming a replicated target.
 
 The replicated-read runtime remains a separate service boundary. It requires a
 separate accepted ADR and synchronized state replication, routing, health,

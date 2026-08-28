@@ -91,3 +91,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0070](0070-bound-analyzer-scoped-search-with-complete-lexical-candidates.md) | Bound analyzer-scoped search with complete lexical candidates | Accepted |
 | [0071](0071-route-complete-candidates-to-owning-search-shards.md) | Route complete candidates to owning search shards | Accepted |
 | [0072](0072-rerank-lexical-candidates-within-one-search-snapshot.md) | Rerank lexical candidates within one search snapshot | Accepted |
+| [0073](0073-limit-native-search-admission-to-page-execution.md) | Limit native search admission to page execution | Accepted |
