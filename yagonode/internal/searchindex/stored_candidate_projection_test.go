@@ -311,7 +311,7 @@ func TestStoredCandidateProjectionPresenceAndCompatibilityFallback(t *testing.T)
 	}
 }
 
-func TestBleveDiskCandidateSearchCleansPresenceOrphan(t *testing.T) {
+func TestBleveDiskCandidateSearchFiltersPresenceOrphanWithoutMutation(t *testing.T) {
 	doc := documentstore.Document{
 		NormalizedURL: "https://example.org/orphan",
 		ExtractedText: "needle",
@@ -337,7 +337,7 @@ func TestBleveDiskCandidateSearchCleansPresenceOrphan(t *testing.T) {
 		t.Fatalf("result=%#v loads=%d err=%v", result, directory.loads, err)
 	}
 	stats, err := index.Stats(t.Context())
-	if err != nil || stats.Documents != 0 {
+	if err != nil || stats.Documents != 1 {
 		t.Fatalf("stats=%#v err=%v", stats, err)
 	}
 }

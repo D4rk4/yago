@@ -94,3 +94,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0073](0073-limit-native-search-admission-to-page-execution.md) | Limit native search admission to page execution | Accepted |
 | [0074](0074-stop-fuzzy-dictionary-work-at-request-deadline.md) | Stop fuzzy dictionary work at the request deadline | Accepted |
 | [0075](0075-stop-disk-term-reader-work-at-request-deadline.md) | Stop disk term-reader work at the request deadline | Accepted |
+| [0076](0076-keep-local-search-observation-only.md) | Keep local search observation-only | Accepted |

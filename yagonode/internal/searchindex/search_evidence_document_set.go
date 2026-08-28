@@ -49,12 +49,6 @@ func (b *BleveDiskIndex) searchEvidenceFromDocumentSet(
 			limit,
 		)
 	}
-	orphans := make([]string, 0)
-	for index, present := range found {
-		if !present {
-			orphans = append(orphans, identities[index])
-		}
-	}
 	enriched, err := searchEvidenceResults(
 		ctx,
 		req,
@@ -63,7 +57,6 @@ func (b *BleveDiskIndex) searchEvidenceFromDocumentSet(
 			return documents[index], found[index], nil
 		},
 	)
-	b.dropOrphanedEntries(ctx, orphans)
 
 	return enriched, err
 }

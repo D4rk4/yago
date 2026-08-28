@@ -417,7 +417,12 @@ its binaries (`yago-node`, `yago-crawler`).
   order. The first ordinary Bleve request asks for exactly the visible candidate
   count. Only a confirmed missing stored document with an unseen Bleve tail
   opens the established fourfold bounded retry; ordinary full-document hydration
-  remains lazy.
+  remains lazy. Candidate validation, filtered or faceted scans, and visible
+  evidence hydration are observation-only: a missing stored document is omitted
+  from results but never causes a request-time Bleve mutation. Admin deletion,
+  quota eviction, redirect cleanup, and crawler tombstones own ordinary lineage
+  removal; an explicit full-index rebuild reconciles historical or crash-created
+  drift from the authoritative document store.
   After any startup rebuild and bounded segment consolidation, the node holds
   one Scorch snapshot at a time and sequentially loads every active persisted
   root into the operating-system page cache before lexical warm-up and
@@ -644,7 +649,8 @@ its binaries (`yago-node`, `yago-crawler`).
   storage usage and hands you the exact commands.
 - Storage: a sharded, compressed, quota-bounded vault (bbolt + zstd) where
   losing one shard file loses 1/N of the keyspace, never the store; shard
-  integrity checks and index-orphan healing run at startup. The bbolt root is
+  integrity checks and full-text generation or rebuild admission run at startup.
+  The bbolt root is
   enforced as a bucket-only structural tree before every application commit.
   If an unclean storage event leaves ordinary values there, startup isolates
   them durably before split or compaction, restores only exact RWI rows to their

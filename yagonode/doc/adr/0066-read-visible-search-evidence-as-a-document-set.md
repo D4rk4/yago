@@ -6,6 +6,8 @@ Date: 2026-08-27
 
 Accepted
 
+Amended by [ADR-0076](0076-keep-local-search-observation-only.md).
+
 ## Context
 
 Disk search validates candidate presence before ranking, then hydrates stored
@@ -60,9 +62,10 @@ and context cancellation remain failures.
 
 Disk search uses the set capability only for the existing visible evidence
 limit of ten results. It does not hydrate the Bleve overfetch tail. Orphaned
-index entries follow the existing cleanup path. Deadline behavior remains
-unchanged: strict candidates not yet enriched retain their bounded projection,
-while relaxed candidates without stored passage evidence are not admitted.
+index entries are filtered without mutating Bleve on the request path. Deadline
+behavior remains unchanged: strict candidates not yet enriched retain their
+bounded projection, while relaxed candidates without stored passage evidence
+are not admitted.
 
 ## Consequences
 

@@ -49,17 +49,12 @@ func (b *BleveDiskIndex) SearchEvidence(
 		return b.searchEvidenceFromDocumentSet(ctx, req, results, documents)
 	}
 
-	orphans := make([]string, 0)
 	enriched, err := searchEvidenceResults(ctx, req, results, func(index int) (
 		documentstore.Document,
 		bool,
 		error,
 	) {
 		doc, found, loadErr := b.documents.Document(ctx, results[index].DocumentID)
-		if loadErr == nil && !found {
-			orphans = append(orphans, results[index].DocumentID)
-		}
-
 		if loadErr != nil {
 			return documentstore.Document{}, false, fmt.Errorf(
 				"load stored search evidence: %w",
@@ -69,7 +64,6 @@ func (b *BleveDiskIndex) SearchEvidence(
 
 		return doc, found, nil
 	})
-	b.dropOrphanedEntries(ctx, orphans)
 
 	return enriched, err
 }

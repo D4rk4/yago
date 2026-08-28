@@ -242,28 +242,11 @@ func (b *BleveDiskIndex) Search(
 	ctx context.Context,
 	req SearchRequest,
 ) (SearchResultSet, error) {
-	set, orphans, err := b.searchHits(ctx, req)
+	set, _, err := b.searchHits(ctx, req)
 	if err != nil {
 		return SearchResultSet{}, err
 	}
-	b.dropOrphanedEntries(ctx, orphans)
-
 	return set, nil
-}
-
-// dropOrphanedEntries deletes index entries whose stored document has vanished
-// (quota eviction removes vault records without reaching into the index), so
-// the index converges back onto the store instead of silently swallowing the
-// best-ranked hits forever — YaCy parity: its search sorts out results whose
-// document no longer verifies and purges the stale word references
-// (SearchEvent.getSnippet, failURLsRegisterMissingWord). Best-effort: a failed
-// delete is retried by whichever later search meets the orphan again.
-func (b *BleveDiskIndex) dropOrphanedEntries(ctx context.Context, orphans []string) {
-	for _, docID := range orphans {
-		if err := b.Delete(ctx, docID); err != nil {
-			return
-		}
-	}
 }
 
 func (b *BleveDiskIndex) searchHits(

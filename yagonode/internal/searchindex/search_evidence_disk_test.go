@@ -71,8 +71,8 @@ func TestBleveDiskSearchEvidenceLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stats: %v", err)
 	}
-	if stats.Documents != 0 {
-		t.Fatalf("orphaned documents = %d", stats.Documents)
+	if stats.Documents != 1 {
+		t.Fatalf("evidence read changed index documents = %d", stats.Documents)
 	}
 	if err := index.Close(); err != nil {
 		t.Fatalf("Close: %v", err)

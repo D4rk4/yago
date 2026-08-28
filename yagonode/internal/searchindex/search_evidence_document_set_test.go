@@ -137,6 +137,10 @@ func TestSearchEvidenceDocumentSetKeepsEvidenceAfterMissingRow(t *testing.T) {
 	if err := index.Index(t.Context(), second); err != nil {
 		t.Fatal(err)
 	}
+	beforeEvidence, err := index.Stats(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	enriched, err := index.SearchEvidence(
 		t.Context(),
 		SearchRequest{Query: "needle", Terms: []string{"needle"}},
@@ -149,9 +153,15 @@ func TestSearchEvidenceDocumentSetKeepsEvidenceAfterMissingRow(t *testing.T) {
 		!strings.Contains(enriched[0].Snippet, "needle evidence") {
 		t.Fatalf("enriched=%v error=%v", enriched, err)
 	}
-	stats, err := index.Stats(t.Context())
-	if err != nil || stats.Documents != 1 {
-		t.Fatalf("orphan cleanup documents=%d error=%v", stats.Documents, err)
+	afterEvidence, err := index.Stats(t.Context())
+	if err != nil || afterEvidence.Documents != beforeEvidence.Documents ||
+		!afterEvidence.UpdatedAt.Equal(beforeEvidence.UpdatedAt) {
+		t.Fatalf(
+			"evidence read changed stats from %#v to %#v: %v",
+			beforeEvidence,
+			afterEvidence,
+			err,
+		)
 	}
 }
 

@@ -8,6 +8,8 @@ Accepted
 
 Amends [ADR-0072](0072-rerank-lexical-candidates-within-one-search-snapshot.md).
 
+Amended by [ADR-0076](0076-keep-local-search-observation-only.md).
+
 ## Context
 
 Release v0.0.51 completed individual cold searches but failed bounded concurrent

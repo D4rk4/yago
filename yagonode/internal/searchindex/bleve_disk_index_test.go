@@ -510,14 +510,12 @@ func TestBleveDiskIndexHandlesEmptyMissingAndFailedSearches(t *testing.T) {
 	if results.Total != 0 {
 		t.Fatalf("missing document results = %#v", results)
 	}
-	// The orphaned entry self-heals: the search that discovered the vanished
-	// document also removed its index entry.
 	stats, err := index.Stats(t.Context())
 	if err != nil {
 		t.Fatalf("Stats: %v", err)
 	}
-	if stats.Documents != 0 {
-		t.Fatalf("orphaned entry not healed, documents = %d", stats.Documents)
+	if stats.Documents != 1 {
+		t.Fatalf("orphaned entry changed index documents = %d", stats.Documents)
 	}
 	assertCompleteOrphanSearch(t, index, doc)
 
@@ -822,22 +820,6 @@ func TestInsertCompleteHitKeepsBoundedScoreOrder(t *testing.T) {
 	if got := insertCompleteHit(results, nil, 0); got != nil {
 		t.Fatalf("zero-limit complete results = %#v", got)
 	}
-}
-
-func TestDropOrphanedEntriesStopsOnDeleteError(t *testing.T) {
-	directory := newFakeDocumentDirectory()
-	index, err := NewBleveDiskIndex(
-		t.Context(),
-		filepath.Join(t.TempDir(), "search.bleve"),
-		directory,
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("NewBleveDiskIndex: %v", err)
-	}
-	canceled, cancel := context.WithCancel(t.Context())
-	cancel()
-	index.dropOrphanedEntries(canceled, []string{"https://example.org/"})
 }
 
 func TestBleveDiskIndexSearchFiltersDisallowedDocuments(t *testing.T) {
