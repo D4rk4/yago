@@ -65,6 +65,11 @@ remaining processor-sized capacity. A delayed projection holds no native token.
 Do not widen the outer request gate or the deadline to disguise insufficient
 capacity.
 
+ADR-0074 later bounds fuzzy field-dictionary enumeration at the request
+context. A timed-out fuzzy recovery therefore returns its native token after at
+most the active dictionary step and normal close instead of walking the
+remaining vocabulary after its response.
+
 Treat hundreds of concurrent requests as a horizontal capacity requirement.
 Replicas require independent processors and independently owned index state;
 same-host processes on the four-processor production machine are not

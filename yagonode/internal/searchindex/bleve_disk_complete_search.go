@@ -111,11 +111,12 @@ func (b *BleveDiskIndex) completeSearchPage(
 	pageSize int,
 	searchAfter []string,
 ) (*bleve.SearchResult, error) {
-	searchRequest := bleve.NewSearchRequest(bleveSearchQuery(
+	query := bleveSearchQuery(
 		req,
 		b.multilingual,
 		b.analyzerScope,
-	))
+	)
+	searchRequest := bleve.NewSearchRequest(withBleveFuzzySearchDeadline(req, query))
 	searchRequest.Size = pageSize
 	searchRequest.SortBy([]string{"_id"})
 	searchRequest.SetSearchAfter(searchAfter)

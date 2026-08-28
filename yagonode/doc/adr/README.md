@@ -92,3 +92,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0071](0071-route-complete-candidates-to-owning-search-shards.md) | Route complete candidates to owning search shards | Accepted |
 | [0072](0072-rerank-lexical-candidates-within-one-search-snapshot.md) | Rerank lexical candidates within one search snapshot | Accepted |
 | [0073](0073-limit-native-search-admission-to-page-execution.md) | Limit native search admission to page execution | Accepted |
+| [0074](0074-stop-fuzzy-dictionary-work-at-request-deadline.md) | Stop fuzzy dictionary work at the request deadline | Accepted |

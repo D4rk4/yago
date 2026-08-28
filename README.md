@@ -207,7 +207,9 @@ its binaries (`yago-node`, `yago-crawler`).
   absent from the local corpus; analyzer-unconnected irregular
   forms remain outside that compatible bounded expansion.
   Zero-result typo recovery uses bounded analyzer-consistent edit distance
-  without document-wide character grams.
+  without document-wide character grams. Disk fuzzy dictionary enumeration
+  checks its request deadline around every term step, so a completed recovery
+  timeout does not continue walking the remaining vocabulary behind later reads.
 - YaCy query operators (`site:`, `inurl:`, `filetype:`, `language:`, `tld:`,
   `author:`, `"phrase"`, `-not`, `near`, `/date`), facet sidebar, content
   verticals (images/audio/video/apps with a lightbox grid), spell-check
@@ -451,7 +453,10 @@ its binaries (`yago-node`, `yago-crawler`).
   admission before document presence, projection, filtering, or evidence work.
   A delayed native page therefore consumes only its own slot, and delayed
   projection consumes none. Additional native pages wait only within their
-  existing stage context. A deployment that expects hundreds of simultaneous
+  existing stage context. Fuzzy dictionary enumeration stops synchronously at
+  cancellation after at most its current dictionary step and normal close; it
+  does not leave a detached recovery query holding a native slot after the
+  150-millisecond fuzzy stage has answered. A deployment that expects hundreds of simultaneous
   searches must validate a cold synchronized full-request burst on its actual
   corpus and CPU allocation, then provide enough independent read capacity to
   keep every process below that measured bound. A production-copy candidate-only
