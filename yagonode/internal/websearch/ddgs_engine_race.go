@@ -37,7 +37,8 @@ func newEngineRace(
 ) *engineRace {
 	engines := make([]engine, 0, len(provider.engines))
 	for _, backend := range provider.engines {
-		if !provider.backedOff(backend.name) {
+		if enginePermitsSafeSearch(backend, query.safeSearch) &&
+			!provider.backedOff(backend.name) {
 			engines = append(engines, backend)
 		}
 	}
@@ -120,6 +121,7 @@ func (r *engineRace) launchNext() {
 				r.ctx,
 				backend,
 				r.query.outboundText,
+				r.query.safeSearch,
 			)
 
 			return engineAttempt{

@@ -41,6 +41,7 @@ const (
 	SafetyUnknown SafetyRating = iota
 	SafetyGeneral
 	SafetyExplicit
+	SafetyProviderFiltered
 )
 
 type Request struct {

@@ -13,9 +13,10 @@ func TestNormalizeResultsBoundsPayload(t *testing.T) {
 		URL: "https://example.test/" + strings.Repeat("x", maxCachedURLBytes),
 	})
 	results = append(results, Result{
-		Title:   strings.Repeat("ж", maxCachedTitleBytes/2+1),
-		URL:     "https://example.test/long",
-		Snippet: strings.Repeat("€", maxCachedSnippetBytes/3+1),
+		Title:                strings.Repeat("ж", maxCachedTitleBytes/2+1),
+		URL:                  "https://example.test/long",
+		Snippet:              strings.Repeat("€", maxCachedSnippetBytes/3+1),
+		AdultContentFiltered: true,
 	})
 	for index := range maxCachedResults {
 		results = append(results, Result{
@@ -39,5 +40,8 @@ func TestNormalizeResultsBoundsPayload(t *testing.T) {
 	}
 	if !utf8.ValidString(normalized[0].Title) || !utf8.ValidString(normalized[0].Snippet) {
 		t.Fatal("normalized text must remain valid UTF-8")
+	}
+	if !normalized[0].AdultContentFiltered {
+		t.Fatal("normalization discarded provider safe-search evidence")
 	}
 }

@@ -13,6 +13,7 @@ type providerQuery struct {
 	submittedText string
 	outboundText  string
 	cacheIdentity string
+	safeSearch    string
 	acceptResults func([]Result) []Result
 }
 

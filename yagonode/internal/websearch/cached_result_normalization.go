@@ -31,9 +31,10 @@ func normalizeResults(results []Result, limit int) []Result {
 			continue
 		}
 		normalized = append(normalized, Result{
-			Title:   boundedText(result.Title, maxCachedTitleBytes),
-			URL:     strings.Clone(result.URL),
-			Snippet: boundedText(result.Snippet, maxCachedSnippetBytes),
+			Title:                boundedText(result.Title, maxCachedTitleBytes),
+			URL:                  strings.Clone(result.URL),
+			Snippet:              boundedText(result.Snippet, maxCachedSnippetBytes),
+			AdultContentFiltered: result.AdultContentFiltered,
 		})
 	}
 

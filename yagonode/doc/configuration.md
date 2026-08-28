@@ -249,7 +249,7 @@ required.
 | `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` starts DuckDuckGo HTML first, then hedges DuckDuckGo Lite, Brave, Mojeek, and Bing at 50ms intervals until one answer survives relevance checks. Internal dash punctuation is sent as word boundaries so engines do not reinterpret a compound query as exclusion; an explicit leading minus and structured modifier values remain intact. At most eight engine fetch-and-parse attempts run process-wide. `mojeek`, `bing`, `brave`, or `duckduckgo` restrict the engine set. See `doc/adr/0021-in-house-metasearch-backend.md`. |
 | `YAGO_WEB_FALLBACK_MAX_RESULTS` | `10` | Maximum fallback results (1–20). |
 | `YAGO_WEB_FALLBACK_TIMEOUT` | `10s` | Per-engine timeout ceiling. Interactive search additionally caps the complete hedged web stage at 900ms after a local-plus-swarm miss or 1500ms when `always` starts it in parallel, inside the fixed 1.8-second deadline. |
-| `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Safe-search preference passed to engines that support it (`strict`, `moderate`, `off`). |
+| `YAGO_WEB_FALLBACK_SAFESEARCH` | `moderate` | Provider safe-search preference for requests that do not require safe search (`strict`, `moderate`, `off`). A request with `safe_search=true` overrides this preference for that request, uses the strongest documented engine filter, and excludes engines without an implemented filter before egress. Filtered and unfiltered answers have separate cache identities. |
 | `YAGO_WEB_FALLBACK_CACHE_TTL` | `5m` | How long to cache a fallback response to respect engine rate limits and reduce repeat egress. Normalized responses share a fixed 4 MiB/256-entry byte-aware cache, retain at most 20 rows per query, and bound each title, URL, and snippet before insertion. |
 | `YAGO_WEB_FALLBACK_SEED_CRAWL` | `false` | When on (and crawling is enabled), URLs surfaced by the fallback are published as conservative crawl orders so later queries can be answered locally. Editable live as `web.fallback.seed_crawl`: the seeder is wired whenever the node has a crawl queue, and this switch admits or silences it on the next search. The node logs `web-search crawl seeding wiring` at startup naming whether seeding can run and why not. Publishing runs after the search response through two background workers, a process-wide queue of at most 128 pending jobs, and a ten-second deadline that begins when each job starts. A full queue warns and skips only new optional warming work. Each URL gets a 50-millisecond stored-document presence check before an absent or indeterminate URL attempts recovery-intent-backed durable publication. Publication coalesces the normalized URL only while its order is pending or leased. Acknowledgement, terminal failure, or cancellation permits a later surfaced result to retry. Successful lease-authorized ingest attempts to persist the live lease's profile before recording the fetch. A profile or schedule write failure is logged and cannot reject or roll back the fetched document. No effect when crawling is disabled. |
 | `YAGO_WEB_FALLBACK_SEED_DEPTH` | `1` | Crawl depth for web-discovery orders when web-discovery crawling is enabled (0–8). Editable live as `web.fallback.seed_depth`; the new bound applies to the next seeded order. |
@@ -299,6 +299,13 @@ Normalized returned-host filtering remains authoritative. Internal provenance re
 Admin render plain `web`, YaCy HTML renders `[web]`, and Tavily-compatible
 payloads carry no provider marker. Human surfaces state that the provider
 received the query.
+
+A request with `safe_search=true` additionally requires the strongest
+documented filter on the selected engine. Auto mode excludes engines that
+cannot enforce that requirement. An explicitly selected unsupported engine
+returns the ordinary recoverable web partial failure without sending the query.
+Rows fetched under the required filter carry internal evidence through the
+bounded cache; unknown web rows remain ineligible for a safe response.
 
 The former `YAGO_WEB_FALLBACK_TRIGGER` input is accepted only to migrate old
 deployments. `enabled` plus legacy `parallel` becomes `always`; saved legacy

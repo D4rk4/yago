@@ -33,11 +33,11 @@ func TestDuckSafeParams(t *testing.T) {
 	if got := duckSafeParams("strict").Get("kp"); got != "1" {
 		t.Fatalf("strict kp = %q, want 1", got)
 	}
-	if got := duckSafeParams("off").Get("kp"); got != "-1" {
-		t.Fatalf("off kp = %q, want -1", got)
+	if got := duckSafeParams("off").Get("kp"); got != "-2" {
+		t.Fatalf("off kp = %q, want -2", got)
 	}
-	if got := duckSafeParams("moderate").Get("kp"); got != "" {
-		t.Fatalf("moderate kp = %q, want empty", got)
+	if got := duckSafeParams("moderate").Get("kp"); got != "-1" {
+		t.Fatalf("moderate kp = %q, want -1", got)
 	}
 }
 
@@ -127,7 +127,7 @@ func TestDDGSProviderFetchRequestBuildError(t *testing.T) {
 	provider := NewDDGSProvider(DDGSConfig{Backend: backendMojeek, Now: fixedClock()})
 	bad := engine{name: "bad", endpoint: "http://\x7f", queryKey: "q"}
 
-	if _, _, err := provider.fetch(context.Background(), bad, "example"); err == nil {
+	if _, _, err := provider.fetch(context.Background(), bad, "example", ""); err == nil {
 		t.Fatal("expected request build error for malformed endpoint")
 	}
 }
@@ -235,7 +235,9 @@ func TestBackendsForBraveAndSafeParams(t *testing.T) {
 	if engines := backendsFor(backendBrave); len(engines) != 1 || engines[0].name != engineBrave {
 		t.Fatalf("backendsFor(brave) = %#v", engines)
 	}
-	cases := map[string]string{"strict": "strict", "off": "off", "moderate": ""}
+	cases := map[string]string{
+		"strict": "strict", "off": "off", "moderate": "moderate",
+	}
 	for mode, want := range cases {
 		if got := braveSafeParams(mode).Get("safesearch"); got != want {
 			t.Errorf("braveSafeParams(%q) safesearch = %q, want %q", mode, got, want)

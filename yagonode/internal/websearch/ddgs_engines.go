@@ -21,21 +21,23 @@ const (
 )
 
 type engine struct {
-	name     string
-	endpoint string
-	queryKey string
-	parse    func([]byte) ([]Result, error)
-	safe     func(mode string) url.Values
+	name             string
+	endpoint         string
+	queryKey         string
+	parse            func([]byte) ([]Result, error)
+	safe             func(mode string) url.Values
+	strictSafeSearch bool
 }
 
 func allEngines() map[string]engine {
 	return map[string]engine{
 		engineMojeek: {
-			name:     engineMojeek,
-			endpoint: "https://www.mojeek.com/search",
-			queryKey: "q",
-			parse:    parseListResults,
-			safe:     mojeekSafeParams,
+			name:             engineMojeek,
+			endpoint:         "https://www.mojeek.com/search",
+			queryKey:         "q",
+			parse:            parseListResults,
+			safe:             mojeekSafeParams,
+			strictSafeSearch: true,
 		},
 		engineBing: {
 			name:     engineBing,
@@ -45,25 +47,28 @@ func allEngines() map[string]engine {
 			safe:     noSafeParams,
 		},
 		engineDDGHTML: {
-			name:     engineDDGHTML,
-			endpoint: "https://html.duckduckgo.com/html/",
-			queryKey: "q",
-			parse:    parseDuckDuckGoResults,
-			safe:     duckSafeParams,
+			name:             engineDDGHTML,
+			endpoint:         "https://html.duckduckgo.com/html/",
+			queryKey:         "q",
+			parse:            parseDuckDuckGoResults,
+			safe:             duckSafeParams,
+			strictSafeSearch: true,
 		},
 		engineDDGLite: {
-			name:     engineDDGLite,
-			endpoint: "https://lite.duckduckgo.com/lite/",
-			queryKey: "q",
-			parse:    parseDuckDuckGoLiteResults,
-			safe:     duckSafeParams,
+			name:             engineDDGLite,
+			endpoint:         "https://lite.duckduckgo.com/lite/",
+			queryKey:         "q",
+			parse:            parseDuckDuckGoLiteResults,
+			safe:             duckSafeParams,
+			strictSafeSearch: true,
 		},
 		engineBrave: {
-			name:     engineBrave,
-			endpoint: "https://search.brave.com/search",
-			queryKey: "q",
-			parse:    parseBraveResults,
-			safe:     braveSafeParams,
+			name:             engineBrave,
+			endpoint:         "https://search.brave.com/search",
+			queryKey:         "q",
+			parse:            parseBraveResults,
+			safe:             braveSafeParams,
+			strictSafeSearch: true,
 		},
 	}
 }
@@ -116,8 +121,10 @@ func duckSafeParams(mode string) url.Values {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "strict":
 		values.Set("kp", "1")
-	case "off":
+	case "moderate":
 		values.Set("kp", "-1")
+	case "off":
+		values.Set("kp", "-2")
 	}
 
 	return values
@@ -130,6 +137,8 @@ func braveSafeParams(mode string) url.Values {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "strict":
 		values.Set("safesearch", "strict")
+	case "moderate":
+		values.Set("safesearch", "moderate")
 	case "off":
 		values.Set("safesearch", "off")
 	}

@@ -51,6 +51,9 @@ func allowsSafeResult(req Request, result Result) bool {
 	if result.SafetyRating == SafetyExplicit {
 		return false
 	}
+	if result.SafetyRating == SafetyProviderFiltered {
+		return result.Source == SourceWeb
+	}
 	unknown := result.SafetyRating != SafetyGeneral
 	if unknown && (result.Source == SourceRemote || result.Source == SourceWeb) {
 		return false

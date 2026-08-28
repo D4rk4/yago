@@ -283,9 +283,12 @@ document. The model is versioned, persisted, and rollback-capable. Training
 labels are not retained.
 
 Explicit results are removed when safe search is requested. Unknown peer and web
-results are also removed; unknown local text results remain eligible, while
-unknown image results are removed. Tavily image fields require classified
-general evidence when `safe_search` and `include_images` are both enabled.
+results are also removed. A web row fetched under the request's strongest
+documented provider filter carries separate internal evidence and remains
+eligible; the same evidence on a local or peer row is rejected. Unknown local
+text results remain eligible, while unknown image results are removed. Tavily
+image fields require classified general evidence when `safe_search` and
+`include_images` are both enabled.
 
 ## Operator surfaces
 

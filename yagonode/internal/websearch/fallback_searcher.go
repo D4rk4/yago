@@ -120,13 +120,14 @@ func toCoreResults(results []Result, limit int) []searchcore.Result {
 	out := make([]searchcore.Result, 0, len(results))
 	for rank, result := range results {
 		out = append(out, searchcore.Result{
-			Title:      result.Title,
-			URL:        result.URL,
-			DisplayURL: result.URL,
-			Snippet:    result.Snippet,
-			Score:      1 - float64(rank)*webResultDecay,
-			Source:     searchcore.SourceWeb,
-			Host:       resultHost(result.URL),
+			Title:        result.Title,
+			URL:          result.URL,
+			DisplayURL:   result.URL,
+			Snippet:      result.Snippet,
+			Score:        1 - float64(rank)*webResultDecay,
+			Source:       searchcore.SourceWeb,
+			Host:         resultHost(result.URL),
+			SafetyRating: webResultSafetyRating(result),
 		})
 	}
 

@@ -97,6 +97,10 @@ func (p *DDGSProvider) searchProviderQuery(
 	if query.outboundText == "" {
 		return nil, nil
 	}
+	query.safeSearch = effectiveSafeSearchMode(query.safeSearch, p.safeSearch)
+	if query.safeSearch == safeSearchStrict && !hasStrictSafeSearchEngine(p.engines) {
+		return nil, errStrictSafeSearchUnavailable
+	}
 	if cached, ok := p.cache.get(query.cacheIdentity); ok {
 		return capResults(cached, p.limit(limit)), nil
 	}
@@ -136,13 +140,14 @@ func (p *DDGSProvider) fetch(
 	ctx context.Context,
 	backend engine,
 	query string,
+	safeSearch string,
 ) ([]Result, bool, error) {
 	if p.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, p.timeout)
 		defer cancel()
 	}
-	endpoint := backend.endpoint + "?" + backend.params(query, p.safeSearch).Encode()
+	endpoint := backend.endpoint + "?" + backend.params(query, safeSearch).Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("build %s request: %w", backend.name, err)
@@ -168,6 +173,7 @@ func (p *DDGSProvider) fetch(
 	if err != nil {
 		return nil, false, err
 	}
+	results = markAdultContentFiltered(results, backend, safeSearch)
 
 	return results, false, nil
 }

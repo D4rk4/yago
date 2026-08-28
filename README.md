@@ -122,7 +122,12 @@ its binaries (`yago-node`, `yago-crawler`).
   minus remains an exclusion operator. Web rows always satisfy authoritative URL
   and structured constraints. Requests using `verify=ifexist` additionally
   require bounded visible query evidence; Tavily `basic`, `fast`, and
-  `ultra-fast` preserve `verify=false`. When web-discovery seeding is enabled,
+  `ultra-fast` preserve `verify=false`.
+  A request with `safe_search=true` forces the strongest documented provider
+  filter and excludes engines that cannot enforce it. The conservative result
+  boundary admits only web rows carrying that provider-filter evidence; unknown
+  web rows remain excluded, and Tavily responses expose no new provider field.
+  When web-discovery seeding is enabled,
   surfaced URLs are admitted to bounded background warming and rendered in the
   crawl contract's canonical spelling — the one the crawler stores documents
   under — before admission, so a page already indexed is not re-seeded under a

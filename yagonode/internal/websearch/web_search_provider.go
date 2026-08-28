@@ -9,9 +9,10 @@ import "context"
 
 // Result is one web-search hit as returned by a Provider.
 type Result struct {
-	Title   string
-	URL     string
-	Snippet string
+	Title                string
+	URL                  string
+	Snippet              string
+	AdultContentFiltered bool
 }
 
 // Provider searches an external web-search backend. Implementations report

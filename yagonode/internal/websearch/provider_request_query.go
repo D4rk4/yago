@@ -13,6 +13,9 @@ const maximumProviderEncodedQueryBytes = 2048
 
 func newProviderQueryForRequest(req searchcore.Request) providerQuery {
 	query := newProviderQuery(req.SubmittedText())
+	if req.SafeSearch {
+		query.safeSearch = safeSearchStrict
+	}
 	query.outboundText = providerTextWithIncludedDomains(
 		query.outboundText,
 		req.IncludeDomains,
@@ -39,6 +42,7 @@ func providerRequestCacheIdentity(outboundText string, req searchcore.Request) s
 	fields = append(fields,
 		outboundText,
 		string(req.Verify),
+		strconv.FormatBool(req.SafeSearch),
 		req.InURL,
 		req.FileType,
 		req.SiteHost,
