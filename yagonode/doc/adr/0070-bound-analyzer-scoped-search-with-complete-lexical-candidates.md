@@ -10,6 +10,8 @@ Amends [ADR-0069](0069-populate-active-search-mappings-before-readiness.md).
 
 Amended by [ADR-0071](0071-route-complete-candidates-to-owning-search-shards.md).
 
+Amended by [ADR-0072](0072-rerank-lexical-candidates-within-one-search-snapshot.md).
+
 ## Context
 
 Release v0.0.48 populated every active Scorch mapping before readiness, but
@@ -117,3 +119,8 @@ multi-term queries, domain narrowing, exclusions, expansions, fuzzy recovery,
 and exact identity, order, score, field-score, total, and explicit-explanation
 equality against exhaustive scoped search. No setting, environment variable,
 listener, service, image, package topology, contract, or wire shape changes.
+
+ADR-0072 replaces the separate alias-wide candidate request and external
+document-identity restriction with a per-child same-reader internal-identity
+filter. Its 4,097th per-child sentinel preserves this decision's conservative
+exhaustive fallback and 32,768 maximum accepted candidate population.

@@ -9,156 +9,89 @@ import (
 	"testing"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/blevesearch/bleve/v2/search"
+	blevequery "github.com/blevesearch/bleve/v2/search/query"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
 
-type lexicalCandidateSearchProbe struct {
+type bleveLexicalCandidatePageProbe struct {
 	bleveIndexContract
-	results  []*bleve.SearchResult
-	errors   []error
 	requests []*bleve.SearchRequest
+	result   *bleve.SearchResult
+	err      error
 }
 
-func (probe *lexicalCandidateSearchProbe) SearchInContext(
+func (probe *bleveLexicalCandidatePageProbe) SearchInContext(
 	_ context.Context,
 	request *bleve.SearchRequest,
 ) (*bleve.SearchResult, error) {
-	position := len(probe.requests)
 	probe.requests = append(probe.requests, request)
-	if position < len(probe.errors) && probe.errors[position] != nil {
-		return nil, probe.errors[position]
-	}
 
-	return probe.results[position], nil
+	return probe.result, probe.err
 }
 
-func TestCompleteLexicalCandidateSetAcceptsOnlyExhaustedResults(t *testing.T) {
-	query := bleve.NewMatchAllQuery()
-	acceptedProbe := &lexicalCandidateSearchProbe{results: []*bleve.SearchResult{
-		lexicalCandidateProbeResult(2, "one", "two"),
-	}}
-	accepted, complete, err := completeLexicalCandidateSetWithin(
-		t.Context(), acceptedProbe, query, 2,
-	)
-	if err != nil || !complete || len(accepted.Hits) != 2 {
-		t.Fatalf("accepted=%#v complete=%t error=%v", accepted, complete, err)
+func TestBleveDiskLexicalCandidatePageUsesOneSnapshotQuery(t *testing.T) {
+	result := &bleve.SearchResult{
+		Status: &bleve.SearchStatus{Total: 1, Successful: 1},
 	}
-	if len(acceptedProbe.requests) != 1 || acceptedProbe.requests[0].Size != 3 ||
-		acceptedProbe.requests[0].Score != bleve.ScoreNone {
-		t.Fatalf("candidate request=%#v", acceptedProbe.requests)
-	}
-
-	for name, result := range map[string]*bleve.SearchResult{
-		"sentinel":     lexicalCandidateProbeResult(3, "one", "two", "three"),
-		"unknown tail": lexicalCandidateProbeResult(3, "one", "two"),
-	} {
-		t.Run(name, func(t *testing.T) {
-			probe := &lexicalCandidateSearchProbe{results: []*bleve.SearchResult{result}}
-			candidates, complete, err := completeLexicalCandidateSetWithin(
-				t.Context(), probe, query, 2,
-			)
-			if err != nil || complete || candidates != nil {
-				t.Fatalf("candidates=%#v complete=%t error=%v", candidates, complete, err)
-			}
-		})
-	}
-}
-
-func TestCompleteLexicalCandidateSetReturnsSearchFailures(t *testing.T) {
-	sentinel := errors.New("candidate read failed")
-	probe := &lexicalCandidateSearchProbe{errors: []error{sentinel}}
-	_, _, err := completeLexicalCandidateSetWithin(
-		t.Context(), probe, bleve.NewMatchAllQuery(), 2,
-	)
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("candidate error=%v, want=%v", err, sentinel)
-	}
-
-	canceled, cancel := context.WithCancelCause(t.Context())
-	cause := errors.New("request budget elapsed")
-	cancel(cause)
-	probe = &lexicalCandidateSearchProbe{errors: []error{context.Canceled}}
-	_, _, err = completeLexicalCandidateSetWithin(
-		canceled, probe, bleve.NewMatchAllQuery(), 2,
-	)
-	if !errors.Is(err, cause) {
-		t.Fatalf("canceled candidate error=%v, want=%v", err, cause)
-	}
-
-	probe = &lexicalCandidateSearchProbe{results: []*bleve.SearchResult{{
-		Status: &bleve.SearchStatus{Total: 2, Failed: 1},
-	}}}
-	_, _, err = completeLexicalCandidateSetWithin(
-		t.Context(), probe, bleve.NewMatchAllQuery(), 2,
-	)
-	if !errors.Is(err, errIncompleteBleveSearch) {
-		t.Fatalf("incomplete candidate error=%v", err)
-	}
-}
-
-func TestBleveDiskLexicalCandidatePageSelectsBoundedWorkflow(t *testing.T) {
+	probe := &bleveLexicalCandidatePageProbe{result: result}
+	index := &BleveDiskIndex{alias: probe, analyzerScope: true, multilingual: true}
 	request := SearchRequest{Query: "needle", Terms: []string{"needle"}, MaxResults: 2}
-	accepted := &lexicalCandidateSearchProbe{results: []*bleve.SearchResult{
-		lexicalCandidateProbeResult(2, "one", "two"),
-		lexicalCandidateProbeResult(1, "one"),
-	}}
-	index := &BleveDiskIndex{alias: accepted, analyzerScope: true}
-	result, err := index.searchLexicalCandidateHitPage(t.Context(), request, 2)
-	if err != nil || result.Total != 1 || len(accepted.requests) != 2 {
-		t.Fatalf("result=%#v requests=%d error=%v", result, len(accepted.requests), err)
+	got, err := index.searchLexicalCandidateHitPage(t.Context(), request, 2)
+	if err != nil || got != result || len(probe.requests) != 1 {
+		t.Fatalf("result=%p/%p requests=%d error=%v", got, result, len(probe.requests), err)
 	}
-	if accepted.requests[0].Score != bleve.ScoreNone ||
-		accepted.requests[1].Score == bleve.ScoreNone || accepted.requests[1].Size != 2 {
-		t.Fatalf("accepted requests=%#v", accepted.requests)
+	bounded, ok := probe.requests[0].Query.(*blevequery.ConjunctionQuery)
+	if !ok || len(bounded.Conjuncts) != 2 {
+		t.Fatalf("bounded query=%T/%#v", probe.requests[0].Query, probe.requests[0].Query)
 	}
-
-	refused := &lexicalCandidateSearchProbe{results: []*bleve.SearchResult{
-		lexicalCandidateProbeResult(2, "one"),
-		lexicalCandidateProbeResult(1, "two"),
-	}}
-	index.alias = refused
-	result, err = index.searchLexicalCandidateHitPage(t.Context(), request, 2)
-	if err != nil || result.Total != 1 || len(refused.requests) != 2 ||
-		refused.requests[1].Size != 2 {
-		t.Fatalf("fallback result=%#v requests=%#v error=%v", result, refused.requests, err)
+	if _, ok := bounded.Conjuncts[1].(*bleveLexicalCandidateSnapshotQuery); !ok ||
+		probe.requests[0].Size != 2 || probe.requests[0].Score == bleve.ScoreNone {
+		t.Fatalf("bounded request=%#v", probe.requests[0])
 	}
 
-	empty := &lexicalCandidateSearchProbe{results: []*bleve.SearchResult{
-		lexicalCandidateProbeResult(0),
-	}}
-	index.alias = empty
-	result, err = index.searchLexicalCandidateHitPage(t.Context(), request, 2)
-	if err != nil || result.Total != 0 || len(empty.requests) != 1 {
-		t.Fatalf("empty result=%#v requests=%d error=%v", result, len(empty.requests), err)
+	probe.requests = nil
+	index.analyzerScope = false
+	if _, err := index.searchLexicalCandidateHitPage(t.Context(), request, 2); err != nil ||
+		len(probe.requests) != 1 {
+		t.Fatalf("unscoped requests=%d error=%v", len(probe.requests), err)
+	}
+	if _, ok := probe.requests[0].Query.(*bleveLexicalCandidateSnapshotQuery); ok {
+		t.Fatalf("unscoped query=%T", probe.requests[0].Query)
 	}
 
-	explained := &lexicalCandidateSearchProbe{results: []*bleve.SearchResult{
-		lexicalCandidateProbeResult(1, "one"),
-	}}
-	index.alias = explained
+	probe.requests = nil
+	index.analyzerScope = true
 	request.Explain = true
-	result, err = index.searchLexicalCandidateHitPage(t.Context(), request, 2)
-	if err != nil || result.Total != 1 || len(explained.requests) != 1 ||
-		!explained.requests[0].Explain || explained.requests[0].Score == bleve.ScoreNone {
-		t.Fatalf("explained result=%#v requests=%#v error=%v", result, explained.requests, err)
+	if _, err := index.searchLexicalCandidateHitPage(t.Context(), request, 2); err != nil ||
+		len(probe.requests) != 1 || !probe.requests[0].Explain {
+		t.Fatalf("explained requests=%#v error=%v", probe.requests, err)
+	}
+	if conjunction, ok := probe.requests[0].Query.(*blevequery.ConjunctionQuery); ok &&
+		len(conjunction.Conjuncts) == 2 {
+		if _, candidate := conjunction.Conjuncts[1].(*bleveLexicalCandidateSnapshotQuery); candidate {
+			t.Fatalf("explained query=%T", probe.requests[0].Query)
+		}
 	}
 }
 
-func TestBleveDiskLexicalCandidatePageRejectsIncompleteRerank(t *testing.T) {
-	probe := &lexicalCandidateSearchProbe{results: []*bleve.SearchResult{
-		lexicalCandidateProbeResult(1, "one"),
-		{Status: &bleve.SearchStatus{Total: 2, Failed: 1}},
-	}}
+func TestBleveDiskLexicalCandidatePageReturnsAliasFailures(t *testing.T) {
+	sentinel := errors.New("alias failed")
+	probe := &bleveLexicalCandidatePageProbe{err: sentinel}
 	index := &BleveDiskIndex{alias: probe, analyzerScope: true}
-	_, err := index.searchLexicalCandidateHitPage(
-		t.Context(),
-		SearchRequest{Query: "needle", Terms: []string{"needle"}, MaxResults: 1},
-		1,
-	)
-	if !errors.Is(err, errIncompleteBleveSearch) {
-		t.Fatalf("incomplete rerank error=%v", err)
+	request := SearchRequest{Query: "needle", Terms: []string{"needle"}, MaxResults: 1}
+	if _, err := index.searchLexicalCandidateHitPage(
+		t.Context(), request, 1,
+	); !errors.Is(err, sentinel) {
+		t.Fatalf("alias error=%v", err)
+	}
+
+	probe.err = nil
+	probe.result = &bleve.SearchResult{Status: &bleve.SearchStatus{Total: 2, Failed: 1}}
+	if _, err := index.searchLexicalCandidateHitPage(
+		t.Context(), request, 1,
+	); !errors.Is(err, errIncompleteBleveSearch) {
+		t.Fatalf("incomplete error=%v", err)
 	}
 }
 
@@ -239,25 +172,6 @@ func TestDistinctLexicalCandidateTermsPreserveFirstSurface(t *testing.T) {
 	got := distinctLexicalCandidateTerms(request)
 	if !slices.Equal(got, []string{"fallback query"}) {
 		t.Fatalf("fallback terms=%v", got)
-	}
-}
-
-func lexicalCandidateProbeResult(
-	total uint64,
-	identities ...string,
-) *bleve.SearchResult {
-	hits := make(search.DocumentMatchCollection, len(identities))
-	for position, identity := range identities {
-		hits[position] = &search.DocumentMatch{
-			ID:    identity,
-			Score: float64(len(identities) - position),
-		}
-	}
-
-	return &bleve.SearchResult{
-		Status: &bleve.SearchStatus{Total: 1, Successful: 1},
-		Total:  total,
-		Hits:   hits,
 	}
 }
 

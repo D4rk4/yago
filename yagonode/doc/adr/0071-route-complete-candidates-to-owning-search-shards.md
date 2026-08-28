@@ -8,6 +8,8 @@ Accepted
 
 Amends [ADR-0070](0070-bound-analyzer-scoped-search-with-complete-lexical-candidates.md).
 
+Amended by [ADR-0072](0072-rerank-lexical-candidates-within-one-search-snapshot.md).
+
 ## Context
 
 Release v0.0.49 replaced an exhaustive analyzer-scope scan with a complete
@@ -104,3 +106,8 @@ and operation failure propagation, native-alias status behavior, and exact
 identity, order, score, field-score, total, and explanation compatibility with
 the established retrieval path. Package statement coverage and the race suite
 remain complete.
+
+ADR-0072 supersedes the transparent child wrappers and cross-snapshot external
+identity grouping introduced by this decision. The current path derives and
+uses child-local internal identities inside one reader lifetime while retaining
+the same native Bleve alias merge and every conservative fallback property.

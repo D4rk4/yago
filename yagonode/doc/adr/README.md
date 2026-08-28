@@ -90,3 +90,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0069](0069-populate-active-search-mappings-before-readiness.md) | Populate active search mappings before readiness | Accepted |
 | [0070](0070-bound-analyzer-scoped-search-with-complete-lexical-candidates.md) | Bound analyzer-scoped search with complete lexical candidates | Accepted |
 | [0071](0071-route-complete-candidates-to-owning-search-shards.md) | Route complete candidates to owning search shards | Accepted |
+| [0072](0072-rerank-lexical-candidates-within-one-search-snapshot.md) | Rerank lexical candidates within one search snapshot | Accepted |

@@ -17,68 +17,14 @@ func (b *BleveDiskIndex) searchLexicalCandidateHitPage(
 	size int,
 ) (*bleve.SearchResult, error) {
 	query := bleveSearchQuery(req, b.multilingual, b.analyzerScope)
-	if !b.analyzerScope || req.Explain {
-		return b.executeRequestedHitPage(ctx, req, query, size)
-	}
-	candidates, complete, err := b.completeLexicalCandidateSet(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if !complete {
-		return b.executeRequestedHitPage(ctx, req, query, size)
-	}
-	if len(candidates.Hits) == 0 {
-		return candidates, nil
-	}
-
-	return b.executeRequestedHitPage(
-		ctx,
-		req,
-		bleve.NewConjunctionQuery(
+	if b.analyzerScope && !req.Explain {
+		query = bleve.NewConjunctionQuery(
 			query,
-			bleveLexicalCandidateIdentityQuery(b.shards, candidates.Hits),
-		),
-		size,
-	)
-}
-
-func (b *BleveDiskIndex) completeLexicalCandidateSet(
-	ctx context.Context,
-	req SearchRequest,
-) (*bleve.SearchResult, bool, error) {
-	return completeLexicalCandidateSetWithin(
-		ctx,
-		b.alias,
-		bleveLexicalCandidateQuery(req, b.multilingual),
-		diskLexicalCandidateMaximumDocuments,
-	)
-}
-
-func completeLexicalCandidateSetWithin(
-	ctx context.Context,
-	index bleve.Index,
-	query blevequery.Query,
-	maximumDocuments int,
-) (*bleve.SearchResult, bool, error) {
-	request := bleve.NewSearchRequest(query)
-	request.Size = maximumDocuments + 1
-	request.Score = bleve.ScoreNone
-	result, err := index.SearchInContext(ctx, request)
-	if err != nil {
-		return nil, false, fmt.Errorf(
-			"collect lexical candidates: %w",
-			bleveSearchOperationError(ctx, err),
+			newBleveLexicalCandidateSnapshotQuery(req, b.multilingual),
 		)
 	}
-	if err := bleveSearchCompletionError(ctx, result); err != nil {
-		return nil, false, fmt.Errorf("collect lexical candidates: %w", err)
-	}
-	if len(result.Hits) > maximumDocuments ||
-		result.Total > uint64(len(result.Hits)) {
-		return nil, false, nil
-	}
 
-	return result, true, nil
+	return b.executeRequestedHitPage(ctx, req, query, size)
 }
 
 func (b *BleveDiskIndex) executeRequestedHitPage(

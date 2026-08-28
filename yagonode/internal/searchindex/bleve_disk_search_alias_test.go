@@ -10,11 +10,9 @@ import (
 
 type bleveDiskSearchShardProbe struct {
 	bleveIndexContract
-	name       string
-	result     *bleve.SearchResult
-	err        error
-	position   int
-	recognized bool
+	name   string
+	result *bleve.SearchResult
+	err    error
 }
 
 func (probe *bleveDiskSearchShardProbe) Name() string {
@@ -22,15 +20,13 @@ func (probe *bleveDiskSearchShardProbe) Name() string {
 }
 
 func (probe *bleveDiskSearchShardProbe) SearchInContext(
-	ctx context.Context,
+	_ context.Context,
 	_ *bleve.SearchRequest,
 ) (*bleve.SearchResult, error) {
-	probe.position, probe.recognized = ctx.Value(bleveDiskSearchShardPosition{}).(int)
-
 	return probe.result, probe.err
 }
 
-func TestBleveDiskSearchAliasAssignsShardPositionsAndPreservesFailures(t *testing.T) {
+func TestBleveDiskSearchAliasPreservesFailures(t *testing.T) {
 	sentinel := errors.New("shard search failed")
 	first := &bleveDiskSearchShardProbe{
 		name: "first",
@@ -46,16 +42,6 @@ func TestBleveDiskSearchAliasAssignsShardPositionsAndPreservesFailures(t *testin
 	)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !first.recognized || first.position != 0 ||
-		!second.recognized || second.position != 1 {
-		t.Fatalf(
-			"shard positions = %d/%t %d/%t",
-			first.position,
-			first.recognized,
-			second.position,
-			second.recognized,
-		)
 	}
 	if result.Status.Total != 2 || result.Status.Successful != 1 ||
 		result.Status.Failed != 1 || !errors.Is(result.Status.Errors["second"], sentinel) {
