@@ -207,9 +207,11 @@ its binaries (`yago-node`, `yago-crawler`).
   absent from the local corpus; analyzer-unconnected irregular
   forms remain outside that compatible bounded expansion.
   Zero-result typo recovery uses bounded analyzer-consistent edit distance
-  without document-wide character grams. Disk fuzzy dictionary enumeration
-  checks its request deadline around every term step, so a completed recovery
-  timeout does not continue walking the remaining vocabulary behind later reads.
+  without document-wide character grams. Disk exact and fuzzy term-reader
+  construction, enumeration, and supported Scorch optimization inspect the
+  request deadline around every active step. Fuzzy dictionary enumeration has
+  the same boundary, so a completed timeout does not continue opening postings
+  or walking vocabulary behind later reads.
 - YaCy query operators (`site:`, `inurl:`, `filetype:`, `language:`, `tld:`,
   `author:`, `"phrase"`, `-not`, `near`, `/date`), facet sidebar, content
   verticals (images/audio/video/apps with a lightbox grid), spell-check
@@ -453,19 +455,21 @@ its binaries (`yago-node`, `yago-crawler`).
   admission before document presence, projection, filtering, or evidence work.
   A delayed native page therefore consumes only its own slot, and delayed
   projection consumes none. Additional native pages wait only within their
-  existing stage context. Fuzzy dictionary enumeration stops synchronously at
-  cancellation after at most its current dictionary step and normal close; it
-  does not leave a detached recovery query holding a native slot after the
-  150-millisecond fuzzy stage has answered. A deployment that expects hundreds of simultaneous
+  existing stage context. Disk term-reader and fuzzy dictionary work stops
+  synchronously at cancellation after at most its current Bleve step and normal
+  close; it does not leave a detached query holding a native slot after its
+  stage has answered. A deployment that expects hundreds of simultaneous
   searches must validate a cold synchronized full-request burst on its actual
   corpus and CPU allocation, then provide enough independent read capacity to
   keep every process below that measured bound. A production-copy candidate-only
   round completed 200 synchronized requests on four processors in 1.0924
   seconds with p99 1.0892 seconds. It does not include live document evidence
   and cannot size the final read tier. Replicas require independent processors
-  and independently owned index state; extra processes on the same four CPUs or
-  one mutable Scorch directory do not add capacity. The current release does
-  not add a replicated-read service boundary.
+  and independently owned immutable index generations; extra processes on the
+  same four CPUs or one mutable Scorch directory do not add capacity. Each
+  replica also needs independent I/O and a query-ready document projection.
+  Routing must include queue time, freshness, readiness, and one-replica-loss
+  capacity. The current release does not add a replicated-read service boundary.
   Conflicting vault updates serialize behind writer-only admission while read
   snapshots remain available; served-result denylist checks use an immutable
   in-memory snapshot even after a completed search stage's context ends,

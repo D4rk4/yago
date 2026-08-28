@@ -23,7 +23,7 @@ func (probe *bleveFuzzySearchDeadlinePageProbe) SearchInContext(
 	}, nil
 }
 
-func TestBleveRequestedHitPageAppliesOnlyFuzzyDeadline(t *testing.T) {
+func TestBleveRequestedHitPageAppliesSearchDeadline(t *testing.T) {
 	probe := &bleveFuzzySearchDeadlinePageProbe{}
 	index := &BleveDiskIndex{alias: probe}
 	if _, err := index.searchLexicalCandidateHitPage(
@@ -33,8 +33,12 @@ func TestBleveRequestedHitPageAppliesOnlyFuzzyDeadline(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := probe.request.Query.(bleveFuzzySearchDeadlineQuery); !ok {
+	fuzzy, ok := probe.request.Query.(bleveSearchDeadlineQuery)
+	if !ok {
 		t.Fatalf("fuzzy query=%T", probe.request.Query)
+	}
+	if _, ok := fuzzy.inner.(bleveFuzzySearchDeadlineQuery); !ok {
+		t.Fatalf("fuzzy inner query=%T", fuzzy.inner)
 	}
 	if _, err := index.searchLexicalCandidateHitPage(
 		t.Context(),
@@ -43,12 +47,16 @@ func TestBleveRequestedHitPageAppliesOnlyFuzzyDeadline(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := probe.request.Query.(bleveFuzzySearchDeadlineQuery); ok {
+	exact, ok := probe.request.Query.(bleveSearchDeadlineQuery)
+	if !ok {
 		t.Fatalf("exact query=%T", probe.request.Query)
+	}
+	if _, ok := exact.inner.(bleveFuzzySearchDeadlineQuery); ok {
+		t.Fatalf("exact inner query=%T", exact.inner)
 	}
 }
 
-func TestBleveCompleteHitPageAppliesOnlyFuzzyDeadline(t *testing.T) {
+func TestBleveCompleteHitPageAppliesSearchDeadline(t *testing.T) {
 	probe := &bleveFuzzySearchDeadlinePageProbe{}
 	index := &BleveDiskIndex{alias: probe}
 	if _, err := index.completeSearchPage(
@@ -59,8 +67,12 @@ func TestBleveCompleteHitPageAppliesOnlyFuzzyDeadline(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := probe.request.Query.(bleveFuzzySearchDeadlineQuery); !ok {
+	fuzzy, ok := probe.request.Query.(bleveSearchDeadlineQuery)
+	if !ok {
 		t.Fatalf("fuzzy query=%T", probe.request.Query)
+	}
+	if _, ok := fuzzy.inner.(bleveFuzzySearchDeadlineQuery); !ok {
+		t.Fatalf("fuzzy inner query=%T", fuzzy.inner)
 	}
 	if _, err := index.completeSearchPage(
 		t.Context(),
@@ -70,7 +82,11 @@ func TestBleveCompleteHitPageAppliesOnlyFuzzyDeadline(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := probe.request.Query.(bleveFuzzySearchDeadlineQuery); ok {
+	exact, ok := probe.request.Query.(bleveSearchDeadlineQuery)
+	if !ok {
 		t.Fatalf("exact query=%T", probe.request.Query)
+	}
+	if _, ok := exact.inner.(bleveFuzzySearchDeadlineQuery); ok {
+		t.Fatalf("exact inner query=%T", exact.inner)
 	}
 }

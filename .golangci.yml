@@ -62,6 +62,15 @@ linters:
         - google.golang.org/grpc/**
   exclusions:
     generated: strict
+    rules:
+      - path: yagonode/internal/searchindex/bleve_search_deadline.go
+        source: ^func [(]reader bleveSearchDeadlineReader[)] TermFieldReader[(]$
+        linters:
+          - revive
+      - path: yagonode/internal/searchindex/bleve_search_deadline_test.go
+        source: ^func [(]probe [*]bleveSearchDeadlineIndexReaderProbe[)] TermFieldReader[(]$
+        linters:
+          - revive
 
 formatters:
   enable:

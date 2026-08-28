@@ -41,7 +41,10 @@ func TestBleveDiskLexicalCandidatePageUsesOneSnapshotQuery(t *testing.T) {
 	if err != nil || got != result || len(probe.requests) != 1 {
 		t.Fatalf("result=%p/%p requests=%d error=%v", got, result, len(probe.requests), err)
 	}
-	bounded, ok := probe.requests[0].Query.(*blevequery.ConjunctionQuery)
+	bounded, ok := bleveSearchDeadlineInnerQuery(
+		t,
+		probe.requests[0].Query,
+	).(*blevequery.ConjunctionQuery)
 	if !ok || len(bounded.Conjuncts) != 2 {
 		t.Fatalf("bounded query=%T/%#v", probe.requests[0].Query, probe.requests[0].Query)
 	}
@@ -56,7 +59,10 @@ func TestBleveDiskLexicalCandidatePageUsesOneSnapshotQuery(t *testing.T) {
 		len(probe.requests) != 1 {
 		t.Fatalf("unscoped requests=%d error=%v", len(probe.requests), err)
 	}
-	if _, ok := probe.requests[0].Query.(*bleveLexicalCandidateSnapshotQuery); ok {
+	if _, ok := bleveSearchDeadlineInnerQuery(
+		t,
+		probe.requests[0].Query,
+	).(*bleveLexicalCandidateSnapshotQuery); ok {
 		t.Fatalf("unscoped query=%T", probe.requests[0].Query)
 	}
 
@@ -67,12 +73,28 @@ func TestBleveDiskLexicalCandidatePageUsesOneSnapshotQuery(t *testing.T) {
 		len(probe.requests) != 1 || !probe.requests[0].Explain {
 		t.Fatalf("explained requests=%#v error=%v", probe.requests, err)
 	}
-	if conjunction, ok := probe.requests[0].Query.(*blevequery.ConjunctionQuery); ok &&
+	if conjunction, ok := bleveSearchDeadlineInnerQuery(
+		t,
+		probe.requests[0].Query,
+	).(*blevequery.ConjunctionQuery); ok &&
 		len(conjunction.Conjuncts) == 2 {
 		if _, candidate := conjunction.Conjuncts[1].(*bleveLexicalCandidateSnapshotQuery); candidate {
 			t.Fatalf("explained query=%T", probe.requests[0].Query)
 		}
 	}
+}
+
+func bleveSearchDeadlineInnerQuery(
+	t *testing.T,
+	query blevequery.Query,
+) blevequery.Query {
+	t.Helper()
+	bounded, ok := query.(bleveSearchDeadlineQuery)
+	if !ok {
+		t.Fatalf("deadline query=%T", query)
+	}
+
+	return bounded.inner
 }
 
 func TestBleveDiskLexicalCandidatePageReturnsAliasFailures(t *testing.T) {

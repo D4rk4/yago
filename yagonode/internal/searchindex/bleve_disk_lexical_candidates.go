@@ -23,7 +23,7 @@ func (b *BleveDiskIndex) searchLexicalCandidateHitPage(
 			newBleveLexicalCandidateSnapshotQuery(req, b.multilingual),
 		)
 	}
-	query = withBleveFuzzySearchDeadline(req, query)
+	query = withBleveSearchDeadline(req, query)
 
 	return b.executeRequestedHitPage(ctx, req, query, size)
 }
