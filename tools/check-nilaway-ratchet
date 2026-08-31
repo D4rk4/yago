@@ -24,7 +24,8 @@ for module in "$@"; do
 	set +e
 	(
 		cd "$root/$module"
-		"$nilaway" -include-pkgs="$module_path" -exclude-test-files ./...
+		"$nilaway" -pretty-print=false -print-full-file-path=true \
+			-include-pkgs="$module_path" -exclude-test-files ./...
 	) > "$raw" 2>&1
 	status=$?
 	set -e

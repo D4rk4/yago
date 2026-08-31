@@ -32,9 +32,11 @@ identity.
 
 Run NilAway separately in every production module with `include-pkgs` set to
 that first-party module path. Exclude test files from production nil-flow
-diagnostics. Record the current 82 unique findings as exact
-`file:line:column` locations in a sorted baseline. A release passes only when
-the complete actual set equals the baseline. Any new, removed, moved, or
+diagnostics. Disable pretty printing explicitly and require full file paths so
+terminal capabilities, color conventions, and working-directory presentation
+cannot change the ratchet input. Record the current 82 unique findings as
+exact `file:line:column` locations in a sorted baseline. A release passes only
+when the complete actual set equals the baseline. Any new, removed, moved, or
 unclassified diagnostic requires an explicit baseline review; no first-party
 production package, directory, source-file, or message-pattern exclusion is
 permitted.
@@ -47,7 +49,9 @@ duration requires it.
 
 Add policy tests that admit an exact finding set and refuse a new finding, a
 removed finding, an analyzer failure, an unclassified diagnostic, an unsorted
-baseline, a duplicate, and a non-location entry.
+baseline, a duplicate, and a non-location entry. Also refuse a runner that
+allows ANSI pretty output or shortened file paths by removing either required
+format flag.
 
 ## Consequences
 

@@ -17,8 +17,52 @@ func TestReleaseNilAwayRatchetAcceptsExactAndRejectsChangedDiagnostics(t *testin
 		t.Fatalf("resolve repository root: %v", err)
 	}
 	temporary := t.TempDir()
-	fakeNilAway := filepath.Join(temporary, "nilaway")
+	fakeNilAway := writeReleaseNilAwayFake(t, temporary)
+	baseline := writeReleaseNilAwayBaseline(t, temporary)
+	script := filepath.Join(root, "tools", "check-nilaway-ratchet")
+
+	if output, err := runReleaseNilAwayRatchet(
+		t,
+		script,
+		fakeNilAway,
+		baseline,
+		"exact",
+	); err != nil {
+		t.Fatalf("exact NilAway baseline was refused: %v\n%s", err, output)
+	}
+	for _, mode := range []string{"extra", "clean", "unclassified", "failure"} {
+		if output, err := runReleaseNilAwayRatchet(
+			t,
+			script,
+			fakeNilAway,
+			baseline,
+			mode,
+		); err == nil {
+			t.Fatalf("NilAway mode %q was admitted:\n%s", mode, output)
+		}
+	}
+}
+
+func writeReleaseNilAwayFake(t *testing.T, directory string) string {
+	t.Helper()
+	fakeNilAway := filepath.Join(directory, "nilaway")
 	fakeSource := `#!/bin/sh
+pretty_print=false
+full_file_path=false
+for argument in "$@"; do
+	case "$argument" in
+	-pretty-print=false) pretty_print=true ;;
+	-print-full-file-path=true) full_file_path=true ;;
+	esac
+done
+if [ "$pretty_print" != true ]; then
+	printf '%b\n' "$PWD/internal/sample.go:1:2: \033[31merror:\033[0mPotential nil panic detected. synthetic"
+	exit 3
+fi
+if [ "$full_file_path" != true ]; then
+	printf '%s\n' "internal/sample.go:1:2: Potential nil panic detected. synthetic"
+	exit 3
+fi
 case "${NILAWAY_FAKE_MODE:-exact}" in
 exact)
 	printf '%s\n' "$PWD/internal/sample.go:1:2: Potential nil panic detected. synthetic"
@@ -44,7 +88,12 @@ esac
 	if err := os.WriteFile(fakeNilAway, []byte(fakeSource), 0o755); err != nil {
 		t.Fatalf("write fake NilAway: %v", err)
 	}
-	baseline := filepath.Join(temporary, "baseline")
+	return fakeNilAway
+}
+
+func writeReleaseNilAwayBaseline(t *testing.T, directory string) string {
+	t.Helper()
+	baseline := filepath.Join(directory, "baseline")
 	if err := os.WriteFile(
 		baseline,
 		[]byte("yagomodel/internal/sample.go:1:2\n"),
@@ -52,28 +101,7 @@ esac
 	); err != nil {
 		t.Fatalf("write NilAway baseline: %v", err)
 	}
-	script := filepath.Join(root, "tools", "check-nilaway-ratchet")
-
-	if output, err := runReleaseNilAwayRatchet(
-		t,
-		script,
-		fakeNilAway,
-		baseline,
-		"exact",
-	); err != nil {
-		t.Fatalf("exact NilAway baseline was refused: %v\n%s", err, output)
-	}
-	for _, mode := range []string{"extra", "clean", "unclassified", "failure"} {
-		if output, err := runReleaseNilAwayRatchet(
-			t,
-			script,
-			fakeNilAway,
-			baseline,
-			mode,
-		); err == nil {
-			t.Fatalf("NilAway mode %q was admitted:\n%s", mode, output)
-		}
-	}
+	return baseline
 }
 
 func TestReleaseNilAwayBaselineContainsOnlyExactSortedLocations(t *testing.T) {
