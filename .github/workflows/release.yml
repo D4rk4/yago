@@ -71,10 +71,10 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-            tools/bin
-          key: release-verify-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+            .toolchain/bin
+          key: release-verify-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/go.sum', 'tools/*.lock', 'tools/install*') }}
 
-      - name: Verify
+      - name: Verify source and blocking code-quality gates
         run: make verify
 
       - name: Verify crawler installation migration

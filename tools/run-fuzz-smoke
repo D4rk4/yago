@@ -1,0 +1,68 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 3 ]; then
+	echo "usage: run-fuzz-smoke GO FUZZ_TIME MODULE..." >&2
+	exit 2
+fi
+
+go_binary=$1
+fuzz_time=$2
+shift 2
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+seconds=${fuzz_time%s}
+case "$fuzz_time" in
+	*s) ;;
+	*) echo "fuzz smoke time must be an integer number of seconds" >&2; exit 1 ;;
+esac
+case "$seconds" in
+	'' | *[!0-9]*) echo "invalid fuzz smoke time" >&2; exit 1 ;;
+esac
+if [ "$seconds" -lt 1 ] || [ "$seconds" -gt 30 ]; then
+	echo "fuzz smoke time must stay between 1s and 30s" >&2
+	exit 1
+fi
+
+targets_run=0
+for module in "$@"; do
+	packages=$(
+		cd "$root/$module"
+		"$go_binary" list -f \
+			'{{.Dir}}|{{.ImportPath}}|{{join .TestGoFiles ","}}|{{join .XTestGoFiles ","}}' \
+			./...
+	)
+	while IFS='|' read -r directory package test_files external_test_files; do
+		candidate=false
+		for file in $(printf '%s,%s' "$test_files" "$external_test_files" | tr ',' ' '); do
+			if grep -q '^func Fuzz[A-Za-z0-9_]*' "$directory/$file"; then
+				candidate=true
+				break
+			fi
+		done
+		if [ "$candidate" = false ]; then
+			continue
+		fi
+		targets=$(
+			cd "$root/$module"
+			"$go_binary" test -list '^Fuzz[A-Za-z0-9_]*$' "$package" |
+				sed -n '/^Fuzz[A-Za-z0-9_]*$/p'
+		)
+		for target in $targets; do
+			echo "==> fuzz-smoke $package $target for $fuzz_time"
+			(
+				cd "$root/$module"
+				"$go_binary" test -run='^$' -fuzz="^$target$" \
+					-fuzztime="$fuzz_time" -parallel=1 "$package"
+			)
+			targets_run=$((targets_run + 1))
+		done
+	done <<EOF
+$packages
+EOF
+done
+
+if [ "$targets_run" -eq 0 ]; then
+	echo "fuzz smoke found no fuzz targets" >&2
+	exit 1
+fi
+echo "fuzz smoke completed $targets_run target(s)"

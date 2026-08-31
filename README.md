@@ -816,13 +816,18 @@ per-feature test pointers is [FEATURES.md](FEATURES.md).
 ## 🛠️ Development
 
 ```sh
-make verify   # fmt-check · vet · lint · arch · race tests · exact coverage · build
+make verify   # static analysis · API/vulnerability gates · shuffled/race/fuzz tests · exact coverage · build
 make e2e      # build current images, then run containerized node/crawler suites
 ```
 
 Every feature lands with tests; new third-party dependencies require an ADR
-first; `make verify` plus Semgrep and Trivy scans gate every commit. Build and
-lint tools are pinned and installed under `.toolchain/` by `make tools`.
+first; `make verify` plus Semgrep and Trivy scans gate every commit. Build,
+lint, gosec, NilAway, apidiff, and govulncheck tools are pinned and installed
+under `.toolchain/` by `make tools`. NilAway uses an exact finding ratchet, the
+four reusable modules are compared with the exact previous published release,
+and symbol-level vulnerability analysis runs across all six modules. Tests also
+run with the race detector and one recorded shuffled order; every discovered
+fuzz target receives a bounded one-worker smoke run.
 Coverage is checked from raw statement totals across all six Go modules; a
 self-test proves the checker rejects a profile that display rounding would call
 100%. The two isolated testcontainers modules cover the node and crawler. The

@@ -9,8 +9,16 @@ TOOLS_BIN := $(CURDIR)/.toolchain/bin
 TOOLS_STAMP := $(TOOLS_BIN)/.installed
 GOLANGCI_LINT := $(TOOLS_BIN)/golangci-lint
 GO_ARCH_LINT := $(TOOLS_BIN)/go-arch-lint
+GOSEC := $(TOOLS_BIN)/gosec
+NILAWAY := $(TOOLS_BIN)/nilaway
+APIDIFF := $(TOOLS_BIN)/apidiff
+GOVULNCHECK := $(TOOLS_BIN)/govulncheck
+NILAWAY_BASELINE := $(CURDIR)/tools/nilaway-baseline
+API_COMPATIBILITY_BASELINE := $(CURDIR)/tools/api-compatibility-baseline
+TEST_SHUFFLE_SEED := $(shell cat $(CURDIR)/tools/test-shuffle-seed)
+FUZZ_SMOKE_TIME ?= 5s
 
-.PHONY: tools proto-tools proto tidy tidy-check fmt fmt-check lint vet arch test cover coverage-check-test go-module-download-test cover-check build verify compose-images e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
+.PHONY: tools proto-tools proto tidy tidy-check fmt fmt-check lint vet gosec nilaway api-compatibility govulncheck arch race test test-shuffle fuzz-smoke cover coverage-check-test go-module-download-test cover-check build verify compose-images e2e e2e-node e2e-crawler e2e-node-image e2e-crawler-image peer-hash
 
 PROTOC ?= protoc
 PROTO_MODULE := github.com/D4rk4/yago/yagocrawlcontract
@@ -28,7 +36,7 @@ E2E_RUNTIME_DIR := $(or $(XDG_RUNTIME_DIR),/run/user/$(shell id -u))
 E2E_DOCKER_HOST := $(or $(DOCKER_HOST),$(if $(filter docker,$(E2E_CONTAINER_CLI)),unix:///var/run/docker.sock,unix://$(E2E_RUNTIME_DIR)/podman/podman.sock))
 E2E_DOCKER_ENV := DOCKER_HOST=$(E2E_DOCKER_HOST) TESTCONTAINERS_RYUK_DISABLED=true
 
-$(TOOLS_STAMP): tools/install tools/tools.lock
+$(TOOLS_STAMP): tools/install tools/install-go-quality tools/tools.lock tools/go-quality-tools.lock
 	./tools/install
 	@touch $@
 
@@ -64,6 +72,26 @@ lint: $(TOOLS_STAMP)
 		( cd $$m && $(GOLANGCI_LINT) run ./... ); \
 	done
 
+gosec: $(TOOLS_STAMP)
+	@set -e; for m in $(MODULES); do \
+		echo "==> gosec $$m"; \
+		( cd $$m && $(GOSEC) -quiet -exclude-generated \
+			-conf=../.gosec.json ./... ); \
+	done
+
+nilaway: $(TOOLS_STAMP)
+	@./tools/check-nilaway-ratchet $(NILAWAY) $(NILAWAY_BASELINE) $(MODULES)
+
+api-compatibility: $(TOOLS_STAMP)
+	@./tools/check-api-compatibility $(APIDIFF) $(API_COMPATIBILITY_BASELINE) \
+		yagomodel yagoproto yagocrawlcontract yagoegress
+
+govulncheck: $(TOOLS_STAMP)
+	@set -e; for m in $(MODULES); do \
+		echo "==> govulncheck $$m"; \
+		( cd $$m && $(GOVULNCHECK) -scan=symbol ./... ); \
+	done
+
 vet:
 	@set -e; for m in $(MODULES); do \
 		echo "==> vet $$m"; \
@@ -76,11 +104,28 @@ arch: $(TOOLS_STAMP)
 		( cd $$m && $(GO_ARCH_LINT) check ); \
 	done
 
-test:
+race:
 	@set -e; for m in $(MODULES); do \
-		echo "==> test $$m"; \
+		echo "==> race $$m"; \
 		( cd $$m && $(GO) test -race ./... ); \
 	done
+
+test: race
+
+test-shuffle:
+	@case "$(TEST_SHUFFLE_SEED)" in \
+		''|*[!0-9]*) echo "invalid test shuffle seed" >&2; exit 1 ;; \
+	esac
+	@if [ "$(TEST_SHUFFLE_SEED)" -lt 1 ]; then \
+		echo "test shuffle seed must be positive" >&2; exit 1; \
+	fi
+	@set -e; for m in $(MODULES); do \
+		echo "==> test-shuffle $$m seed $(TEST_SHUFFLE_SEED)"; \
+		( cd $$m && $(GO) test -count=1 -shuffle=$(TEST_SHUFFLE_SEED) ./... ); \
+	done
+
+fuzz-smoke:
+	@./tools/run-fuzz-smoke $(GO) $(FUZZ_SMOKE_TIME) $(MODULES)
 
 cover:
 	@set -e; for m in $(MODULES); do \
@@ -133,7 +178,7 @@ proto:
 peer-hash:
 	cd yagonode && $(GO) run ./cmd/yago-peer-hash
 
-verify: tidy-check fmt-check vet lint arch coverage-check-test go-module-download-test test cover-check build
+verify: tidy-check fmt-check vet lint gosec nilaway api-compatibility govulncheck arch coverage-check-test go-module-download-test race test-shuffle fuzz-smoke cover-check build
 
 e2e-node-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build \

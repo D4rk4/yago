@@ -1,0 +1,59 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 3 ]; then
+	echo "usage: check-api-compatibility APIDIFF BASELINE_FILE MODULE..." >&2
+	exit 2
+fi
+
+apidiff=$1
+baseline_file=$2
+shift 2
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+if [ "$(awk 'NF { records++ } END { print records + 0 }' "$baseline_file")" -ne 1 ] ||
+	[ "$(awk 'NF { print NF }' "$baseline_file")" -ne 2 ]; then
+	echo "API compatibility baseline must contain one tag and revision" >&2
+	exit 1
+fi
+
+baseline_tag=$(awk 'NF { print $1 }' "$baseline_file")
+baseline_revision=$(awk 'NF { print $2 }' "$baseline_file")
+resolved_revision=$(git -C "$root" rev-parse "$baseline_tag^{commit}")
+if [ "$resolved_revision" != "$baseline_revision" ]; then
+	echo "API compatibility baseline revision mismatch for $baseline_tag" >&2
+	exit 1
+fi
+if ! git -C "$root" merge-base --is-ancestor "$baseline_revision" HEAD; then
+	echo "API compatibility baseline is not an ancestor of HEAD" >&2
+	exit 1
+fi
+
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+mkdir "$scratch/old"
+git -C "$root" archive "$baseline_revision" | tar -x -C "$scratch/old"
+
+for module in "$@"; do
+	module_path=$(sed -n 's/^module //p' "$root/$module/go.mod")
+	if [ -z "$module_path" ]; then
+		echo "module path is missing for $module" >&2
+		exit 1
+	fi
+	echo "==> api-compatibility $module against $baseline_tag"
+	(
+		cd "$scratch/old/$module"
+		"$apidiff" -m -w "$scratch/$module.old" "$module_path"
+	)
+	(
+		cd "$root/$module"
+		"$apidiff" -m -w "$scratch/$module.new" "$module_path"
+	)
+	incompatible=$("$apidiff" -m -incompatible \
+		"$scratch/$module.old" "$scratch/$module.new")
+	if [ -n "$incompatible" ]; then
+		printf '%s\n' "$incompatible"
+		echo "incompatible public API change in $module" >&2
+		exit 1
+	fi
+done

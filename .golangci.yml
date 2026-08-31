@@ -10,7 +10,6 @@ linters:
     - funlen
     - gocritic
     - gocognit
-    - gosec
     - iface
     - interfacebloat
     - loggercheck
@@ -34,10 +33,6 @@ linters:
       ignore-comments: true
     gocognit:
       min-complexity: 20
-    gosec:
-      excludes:
-        - G401
-        - G501
     maintidx:
       under: 20
     revive:

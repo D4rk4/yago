@@ -14,22 +14,23 @@ func TestBleveLexicalCandidatesRequireEveryStrictTerm(t *testing.T) {
 	documents := []documentstore.Document{
 		{
 			NormalizedURL: "https://example.org/both",
-			Title:         "Hipotekarna Podgorica",
+			Title:         "Specializedterm Regionalterm",
 			Language:      "hr",
 		},
 		{
 			NormalizedURL: "https://example.org/city",
-			Title:         "Podgorica guide",
+			Title:         "Regionalterm guide",
 			Language:      "hr",
 		},
 		{
 			NormalizedURL: "https://example.org/bank",
-			Title:         "Hipotekarna guide",
+			Title:         "Specializedterm guide",
 			Language:      "hr",
 		},
 	}
 	request := SearchRequest{
-		Query: "hipotekarna podgorica", Terms: []string{"hipotekarna", "podgorica"},
+		Query:      "specializedterm regionalterm",
+		Terms:      []string{"specializedterm", "regionalterm"},
 		MaxResults: len(documents),
 	}
 	candidates := lexicalCandidateIdentities(t, documents, request)
@@ -134,19 +135,20 @@ func TestBleveLexicalCandidatesRequireEveryFuzzyTerm(t *testing.T) {
 	documents := []documentstore.Document{
 		{
 			NormalizedURL: "https://example.org/both",
-			Title:         "Hipotekarna Podgorica",
+			Title:         "Specializedterm Regionalterm",
 		},
 		{
 			NormalizedURL: "https://example.org/bank",
-			Title:         "Hipotekarna Niksic",
+			Title:         "Specializedterm Alternateplace",
 		},
 		{
 			NormalizedURL: "https://example.org/city",
-			Title:         "Podgorica guide",
+			Title:         "Regionalterm guide",
 		},
 	}
 	request := SearchRequest{
-		Query: "hipotekarna podgoricx", Terms: []string{"hipotekarna", "podgoricx"},
+		Query:      "specializedterm regionalterx",
+		Terms:      []string{"specializedterm", "regionalterx"},
 		MaxResults: len(documents), Fuzzy: true,
 	}
 	candidates := lexicalCandidateIdentities(t, documents, request)

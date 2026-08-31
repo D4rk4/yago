@@ -1,0 +1,65 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -lt 3 ]; then
+	echo "usage: check-nilaway-ratchet NILAWAY BASELINE_FILE MODULE..." >&2
+	exit 2
+fi
+
+nilaway=$1
+baseline=$2
+shift 2
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
+diagnostics="$scratch/diagnostics"
+actual="$scratch/actual"
+: > "$diagnostics"
+
+for module in "$@"; do
+	module_path=$(sed -n 's/^module //p' "$root/$module/go.mod")
+	raw="$scratch/$module.raw"
+	module_diagnostics="$scratch/$module.diagnostics"
+	echo "==> nilaway $module"
+	set +e
+	(
+		cd "$root/$module"
+		"$nilaway" -include-pkgs="$module_path" -exclude-test-files ./...
+	) > "$raw" 2>&1
+	status=$?
+	set -e
+	case "$status" in
+		0 | 3) ;;
+		*) cat "$raw"; echo "nilaway failed to analyze $module" >&2; exit "$status" ;;
+	esac
+	awk -v prefix="$root/" '
+		index($0, prefix) == 1 {
+			value = substr($0, length(prefix) + 1)
+			marker = ": Potential nil panic detected."
+			boundary = index(value, marker)
+			if (boundary > 0) print substr(value, 1, boundary - 1)
+		}
+	' "$raw" > "$module_diagnostics"
+	if awk -v prefix="$root/" '
+		index($0, prefix) == 1 && index($0, ": Potential nil panic detected.") == 0 {
+			unclassified = 1
+		}
+		END { exit !unclassified }
+	' "$raw"; then
+		cat "$raw"
+		echo "nilaway returned an unclassified diagnostic" >&2
+		exit 1
+	fi
+	cat "$module_diagnostics" >> "$diagnostics"
+	if [ "$status" -eq 3 ] && [ ! -s "$module_diagnostics" ]; then
+		cat "$raw"
+		echo "nilaway returned diagnostics that the ratchet could not classify" >&2
+		exit 1
+	fi
+done
+
+sort -u "$diagnostics" > "$actual"
+if ! diff -u "$baseline" "$actual"; then
+	echo "nilaway diagnostic baseline changed; review every added, removed, or moved finding" >&2
+	exit 1
+fi

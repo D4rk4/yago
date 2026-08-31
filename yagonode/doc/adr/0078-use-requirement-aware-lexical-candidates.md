@@ -11,16 +11,16 @@ and [ADR-0072](0072-rerank-lexical-candidates-within-one-search-snapshot.md).
 
 ## Context
 
-An anonymous production query for `hipotekarna podgorica` could return an
-incomplete zero-row page on its first read and local rows on an immediate
+An anonymous production two-term query could return an incomplete zero-row
+page on its first read and local rows on an immediate
 repeat. Nearby longer queries reproduced the same first-read failure at the
 1.8-second interactive deadline. The node remained ready, neither service
 restarted, and its cgroups recorded no pressure or OOM event.
 
 An isolated DDGS provider request returned relevant rows within the configured
 provider budget. On an isolated clone of the production Bleve tree, the
-existing positive-term union admitted 1,786 candidates for `hipotekarna
-podgorica`, while only seven documents satisfied the complete lexical
+existing positive-term union admitted 1,786 candidates for the reported
+request, while only seven documents satisfied the complete lexical
 requirements before analyzer scope. Two five-term variants admitted 51,703 and
 45,683 union candidates although neither had an exact requirement match.
 

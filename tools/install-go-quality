@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 2 ]; then
+	echo "usage: install-go-quality BIN_DIR LOCK_FILE" >&2
+	exit 2
+fi
+
+bin=$1
+lock=$2
+go_binary=${GO:-go}
+
+while read -r name module version package; do
+	if [ -z "$name" ] || [ -z "$module" ] || [ -z "$version" ] || [ -z "$package" ]; then
+		echo "invalid Go quality tool lock entry" >&2
+		exit 1
+	fi
+	echo "==> $name $version"
+	GOBIN="$bin" GOWORK=off "$go_binary" install "$package@$version"
+	if ! "$go_binary" version -m "$bin/$name" | awk \
+		-v module="$module" -v version="$version" \
+		'$1 == "mod" && $2 == module && $3 == version { found = 1 } END { exit !found }'; then
+		echo "installed $name does not carry $module $version" >&2
+		exit 1
+	fi
+done < "$lock"

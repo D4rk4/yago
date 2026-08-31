@@ -8,11 +8,11 @@ number.
 
 ## Dependency Rule
 
-Every new third-party runtime dependency is recorded in its own ADR before it is
-used. The record names the module, its pinned version, its license, and the
-alternatives considered. All versions are pinned: runtime dependencies in
-`go.mod`, and build or lint tools through the pinned toolchain flow, so
-`make verify` uses only pinned tools and never a version from `PATH`.
+Every new third-party dependency is recorded in its own ADR before it is used.
+The record names the module, its pinned version, its license, and the
+alternatives considered. Runtime dependencies are pinned in `go.mod`; build and
+lint tools use the pinned toolchain flow, so `make verify` never takes a tool
+version from `PATH`.
 
 ## Index
 
@@ -97,3 +97,8 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0076](0076-keep-local-search-observation-only.md) | Keep local search observation-only | Accepted |
 | [0077](0077-require-provider-safety-evidence-for-web-results.md) | Require provider safety evidence for web results | Accepted |
 | [0078](0078-use-requirement-aware-lexical-candidates.md) | Use requirement-aware lexical candidates | Accepted |
+| [0079](0079-require-standalone-security-and-race-gates.md) | Require standalone security and race gates | Accepted |
+| [0080](0080-ratchet-first-party-nil-flow-findings.md) | Ratchet first-party nil-flow findings | Accepted |
+| [0081](0081-protect-reusable-module-api-compatibility.md) | Protect reusable-module API compatibility | Accepted |
+| [0082](0082-reject-reachable-go-vulnerabilities.md) | Reject reachable Go vulnerabilities | Accepted |
+| [0083](0083-shuffle-tests-and-smoke-fuzz-targets.md) | Shuffle tests and smoke fuzz targets | Accepted |

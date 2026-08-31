@@ -640,7 +640,10 @@ to end on Fedora and Rocky 9.
 
 Pushing a `v*` tag whose commit belongs to `main` runs
 `.github/workflows/release.yml`: `make verify` gates the release, binaries build
-for amd64 and arm64 (CGO off, trimmed) with the tag
+only after standalone gosec, the NilAway finding ratchet, reusable-module API
+compatibility, symbol-level govulncheck, explicit race tests, a recorded
+shuffled test order, bounded active fuzz smoke, and exact coverage pass. The
+binaries then build for amd64 and arm64 (CGO off, trimmed) with the tag
 stamped in as the canonical `vN.N.N` product version (`yago-node --version` /
 `yago-crawler --version` report it), each arch ships as a tarball (binaries + install.sh +
 units + backup doc + CJK dictionary notices), a `.deb`, and an `.rpm`. Debian,

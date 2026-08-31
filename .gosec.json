@@ -1,0 +1,76 @@
+{
+  "exclude-rules": [
+    {
+      "path": ".*yago-crawler/internal/firefoxfetch/firefox\\.go",
+      "rules": ["G204"]
+    },
+    {
+      "path": ".*yagomodel/yacy_hash_form\\.go",
+      "rules": ["G401", "G501"]
+    },
+    {
+      "path": ".*yagonode/internal/adminauth/admin_credentials\\.go",
+      "rules": ["G101"]
+    },
+    {
+      "path": ".*yagonode/internal/adminauth/api_key_endpoints\\.go",
+      "rules": ["G101"]
+    },
+    {
+      "path": ".*yagonode/internal/adminauth/api_key_store\\.go",
+      "rules": ["G101"]
+    },
+    {
+      "path": ".*yagonode/internal/adminauth/password_hash\\.go",
+      "rules": ["G115"]
+    },
+    {
+      "path": ".*yagonode/internal/adminauth/session\\.go",
+      "rules": ["G124"]
+    },
+    {
+      "path": ".*yagonode/internal/adminui/performance_history\\.go",
+      "rules": ["G203"]
+    },
+    {
+      "path": ".*yagonode/internal/faviconproxy/faviconproxy\\.go",
+      "rules": ["G704"]
+    },
+    {
+      "path": ".*yagonode/internal/faviconproxy/imageproxy\\.go",
+      "rules": ["G704"]
+    },
+    {
+      "path": ".*yagonode/internal/httpguard/request_invariants\\.go",
+      "rules": ["G120"]
+    },
+    {
+      "path": ".*yagonode/internal/searchindex/bleve_disk_index\\.go",
+      "rules": ["G115"]
+    },
+    {
+      "path": ".*yagonode/internal/searchindex/bounded_term_positions\\.go",
+      "rules": ["G115"]
+    },
+    {
+      "path": ".*yagonode/internal/searchindex/stored_hit_evidence\\.go",
+      "rules": ["G115"]
+    },
+    {
+      "path": ".*yagonode/internal/shardvault/manifest\\.go",
+      "rules": ["G304"]
+    },
+    {
+      "path": ".*yagonode/internal/shardvault/shardvault\\.go",
+      "rules": ["G115"]
+    },
+    {
+      "path": ".*yagonode/internal/shardvault/split\\.go",
+      "rules": ["G115"]
+    },
+    {
+      "path": ".*yagonode/internal/snippetmark/snippetmark\\.go",
+      "rules": ["G203"]
+    }
+  ]
+}
