@@ -9,6 +9,8 @@ Accepted
 Amends [ADR-0070](0070-bound-analyzer-scoped-search-with-complete-lexical-candidates.md)
 and [ADR-0071](0071-route-complete-candidates-to-owning-search-shards.md).
 
+Amended by [ADR-0078](0078-use-requirement-aware-lexical-candidates.md).
+
 ## Context
 
 Release v0.0.50 routed complete candidate identities to their owning Bleve

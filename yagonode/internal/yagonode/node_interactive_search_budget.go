@@ -76,20 +76,10 @@ func (s interactiveBudgetSearcher) Search(
 
 	select {
 	case outcome := <-outcomes:
-		if outcome.failure != nil {
-			panic(outcome.failure)
-		}
-		if outcome.err != nil {
-			return interactiveSearchFailure(ctx, req, outcome.response, outcome.err)
-		}
-
-		return outcome.response, nil
+		return completedInteractiveSearch(ctx, req, outcome)
 	case <-hardCtx.Done():
-		return interactiveSearchFailure(
-			ctx,
-			req,
-			searchcore.Response{},
-			context.Cause(hardCtx),
+		return completedOrExpiredInteractiveSearch(
+			ctx, hardCtx, req, outcomes,
 		)
 	}
 }

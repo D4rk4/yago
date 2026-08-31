@@ -96,3 +96,4 @@ alternatives considered. All versions are pinned: runtime dependencies in
 | [0075](0075-stop-disk-term-reader-work-at-request-deadline.md) | Stop disk term-reader work at the request deadline | Accepted |
 | [0076](0076-keep-local-search-observation-only.md) | Keep local search observation-only | Accepted |
 | [0077](0077-require-provider-safety-evidence-for-web-results.md) | Require provider safety evidence for web results | Accepted |
+| [0078](0078-use-requirement-aware-lexical-candidates.md) | Use requirement-aware lexical candidates | Accepted |

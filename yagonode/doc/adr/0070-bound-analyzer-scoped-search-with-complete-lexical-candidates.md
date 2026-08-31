@@ -12,6 +12,8 @@ Amended by [ADR-0071](0071-route-complete-candidates-to-owning-search-shards.md)
 
 Amended by [ADR-0072](0072-rerank-lexical-candidates-within-one-search-snapshot.md).
 
+Amended by [ADR-0078](0078-use-requirement-aware-lexical-candidates.md).
+
 ## Context
 
 Release v0.0.48 populated every active Scorch mapping before readiness, but

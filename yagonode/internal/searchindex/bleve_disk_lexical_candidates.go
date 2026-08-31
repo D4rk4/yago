@@ -57,32 +57,7 @@ func bleveLexicalCandidateQuery(
 	req SearchRequest,
 	multilingual bool,
 ) blevequery.Query {
-	analyzers := []string{""}
-	if multilingual {
-		analyzers = queryAnalyzers(queryAnalyzerText(req))
-	}
-	terms := distinctLexicalCandidateTerms(req)
-	weights := req.Weights.orDefault()
-	clauses := make([]blevequery.Query, 0, len(terms))
-	for _, term := range terms {
-		termAnalyzers := distinctLexicalCandidateAnalyzers(term, analyzers)
-		if req.Fuzzy {
-			clauses = append(
-				clauses,
-				fuzzyCrossFieldTermClause(term, termAnalyzers, weights),
-			)
-		} else {
-			clauses = append(
-				clauses,
-				crossFieldTermClause(term, termAnalyzers, weights, 1),
-			)
-		}
-	}
-	if len(clauses) == 1 {
-		return clauses[0]
-	}
-
-	return bleve.NewDisjunctionQuery(clauses...)
+	return bleveLexicalRequirementCandidateQuery(req, multilingual)
 }
 
 func distinctLexicalCandidateTerms(req SearchRequest) []string {

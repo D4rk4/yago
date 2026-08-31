@@ -441,10 +441,12 @@ its binaries (`yago-node`, `yago-crawler`).
   latency-sensitive target must budget memory for active root bytes, page
   tables, heap, and vault residency.
   Ordinary analyzer-scoped disk retrieval runs one native Bleve alias query.
-  Within each child reader, an unscored union of positive lexical matches
-  supplies at most 4,097 internal identities. Per term, exact analyzer-token
-  duplicates share one candidate clause; unavailable analyzers and every CJK
-  dictionary branch remain independent. A child that exhausts at 4,096
+  Within each child reader, an unscored disjunction of analyzer-specific
+  lexical requirement branches supplies at most 4,097 internal identities.
+  Strict and fuzzy branches require every retained term; relaxed branches keep
+  their minimum-term rule. Whole-query analyzer-token duplicates share one
+  candidate branch; unavailable analyzers and every CJK dictionary branch
+  remain independent. A child that exhausts at 4,096
   documents or fewer reranks those identities against the unchanged scoped
   query in the same reader. An empty set matches none; the sentinel retains the
   exhaustive scoped query for that child. Internal identities never cross a
@@ -459,7 +461,8 @@ its binaries (`yago-node`, `yago-crawler`).
   most 500 milliseconds. Endpoint-owned deadline, capacity, and operational failures are carried
   as partial evidence instead of replacing completed rows with an unavailable
   page; an unexpired successful session may instead be served with the current
-  failure evidence, and timed-out work retains its slot until it exits.
+  failure evidence, an outcome already queued at the hard deadline wins over a
+  synthetic timeout, and timed-out unfinished work retains its slot until it exits.
   These limits protect one process; they do not manufacture CPU capacity. A
   disk index admits `max(1, GOMAXPROCS)` native Bleve pages and releases each
   admission before document presence, projection, filtering, or evidence work.
