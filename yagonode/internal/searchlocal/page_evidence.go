@@ -30,7 +30,7 @@ func (s pageEvidenceSearcher) Search(
 ) (searchcore.Response, error) {
 	response, err := s.inner.Search(ctx, req)
 	if err != nil {
-		return searchcore.Response{}, fmt.Errorf("page evidence search: %w", err)
+		return response, fmt.Errorf("page evidence search: %w", err)
 	}
 	candidates := make([]searchindex.SearchResult, 0, len(response.Results))
 	for _, result := range response.Results {

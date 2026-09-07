@@ -24,18 +24,11 @@ func requestedSearchDepth(req searchcore.Request) int {
 	return min(maxSessionDepth, max(sessionDepth, depth))
 }
 
-func (s *stableSearcher) extend(
+func (s *stableSearcher) extendWindow(
 	ctx context.Context,
 	entry *session,
 	req searchcore.Request,
 ) error {
-	entry.windowMu.Lock()
-	defer func() {
-		retained := retainedSessionBytes(entry)
-		entry.replaceVisibleWindowLocked()
-		entry.windowMu.Unlock()
-		s.refreshRetention(entry, retained)
-	}()
 	for req.Offset < entry.total &&
 		min(requestedLookaheadEnd(req), entry.total) > len(entry.results) {
 		targetDepth := requestedSearchDepth(req)

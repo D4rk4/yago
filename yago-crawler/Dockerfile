@@ -41,7 +41,9 @@ RUN apk add --no-cache \
     ca-certificates=20260611-r0 \
     firefox-esr=140.12.0-r0 \
     font-liberation=2.1.5-r2 \
+    libblkid=2.42.3-r1 \
     libcrypto3=3.5.8-r0 \
+    libmount=2.42.3-r1 \
     libssl3=3.5.8-r0
 
 ENV HOME=/tmp \

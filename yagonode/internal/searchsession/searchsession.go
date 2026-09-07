@@ -31,7 +31,7 @@ const (
 var clock = time.Now
 
 type session struct {
-	windowMu    sync.RWMutex
+	extension   chan struct{}
 	visible     atomic.Pointer[sessionWindow]
 	key         string
 	results     []searchcore.Result
@@ -108,7 +108,7 @@ func (s *stableSearcher) Search(
 	if req.Offset > 0 {
 		if cached, ok := s.lookup(key); ok {
 			if err := s.extend(ctx, cached, req); err != nil {
-				return searchcore.Response{}, fmt.Errorf("extend session search: %w", err)
+				return cached.respond(req), fmt.Errorf("extend session search: %w", err)
 			}
 
 			return cached.respond(req), nil
@@ -124,7 +124,7 @@ func (s *stableSearcher) Search(
 		return searchcore.Response{}, fmt.Errorf("session search: %w", err)
 	}
 	if cause := context.Cause(ctx); cause != nil {
-		return searchcore.Response{}, fmt.Errorf("session search: %w", cause)
+		return uncachedSessionPage(resp, req), fmt.Errorf("session search: %w", cause)
 	}
 	if req.Offset == 0 && incompleteRefresh(resp) {
 		if recent, ok := s.Recent(req); ok {
@@ -136,7 +136,7 @@ func (s *stableSearcher) Search(
 	stored := s.store(key, resp, targetDepth)
 	if req.Offset > 0 {
 		if err := s.extend(ctx, stored, req); err != nil {
-			return searchcore.Response{}, fmt.Errorf("extend new session search: %w", err)
+			return stored.respond(req), fmt.Errorf("extend new session search: %w", err)
 		}
 	}
 
@@ -183,6 +183,7 @@ func (s *stableSearcher) store(key string, resp searchcore.Response, searchDepth
 		total = len(resp.Results)
 	}
 	entry := &session{
+		extension:   make(chan struct{}, 1),
 		key:         key,
 		results:     resp.Results,
 		failures:    cloneSessionFailures(resp.PartialFailures),

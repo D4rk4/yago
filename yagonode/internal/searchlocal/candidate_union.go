@@ -3,6 +3,7 @@ package searchlocal
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -45,7 +46,12 @@ func (s localSearcher) searchCandidates(
 	relaxedRequest.Relaxed = true
 	relaxed, err := s.index.Search(ctx, relaxedRequest)
 	if err != nil {
-		return searchindex.SearchResultSet{}, fmt.Errorf("relaxed candidates: %w", err)
+		strict.Results = limitCandidateResults(strict.Results, originalLimit)
+		retained, evidenceErr := finishCandidateEvidence(
+			ctx, evidence, deferredEvidence, strictRequest, strict,
+		)
+
+		return retained, errors.Join(fmt.Errorf("relaxed candidates: %w", err), evidenceErr)
 	}
 
 	set := fuseCandidateSets(strict, relaxed, originalLimit)

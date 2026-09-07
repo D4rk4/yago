@@ -19,6 +19,10 @@ administered from a server-rendered console that works without JavaScript.
 **YagoSeek** is the product; **`yago`** is the toolkit — the Go workspace and
 its binaries (`yago-node`, `yago-crawler`).
 
+The dependency baseline includes the gRPC fragmented-stream memory correction
+and the x/crypto authentication restriction correction. Both products are built
+and tested together; use matching releases when upgrading a node and crawler.
+
 - Project home: https://yagoseek.dev/ · docs: https://docs.yagoseek.dev/
 - Source: https://github.com/D4rk4/yago/ — the importable Go modules are listed
   in [`go.work`](go.work)
@@ -464,6 +468,13 @@ its binaries (`yago-node`, `yago-crawler`).
   failure evidence, an outcome already queued at the hard deadline wins over a
   synthetic timeout, and timed-out unfinished work retains its slot until it exits.
   These limits protect one process; they do not manufacture CPU capacity. A
+  failed relaxed search preserves completed exact results and reports incomplete
+  coverage. Completed pages survive a deadline without being cached as complete;
+  a ready page does not wait behind another page's extension. Miss-triggered web
+  search reserves its existing provider and recovery budgets after execution-slot
+  waiting, so that waiting reduces the primary stage instead of silently consuming
+  the web window. First-seen-bounded queries retain their local retrieval budget.
+  An empty lexical candidate set skips scored analyzer work. A
   disk index admits `max(1, GOMAXPROCS)` native Bleve pages and releases each
   admission before document presence, projection, filtering, or evidence work.
   A delayed native page therefore consumes only its own slot, and delayed

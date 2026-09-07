@@ -423,7 +423,8 @@ func TestStableWindowAdvancesPastPreviouslySearchedDepth(t *testing.T) {
 		}
 	}
 	entry := &session{
-		results: results, total: maxSessionDepth, searchDepth: 100,
+		extension: make(chan struct{}, 1),
+		results:   results, total: maxSessionDepth, searchDepth: 100,
 	}
 	if err := stable.extend(context.Background(), entry, searchcore.Request{
 		Offset: 80, Limit: 10,

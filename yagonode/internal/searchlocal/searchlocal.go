@@ -57,9 +57,9 @@ func (s localSearcher) Search(
 	}
 	weights := s.currentRankingWeights()
 	indexReq := s.indexRequestWithWeights(req, weights)
-	resultSet, err := s.searchCandidates(ctx, indexReq)
-	if err != nil {
-		return searchcore.Response{}, fmt.Errorf("search index: %w", err)
+	resultSet, candidateErr := s.searchCandidates(ctx, indexReq)
+	if candidateErr != nil && len(resultSet.Results) == 0 {
+		return searchcore.Response{}, fmt.Errorf("search index: %w", candidateErr)
 	}
 
 	results, err := coreResults(req, resultSet.Results, s.hostRankScorer(req, weights))
@@ -67,12 +67,20 @@ func (s localSearcher) Search(
 		return searchcore.Response{}, err
 	}
 
-	return searchcore.Response{
+	response := searchcore.Response{
 		Request:      req,
 		TotalResults: resultSet.Total,
 		Results:      offsetResults(results, req.Offset, requestLimit(req)),
 		Facets:       coreFacets(resultSet.Facets),
-	}, nil
+	}
+	if candidateErr != nil {
+		response.PartialFailures = []searchcore.PartialFailure{{
+			Source: searchcore.PartialFailureSourceLocalSearch,
+			Reason: "local search incomplete",
+		}}
+	}
+
+	return response, nil
 }
 
 func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRequest {

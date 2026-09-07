@@ -18,10 +18,10 @@ func (b *BleveDiskIndex) searchLexicalCandidateHitPage(
 ) (*bleve.SearchResult, error) {
 	query := bleveSearchQuery(req, b.multilingual, b.analyzerScope)
 	if b.analyzerScope && !req.Explain {
-		query = bleve.NewConjunctionQuery(
+		query = bleveLexicalCandidateScoringQuery{bleve.NewConjunctionQuery(
 			query,
 			newBleveLexicalCandidateSnapshotQuery(req, b.multilingual),
-		)
+		)}
 	}
 	query = withBleveSearchDeadline(req, query)
 

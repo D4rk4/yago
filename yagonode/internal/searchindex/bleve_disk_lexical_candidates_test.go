@@ -44,7 +44,7 @@ func TestBleveDiskLexicalCandidatePageUsesOneSnapshotQuery(t *testing.T) {
 	bounded, ok := bleveSearchDeadlineInnerQuery(
 		t,
 		probe.requests[0].Query,
-	).(*blevequery.ConjunctionQuery)
+	).(bleveLexicalCandidateScoringQuery)
 	if !ok || len(bounded.Conjuncts) != 2 {
 		t.Fatalf("bounded query=%T/%#v", probe.requests[0].Query, probe.requests[0].Query)
 	}

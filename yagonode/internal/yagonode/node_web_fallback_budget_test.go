@@ -119,6 +119,14 @@ func TestWebFallbackExactStageBudgetFollowsOperatorPolicy(t *testing.T) {
 			name: "non-text", privacy: webFallbackPrivacyEnabled,
 			request: searchcore.Request{Query: "query", ContentDomain: searchcore.ContentDomainImage},
 		},
+		{
+			name: "first-seen lower bound", privacy: webFallbackPrivacyEnabled,
+			request: searchcore.Request{Query: "query", MinFirstSeen: time.Unix(1, 0)},
+		},
+		{
+			name: "first-seen upper bound", privacy: webFallbackPrivacyEnabled,
+			request: searchcore.Request{Query: "query", MaxFirstSeen: time.Unix(2, 0)},
+		},
 		{name: "blank", privacy: webFallbackPrivacyEnabled},
 	} {
 		t.Run(test.name, func(t *testing.T) {

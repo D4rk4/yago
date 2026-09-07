@@ -34,6 +34,7 @@ type webFallbackExactStageBudgetSearcher struct {
 	inner     searchcore.Searcher
 	permit    func(searchcore.Request) bool
 	budget    time.Duration
+	reserve   time.Duration
 	grace     time.Duration
 	admission *interactiveSearchAdmission
 	panicLog  func(context.Context, string, ...any)
@@ -58,6 +59,7 @@ func withWebFallbackExactStageBudget(
 		inner:     inner,
 		permit:    webFallbackPermit(config.Privacy),
 		budget:    webFallbackPrimaryStageBudget(config),
+		reserve:   webFallbackSequentialReserve(config),
 		grace:     webFallbackExactStageCancellationGrace,
 		admission: processWebFallbackExactStageAdmission,
 		panicLog:  slog.ErrorContext,
@@ -69,6 +71,7 @@ func (s webFallbackExactStageBudgetSearcher) Search(
 	req searchcore.Request,
 ) (searchcore.Response, error) {
 	budgeted := s.permit(req) &&
+		!req.FirstSeenBounded() &&
 		(req.Source != searchcore.SourceLocal || req.AllowWebFallback) &&
 		(req.ContentDomain == "" || req.ContentDomain == searchcore.ContentDomainText) &&
 		strings.TrimSpace(req.SubmittedText()) != ""
@@ -81,11 +84,12 @@ func (s webFallbackExactStageBudgetSearcher) Search(
 		return response, nil
 	}
 
-	hardContext, hardCancel := context.WithTimeout(ctx, s.budget)
+	budget := remainingExactStageBudget(ctx, s.budget, s.reserve)
+	hardContext, hardCancel := context.WithTimeout(ctx, budget)
 	defer hardCancel()
-	stageBudget := s.budget - s.grace
+	stageBudget := budget - s.grace
 	if stageBudget <= 0 {
-		stageBudget = s.budget / 2
+		stageBudget = budget / 2
 	}
 	stageContext, stageCancel := context.WithTimeout(hardContext, stageBudget)
 	defer stageCancel()
