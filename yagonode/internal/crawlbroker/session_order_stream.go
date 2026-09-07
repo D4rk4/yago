@@ -47,6 +47,7 @@ func (s *exchangeServer) leaseNextForSession(
 	generation uint64,
 ) ([]byte, string, error) {
 	for {
+		changed := s.queue.changes()
 		var data []byte
 		var leaseID string
 		found := false
@@ -73,7 +74,7 @@ func (s *exchangeServer) leaseNextForSession(
 		}
 		beforeQueueWait()
 		select {
-		case <-s.queue.notify:
+		case <-changed:
 		case <-ctx.Done():
 			return nil, "", fmt.Errorf("await crawl order: %w", ctx.Err())
 		}

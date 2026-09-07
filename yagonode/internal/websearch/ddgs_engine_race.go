@@ -2,7 +2,6 @@ package websearch
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"slices"
 	"time"
@@ -72,7 +71,8 @@ func (r *engineRace) run() ([]Result, bool, error) {
 		}
 		select {
 		case <-r.ctx.Done():
-			return nil, false, fmt.Errorf("web-search engine race: %w", r.ctx.Err())
+			results, err := r.completedResults()
+			return results, false, err
 		case admission <- struct{}{}:
 			pendingLaunches--
 			r.launchNext()
@@ -132,10 +132,7 @@ func (r *engineRace) launchNext() {
 				err:         err,
 			}
 		}()
-		select {
-		case r.attempts <- attempt:
-		case <-r.ctx.Done():
-		}
+		r.attempts <- attempt
 	}()
 }
 
@@ -166,6 +163,10 @@ func (r *engineRace) evaluate(attempts []engineAttempt) []Result {
 			case r.provider.accept != nil:
 				attempt.results = r.provider.accept(r.query.submittedText, attempt.results)
 			}
+			attempt.results = novelContribution(
+				capResults(attempt.results, r.provider.cachedResultLimit()),
+				r.query.known(r.ctx),
+			)
 		}
 		// Info, not Debug: this is the only record that says why the provider
 		// stage was lost, and production runs at Info. Every field here is

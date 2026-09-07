@@ -98,7 +98,7 @@ func TestWithWebFallbackEnabledKeepsFederatedAnswerBeforeWeb(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if webCalls != 0 {
+	if webCalls != 1 {
 		t.Fatalf("web fallback ran %d time(s) after the swarm answered", webCalls)
 	}
 	if len(resp.Results) != 1 || resp.Results[0].Source != searchcore.SourceRemote {

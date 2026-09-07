@@ -13,8 +13,7 @@ import (
 
 var (
 	webFallbackExactStageBudget           = 600 * time.Millisecond
-	webFallbackProviderBudget             = 900 * time.Millisecond
-	webFallbackParallelProviderBudget     = 1500 * time.Millisecond
+	webFallbackProviderBudget             = 1800 * time.Millisecond
 	processWebFallbackExactStageAdmission = newInteractiveSearchAdmission(
 		interactiveSearchConcurrentWork,
 	)
@@ -72,7 +71,7 @@ func (s webFallbackExactStageBudgetSearcher) Search(
 ) (searchcore.Response, error) {
 	budgeted := s.permit(req) &&
 		!req.FirstSeenBounded() &&
-		(req.Source != searchcore.SourceLocal || req.AllowWebFallback) &&
+		req.Source != searchcore.SourceLocal &&
 		(req.ContentDomain == "" || req.ContentDomain == searchcore.ContentDomainText) &&
 		strings.TrimSpace(req.SubmittedText()) != ""
 	if !budgeted {

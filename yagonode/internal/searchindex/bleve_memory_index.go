@@ -26,6 +26,7 @@ const (
 
 type BleveMemoryIndex struct {
 	mu            sync.RWMutex
+	closed        bool
 	index         bleve.Index
 	documents     map[string]documentstore.Document
 	updatedAt     time.Time

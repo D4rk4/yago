@@ -105,7 +105,6 @@ func TestWebFallbackExactStageBudgetFollowsOperatorPolicy(t *testing.T) {
 			request: searchcore.Request{
 				Query: "query", Source: searchcore.SourceLocal, AllowWebFallback: true,
 			},
-			budgeted: true,
 		},
 		{
 			name: "explicit without consent", privacy: webFallbackPrivacyExplicit,

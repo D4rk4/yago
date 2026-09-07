@@ -14,6 +14,7 @@ import (
 // at the site root, and whether plain-HTTP requests are redirected to HTTPS. The
 // serving handlers read the current value on every request.
 type runtimeToggles struct {
+	webSearchMode atomic.Value
 	portalEnabled atomic.Bool
 	httpsRedirect atomic.Bool
 	publicBaseURL atomic.Value
@@ -71,6 +72,9 @@ type crawlerRuntimePolicySink func(yagocrawlcontract.CrawlerRuntimePolicy) bool
 
 func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles := &runtimeToggles{}
+	if config.WebFallback.Privacy != "" {
+		toggles.webSearchMode.Store(effectiveWebFallbackPrivacy(config.WebFallback))
+	}
 	toggles.portalEnabled.Store(config.PublicSearchUIEnabled)
 	toggles.httpsRedirect.Store(config.HTTPSRedirect)
 	toggles.publicBaseURL.Store(config.PublicBaseURL)

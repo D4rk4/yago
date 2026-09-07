@@ -15,6 +15,8 @@ type providerQuery struct {
 	cacheIdentity string
 	safeSearch    string
 	acceptResults func([]Result) []Result
+	knownResults  map[string]struct{}
+	primary       *primaryResultSnapshot
 }
 
 type providerQuerySearcher interface {
@@ -35,12 +37,15 @@ func WithProviderBudget(budget time.Duration) Option {
 	return func(searcher *FallbackSearcher) { searcher.providerBudget = budget }
 }
 
-func (s *FallbackSearcher) searchProvider(
+func WithProviderReserve(reserve time.Duration) Option {
+	return func(searcher *FallbackSearcher) { searcher.providerReserve = reserve }
+}
+
+func (s *FallbackSearcher) searchPreparedProvider(
 	ctx context.Context,
-	req searchcore.Request,
+	preparedQuery providerQuery,
 	limit int,
 ) ([]Result, error) {
-	preparedQuery := newProviderQueryForRequest(req)
 	search := func(searchContext context.Context) ([]Result, error) {
 		if provider, ok := s.provider.(providerQuerySearcher); ok {
 			return provider.searchProviderQuery(searchContext, preparedQuery, limit)
@@ -53,7 +58,12 @@ func (s *FallbackSearcher) searchProvider(
 
 		return providerResults(results, err)
 	}
-	providerContext, cancel := context.WithTimeout(ctx, s.providerBudget)
+	deadline := time.Now().Add(s.providerBudget)
+	if parent, bounded := ctx.Deadline(); bounded &&
+		parent.Add(-s.providerReserve).Before(deadline) {
+		deadline = parent.Add(-s.providerReserve)
+	}
+	providerContext, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	results, err := search(providerContext)
 

@@ -34,7 +34,7 @@ func (s safeSearchSearcher) Search(ctx context.Context, req Request) (Response, 
 	}
 	filtered := make([]Result, 0, len(response.Results))
 	for _, result := range response.Results {
-		if allowsSafeResult(req, result) {
+		if ResultSatisfiesSafeSearch(req, result) {
 			filtered = append(filtered, result)
 		}
 	}
@@ -45,6 +45,10 @@ func (s safeSearchSearcher) Search(ctx context.Context, req Request) (Response, 
 	response.Request = req
 
 	return response, nil
+}
+
+func ResultSatisfiesSafeSearch(req Request, result Result) bool {
+	return !req.SafeSearch || allowsSafeResult(req, result)
 }
 
 func allowsSafeResult(req Request, result Result) bool {

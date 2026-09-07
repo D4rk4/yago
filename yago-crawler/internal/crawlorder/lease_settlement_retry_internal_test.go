@@ -208,11 +208,11 @@ func TestLeaseSettlementRetryPolicyBounds(t *testing.T) {
 		t.Fatal("invalid argument settlement is retryable")
 	}
 	wait := 20 * time.Millisecond
-	jittered := jitteredLeaseSettlementRetryWait(wait, bytes.NewReader(make([]byte, 8)))
+	jittered := jitteredRetryWait(wait, bytes.NewReader(make([]byte, 8)))
 	if jittered < wait/2 || jittered >= wait {
 		t.Fatalf("jittered wait = %v, want [%v, %v)", jittered, wait/2, wait)
 	}
-	if fallback := jitteredLeaseSettlementRetryWait(
+	if fallback := jitteredRetryWait(
 		wait,
 		failingLeaseSettlementEntropy{},
 	); fallback != wait/2 {

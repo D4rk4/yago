@@ -29,13 +29,9 @@ func assemblePublicRetrievalSearcher(
 		searchcore.NewSafeSearchSearcher(local),
 		assembly.denylist,
 	)
-	locallyRecovered := withLocalExactRecovery(budgetedExact, localRetry)
-	recovering := withZeroResultRecovery(
-		locallyRecovered,
-		localRetry,
-		assembly.spellCorrector,
+	fallback := searchcore.NewSafeSearchSearcher(
+		withPublicRecovery(budgetedExact, localRetry, assembly),
 	)
-	fallback := searchcore.NewSafeSearchSearcher(withWebFallback(recovering, assembly))
 
 	return withDenylistFilter(fallback, assembly.denylist)
 }

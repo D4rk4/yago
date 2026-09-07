@@ -315,21 +315,11 @@ func TestPublicSearchParallelModeReturnsWebWhileFuzzyIgnoresCancellation(t *test
 }
 
 func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
-	stages := webFallbackExactStageBudget +
-		max(recoverySearchBudget, localExactRecoveryBudget) +
-		webFallbackProviderBudget
-	if webFallbackProviderBudget != 900*time.Millisecond {
-		t.Fatalf("web budget = %v", webFallbackProviderBudget)
+	if webFallbackProviderBudget != interactiveSearchBudget {
+		t.Fatalf("provider ceiling=%v", webFallbackProviderBudget)
 	}
-	if webFallbackParallelProviderBudget != 1500*time.Millisecond {
-		t.Fatalf("parallel web budget = %v", webFallbackParallelProviderBudget)
-	}
-	workerBudget := interactiveSearchBudget - interactiveSearchCancellationGrace
-	if headroom := workerBudget - stages; headroom < 100*time.Millisecond {
-		t.Fatalf("stage total = %v, headroom = %v", stages, headroom)
-	}
-	if headroom := workerBudget - webFallbackParallelProviderBudget; headroom < 250*time.Millisecond {
-		t.Fatalf("parallel web headroom = %v", headroom)
+	if webFallbackExactStageBudget+webFallbackMinimumWindow+webFallbackAssemblyReserve > interactiveSearchBudget {
+		t.Fatal("primary stage leaves no reserved web and assembly time")
 	}
 }
 
@@ -403,7 +393,7 @@ func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testi
 			t.Fatalf("attempt %d response = %#v, error = %v", attempt+1, response, err)
 		}
 	}
-	if hosts, _ := attempts.snapshot(); len(hosts) != 0 {
+	if hosts, _ := attempts.snapshot(); len(hosts) == 0 {
 		t.Fatalf("provider hosts = %v", hosts)
 	}
 	if int(remote.calls.Load()) != interactiveSearchConcurrentWork {

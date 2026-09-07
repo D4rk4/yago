@@ -4,9 +4,9 @@ Date: 2026-09-07
 
 ## Status
 
-Proposed. This document does not enable supplementation in the running node.
+Accepted for implementation on 2026-09-07.
 
-On acceptance, amends the retrieval trigger and timing policy in
+Amends the retrieval trigger and timing policy in
 [ADR-0019](0019-ddgs-web-search-fallback.md) and
 [ADR-0021](0021-in-house-metasearch-backend.md).
 
@@ -27,7 +27,9 @@ results the current request actually has.
 Use DDGS as an optional supplement when the primary candidate window is too
 small. Keep the document-backed local index and compatible peer retrieval as the
 primary sources. Reuse the existing Go provider, fusion, policy, and admission
-boundaries; add no service or dependency.
+boundaries; add no service or third-party dependency. Canonical URL identity
+uses the existing crawl-contract normalization shared by document keys and
+crawler admission.
 
 ### Trigger
 
@@ -58,7 +60,7 @@ to fill the threshold.
 
 ### Time budget
 
-The proposed default retains a **1.8-second total response deadline**, measured
+The selected policy retains a **1.8-second total response deadline**, measured
 before waiting for the interactive execution slot. Reserve **1.0 second for web
 retrieval** and **100 milliseconds for final assembly** within that deadline.
 The primary decision must therefore finish by 700 milliseconds after request
@@ -80,11 +82,8 @@ A caller supplying a shorter deadline takes precedence. The reserve is time
 allocation, not a promise that an engine or an execution slot will be available.
 Return early when work finishes; never add a fixed delay to a fast answer.
 
-An alternative is a 2.8-second total deadline, adding one second to the current
-limit while retaining the 1.8-second web ceiling. That improves the opportunity
-for slow engines at the cost of slower sparse-query answers and longer occupied
-execution slots. This alternative remains an open operator choice; the proposed
-default above preserves the existing total latency contract.
+A 2.8-second total was considered and not selected. The implementation retains
+the existing total latency contract and reallocates time within it.
 
 ### Completion and ranking
 
@@ -113,15 +112,15 @@ Optional crawl seeding remains asynchronous and independently bounded.
 Sparse but nonempty primary searches can gain external results and may take
 longer than the current miss-only path. External query volume can increase
 substantially. Disabled mode and explicit consent remain effective privacy
-boundaries. Implementation must replace the misleading enabled-mode label
-`Enabled on search miss`, document the changed disclosure behavior for existing
-enabled installations, and synchronize runtime admin settings, configuration
-documentation, and deployment examples for any changed configuration surface.
+boundaries. The enabled-mode label is `Supplement below 100 results`. Existing enabled
+installations now submit sparse nonempty searches externally. Disabled and
+explicit-consent modes remain available through the same runtime admin setting
+and environment bootstrap values.
 
-Implement this policy separately from corrections that preserve completed
-results or reduce index work. Those corrections do not require changing when a
-query is sent outside the node. Keep the earlier ADRs as historical decisions
-and mark their amended scope when this proposal is accepted.
+The preceding corrections that preserve completed results and reduce index work
+are independent of this policy. They do not require changing when a query is sent
+outside the node. The earlier ADRs retain their historical decisions with this
+amendment recorded.
 
 Acceptance requires primary sets of 0, 1, 99, 100, and 101 candidates, including
 count saturation at 100; duplicates, filtered rows, and inflated totals; every

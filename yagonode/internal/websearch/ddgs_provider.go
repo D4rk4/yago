@@ -101,8 +101,11 @@ func (p *DDGSProvider) searchProviderQuery(
 	if query.safeSearch == safeSearchStrict && !hasStrictSafeSearchEngine(p.engines) {
 		return nil, errStrictSafeSearchUnavailable
 	}
-	if cached, ok := p.cache.get(query.cacheIdentity); ok {
-		return capResults(cached, p.limit(limit)), nil
+	if cached, ok := p.cache.get(
+		query.cacheIdentity,
+	); ok &&
+		len(novelContribution(cached, query.known(ctx))) > 0 {
+		return capResults(novelContribution(cached, query.known(ctx)), p.limit(limit)), nil
 	}
 	results, rateLimited, err := p.query(ctx, query)
 	if rateLimited {

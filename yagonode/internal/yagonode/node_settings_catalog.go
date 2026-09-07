@@ -432,11 +432,11 @@ func webFallbackDefinitions() []settingDefinition {
 		{
 			key:         settingKeyWebFallbackPrivacy,
 			title:       "Web search fallback (DDGS)",
-			description: "Choose whether DDGS stays disabled, requires request consent, runs after a search miss, or always runs alongside local and swarm retrieval.",
+			description: "Enabled and consenting searches with fewer than 100 verified unique primary results are sent to external engines. Always starts web retrieval alongside local and swarm even when the primary window is full.",
 			options: []settingOption{
 				{value: string(webFallbackPrivacyDisabled), label: "Disabled"},
 				{value: string(webFallbackPrivacyExplicit), label: "Only when requested"},
-				{value: string(webFallbackPrivacyEnabled), label: "Enabled on search miss"},
+				{value: string(webFallbackPrivacyEnabled), label: "Supplement below 100 results"},
 				{value: string(webFallbackPrivacyAlways), label: "Always"},
 			},
 			defaultValue: func(config nodeConfig) string { return string(config.WebFallback.Privacy) },
@@ -445,6 +445,11 @@ func webFallbackDefinitions() []settingDefinition {
 				config.WebFallback.Privacy = webFallbackPrivacy(value)
 
 				return config
+			},
+			applyLive: func(toggles *runtimeToggles, value string) {
+				if toggles != nil {
+					toggles.webSearchMode.Store(webFallbackPrivacy(value))
+				}
 			},
 		},
 		{

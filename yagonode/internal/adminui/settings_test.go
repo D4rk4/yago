@@ -88,7 +88,7 @@ func TestConsoleConfigRendersAlwaysWebFallbackMode(t *testing.T) {
 		Key: "web.fallback.privacy", Title: "Web search fallback (DDGS)", Value: "enabled",
 		Category: "Web fallback", RestartRequired: true,
 		Options: []SettingOption{
-			{Value: "enabled", Label: "Enabled on search miss"},
+			{Value: "enabled", Label: "Supplement below 100 results"},
 			{Value: "always", Label: "Always"},
 		},
 	}}}

@@ -5,15 +5,17 @@ import (
 	"time"
 )
 
-const webFallbackAssemblyReserve = 100 * time.Millisecond
+const (
+	webFallbackAssemblyReserve = 100 * time.Millisecond
+	webFallbackMinimumWindow   = time.Second
+)
 
 func webFallbackSequentialReserve(config webFallbackConfig) time.Duration {
 	if effectiveWebFallbackPrivacy(config) == webFallbackPrivacyAlways {
 		return 0
 	}
 
-	return max(recoverySearchBudget, localExactRecoveryBudget) +
-		webFallbackProviderBudget + webFallbackAssemblyReserve
+	return webFallbackMinimumWindow + webFallbackAssemblyReserve - interactiveSearchCancellationGrace
 }
 
 func remainingExactStageBudget(ctx context.Context, ceiling, reserve time.Duration) time.Duration {

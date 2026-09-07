@@ -28,9 +28,10 @@ type parallelPrimaryOutcome struct {
 }
 
 type parallelProviderOutcome struct {
-	results []Result
-	err     error
-	failure any
+	results    []Result
+	discovered []Result
+	err        error
+	failure    any
 }
 
 type parallelOutcomes struct {
@@ -66,8 +67,9 @@ func (s *ParallelSearcher) Search(
 	defer cancel()
 
 	primaryOutcome, providerOutcome := s.startParallelSearches(branchContext, req)
-	outcomes := collectParallelOutcomes(
-		ctx,
+	outcomes := s.collectSearch(
+		branchContext,
+		req,
 		primaryOutcome,
 		providerOutcome,
 	)
@@ -91,46 +93,26 @@ func (s *ParallelSearcher) Search(
 	if primary.err != nil {
 		primary.response = failedParallelPrimaryResponse(primary.response)
 	}
-	// Seeding takes what the engines accepted, before the caller's constraints
-	// narrow it. Those constraints -- an include or exclude domain, an excluded
-	// term, an inurl -- express what this caller wanted served, not what is
-	// worth crawling: a page the provider found and verified against the query
-	// is a discovery whether or not it survives one caller's site filter.
-	// Seeding from the narrowed set made a constrained request discover
-	// nothing, and did so silently, because an empty list is indistinguishable
-	// from a provider that returned none.
-	discovered := relevantWebResults(req, provider.results)
-	provider.results = resultsMatchingConstraints(req, discovered)
-	if provider.err != nil {
-		primary.response = failedParallelProviderResponse(ctx, primary.response, provider.err)
+	response, err := s.fallback.completeWebSearch(ctx, req, primary.response, provider)
+	if err == nil && len(response.Results) == 0 && primary.err != nil {
+		return response, errParallelSearchUnavailable
 	}
-	if s.fallback.seeder != nil && len(discovered) > 0 {
-		s.fallback.seedWebResults(ctx, discovered)
-	}
-	webResults := toCoreResults(provider.results, req.Limit)
-	if len(primary.response.Results) > 0 || len(webResults) > 0 {
-		return mergeParallelResults(primary.response, webResults, req), nil
-	}
-	if cause := context.Cause(ctx); cause != nil {
-		return primary.response, fmt.Errorf("parallel search: %w", cause)
-	}
-	if primary.err != nil {
-		return primary.response, errParallelSearchUnavailable
-	}
-
-	return primary.response, nil
+	return response, err
 }
 
 func (s *ParallelSearcher) startParallelSearches(
 	ctx context.Context,
 	req searchcore.Request,
 ) (<-chan parallelPrimaryOutcome, <-chan parallelProviderOutcome) {
+	snapshot := &primaryResultSnapshot{ready: make(chan struct{})}
 	primaryOutcome := make(chan parallelPrimaryOutcome, 1)
 	providerOutcome := make(chan parallelProviderOutcome, 1)
 	go func() {
 		outcome := parallelPrimaryOutcome{}
 		defer func() {
 			outcome.failure = recover()
+			_, snapshot.known = primaryCandidates(req, outcome.response)
+			close(snapshot.ready)
 			primaryOutcome <- outcome
 		}()
 		outcome.response, outcome.err = s.fallback.primary.Search(ctx, req)
@@ -141,10 +123,17 @@ func (s *ParallelSearcher) startParallelSearches(
 			outcome.failure = recover()
 			providerOutcome <- outcome
 		}()
-		outcome.results, outcome.err = s.fallback.searchProvider(
+		prepared := newProviderQueryForRequest(req)
+		prepared.primary = snapshot
+		outcome.results, outcome.err = s.fallback.searchPreparedProvider(
 			ctx,
-			req,
-			req.Limit,
+			prepared,
+			maxCachedResults,
+		)
+		outcome.discovered = relevantWebResults(req, outcome.results)
+		outcome.results = novelContribution(
+			verifiedWebResults(req, outcome.results),
+			prepared.known(ctx),
 		)
 	}()
 
@@ -156,23 +145,7 @@ func collectParallelOutcomes(
 	primaryOutcomes <-chan parallelPrimaryOutcome,
 	providerOutcomes <-chan parallelProviderOutcome,
 ) parallelOutcomes {
-	outcomes := parallelOutcomes{}
-	for !outcomes.primaryReady || !outcomes.providerReady {
-		select {
-		case outcomes.primary = <-primaryOutcomes:
-			outcomes.primaryReady = true
-		case outcomes.provider = <-providerOutcomes:
-			outcomes.providerReady = true
-		case <-ctx.Done():
-			return drainParallelOutcomes(
-				outcomes,
-				primaryOutcomes,
-				providerOutcomes,
-			)
-		}
-	}
-
-	return outcomes
+	return collectSearchOutcomes(ctx, parallelOutcomes{}, primaryOutcomes, providerOutcomes, false)
 }
 
 func drainParallelOutcomes(
@@ -216,7 +189,8 @@ func mergeParallelResults(
 		return response
 	}
 	if len(response.Results) == 0 {
-		clearPrimaryMissRecoveryForWebAnswer(&response, webResults)
+		response.Recovered = ""
+		response.DidYouMean = ""
 		response.TotalResults = 0
 	}
 	webResults = parallelResultIdentities(response.Results, webResults)
@@ -248,15 +222,16 @@ func parallelResultIdentities(
 	primary []searchcore.Result,
 	web []searchcore.Result,
 ) []searchcore.Result {
-	hashes := make(map[string]string, len(primary))
-	for _, result := range primary {
-		if result.URLHash != "" {
-			hashes[result.URL] = result.URLHash
-		}
+	positions := make(map[string]int, len(primary))
+	for index, result := range primary {
+		positions[candidateURL(result.URL)] = index
 	}
 	identified := slices.Clone(web)
 	for index := range identified {
-		identified[index].URLHash = hashes[identified[index].URL]
+		if position, exists := positions[candidateURL(identified[index].URL)]; exists {
+			identified[index].URLHash = primary[position].URLHash
+			identified[index].URL = primary[position].URL
+		}
 	}
 
 	return identified
@@ -264,7 +239,7 @@ func parallelResultIdentities(
 
 func (s *FallbackSearcher) providerEligible(req searchcore.Request) bool {
 	if s.provider == nil ||
-		(req.Source == searchcore.SourceLocal && !req.AllowWebFallback) {
+		req.Source == searchcore.SourceLocal {
 		return false
 	}
 	if req.ContentDomain != "" && req.ContentDomain != searchcore.ContentDomainText {

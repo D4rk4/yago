@@ -49,10 +49,11 @@ func TestPublicSearchKeepsStrictCandidatesAfterRelaxationDeadline(t *testing.T) 
 	client := &http.Client{
 		Transport: fallbackRoundTrip(func(*http.Request) (*http.Response, error) {
 			webCalls.Add(1)
-			return nil, fmt.Errorf("unexpected web search")
+			return nil, fmt.Errorf("provider unavailable")
 		}),
 	}
 	assembly := productionShapeSearchAssembly(client)
+	assembly.webFallback.Backend = "bing"
 	index := unfinishedRelaxationIndex{}
 	assembly.storage.searchIndex = index
 	search := assemblePublicSearcher(
@@ -65,7 +66,7 @@ func TestPublicSearchKeepsStrictCandidatesAfterRelaxationDeadline(t *testing.T) 
 	})
 	if err != nil || len(response.Results) != 1 || !response.Results[0].StoredLocally() ||
 		response.Results[0].URL != "https://example.org/strict" || len(response.PartialFailures) == 0 ||
-		webCalls.Load() != 0 {
+		webCalls.Load() != 1 {
 		t.Fatalf(
 			"results=%+v failures=%+v web calls=%d error=%v",
 			response.Results,

@@ -86,15 +86,10 @@ type DurableOrderQueue struct {
 	leaseTTL                 time.Duration
 	notify                   chan struct{}
 	prioritizeAutomatic      atomic.Bool
-	// extendedAt remembers when each worker's leases were last durably
-	// extended, so frequent heartbeats (they also carry control directives, so
-	// their cadence is short) skip the per-beat fsync and only refresh the
-	// durable deadlines every leaseTTL/4 (IO-AGG-02).
-	mu                 sync.Mutex
-	extendedAt         map[string]time.Time
-	leaseMutation      sync.RWMutex
-	growthAdmission    GrowthAdmission
-	discoveryAdmission sync.Mutex
+	notificationMu           sync.Mutex
+	leaseMutation            sync.RWMutex
+	growthAdmission          GrowthAdmission
+	discoveryAdmission       sync.Mutex
 }
 
 func newDurableOrderQueue(
@@ -127,8 +122,7 @@ func newDurableOrderQueue(
 		completedControlTargets:  collections.completedControlTargets,
 		terminalSettlementSecret: collections.terminalSettlementSecret,
 		leaseTTL:                 leaseTTL,
-		notify:                   make(chan struct{}, 1),
-		extendedAt:               map[string]time.Time{},
+		notify:                   make(chan struct{}),
 	}
 	if err := queue.reconcileAutomaticDiscoveryIntents(context.Background()); err != nil {
 		return nil, err
@@ -258,10 +252,18 @@ func (q *DurableOrderQueue) enqueueTx(
 }
 
 func (q *DurableOrderQueue) signal() {
-	select {
-	case q.notify <- struct{}{}:
-	default:
+	q.notificationMu.Lock()
+	defer q.notificationMu.Unlock()
+	if q.notify != nil {
+		close(q.notify)
 	}
+	q.notify = make(chan struct{})
+}
+
+func (q *DurableOrderQueue) changes() <-chan struct{} {
+	q.notificationMu.Lock()
+	defer q.notificationMu.Unlock()
+	return q.notify
 }
 
 func orderKey(seq uint64) vault.Key {

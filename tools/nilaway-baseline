@@ -1,6 +1,6 @@
 yago-crawler/cmd/yago-crawler/crawler_node_rpc.go:24:7
 yago-crawler/internal/crawllease/grant_registry.go:128:19
-yago-crawler/internal/crawlorder/progress_delivery_queue.go:384:29
+yago-crawler/internal/crawlorder/progress_delivery_queue.go:379:29
 yago-crawler/internal/crawlrun/completion_bulk_settlement.go:10:2
 yago-crawler/internal/crawlrun/completion_bulk_settlement.go:14:10
 yago-crawler/internal/crawlrun/completion_bulk_settlement.go:14:23
@@ -77,6 +77,6 @@ yagonode/internal/searchremote/peer_response_budget.go:101:41
 yagonode/internal/snippetmark/query_matches.go:151:33
 yagonode/internal/spellcheck/frequency_synopsis.go:40:27
 yagonode/internal/spellcheck/symspell.go:182:10
-yagonode/internal/websearch/ddgs_provider.go:194:30
+yagonode/internal/websearch/ddgs_provider.go:197:30
 yagonode/internal/websearch/web_seed_admission.go:91:3
 yagonode/internal/yagonode/node_login_processor_model.go:33:14

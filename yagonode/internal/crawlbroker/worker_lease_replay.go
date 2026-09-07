@@ -51,13 +51,6 @@ func (q *DurableOrderQueue) leasedOrdersForWorker(
 	}); err != nil {
 		return nil, fmt.Errorf("read worker crawl leases: %w", err)
 	}
-	q.mu.Lock()
-	if len(leasedOrders) == 0 {
-		delete(q.extendedAt, workerID)
-	} else {
-		q.extendedAt[workerID] = now
-	}
-	q.mu.Unlock()
 
 	return leasedOrders, nil
 }

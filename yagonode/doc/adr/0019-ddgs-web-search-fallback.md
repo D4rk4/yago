@@ -4,7 +4,8 @@ Date: 2026-07-03
 
 ## Status
 
-Accepted
+Accepted. Amended by ADR-0084 on 2026-09-07 for sparse-result supplementation
+and a shared 1.8-second response deadline.
 
 ## Context
 
@@ -28,12 +29,11 @@ signal that should feed the crawler.
 Drop the outbound upstream-Tavily provider entirely. In its place, offer an
 optional, admin-toggled **DDGS web-search fallback**:
 
-- It runs only when the operator permits it. Mode `enabled` automatically runs
-  after exact/morphological local-plus-peer retrieval and the applicable bounded
-  local recovery miss, `always` starts web retrieval alongside local and peer work
-  and fuses their completed rankings, `explicit` requires the individual request
-  to consent and runs after a miss, and `disabled` does not install web search. A
-  local-only request never reaches peers or this provider.
+- It runs only when the operator permits it. Mode `enabled` supplements a
+  bounded primary window below 100 verified unique candidates before pagination;
+  `explicit` also requires request consent. `always` starts alongside primary
+  retrieval, while `disabled` does not install web search. Local-only and
+  first-seen-bounded requests never reach the provider.
 - Every Tavily-compatible search depth uses the global retrieval path and
   permits web fallback according to the operator policy. `basic`, `fast`, and
   `ultra-fast` retain `verify=false`; `advanced` uses `verify=ifexist`. YaCy
@@ -60,9 +60,9 @@ optional, admin-toggled **DDGS web-search fallback**:
 The fallback is disabled by default and installed through admin config
 (`YAGO_WEB_FALLBACK_*`). Outbound queries pass the in-process egress guard;
 responses are rate-limit backed off and briefly cached under a fixed 4 MiB and
-256-entry limit after per-field normalization. Interactive miss-only requests run
-the ordered exact local-plus-swarm, applicable mutually exclusive local recovery,
-then web cascade inside a fixed deadline. `always` overlaps the web stage with the primary ranking and
+256-entry limit after per-field normalization. Conditional searches run exact local-plus-swarm retrieval before deciding
+whether to supplement; bounded local recovery overlaps web work inside the
+fixed response deadline. `always` overlaps the web stage with the primary ranking and
 deduplicates the fused result set. Exact, fuzzy, and web stages are capped
 independently, and retained exact or fuzzy work holds bounded admission until it
 exits, so a context-insensitive local query cannot starve the provider or
@@ -72,7 +72,7 @@ accumulate work.
 
 The node no longer depends on a paid, keyed external search API. An operator can
 keep all searches local plus peers, require request-level consent, permit
-provenance-marked web results after a true miss, or select `always` to run bounded
+provenance-marked web results when the primary candidate window is below 100, or select `always` to run bounded
 web retrieval alongside every eligible local and peer query.
 Fallback results can seed the crawler so the local index grows toward its query
 traffic. Durable queue publishing runs after the search response through two

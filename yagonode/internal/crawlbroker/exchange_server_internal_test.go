@@ -153,16 +153,12 @@ func TestReleaseWorkerLeavesLeaseAcrossOverlappingStreams(t *testing.T) {
 
 	server.control.register("w1")
 	server.control.register("w1")
-	queue.extendedAt["w1"] = time.Now()
 	server.releaseWorker("w1")
 	if _, ok := leaseRecordFor(t, queue, leaseID); !ok {
 		t.Fatal("lease removed while a second stream is still connected")
 	}
 	if n := pendingCount(t, queue); n != 0 {
 		t.Fatalf("pending = %d, want the lease held while a stream lives", n)
-	}
-	if _, found := queue.extendedAt["w1"]; !found {
-		t.Fatal("heartbeat state removed while a second stream is connected")
 	}
 
 	server.releaseWorker("w1")
@@ -171,9 +167,6 @@ func TestReleaseWorkerLeavesLeaseAcrossOverlappingStreams(t *testing.T) {
 	}
 	if n := pendingCount(t, queue); n != 0 {
 		t.Fatalf("pending = %d, want the lease held after disconnect", n)
-	}
-	if _, found := queue.extendedAt["w1"]; !found {
-		t.Fatal("heartbeat state was dropped while the worker may reconnect")
 	}
 }
 

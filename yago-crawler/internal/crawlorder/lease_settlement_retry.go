@@ -4,9 +4,7 @@ import (
 	"context"
 	cryptorand "crypto/rand"
 	"fmt"
-	"io"
 	"log/slog"
-	"math/big"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -184,7 +182,7 @@ func (s leaseSettlementSession) retryResult(
 		}
 		if !waitForLeaseSettlementRetry(
 			ctx,
-			jitteredLeaseSettlementRetryWait(retryWait, cryptorand.Reader),
+			jitteredRetryWait(retryWait, cryptorand.Reader),
 		) {
 			return nil, fmt.Errorf("settle crawl order lease: %w", ctx.Err())
 		}
@@ -217,14 +215,4 @@ func waitForLeaseSettlementRetry(ctx context.Context, wait time.Duration) bool {
 
 		return false
 	}
-}
-
-func jitteredLeaseSettlementRetryWait(wait time.Duration, entropy io.Reader) time.Duration {
-	half := wait / 2
-	offset, err := cryptorand.Int(entropy, big.NewInt(int64(wait-half)))
-	if err != nil {
-		return half
-	}
-
-	return half + time.Duration(offset.Int64())
 }

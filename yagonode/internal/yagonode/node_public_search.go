@@ -277,6 +277,18 @@ func assemblePublicSearcher(
 	remote searchcore.Searcher,
 	assembly publicSearchAssembly,
 ) searchcore.Searcher {
+	return withLiveWebSearch(assembly, func(config webFallbackConfig) searchcore.Searcher {
+		configured := assembly
+		configured.webFallback = config
+		return assembleConfiguredPublicSearcher(local, remote, configured)
+	})
+}
+
+func assembleConfiguredPublicSearcher(
+	local searchcore.Searcher,
+	remote searchcore.Searcher,
+	assembly publicSearchAssembly,
+) searchcore.Searcher {
 	retrieval := assemblePublicRetrievalSearcher(local, remote, assembly)
 	ranked := assembleRankingStages(retrieval, assembly)
 	// The session cache makes paging stable (YaCy SearchEventCache): page one
@@ -417,9 +429,10 @@ func searchAccessPolicy(assembly publicSearchAssembly) tavilyapi.SearchAccessPol
 func withWebFallback(
 	search searchcore.Searcher,
 	assembly publicSearchAssembly,
+	extra ...websearch.Option,
 ) searchcore.Searcher {
 	config := assembly.webFallback
-	if config.Provider != webFallbackProviderDDGS || config.Privacy == webFallbackPrivacyDisabled {
+	if !webFallbackAvailable(config) {
 		return search
 	}
 	provider := websearch.NewDDGSProvider(websearch.DDGSConfig{
@@ -432,9 +445,12 @@ func withWebFallback(
 		Accept:     websearch.VerifiedForQuery,
 	})
 
-	opts := []websearch.Option{websearch.WithProviderBudget(
-		webFallbackProviderStageBudget(config),
-	)}
+	opts := append([]websearch.Option{
+		websearch.WithProviderBudget(webFallbackProviderBudget),
+		websearch.WithProviderReserve(
+			webFallbackAssemblyReserve - interactiveSearchCancellationGrace,
+		),
+	}, extra...)
 	if assembly.seedQueue != nil {
 		// One answer submits up to MaxResults URLs at once, so the warming queue
 		// is sized against that rather than against a constant.

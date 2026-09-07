@@ -4,7 +4,8 @@ Date: 2026-07-03
 
 ## Status
 
-Accepted
+Accepted. Amended by ADR-0084 on 2026-09-07 for sparse-result supplementation
+and a shared 1.8-second response deadline.
 
 ## Context
 
@@ -48,8 +49,9 @@ Resilience is built into the provider, not the caller: it caches normalized
 responses under a 4 MiB/256-entry byte-aware cache and the configured TTL, retains
 at most 20 rows per query with bounded fields, backs off exponentially on
 `202`/`429`, and degrades to an empty result when every engine fails rather than
-failing the search. The interactive caller caps the complete engine race at 900
-milliseconds. A process-wide admission bound allows at most eight active engine
+failing the search. The interactive caller uses the shared 1.8-second response deadline and
+reserves final assembly time. Conditional supplementation reserves one second
+for web work when the caller deadline permits. A process-wide admission bound allows at most eight active engine
 fetch-and-parse attempts; saturated attempts wait only within that existing
 caller context. Outbound requests go through the egress-guarded HTTP client
 (ADR-0013).
@@ -62,8 +64,7 @@ an engine can change its markup or block the client. This is mitigated by
 structure-driven parsing, the multi-engine `auto` list, backoff, caching, and
 degrade-to-empty, and the engine list is easy to extend. Web search is best-effort
 by design and off by default; when it fails, search preserves the primary result
-or original miss. Mode `enabled` permits automatic web search after a complete
-miss, while `explicit` still requires request-level consent and `always` overlaps
+or original miss. Mode `enabled` permits automatic web search when fewer than 100 verified unique primary candidates remain, while `explicit` still requires request-level consent and `always` overlaps
 web with local and peer retrieval.
 `golang.org/x/net` becomes a direct dependency, pinned in `go.mod` and already
 vetted through the crawler's use of the same package.

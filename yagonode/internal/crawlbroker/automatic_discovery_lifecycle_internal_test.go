@@ -520,10 +520,7 @@ func TestAutomaticDiscoveryIntentRecoveryWakesSleepingReceiver(t *testing.T) {
 	); err != nil || !found {
 		t.Fatalf("lease active discovery = %t, %v", found, err)
 	}
-	select {
-	case <-fixture.queue.notify:
-	default:
-	}
+	changed := fixture.queue.changes()
 	recovered := "https://recovered-intent.example/page"
 	fixture.engine.putErrors[orderBucket] = errors.New("order write failed")
 	if _, err := fixture.queue.PublishOnce(
@@ -536,7 +533,7 @@ func TestAutomaticDiscoveryIntentRecoveryWakesSleepingReceiver(t *testing.T) {
 	delete(fixture.engine.putErrors, orderBucket)
 	requireAutomaticDiscoveryAdmission(t, fixture.queue, active, true)
 	select {
-	case <-fixture.queue.notify:
+	case <-changed:
 	default:
 		t.Fatal("recovered automatic discovery did not wake receiver")
 	}
@@ -559,6 +556,7 @@ func TestAutomaticDiscoveryIntentRecoveryWakesSleepingReceiver(t *testing.T) {
 
 func TestAutomaticDiscoverySignalsBeforeIntentRelease(t *testing.T) {
 	fixture := scriptedQueue(t)
+	changed := fixture.queue.changes()
 	target := "https://intent-release.example/page"
 	fixture.engine.deleteErrors[discoveryIntentBucket] = errors.New("intent delete failed")
 	if _, err := fixture.queue.PublishOnce(
@@ -569,7 +567,7 @@ func TestAutomaticDiscoverySignalsBeforeIntentRelease(t *testing.T) {
 		t.Fatal("intent release failure was hidden")
 	}
 	select {
-	case <-fixture.queue.notify:
+	case <-changed:
 	default:
 		t.Fatal("committed discovery was not signalled before intent release")
 	}
@@ -605,11 +603,7 @@ func TestAutomaticDiscoveryRestartSignalsRetainedCompletedIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restart queue: %v", err)
 	}
-	select {
-	case <-restarted.notify:
-	default:
-		t.Fatal("retained completed discovery intent did not wake restarted receiver")
-	}
+
 	if _, _, found, err := restarted.leasePopForSession(
 		t.Context(),
 		"worker",

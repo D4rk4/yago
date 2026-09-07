@@ -94,7 +94,7 @@ func TestBuildConfigViewDerivesWebFallbackFromPrivacy(t *testing.T) {
 			fallback: webFallbackConfig{
 				Privacy: webFallbackPrivacyEnabled,
 			},
-			expected: "Web fallbackEnabled on search miss",
+			expected: "Web fallbackSupplement below 100 results",
 		},
 		{
 			name: "always policy",

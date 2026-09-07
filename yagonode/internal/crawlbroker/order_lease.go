@@ -68,6 +68,7 @@ func randomLeaseID() (string, error) {
 
 func (q *DurableOrderQueue) leaseNext(ctx context.Context) ([]byte, error) {
 	for {
+		changed := q.changes()
 		data, _, ok, err := q.leasePop(ctx, "worker")
 		if err != nil {
 			return nil, err
@@ -77,7 +78,7 @@ func (q *DurableOrderQueue) leaseNext(ctx context.Context) ([]byte, error) {
 		}
 		beforeQueueWait()
 		select {
-		case <-q.notify:
+		case <-changed:
 		case <-ctx.Done():
 			return nil, fmt.Errorf("await crawl order: %w", ctx.Err())
 		}
@@ -220,55 +221,6 @@ func (q *DurableOrderQueue) ackLeaseWithTargetLocked(
 	return target, nil
 }
 
-func (q *DurableOrderQueue) heartbeat(ctx context.Context, workerID string) error {
-	q.leaseMutation.Lock()
-	defer q.leaseMutation.Unlock()
-	now := nowFunc()
-	q.mu.Lock()
-	last, seen := q.extendedAt[workerID]
-	q.mu.Unlock()
-	if seen && now.Sub(last) < q.leaseTTL/4 {
-		return nil
-	}
-	deadline := now.Add(q.leaseTTL).UnixNano()
-	extended := false
-	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
-		extended = false
-		var keys []vault.Key
-		var records []leaseRecord
-		if err := q.leases.Scan(tx, nil, func(k vault.Key, record leaseRecord) (bool, error) {
-			if record.WorkerID == workerID {
-				record.ExpiresAtUnixNano = deadline
-				keys = append(keys, k)
-				records = append(records, record)
-			}
-
-			return true, nil
-		}); err != nil {
-			return fmt.Errorf("scan crawl leases: %w", err)
-		}
-		for i, key := range keys {
-			if err := q.leases.Put(tx, key, records[i]); err != nil {
-				return fmt.Errorf("extend crawl lease: %w", err)
-			}
-		}
-		extended = len(keys) > 0
-
-		return nil
-	}); err != nil {
-		return fmt.Errorf("heartbeat crawl leases: %w", err)
-	}
-	q.mu.Lock()
-	if extended {
-		q.extendedAt[workerID] = now
-	} else {
-		delete(q.extendedAt, workerID)
-	}
-	q.mu.Unlock()
-
-	return nil
-}
-
 func (q *DurableOrderQueue) sweepExpired(ctx context.Context) error {
 	now := nowFunc()
 	if err := q.requeueLeasesMatching(ctx, func(record leaseRecord) bool {
@@ -283,13 +235,6 @@ func (q *DurableOrderQueue) sweepExpired(ctx context.Context) error {
 	if err := q.expireLeaseSettlements(ctx, now); err != nil {
 		return err
 	}
-	q.mu.Lock()
-	for workerID, extendedAt := range q.extendedAt {
-		if now.Sub(extendedAt) >= q.leaseTTL {
-			delete(q.extendedAt, workerID)
-		}
-	}
-	q.mu.Unlock()
 
 	return nil
 }

@@ -49,9 +49,19 @@ func (s recoveringSearcher) Search(
 	req searchcore.Request,
 ) (searchcore.Response, error) {
 	resp, err := s.inner.Search(ctx, req)
-	if err != nil || len(resp.Results) > 0 || req.Fuzzy || len(req.Terms) == 0 {
-		//nolint:wrapcheck // pass the wrapped searcher's error through unchanged.
-		return resp, err
+	if err != nil {
+		return resp, fmt.Errorf("primary recovery search: %w", err)
+	}
+	return s.recover(ctx, req, resp)
+}
+
+func (s recoveringSearcher) recover(
+	ctx context.Context,
+	req searchcore.Request,
+	resp searchcore.Response,
+) (searchcore.Response, error) {
+	if len(resp.Results) > 0 || req.Fuzzy || len(req.Terms) == 0 {
+		return resp, nil
 	}
 	for _, failure := range resp.PartialFailures {
 		if failure.Source == webFallbackExactStageFailureSource {

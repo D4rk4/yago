@@ -154,8 +154,8 @@ func TestExtendedSettingValidation(t *testing.T) {
 	if !byKey["peer.name"].restartRequired() {
 		t.Fatal("peer.name must require a restart")
 	}
-	if !byKey[settingKeyWebFallbackPrivacy].restartRequired() {
-		t.Fatal("web fallback mode must require a restart")
+	if byKey[settingKeyWebFallbackPrivacy].restartRequired() {
+		t.Fatal("web fallback mode must apply live")
 	}
 }
 

@@ -2,6 +2,7 @@ package websearch
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"time"
@@ -18,12 +19,14 @@ const (
 )
 
 type FallbackSearcher struct {
-	primary        searchcore.Searcher
-	provider       Provider
-	permit         func(searchcore.Request) bool
-	seeder         CrawlSeeder
-	providerBudget time.Duration
-	spawnSeedWork  func(string, context.Context, func(context.Context)) bool
+	primary         searchcore.Searcher
+	recovery        ResultRecovery
+	provider        Provider
+	permit          func(searchcore.Request) bool
+	seeder          CrawlSeeder
+	providerBudget  time.Duration
+	providerReserve time.Duration
+	spawnSeedWork   func(string, context.Context, func(context.Context)) bool
 }
 
 func NewFallbackSearcher(
@@ -47,55 +50,27 @@ func (s *FallbackSearcher) Search(
 	ctx context.Context,
 	req searchcore.Request,
 ) (searchcore.Response, error) {
-	resp, err := s.primary.Search(ctx, req)
+	eligible := s.providerEligible(req)
+	window := req
+	if eligible {
+		window = supplementalWindow(req)
+	}
+	response, err := s.primary.Search(ctx, window)
 	if err != nil {
-		return resp, err //nolint:wrapcheck // pass the primary searcher's error through unchanged.
+		return response, fmt.Errorf("primary search: %w", err)
 	}
-	if !s.shouldFallback(resp, req) {
-		return resp, nil
+	if !eligible {
+		return s.recoverResults(ctx, req, response)
 	}
-	results, provErr := s.searchProvider(ctx, req, req.Limit)
-	// See ParallelSearcher.Search: seeding takes the engines' accepted rows,
-	// before the caller's own constraints narrow what is served.
-	discovered := relevantWebResults(req, results)
-	results = resultsMatchingConstraints(req, discovered)
-	if provErr != nil {
-		logProviderFailure(ctx, provErr)
-		resp.PartialFailures = append(resp.PartialFailures, webProviderFailure())
+	response, known := primaryCandidates(window, response)
+	if s.shouldFallback(response, window) {
+		response, err = s.supplement(ctx, window, response, known)
 	}
-	webResults := toCoreResults(results, req.Limit)
-	if provErr != nil && len(webResults) == 0 {
-		return resp, nil
-	}
-	clearPrimaryMissRecoveryForWebAnswer(&resp, webResults)
-	resp.Results = webResults
-	resp.TotalResults = len(resp.Results)
-	if s.seeder != nil && len(discovered) > 0 {
-		s.seedWebResults(ctx, discovered)
-	}
-
-	return resp, nil
+	return supplementalPage(response, req), err
 }
 
-// logProviderFailure records a lost provider stage.
-//
-// Both call sites logged this at Debug. Production runs at Info, so the line
-// never appeared and an operator watching half of all searches lose the
-// provider saw only the aggregate outage warning. Info matches the treatment of
-// the other silent loss in this tree, the ingest quality gate: the caller is
-// already told through a partial failure, so this is the record that says a
-// stage was lost.
-//
-// The error itself is deliberately not attached. Its text carries the request
-// URL, and the request URL carries the submitted query, so logging it would
-// publish what the caller searched for -- which
-// TestUnavailableLoggingDoesNotExposeSubmittedQuery exists to prevent, and
-// which it caught when this function first did exactly that. The per-engine
-// record in ddgs_engine_race.go carries the actionable detail instead: it names
-// the engine, whether it was rate limited, and how many results it fetched
-// against how many survived acceptance, and it is query-free by construction.
 func logProviderFailure(ctx context.Context, err error) {
-	slog.InfoContext(
+	slog.WarnContext(
 		ctx,
 		msgFallbackFailed,
 		slog.String("reason", webSearchFailureReason(err)),
@@ -110,7 +85,7 @@ func webProviderFailure() searchcore.PartialFailure {
 }
 
 func (s *FallbackSearcher) shouldFallback(resp searchcore.Response, req searchcore.Request) bool {
-	return len(resp.Results) == 0 && s.providerEligible(req)
+	return len(resp.Results) < SupplementalCandidateTarget && s.providerEligible(req)
 }
 
 func toCoreResults(results []Result, limit int) []searchcore.Result {

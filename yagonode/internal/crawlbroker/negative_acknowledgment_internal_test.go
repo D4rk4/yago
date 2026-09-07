@@ -255,7 +255,6 @@ func newLiveDeferredOrderFixture(t *testing.T) liveDeferredOrderFixture {
 	if err := queue.Publish(t.Context(), testOrder("live-defer")); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	<-queue.notify
 	parked := signalOnQueueWait(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

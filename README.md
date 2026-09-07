@@ -117,9 +117,15 @@ and tested together; use matching releases when upgrading a node and crawler.
 - Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
   fan-out + optional operator-enabled web search. The provider is off by default,
   local-only requests never reach it, and the single **Web search fallback
-  (DDGS)** selector offers `Disabled`, `Only when requested`, `Enabled on search
-  miss`, and `Always`; the last mode starts web retrieval alongside local and
-  swarm retrieval. Human-facing surfaces call external results `web`,
+  (DDGS)** selector offers `Disabled`, `Only when requested`, `Supplement below 100
+  results`, and `Always`; the last mode starts web retrieval alongside local and
+  swarm retrieval. Conditional web search counts verified unique primary
+  candidates after URL deduplication and cluster consolidation, before
+  pagination, then supplements a window below 100. It reserves one second for web retrieval
+  and 100 milliseconds for assembly inside the same 1.8-second total deadline.
+  Local recovery overlaps web work; a useful web answer can cancel an unfinished
+  optional recovery. Existing enabled installations now send sparse nonempty
+  searches externally. Human-facing surfaces call external results `web`,
   YaCy HTML marks them `[web]`, and Tavily-compatible responses keep their
   standard shape without a provider field. A hyphen or dash inside an ordinary query word
   separates searchable words across local and web retrieval, while a leading
@@ -470,8 +476,8 @@ and tested together; use matching releases when upgrading a node and crawler.
   These limits protect one process; they do not manufacture CPU capacity. A
   failed relaxed search preserves completed exact results and reports incomplete
   coverage. Completed pages survive a deadline without being cached as complete;
-  a ready page does not wait behind another page's extension. Miss-triggered web
-  search reserves its existing provider and recovery budgets after execution-slot
+  a ready page does not wait behind another page's extension. Conditional web
+  search reserves its web and assembly budgets after execution-slot
   waiting, so that waiting reduces the primary stage instead of silently consuming
   the web window. First-seen-bounded queries retain their local retrieval budget.
   An empty lexical candidate set skips scored analyzer work. A
@@ -859,6 +865,7 @@ the gate.
 | [yagorank.md](yagonode/doc/yagorank.md) | the learned ranking stack: model, features, and the tuning loop |
 | [configuration.md](yagonode/doc/configuration.md) | every environment variable and its default |
 | [specification.md](yagonode/doc/specification.md) | the node's behavior specification |
+| [Subsystem complexity review](yagonode/doc/ponytail-review-2026-09-07.md) | workspace review and ranked simplification candidates |
 | [metrics.md](yagonode/doc/metrics.md) · [slo.md](doc/slo.md) | observability and alerting |
 | [backup-restore.md](doc/backup-restore.md) | the offline backup/restore procedure |
 | [yacy-dht-interop.md](yagonode/doc/yacy-dht-interop.md) | how DHT transfer selection works |

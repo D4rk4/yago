@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/big"
 	"sync"
 	"time"
 
@@ -211,19 +210,15 @@ func (q *progressDeliveryQueue) run(ctx context.Context) {
 			select {
 			case <-timer.C:
 			case <-q.signal:
-				stopProgressTimer(timer)
+				timer.Stop()
 			case <-ctx.Done():
-				stopProgressTimer(timer)
+				timer.Stop()
 				return
 			}
 			continue
 		}
 		q.deliver(ctx, delivery)
 	}
-}
-
-func stopProgressTimer(timer *time.Timer) {
-	timer.Stop()
 }
 
 func (q *progressDeliveryQueue) next() (progressDelivery, time.Duration, bool, bool) {
@@ -339,7 +334,7 @@ func (q *progressDeliveryQueue) settle(delivery progressDelivery, deliveryErr er
 				warn = true
 				current.warned = true
 			}
-			current.due = time.Now().Add(progressRetryDelay(
+			current.due = time.Now().Add(jitteredRetryWait(
 				current.retryWait,
 				q.policy.entropy,
 			))
@@ -415,14 +410,4 @@ func (q *progressDeliveryQueue) signalLocked() {
 func terminalProgressState(state yagocrawlcontract.CrawlRunState) bool {
 	return state == yagocrawlcontract.CrawlRunFinished ||
 		state == yagocrawlcontract.CrawlRunCancelled
-}
-
-func progressRetryDelay(wait time.Duration, entropy io.Reader) time.Duration {
-	half := wait / 2
-	offset, err := cryptorand.Int(entropy, big.NewInt(int64(wait-half)))
-	if err != nil {
-		return half
-	}
-
-	return half + time.Duration(offset.Int64())
 }

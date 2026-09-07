@@ -401,6 +401,22 @@ func TestProgressDeliveryCapacityKeepsAttemptTransitionsWhole(t *testing.T) {
 	}
 }
 
+type contextIgnoringProgressClient struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (c contextIgnoringProgressClient) ReportProgress(
+	context.Context,
+	*crawlrpc.CrawlProgressReport,
+	...grpc.CallOption,
+) (*crawlrpc.CrawlProgressAck, error) {
+	close(c.started)
+	<-c.release
+
+	return &crawlrpc.CrawlProgressAck{}, nil
+}
+
 func TestProgressDeliveryCloseDeadlineCancelsBlockedTerminal(t *testing.T) {
 	gate := make(chan struct{})
 	started := make(chan *crawlrpc.CrawlProgressReport, 1)
@@ -460,28 +476,6 @@ func TestProgressDeliveryCloseDropsQueuedRunningState(t *testing.T) {
 	}
 }
 
-type failingProgressEntropy struct{}
-
-func (failingProgressEntropy) Read([]byte) (int, error) {
-	return 0, errors.New("entropy failed")
-}
-
-type contextIgnoringProgressClient struct {
-	started chan struct{}
-	release chan struct{}
-}
-
-func (c contextIgnoringProgressClient) ReportProgress(
-	context.Context,
-	*crawlrpc.CrawlProgressReport,
-	...grpc.CallOption,
-) (*crawlrpc.CrawlProgressAck, error) {
-	close(c.started)
-	<-c.release
-
-	return &crawlrpc.CrawlProgressAck{}, nil
-}
-
 func TestProgressDeliveryCloseDeadlineDoesNotJoinUncooperativeClient(t *testing.T) {
 	client := contextIgnoringProgressClient{
 		started: make(chan struct{}),
@@ -516,25 +510,12 @@ func TestProgressDeliveryCloseDeadlineDoesNotJoinUncooperativeClient(t *testing.
 	}
 }
 
-func TestProgressDeliveryRetryDelayAndTerminalClassification(t *testing.T) {
-	wait := 20 * time.Millisecond
-	delay := progressRetryDelay(wait, bytes.NewReader(make([]byte, 8)))
-	if delay < wait/2 || delay >= wait {
-		t.Fatalf("retry delay = %v", delay)
-	}
-	if fallback := progressRetryDelay(wait, failingProgressEntropy{}); fallback != wait/2 {
-		t.Fatalf("fallback delay = %v, want %v", fallback, wait/2)
-	}
+func TestProgressDeliveryTerminalClassification(t *testing.T) {
 	if !terminalProgressState(yagocrawlcontract.CrawlRunFinished) ||
 		!terminalProgressState(yagocrawlcontract.CrawlRunCancelled) ||
 		terminalProgressState(yagocrawlcontract.CrawlRunRunning) {
 		t.Fatal("terminal state classification mismatch")
 	}
-	timer := time.NewTimer(time.Hour)
-	stopProgressTimer(timer)
-	expired := time.NewTimer(0)
-	<-expired.C
-	stopProgressTimer(expired)
 }
 
 func TestProgressDeliveryWorkerCanBeCancelledWhileIdle(t *testing.T) {

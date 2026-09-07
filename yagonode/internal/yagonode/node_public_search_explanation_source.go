@@ -19,7 +19,11 @@ func newPublicSearchExplanationSource(
 	assembly publicSearchAssembly,
 ) publicSearchExplanationSource {
 	return publicSearchExplanationSource{
-		serving:  assembleExplanationEvidenceSearcher(local, remote, assembly),
+		serving: withLiveWebSearch(assembly, func(config webFallbackConfig) searchcore.Searcher {
+			configured := assembly
+			configured.webFallback = config
+			return assembleExplanationEvidenceSearcher(local, remote, configured)
+		}),
 		assembly: assembly,
 	}
 }

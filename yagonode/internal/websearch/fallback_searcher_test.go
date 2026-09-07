@@ -3,6 +3,7 @@ package websearch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -68,7 +69,13 @@ func TestFallbackPermitGatesOnRequest(t *testing.T) {
 
 func TestFallbackSkippedWhenPrimaryHasResults(t *testing.T) {
 	primary := &stubSearcher{
-		resp: searchcore.Response{Results: []searchcore.Result{{Title: "owned"}}},
+		resp: searchcore.Response{Results: make([]searchcore.Result, SupplementalCandidateTarget)},
+	}
+	for i := range primary.resp.Results {
+		primary.resp.Results[i] = searchcore.Result{
+			Title: "owned",
+			URL:   fmt.Sprintf("https://owned.example/%d", i),
+		}
 	}
 	provider := &stubProvider{results: []Result{{Title: "web"}}}
 	searcher := NewFallbackSearcher(primary, provider, enabled)
@@ -80,7 +87,7 @@ func TestFallbackSkippedWhenPrimaryHasResults(t *testing.T) {
 	if provider.calls != 0 {
 		t.Error("provider must not run when the primary has results")
 	}
-	if len(resp.Results) != 1 || resp.Results[0].Title != "owned" {
+	if len(resp.Results) != 10 || resp.Results[0].Title != "owned" {
 		t.Errorf("results = %#v", resp.Results)
 	}
 }
@@ -97,7 +104,7 @@ func TestFallbackRunsOnMiss(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if provider.calls != 1 || provider.gotQuery != "gap" || provider.gotLimit != 10 {
+	if provider.calls != 1 || provider.gotQuery != "gap" || provider.gotLimit != maxCachedResults {
 		t.Fatalf("provider call = %#v", provider)
 	}
 	if len(resp.Results) != 2 || resp.TotalResults != 2 {
@@ -168,7 +175,7 @@ func TestFallbackSkipsLocalSourceWithoutConsent(t *testing.T) {
 	}
 }
 
-func TestFallbackRunsForConsentingLocalRetrieval(t *testing.T) {
+func TestFallbackExcludesConsentingLocalRetrieval(t *testing.T) {
 	primary := &stubSearcher{}
 	provider := &stubProvider{results: []Result{{Title: "web gap"}}}
 	searcher := NewFallbackSearcher(primary, provider, enabled)
@@ -179,7 +186,7 @@ func TestFallbackRunsForConsentingLocalRetrieval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if provider.calls != 1 || len(resp.Results) != 1 {
+	if provider.calls != 0 || len(resp.Results) != 0 {
 		t.Fatalf("provider calls = %d, results = %#v", provider.calls, resp.Results)
 	}
 }
@@ -373,7 +380,7 @@ func TestFallbackSeedsProviderURLs(t *testing.T) {
 
 func TestFallbackDoesNotSeedWhenPrimaryAnswers(t *testing.T) {
 	primary := &stubSearcher{
-		resp: searchcore.Response{Results: []searchcore.Result{{Title: "owned"}}},
+		resp: searchcore.Response{Results: make([]searchcore.Result, SupplementalCandidateTarget)},
 	}
 	seeder := &stubSeeder{}
 	searcher := NewFallbackSearcher(primary, &stubProvider{}, enabled, WithSeeder(seeder))

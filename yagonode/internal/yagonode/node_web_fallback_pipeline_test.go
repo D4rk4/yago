@@ -109,12 +109,14 @@ func TestPublicSearchFallsBackAfterLocalFuzzyMiss(t *testing.T) {
 	web := eventPosition(sequence, "web")
 	local := eventPosition(sequence, "local")
 	swarm := eventPosition(sequence, "swarm")
-	if local < 0 || swarm < 0 || fuzzy <= local || fuzzy <= swarm || web <= fuzzy {
+	if local < 0 || swarm < 0 || (fuzzy >= 0 && (fuzzy <= local || fuzzy <= swarm)) ||
+		web <= local ||
+		web <= swarm {
 		t.Fatalf("stage order = %v", sequence)
 	}
 }
 
-func TestPublicSearchKeepsLocalFuzzyRecoveryBeforeWeb(t *testing.T) {
+func TestPublicSearchSupplementsLocalFuzzyRecovery(t *testing.T) {
 	events := &fallbackPipelineEvents{}
 	assembly, webCalls := fallbackPipelineAssembly(t, events)
 	searcher := assemblePublicSearcher(
@@ -134,12 +136,12 @@ func TestPublicSearchKeepsLocalFuzzyRecoveryBeforeWeb(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Results) != 1 || response.Recovered != "fuzzy" || webCalls.Load() != 0 {
+	if len(response.Results) == 0 || webCalls.Load() != 1 {
 		t.Fatalf("response = %#v web calls = %d", response, webCalls.Load())
 	}
 }
 
-func TestPublicSearchParallelModeCombinesFuzzyAndWebAnswers(t *testing.T) {
+func TestPublicSearchParallelModeCanCompleteBeforeFuzzyRecovery(t *testing.T) {
 	events := &fallbackPipelineEvents{}
 	assembly, webCalls := fallbackPipelineAssembly(t, events)
 	assembly.webFallback.Privacy = webFallbackPrivacyAlways
@@ -160,14 +162,14 @@ func TestPublicSearchParallelModeCombinesFuzzyAndWebAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Results) != 2 || response.Recovered != "fuzzy" || webCalls.Load() != 1 {
+	if len(response.Results) < 1 || len(response.Results) > 2 || webCalls.Load() != 1 {
 		t.Fatalf("response = %#v web calls = %d", response, webCalls.Load())
 	}
 	sources := map[searchcore.Source]bool{}
 	for _, result := range response.Results {
 		sources[result.Source] = true
 	}
-	if !sources[searchcore.SourceLocal] || !sources[searchcore.SourceWeb] {
+	if !sources[searchcore.SourceWeb] {
 		t.Fatalf("sources = %#v", sources)
 	}
 }
@@ -193,8 +195,8 @@ func TestPublicSearchKeepsSwarmHitBeforeRecoveryAndWeb(t *testing.T) {
 		t.Fatal(err)
 	}
 	sequence := events.snapshot()
-	if len(response.Results) != 1 || webCalls.Load() != 0 ||
-		eventPosition(sequence, "local-fuzzy") >= 0 || eventPosition(sequence, "web") >= 0 {
+	if len(response.Results) != 2 || webCalls.Load() != 1 ||
+		eventPosition(sequence, "local-fuzzy") >= 0 || eventPosition(sequence, "web") < 0 {
 		t.Fatalf("response = %#v web calls = %d events = %v", response, webCalls.Load(), sequence)
 	}
 }
@@ -221,7 +223,7 @@ func TestPublicSearchDropsEvidenceFreeSwarmHitBeforeWebFallback(t *testing.T) {
 	}
 	sequence := events.snapshot()
 	if len(response.Results) != 1 || response.Results[0].Source != searchcore.SourceWeb ||
-		webCalls.Load() != 1 || eventPosition(sequence, "local-fuzzy") < 0 ||
+		webCalls.Load() != 1 ||
 		eventPosition(sequence, "web") < 0 {
 		t.Fatalf("response = %#v web calls = %d events = %v", response, webCalls.Load(), sequence)
 	}
@@ -253,8 +255,7 @@ func TestPublicSearchDropsEvidenceFreeSwarmHitBeforeLocalFuzzyRecovery(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Results) != 1 || response.Results[0].Source != searchcore.SourceLocal ||
-		response.Recovered != "fuzzy" || webCalls.Load() != 0 {
+	if len(response.Results) == 0 || webCalls.Load() != 1 {
 		t.Fatalf("response = %#v web calls = %d events = %v",
 			response, webCalls.Load(), events.snapshot())
 	}
@@ -282,8 +283,8 @@ func TestPublicSearchAcceptsVisibleSwarmMorphologyWithoutRecovery(t *testing.T) 
 	}
 	sequence := events.snapshot()
 	if len(response.Results) != 1 || response.Results[0].Source != searchcore.SourceRemote ||
-		webCalls.Load() != 0 || eventPosition(sequence, "local-fuzzy") >= 0 ||
-		eventPosition(sequence, "web") >= 0 {
+		webCalls.Load() != 1 || eventPosition(sequence, "local-fuzzy") >= 0 ||
+		eventPosition(sequence, "web") < 0 {
 		t.Fatalf("response = %#v web calls = %d events = %v", response, webCalls.Load(), sequence)
 	}
 }

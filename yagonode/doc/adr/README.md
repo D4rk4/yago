@@ -102,4 +102,4 @@ version from `PATH`.
 | [0081](0081-protect-reusable-module-api-compatibility.md) | Protect reusable-module API compatibility | Accepted |
 | [0082](0082-reject-reachable-go-vulnerabilities.md) | Reject reachable Go vulnerabilities | Accepted |
 | [0083](0083-shuffle-tests-and-smoke-fuzz-targets.md) | Shuffle tests and smoke fuzz targets | Accepted |
-| [0084](0084-supplement-incomplete-primary-search-with-bounded-web-results.md) | Supplement incomplete primary search with bounded web results | Proposed |
+| [0084](0084-supplement-incomplete-primary-search-with-bounded-web-results.md) | Supplement incomplete primary search with bounded web results | Accepted |

@@ -805,6 +805,7 @@ deps:
       - filetypeclass
     canUse:
       - xnet
+      - yagocrawlcontract
   extractfetch:
     mayDependOn:
       - extractfetch

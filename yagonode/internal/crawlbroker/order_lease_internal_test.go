@@ -229,45 +229,6 @@ func TestDeferLeaseSurfacesErrors(t *testing.T) {
 	}
 }
 
-func TestHeartbeatExtendsOnlyMatchingWorker(t *testing.T) {
-	set := withClock(t)
-	base := time.Unix(1000, 0)
-	set(base)
-	queue := memQueue(t)
-	queue.leaseTTL = time.Minute
-	mineLease := leaseOne(t, queue, "mine", "w1")
-	otherLease := leaseOne(t, queue, "other", "w2")
-
-	set(base.Add(30 * time.Second))
-	if err := queue.heartbeat(context.Background(), "w1"); err != nil {
-		t.Fatalf("heartbeat: %v", err)
-	}
-
-	mine, _ := leaseRecordFor(t, queue, mineLease)
-	if mine.ExpiresAtUnixNano != base.Add(30*time.Second).Add(time.Minute).UnixNano() {
-		t.Fatalf("w1 lease deadline not extended: %d", mine.ExpiresAtUnixNano)
-	}
-	other, _ := leaseRecordFor(t, queue, otherLease)
-	if other.ExpiresAtUnixNano != base.Add(time.Minute).UnixNano() {
-		t.Fatalf("w2 lease deadline changed: %d", other.ExpiresAtUnixNano)
-	}
-}
-
-func TestHeartbeatSurfacesErrors(t *testing.T) {
-	scanFail := scriptedQueue(t)
-	scanFail.engine.scanErrors[leaseBucket] = errors.New("scan failed")
-	if err := scanFail.queue.heartbeat(context.Background(), "w1"); err == nil {
-		t.Fatal("expected heartbeat to surface a scan error")
-	}
-
-	putFail := scriptedQueue(t)
-	_ = leaseOne(t, putFail.queue, "p", "w1")
-	putFail.engine.putErrors[leaseBucket] = errors.New("put failed")
-	if err := putFail.queue.heartbeat(context.Background(), "w1"); err == nil {
-		t.Fatal("expected heartbeat to surface a put error")
-	}
-}
-
 func TestSweepExpiredRequeuesOnlyExpired(t *testing.T) {
 	set := withClock(t)
 	base := time.Unix(2000, 0)
@@ -290,38 +251,6 @@ func TestSweepExpiredRequeuesOnlyExpired(t *testing.T) {
 	}
 	if n := pendingCount(t, queue); n != 1 {
 		t.Fatalf("pending = %d, want 1 after expiry", n)
-	}
-}
-
-func TestSweepExpiredPurgesStaleHeartbeatGates(t *testing.T) {
-	set := withClock(t)
-	base := time.Unix(2500, 0)
-	set(base)
-	queue := memQueue(t)
-	queue.leaseTTL = time.Minute
-	queue.extendedAt["stopped-worker"] = base
-	set(base.Add(time.Minute))
-	if err := queue.sweepExpired(context.Background()); err != nil {
-		t.Fatalf("sweep: %v", err)
-	}
-	if _, retained := queue.extendedAt["stopped-worker"]; retained {
-		t.Fatal("stale heartbeat gate remained after sweep")
-	}
-}
-
-func TestHeartbeatWithoutLeasesRemovesWorkerGate(t *testing.T) {
-	set := withClock(t)
-	base := time.Unix(2600, 0)
-	set(base)
-	queue := memQueue(t)
-	queue.leaseTTL = time.Minute
-	queue.extendedAt["worker"] = base
-	set(base.Add(time.Minute))
-	if err := queue.heartbeat(context.Background(), "worker"); err != nil {
-		t.Fatalf("heartbeat: %v", err)
-	}
-	if _, retained := queue.extendedAt["worker"]; retained {
-		t.Fatal("worker without leases retained a heartbeat gate")
 	}
 }
 
@@ -489,45 +418,5 @@ func TestLeasePopReplayDropsAbortedOrderState(t *testing.T) {
 func TestLeaseRecordCodecRejectsBadJSON(t *testing.T) {
 	if _, err := (leaseRecordCodec{}).Decode([]byte("not json")); err == nil {
 		t.Fatal("expected lease record decode error")
-	}
-}
-
-// TestHeartbeatSkipsDurableExtensionWithinWindow is the IO-AGG-02 acceptance:
-// heartbeats inside leaseTTL/4 of the last durable extension skip the write
-// entirely, and the first beat past the window extends again — so a worker
-// beating every few seconds costs one fsync per quarter-TTL, not one per beat.
-func TestHeartbeatSkipsDurableExtensionWithinWindow(t *testing.T) {
-	set := withClock(t)
-	base := time.Unix(1000, 0)
-	set(base)
-	queue := memQueue(t)
-	queue.leaseTTL = time.Minute
-	lease := leaseOne(t, queue, "mine", "w1")
-
-	if err := queue.heartbeat(context.Background(), "w1"); err != nil {
-		t.Fatalf("first heartbeat: %v", err)
-	}
-	first, _ := leaseRecordFor(t, queue, lease)
-	if first.ExpiresAtUnixNano != base.Add(time.Minute).UnixNano() {
-		t.Fatalf("first heartbeat did not extend: %d", first.ExpiresAtUnixNano)
-	}
-
-	set(base.Add(5 * time.Second))
-	if err := queue.heartbeat(context.Background(), "w1"); err != nil {
-		t.Fatalf("gated heartbeat: %v", err)
-	}
-	gated, _ := leaseRecordFor(t, queue, lease)
-	if gated.ExpiresAtUnixNano != first.ExpiresAtUnixNano {
-		t.Fatalf("heartbeat within the window rewrote the lease: %d", gated.ExpiresAtUnixNano)
-	}
-
-	set(base.Add(20 * time.Second))
-	if err := queue.heartbeat(context.Background(), "w1"); err != nil {
-		t.Fatalf("post-window heartbeat: %v", err)
-	}
-	extended, _ := leaseRecordFor(t, queue, lease)
-	want := base.Add(20 * time.Second).Add(time.Minute).UnixNano()
-	if extended.ExpiresAtUnixNano != want {
-		t.Fatalf("post-window heartbeat deadline = %d, want %d", extended.ExpiresAtUnixNano, want)
 	}
 }

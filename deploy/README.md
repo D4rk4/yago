@@ -11,6 +11,13 @@ package. This directory holds the reference systemd units and environment files;
 `docker-compose.yml.example` is the equivalent reference for the container
 deployment, and the two are kept in step.
 
+Web search stays disabled in the deployment examples. Setting
+`YAGO_WEB_FALLBACK_PRIVACY=enabled` now sends a search to external engines when
+fewer than 100 verified unique primary candidates remain, including nonempty
+answers. The runtime Admin selector provides the same choice. Conditional
+searches reserve one second for web work inside the 1.8-second total deadline;
+`YAGO_WEB_FALLBACK_TIMEOUT` remains a per-engine ceiling clipped by that budget.
+
 ## Filesystem layout
 
 The Debian package and the systemd units share one layout:

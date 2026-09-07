@@ -27,6 +27,14 @@ func (s localExactRecoverySearcher) Search(
 	if err != nil {
 		return response, fmt.Errorf("local exact primary: %w", err)
 	}
+	return s.recover(ctx, req, response)
+}
+
+func (s localExactRecoverySearcher) recover(
+	ctx context.Context,
+	req searchcore.Request,
+	response searchcore.Response,
+) (searchcore.Response, error) {
 	if len(response.Results) > 0 || !hasExactStageFailure(response) {
 		return response, nil
 	}

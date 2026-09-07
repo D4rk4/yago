@@ -97,7 +97,7 @@ func webFallbackPrivacyDisplay(privacy webFallbackPrivacy) string {
 	case webFallbackPrivacyExplicit:
 		return "Only when requested"
 	case webFallbackPrivacyEnabled:
-		return "Enabled on search miss"
+		return "Supplement below 100 results"
 	case webFallbackPrivacyAlways:
 		return "Always"
 	default:

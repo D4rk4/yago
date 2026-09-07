@@ -8,6 +8,12 @@ An optional crawl service that fetches URLs, builds extracted
 document ingest payloads plus YaCy-compatible RWI postings and URL metadata, and
 publishes them toward `yago-node` without storing unbounded raw HTML bodies.
 
+The node broadcasts order-queue changes to waiting crawlers. Each receiver
+checks its current session and lease capacity before claiming work; cancellation
+ends an idle wait. Page checkpoints and terminal acknowledgments remain durable
+across independent node and crawler restarts. Progress and settlement retries
+share the same bounded jitter calculation.
+
 The node connection includes the upstream gRPC fragmented-stream memory
 correction. The container also pins corrected util-linux libraries used by its
 browser. Upgrade the crawler and node from the same verified release.
