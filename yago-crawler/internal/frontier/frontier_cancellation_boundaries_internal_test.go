@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/D4rk4/yago/yago-crawler/internal/frontiercheckpoint"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
@@ -38,8 +37,9 @@ func TestPersistentCancellationPropagatesControlMutationFailure(t *testing.T) {
 	}
 }
 
-func TestPersistentCancellationRequiresBoundedRecoveryCapability(t *testing.T) {
-	frontier := NewFrontier(1, nil, WithCheckpoint(&scriptedCheckpoint{}))
+func TestPersistentCancellationUsesBoundedRecovery(t *testing.T) {
+	checkpoint := &boundedCheckpointScript{recoveryCanceled: 1}
+	frontier := NewFrontier(1, nil, WithCheckpoint(checkpoint))
 	run := &crawlRun{
 		boundedRecovery: true,
 		provenanceValue: []byte("bounded-cancellation"),
@@ -53,13 +53,22 @@ func TestPersistentCancellationRequiresBoundedRecoveryCapability(t *testing.T) {
 			recoveryUpper:  2,
 		},
 	)
-	if removed != 0 || seedDone || !errors.Is(err, frontiercheckpoint.ErrCorruptCheckpoint) {
+	if removed != 1 || seedDone || err != nil {
 		t.Fatalf("bounded cancellation = %d, %t, %v", removed, seedDone, err)
+	}
+
+	failed := errors.New("cancel recovery failed")
+	checkpoint.recoveryCancelError = failed
+	_, _, err = frontier.persistQueuedRunCancellation(persistedRunCancellation{
+		key: "bounded-cancellation", run: run, durable: true, recoveryCursor: 1, recoveryUpper: 2,
+	})
+	if !errors.Is(err, failed) {
+		t.Fatalf("recovery cancellation = %v", err)
 	}
 }
 
-func TestPersistentCancellationRequiresSeedManifestCapability(t *testing.T) {
-	frontier := NewFrontier(1, nil, WithCheckpoint(&scriptedCheckpoint{}))
+func TestPersistentCancellationCompletesSeedManifest(t *testing.T) {
+	frontier := NewFrontier(1, nil, WithCheckpoint(&boundedCheckpointScript{cancelSeedDone: true}))
 	removed, seedDone, err := frontier.persistQueuedRunCancellation(
 		persistedRunCancellation{
 			key:          "seed-cancellation",
@@ -68,7 +77,7 @@ func TestPersistentCancellationRequiresSeedManifestCapability(t *testing.T) {
 			seedRecovery: true,
 		},
 	)
-	if removed != 0 || seedDone || !errors.Is(err, frontiercheckpoint.ErrCorruptCheckpoint) {
+	if removed != 0 || !seedDone || err != nil {
 		t.Fatalf("seed cancellation = %d, %t, %v", removed, seedDone, err)
 	}
 }

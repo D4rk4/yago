@@ -291,7 +291,10 @@ func TestMalformedDeclaredPeerRowsRecordInvalidOutcome(t *testing.T) {
 			return "network"
 		},
 	}).(searcher)
-	_, readErr := readRemoteSearchResponse(strings.NewReader("count=1\nresource0=bad\n"))
+	_, _, readErr := readRemoteSearchResponseWithinLimit(
+		strings.NewReader("count=1\nresource0=bad\n"),
+		remoteSearchBodyCap,
+	)
 	if !errors.Is(readErr, errRemoteSearchInvalidResult) {
 		t.Fatalf("malformed response error = %v", readErr)
 	}

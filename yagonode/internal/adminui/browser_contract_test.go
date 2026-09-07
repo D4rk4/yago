@@ -48,8 +48,8 @@ func TestRestartingPageKeepsStrictCSPWithoutInlineStyle(t *testing.T) {
 		t.Fatalf("restarting page contains inline style: %s", page.body)
 	}
 	for _, expected := range []string{
-		`<link rel="stylesheet" href="` + mustAdminAssetReferences(assetFS)["carbon.css"] + `">`,
-		`<link rel="stylesheet" href="` + mustAdminAssetReferences(assetFS)["photon.css"] + `">`,
+		`<link rel="stylesheet" href="` + embeddedAdminAssetCatalog["carbon.css"].reference + `">`,
+		`<link rel="stylesheet" href="` + embeddedAdminAssetCatalog["photon.css"].reference + `">`,
 		`class="cds-restarting-page"`,
 		`class="cds-restarting-card"`,
 	} {

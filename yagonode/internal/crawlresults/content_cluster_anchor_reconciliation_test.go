@@ -53,11 +53,7 @@ func TestStoredClusterProjectionReconcilesReplacedAnchorEvidence(t *testing.T) {
 		t.Fatalf("cluster projection = %#v/%v", updates, err)
 	}
 	replaceClusterAnchor(t, receiver, sourceURL, targetURL, current.Text)
-	if err := consumer.storeSurvivingDocumentClusterProjection(
-		t.Context(),
-		updates,
-		false,
-	); err != nil {
+	if _, err := receiver.Receive(t.Context(), updates); err != nil {
 		t.Fatal(err)
 	}
 	stored, found, err := directory.Document(t.Context(), targetURL)

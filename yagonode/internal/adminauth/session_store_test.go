@@ -82,36 +82,6 @@ func TestNewSessionStoreRejectsDuplicate(t *testing.T) {
 	}
 }
 
-func TestSessionStoreCreateSurfacesTokenError(t *testing.T) {
-	original := randRead
-	randRead = func([]byte) (int, error) { return 0, errors.New("no entropy") }
-	t.Cleanup(func() { randRead = original })
-
-	store, _ := newSessionStore(testVault(t), time.Hour, fixedNow(time.Unix(0, 0)))
-	if _, err := store.create(context.Background(), "admin"); err == nil {
-		t.Fatal("create should fail when the session token random source fails")
-	}
-}
-
-func TestSessionStoreCreateSurfacesCSRFError(t *testing.T) {
-	original := randRead
-	calls := 0
-	randRead = func(buf []byte) (int, error) {
-		calls++
-		if calls == 1 {
-			return original(buf)
-		}
-
-		return 0, errors.New("no entropy")
-	}
-	t.Cleanup(func() { randRead = original })
-
-	store, _ := newSessionStore(testVault(t), time.Hour, fixedNow(time.Unix(0, 0)))
-	if _, err := store.create(context.Background(), "admin"); err == nil {
-		t.Fatal("create should fail when the csrf token random source fails")
-	}
-}
-
 func TestSessionStoreCreateSurfacesPutError(t *testing.T) {
 	engine := newScriptedEngine()
 	engine.putErr = errors.New("disk full")

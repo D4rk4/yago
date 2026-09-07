@@ -13,7 +13,7 @@ func TestFirefoxPoolRendersOnTwoSessionsConcurrently(t *testing.T) {
 	started := make(chan struct{}, maximumFirefoxSessions)
 	release := make(chan struct{})
 	var launches atomic.Int32
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: maximumFirefoxSessions + 1},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
@@ -32,6 +32,7 @@ func TestFirefoxPoolRendersOnTwoSessionsConcurrently(t *testing.T) {
 				},
 			}, nil
 		},
+		browserPoolObservation{},
 	)
 	done := make(chan error, maximumFirefoxSessions)
 	for range maximumFirefoxSessions {
@@ -62,7 +63,7 @@ func TestFirefoxPoolRendersOnTwoSessionsConcurrently(t *testing.T) {
 func TestFirefoxPoolPassesProxyToSessionStart(t *testing.T) {
 	proxyURL := "http://another-proxy.example"
 	var observedProxy string
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1},
 		proxyURL,
 		func(_ context.Context, _ BrowserLaunch, candidate string) (browserSession, error) {
@@ -73,6 +74,7 @@ func TestFirefoxPoolPassesProxyToSessionStart(t *testing.T) {
 				renderFunc: staticRender("https://example.org/"),
 			}, nil
 		},
+		browserPoolObservation{},
 	)
 	defer pool.close()
 	if _, err := pool.render(t.Context(), "https://example.org/"); err != nil {
@@ -86,7 +88,7 @@ func TestFirefoxPoolPassesProxyToSessionStart(t *testing.T) {
 func TestFirefoxPoolRelaunchesSessionsAfterRedirectLimitChange(t *testing.T) {
 	var launches []int
 	var sessions []*fakeSession
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1, MaxRedirects: 10},
 		"http://proxy.example",
 		func(_ context.Context, launch BrowserLaunch, _ string) (browserSession, error) {
@@ -99,6 +101,7 @@ func TestFirefoxPoolRelaunchesSessionsAfterRedirectLimitChange(t *testing.T) {
 
 			return session, nil
 		},
+		browserPoolObservation{},
 	)
 	defer pool.close()
 	fetcher := &BrowserPageFetcher{pool: pool}
@@ -132,7 +135,7 @@ func TestFirefoxPoolRelaunchesSessionsAfterRedirectLimitChange(t *testing.T) {
 func TestFirefoxPoolRelaunchesSessionsAfterSandboxChange(t *testing.T) {
 	var launches []bool
 	var sessions []*fakeSession
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1, Sandbox: true},
 		"http://proxy.example",
 		func(_ context.Context, launch BrowserLaunch, _ string) (browserSession, error) {
@@ -145,6 +148,7 @@ func TestFirefoxPoolRelaunchesSessionsAfterSandboxChange(t *testing.T) {
 
 			return session, nil
 		},
+		browserPoolObservation{},
 	)
 	defer pool.close()
 	fetcher := &BrowserPageFetcher{pool: pool}
@@ -176,7 +180,7 @@ func TestFirefoxPoolRelaunchesSessionsAfterSandboxChange(t *testing.T) {
 func TestFirefoxPoolSandboxChangeDoesNotWaitForActiveRender(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
@@ -194,6 +198,7 @@ func TestFirefoxPoolSandboxChangeDoesNotWaitForActiveRender(t *testing.T) {
 				},
 			}, nil
 		},
+		browserPoolObservation{},
 	)
 	defer pool.close()
 	rendered := make(chan error, 1)
@@ -225,7 +230,7 @@ func TestFirefoxPoolSandboxChangeDoesNotWaitForActiveRender(t *testing.T) {
 func TestFirefoxPoolRedirectLimitChangeDoesNotWaitForActiveRender(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1, MaxRedirects: 10},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
@@ -243,6 +248,7 @@ func TestFirefoxPoolRedirectLimitChangeDoesNotWaitForActiveRender(t *testing.T) 
 				},
 			}, nil
 		},
+		browserPoolObservation{},
 	)
 	defer pool.close()
 	rendered := make(chan error, 1)
@@ -274,7 +280,7 @@ func TestFirefoxPoolRedirectLimitChangeDoesNotWaitForActiveRender(t *testing.T) 
 func TestFirefoxPoolHonorsContextWhileAllSessionsAreBusy(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
@@ -292,6 +298,7 @@ func TestFirefoxPoolHonorsContextWhileAllSessionsAreBusy(t *testing.T) {
 				},
 			}, nil
 		},
+		browserPoolObservation{},
 	)
 	done := make(chan struct{})
 	go func() {
@@ -322,17 +329,13 @@ func TestFirefoxPoolHonorsContextWhileAllSessionsAreBusy(t *testing.T) {
 }
 
 func TestFirefoxPoolUsesHealthySessionWhileAnotherCoolsDown(t *testing.T) {
-	pool := newFirefoxPool(
-		BrowserLaunch{
-			Sessions:         2,
-			FailureThreshold: 1,
-			FailureCooldown:  time.Hour,
-		},
-		"http://proxy.example",
-		func(context.Context, BrowserLaunch, string) (browserSession, error) {
-			return nil, errors.New("unused starter")
-		},
-	)
+	pool := newFirefoxPoolObserved(BrowserLaunch{
+		Sessions:         2,
+		FailureThreshold: 1,
+		FailureCooldown:  time.Hour,
+	}, "http://proxy.example", func(context.Context, BrowserLaunch, string) (browserSession, error) {
+		return nil, errors.New("unused starter")
+	}, browserPoolObservation{})
 	var brokenStarts atomic.Int32
 	pool.managers[0].start = func(context.Context, BrowserLaunch, string) (browserSession, error) {
 		brokenStarts.Add(1)
@@ -360,12 +363,13 @@ func TestFirefoxPoolUsesHealthySessionWhileAnotherCoolsDown(t *testing.T) {
 }
 
 func TestFirefoxPoolReportsWhenEverySessionCoolsDown(t *testing.T) {
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 2},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
 			return nil, errors.New("unexpected launch")
 		},
+		browserPoolObservation{},
 	)
 	retryAfter := time.Now().Add(time.Hour)
 	for _, manager := range pool.managers {
@@ -379,12 +383,13 @@ func TestFirefoxPoolReportsWhenEverySessionCoolsDown(t *testing.T) {
 }
 
 func TestFirefoxPoolConcurrentCooldownChecksComplete(t *testing.T) {
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 2},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
 			return nil, errors.New("unexpected launch")
 		},
+		browserPoolObservation{},
 	)
 	retryAfter := time.Now().Add(time.Hour)
 	for _, manager := range pool.managers {
@@ -433,12 +438,13 @@ func TestFirefoxPoolConcurrentCooldownChecksComplete(t *testing.T) {
 }
 
 func TestFirefoxPoolSelectionWaitHonorsCancellation(t *testing.T) {
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
 			return nil, errors.New("unexpected launch")
 		},
+		browserPoolObservation{},
 	)
 	<-pool.selection
 	ctx, cancel := context.WithCancel(context.Background())
@@ -452,17 +458,13 @@ func TestFirefoxPoolSelectionWaitHonorsCancellation(t *testing.T) {
 }
 
 func TestFirefoxPoolWaitsForBusyHealthySessionInsteadOfCoolingSlot(t *testing.T) {
-	pool := newFirefoxPool(
-		BrowserLaunch{
-			Sessions:         2,
-			FailureThreshold: 1,
-			FailureCooldown:  time.Hour,
-		},
-		"http://proxy.example",
-		func(context.Context, BrowserLaunch, string) (browserSession, error) {
-			return nil, errors.New("unused starter")
-		},
-	)
+	pool := newFirefoxPoolObserved(BrowserLaunch{
+		Sessions:         2,
+		FailureThreshold: 1,
+		FailureCooldown:  time.Hour,
+	}, "http://proxy.example", func(context.Context, BrowserLaunch, string) (browserSession, error) {
+		return nil, errors.New("unused starter")
+	}, browserPoolObservation{})
 	pool.managers[0].start = func(context.Context, BrowserLaunch, string) (browserSession, error) {
 		return nil, errors.New("broken slot")
 	}
@@ -517,7 +519,7 @@ func TestFirefoxPoolWaitsForBusyHealthySessionInsteadOfCoolingSlot(t *testing.T)
 func TestFirefoxPoolCloseCancelsLaunchAndPreventsRelaunch(t *testing.T) {
 	started := make(chan struct{})
 	var launches atomic.Int32
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1},
 		"http://proxy.example",
 		func(ctx context.Context, _ BrowserLaunch, _ string) (browserSession, error) {
@@ -527,6 +529,7 @@ func TestFirefoxPoolCloseCancelsLaunchAndPreventsRelaunch(t *testing.T) {
 
 			return nil, ctx.Err()
 		},
+		browserPoolObservation{},
 	)
 	rendered := make(chan error, 1)
 	go func() {

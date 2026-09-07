@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
@@ -40,23 +41,29 @@ func TestSettleLeaseRetriesAckNakAndTerm(t *testing.T) {
 					status.Error(codes.Unavailable, "response lost"),
 				},
 			}
-			err := settleLeaseWithPolicy(
+			err := settleOrderAcknowledgmentWithPolicy(
 				context.Background(),
 				client,
-				"lease-"+test.name,
-				test.requeue,
+				&crawlrpc.OrderAck{
+					LeaseId:         "lease-" + test.name,
+					Requeue:         test.requeue,
+					WorkerId:        "worker",
+					WorkerSessionId: "session",
+				},
 				policy,
-			)(context.Background())
+			)(
+				context.Background(),
+			)
 			if err != nil {
 				t.Fatalf("settle after transient failure: %v", err)
 			}
 			calls := client.acknowledgementCalls()
-			if len(calls) != 2 {
-				t.Fatalf("acknowledgement calls = %d, want 2", len(calls))
+			want := &crawlrpc.OrderAck{
+				LeaseId: "lease-" + test.name, Requeue: test.requeue,
+				WorkerId: "worker", WorkerSessionId: "session",
 			}
-			if calls[0].GetRequeue() != test.requeue || calls[1].GetRequeue() != test.requeue {
-				t.Fatalf("requeue flags = %v/%v, want %v",
-					calls[0].GetRequeue(), calls[1].GetRequeue(), test.requeue)
+			if len(calls) != 2 || !proto.Equal(calls[0], want) || !proto.Equal(calls[1], want) {
+				t.Fatalf("settlement calls = %v, want two copies of %v", calls, want)
 			}
 			if len(client.ackedLeases()) != 1 {
 				t.Fatal("successful retry was not recorded exactly once")
@@ -78,13 +85,7 @@ func TestSettleLeaseStopsAfterDetachedShutdownDeadline(t *testing.T) {
 	}
 	settled := make(chan error, 1)
 	go func() {
-		settled <- settleLeaseWithPolicy(
-			serviceCtx,
-			client,
-			"lease-shutdown",
-			true,
-			policy,
-		)(context.Background())
+		settled <- settleOrderAcknowledgmentWithPolicy(serviceCtx, client, &crawlrpc.OrderAck{LeaseId: "lease-shutdown", Requeue: true, WorkerId: "worker", WorkerSessionId: "session"}, policy)(context.Background())
 	}()
 	deadline := time.After(time.Second)
 	for len(client.acknowledgementCalls()) == 0 {
@@ -119,17 +120,23 @@ func TestSettleLeaseDetachedShutdownCanSucceed(t *testing.T) {
 			status.Error(codes.Unavailable, "first shutdown attempt lost"),
 		},
 	}
-	err := settleLeaseWithPolicy(
+	err := settleOrderAcknowledgmentWithPolicy(
 		serviceCtx,
 		client,
-		"lease-detached",
-		false,
+		&crawlrpc.OrderAck{
+			LeaseId:         "lease-detached",
+			Requeue:         false,
+			WorkerId:        "worker",
+			WorkerSessionId: "session",
+		},
 		leaseSettlementPolicy{
 			retryWait:        time.Millisecond,
 			maximumRetryWait: time.Millisecond,
 			shutdownWait:     50 * time.Millisecond,
 		},
-	)(context.Background())
+	)(
+		context.Background(),
+	)
 	if err != nil {
 		t.Fatalf("detached settlement: %v", err)
 	}
@@ -146,14 +153,15 @@ func TestLeaseSettlementRetryWaitStopsOnCancellation(t *testing.T) {
 	}
 	settled := make(chan error, 1)
 	go func() {
-		settled <- (leaseSettlementSession{
+		_, err := (leaseSettlementSession{
 			client:  client,
 			request: &crawlrpc.OrderAck{LeaseId: "lease-cancel-wait"},
 			policy: leaseSettlementPolicy{
 				retryWait:        time.Hour,
 				maximumRetryWait: time.Hour,
 			},
-		}).retry(ctx)
+		}).retryResult(ctx)
+		settled <- err
 	}()
 	deadline := time.After(time.Second)
 	for len(client.acknowledgementCalls()) == 0 {
@@ -177,12 +185,18 @@ func TestLeaseSettlementRetryWaitStopsOnCancellation(t *testing.T) {
 
 func TestSettleLeaseRejectsEmptyLeaseWithoutRPC(t *testing.T) {
 	client := &fakeStreamer{ctx: context.Background()}
-	if err := settleLease(
+	if err := settleLeaseForSession(
 		context.Background(),
 		client,
-		"",
-		false,
-	)(context.Background()); err == nil {
+		leasedOrderAcknowledgment{
+			leaseID:         "",
+			requeue:         false,
+			workerID:        "worker",
+			workerSessionID: "session",
+		},
+	)(
+		context.Background(),
+	); err == nil {
 		t.Fatal("empty lease settlement succeeded")
 	}
 	if calls := len(client.acknowledgementCalls()); calls != 0 {

@@ -47,10 +47,10 @@ func TestLeaseSettlementStopsWhenContextExpiresDuringRPC(t *testing.T) {
 	client := &deadlineOrderStreamer{}
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
 	defer cancel()
-	err := (leaseSettlementSession{
+	_, err := (leaseSettlementSession{
 		client:  client,
 		request: &crawlrpc.OrderAck{LeaseId: "lease-deadline"},
-	}).retry(ctx)
+	}).retryResult(ctx)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("settlement error = %v, want deadline exceeded", err)
 	}

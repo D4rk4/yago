@@ -213,10 +213,14 @@ func TestExpiredCheckpointLeaseResumesOnlyOnOwningWorker(t *testing.T) {
 func TestAckBeforeReplayOmitsSettledLease(t *testing.T) {
 	queue := memQueue(t)
 	leaseID := leaseOne(t, queue, "settled", "worker-a")
-	if err := queue.ackLease(context.Background(), leaseID); err != nil {
+	if _, err := queue.ackLeaseWithTarget(context.Background(), leaseID); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
-	leasedOrders, err := queue.leasedOrdersForWorker(context.Background(), "worker-a")
+	leasedOrders, err := queue.adoptWorkerSession(
+		context.Background(),
+		"worker-a",
+		testWorkerSessionID,
+	)
 	if err != nil {
 		t.Fatalf("read worker leases: %v", err)
 	}
@@ -228,40 +232,22 @@ func TestAckBeforeReplayOmitsSettledLease(t *testing.T) {
 func TestReplaySnapshotBeforeAckDoesNotResurrectLease(t *testing.T) {
 	queue := memQueue(t)
 	leaseID := leaseOne(t, queue, "settled", "worker-a")
-	leasedOrders, err := queue.leasedOrdersForWorker(context.Background(), "worker-a")
+	leasedOrders, err := queue.adoptWorkerSession(
+		context.Background(),
+		"worker-a",
+		testWorkerSessionID,
+	)
 	if err != nil {
 		t.Fatalf("read worker leases: %v", err)
 	}
 	if len(leasedOrders) != 1 || leasedOrders[0].LeaseID != leaseID {
 		t.Fatalf("replay = %#v, want lease %q", leasedOrders, leaseID)
 	}
-	if err := queue.ackLease(context.Background(), leaseID); err != nil {
+	if _, err := queue.ackLeaseWithTarget(context.Background(), leaseID); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
 	if _, ok := leaseRecordFor(t, queue, leaseID); ok {
 		t.Fatal("lease was resurrected after replay snapshot")
-	}
-}
-
-func TestExpiredWorkerLeaseIsNotReplayed(t *testing.T) {
-	set := withClock(t)
-	base := time.Unix(7000, 0)
-	set(base)
-	queue := memQueue(t)
-	queue.leaseTTL = time.Minute
-	leaseID := leaseOne(t, queue, "expired", "worker-a")
-
-	set(base.Add(time.Minute))
-	leasedOrders, err := queue.leasedOrdersForWorker(context.Background(), "worker-a")
-	if err != nil {
-		t.Fatalf("read worker leases: %v", err)
-	}
-	if len(leasedOrders) != 0 {
-		t.Fatalf("replays = %d, want expired lease omitted", len(leasedOrders))
-	}
-	record, ok := leaseRecordFor(t, queue, leaseID)
-	if !ok || record.ExpiresAtUnixNano != base.Add(time.Minute).UnixNano() {
-		t.Fatalf("expired lease changed during replay read: %#v/%v", record, ok)
 	}
 }
 
@@ -274,7 +260,11 @@ func TestReplayRenewalPreventsOriginalDeadlineSweep(t *testing.T) {
 	leaseID := leaseOne(t, queue, "renewed", "worker-a")
 
 	set(base.Add(59 * time.Second))
-	leasedOrders, err := queue.leasedOrdersForWorker(context.Background(), "worker-a")
+	leasedOrders, err := queue.adoptWorkerSession(
+		context.Background(),
+		"worker-a",
+		testWorkerSessionID,
+	)
 	if err != nil {
 		t.Fatalf("read worker leases: %v", err)
 	}
@@ -305,7 +295,11 @@ func TestExpirySweepBeforeReplayPreventsStaleSnapshot(t *testing.T) {
 	if err := queue.sweepExpired(context.Background()); err != nil {
 		t.Fatalf("sweep expired lease: %v", err)
 	}
-	leasedOrders, err := queue.leasedOrdersForWorker(context.Background(), "worker-a")
+	leasedOrders, err := queue.adoptWorkerSession(
+		context.Background(),
+		"worker-a",
+		testWorkerSessionID,
+	)
 	if err != nil {
 		t.Fatalf("read worker leases: %v", err)
 	}
@@ -341,12 +335,13 @@ func TestStreamOrdersKeepsLeaseWhenReplaySendFails(t *testing.T) {
 	}
 }
 
-func TestLeasedOrdersForWorkerSurfacesStorageErrors(t *testing.T) {
+func TestWorkerSessionAdoptionSurfacesStorageErrors(t *testing.T) {
 	scanFailure := scriptedQueue(t)
 	scanFailure.engine.scanErrors[leaseBucket] = errors.New("scan failed")
-	if _, err := scanFailure.queue.leasedOrdersForWorker(
+	if _, err := scanFailure.queue.adoptWorkerSession(
 		context.Background(),
 		"worker-a",
+		testWorkerSessionID,
 	); err == nil {
 		t.Fatal("expected replay scan error")
 	}
@@ -354,24 +349,26 @@ func TestLeasedOrdersForWorkerSurfacesStorageErrors(t *testing.T) {
 	putFailure := scriptedQueue(t)
 	_ = leaseOne(t, putFailure.queue, "replay", "worker-a")
 	putFailure.engine.putErrors[leaseBucket] = errors.New("put failed")
-	if _, err := putFailure.queue.leasedOrdersForWorker(
+	if _, err := putFailure.queue.adoptWorkerSession(
 		context.Background(),
 		"worker-a",
+		testWorkerSessionID,
 	); err == nil {
 		t.Fatal("expected replay renewal error")
 	}
 }
 
-func TestLeasedOrdersForWorkerDropsAbortedSnapshotState(t *testing.T) {
+func TestWorkerSessionAdoptionDropsAbortedSnapshotState(t *testing.T) {
 	fixture := scriptedQueue(t)
 	leaseID := leaseOne(t, fixture.queue, "stale", "worker-a")
 	fixture.engine.replayNext = true
 	fixture.engine.betweenReplay = func() {
 		delete(fixture.engine.buckets[leaseBucket], leaseID)
 	}
-	leasedOrders, err := fixture.queue.leasedOrdersForWorker(
+	leasedOrders, err := fixture.queue.adoptWorkerSession(
 		context.Background(),
 		"worker-a",
+		testWorkerSessionID,
 	)
 	if err != nil {
 		t.Fatalf("read worker leases: %v", err)

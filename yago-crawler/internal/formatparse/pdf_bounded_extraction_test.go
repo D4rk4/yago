@@ -169,9 +169,9 @@ func TestPDFCMapQuotaBoundsRangeExpansion(t *testing.T) {
 			quota.remainingTextBytes,
 		)
 	}
-	if table := pdfParseCMap([]byte(
+	if table := pdfParseCMapWithQuota([]byte(
 		"beginbfrange\n<41> <41> <0>\nendbfrange\n",
-	)); table != nil {
+	), newPDFCMapQuota(pdfMaxCMapEntries, pdfMaxCMapTextBytes)); table != nil {
 		t.Fatalf("empty range destination = %#v", table)
 	}
 	if table := pdfParseCMapWithQuota([]byte(

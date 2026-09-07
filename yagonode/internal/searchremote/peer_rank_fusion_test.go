@@ -41,10 +41,10 @@ func TestQueryPeerJobsPreservesRequestOrderWhenLaterPeerFinishesFirst(t *testing
 		concurrency:    2,
 		perPeerTimeout: time.Second,
 	}
-	got := remote.queryPeerJobs(t.Context(), []peerSearchJob{
+	got := remote.queryPeerJobsWithinBudget(t.Context(), []peerSearchJob{
 		{peer: firstPeer},
 		{peer: laterPeer},
-	})
+	}, newRemoteQueryBudget())
 	if len(got) != 2 || got[0].peer.Hash != firstPeer.Hash || got[1].peer.Hash != laterPeer.Hash {
 		t.Fatalf("peer completion order leaked into results: %#v", got)
 	}
@@ -140,11 +140,11 @@ func TestPeerSearchFailuresAndTimeoutsHaveStableOrder(t *testing.T) {
 		perPeerTimeout: 10 * time.Millisecond,
 		weights:        DefaultRankingWeights,
 	}
-	completed := remote.queryPeerJobs(t.Context(), []peerSearchJob{
+	completed := remote.queryPeerJobsWithinBudget(t.Context(), []peerSearchJob{
 		{peer: failedPeer},
 		{peer: successfulPeer},
 		{peer: timedOutPeer},
-	})
+	}, newRemoteQueryBudget())
 	if len(completed) != 3 || completed[0].peer.Hash != failedPeer.Hash ||
 		completed[1].peer.Hash != successfulPeer.Hash || completed[2].peer.Hash != timedOutPeer.Hash {
 		t.Fatalf("request order = %#v", completed)

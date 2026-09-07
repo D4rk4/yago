@@ -82,8 +82,8 @@ func TestOutboundDistributorStopsWhenGatesAreClosed(t *testing.T) {
 	state := openGateState()
 	state.OnlineCaution = "proxy"
 
-	receipt, err := NewOutboundDistributor(queue, handoff, restorer).
-		Distribute(context.Background(), state, DefaultGateConfig())
+	receipt, err := NewConfirmingOutboundDistributor(queue, handoff, restorer, nil).
+		DistributeReady(context.Background(), state, DefaultGateConfig(), nil)
 	if err != nil {
 		t.Fatalf("Distribute: %v", err)
 	}
@@ -107,8 +107,8 @@ func TestOutboundDistributorReportsEmptyQueue(t *testing.T) {
 
 	handoff := &handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)}
 	restorer := &wordRestorerScript{}
-	receipt, err := NewOutboundDistributor(NewOutboundQueue(), handoff, restorer).
-		Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	receipt, err := NewConfirmingOutboundDistributor(NewOutboundQueue(), handoff, restorer, nil).
+		DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if err != nil {
 		t.Fatalf("Distribute: %v", err)
 	}
@@ -133,8 +133,8 @@ func TestOutboundDistributorSendsLargestChunkWithoutCapacityQuery(t *testing.T) 
 	queue.add(queueSeed(t, "AAAAAAAAAAAA"), largest)
 	handoff := &handoffScript{receipt: acceptedHandoff(indextransfer.HandoffURLSent)}
 
-	receipt, err := NewOutboundDistributor(queue, handoff, &wordRestorerScript{}).
-		Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	receipt, err := NewConfirmingOutboundDistributor(queue, handoff, &wordRestorerScript{}, nil).
+		DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if err != nil {
 		t.Fatalf("Distribute: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestOutboundDistributorConfirmsSentChunk(t *testing.T) {
 		&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
 		&wordRestorerScript{},
 		confirmer,
-	).Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	).DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if err != nil {
 		t.Fatalf("Distribute: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestOutboundDistributorConfirmationErrorDoesNotRequeueSentChunk(t *testing.
 		&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffURLSent)},
 		&wordRestorerScript{},
 		&sentPostingConfirmerScript{err: confirmErr},
-	).Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	).DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if !errors.Is(err, confirmErr) {
 		t.Fatalf("Distribute error = %v, want %v", err, confirmErr)
 	}
@@ -235,8 +235,8 @@ func TestOutboundDistributorRequeuesTransportFailure(t *testing.T) {
 	handoff := &handoffScript{err: errors.New("handoff boom")}
 	restorer := &wordRestorerScript{}
 
-	receipt, err := NewOutboundDistributor(queue, handoff, restorer).
-		Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	receipt, err := NewConfirmingOutboundDistributor(queue, handoff, restorer, nil).
+		DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if err == nil {
 		t.Fatal("expected handoff error")
 	}
@@ -269,8 +269,8 @@ func TestOutboundDistributorRestoresRejectedHandoffForRetargeting(t *testing.T) 
 		receipt: indextransfer.HandoffReceipt{State: indextransfer.HandoffRWIRejected},
 	}
 
-	receipt, err := NewOutboundDistributor(queue, handoff, restorer).
-		Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	receipt, err := NewConfirmingOutboundDistributor(queue, handoff, restorer, nil).
+		DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if err != nil {
 		t.Fatalf("Distribute: %v", err)
 	}
@@ -300,8 +300,8 @@ func TestOutboundDistributorRetainsRejectedChunkForLocalRestoreRetry(t *testing.
 		receipt: indextransfer.HandoffReceipt{State: indextransfer.HandoffRWIRejected},
 	}
 
-	receipt, err := NewOutboundDistributor(queue, handoff, restorer).
-		Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	receipt, err := NewConfirmingOutboundDistributor(queue, handoff, restorer, nil).
+		DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if !errors.Is(err, restoreErr) {
 		t.Fatalf("Distribute error = %v, want %v", err, restoreErr)
 	}
@@ -328,7 +328,7 @@ func TestOutboundDistributorRestoresRequeuedPeerAfterRetryLimit(t *testing.T) {
 		queuePosting(yagomodel.WordHash("word"), yagomodel.WordHash("url-a")),
 	})
 	restorer := &wordRestorerScript{restored: 1}
-	distributor := NewOutboundDistributor(queue, &handoffScript{}, restorer)
+	distributor := NewConfirmingOutboundDistributor(queue, &handoffScript{}, restorer, nil)
 
 	restored, requeued, err := distributor.RestoreRequeuedPeer(context.Background(), peer.Hash)
 	if err != nil || restored != 1 || requeued != 0 || queue.PostingCount() != 0 {
@@ -349,10 +349,11 @@ func TestOutboundDistributorRequeuesPeerWhenBoundedRestoreFails(t *testing.T) {
 		queuePosting(yagomodel.WordHash("word"), yagomodel.WordHash("url-a")),
 	})
 	restoreErr := errors.New("restore failed")
-	distributor := NewOutboundDistributor(
+	distributor := NewConfirmingOutboundDistributor(
 		queue,
 		&handoffScript{},
 		&wordRestorerScript{err: restoreErr},
+		nil,
 	)
 
 	restored, requeued, err := distributor.RestoreRequeuedPeer(context.Background(), peer.Hash)
@@ -371,14 +372,10 @@ func TestOutboundDistributorRestoresMalformedProtocolResponseImmediately(t *test
 	protocolErr := errors.New("malformed response")
 	restorer := &wordRestorerScript{restored: 1}
 
-	receipt, err := NewOutboundDistributor(
-		queue,
-		&handoffScript{
-			receipt: indextransfer.HandoffReceipt{State: indextransfer.HandoffRWIRejected},
-			err:     protocolErr,
-		},
-		restorer,
-	).Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	receipt, err := NewConfirmingOutboundDistributor(queue, &handoffScript{
+		receipt: indextransfer.HandoffReceipt{State: indextransfer.HandoffRWIRejected},
+		err:     protocolErr,
+	}, restorer, nil).DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if !errors.Is(err, protocolErr) ||
 		receipt.State != DistributionHandoffRejected ||
 		receipt.RestoredPostings != 1 ||
@@ -398,14 +395,10 @@ func TestOutboundDistributorRetainsMalformedResponseWhenRestoreFails(t *testing.
 	protocolErr := errors.New("malformed response")
 	restoreErr := errors.New("restore failed")
 
-	receipt, err := NewOutboundDistributor(
-		queue,
-		&handoffScript{
-			receipt: indextransfer.HandoffReceipt{State: indextransfer.HandoffRWIRejected},
-			err:     protocolErr,
-		},
-		&wordRestorerScript{err: restoreErr},
-	).Distribute(context.Background(), openGateState(), DefaultGateConfig())
+	receipt, err := NewConfirmingOutboundDistributor(queue, &handoffScript{
+		receipt: indextransfer.HandoffReceipt{State: indextransfer.HandoffRWIRejected},
+		err:     protocolErr,
+	}, &wordRestorerScript{err: restoreErr}, nil).DistributeReady(context.Background(), openGateState(), DefaultGateConfig(), nil)
 	if !errors.Is(err, protocolErr) ||
 		!errors.Is(err, restoreErr) ||
 		receipt.State != DistributionHandoffRejected ||

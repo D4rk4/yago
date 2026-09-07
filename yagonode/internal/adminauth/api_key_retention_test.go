@@ -22,7 +22,8 @@ func TestAPIKeyStoreRejectsCreationAtCapacity(t *testing.T) {
 	); !errors.Is(err, errAPIKeyCapacityReached) {
 		t.Fatalf("overflow error = %v", err)
 	}
-	keys, err := store.list(context.Background())
+	keysPage, err := store.page(context.Background(), "", maximumAPIKeys)
+	keys := keysPage.infos
 	if err != nil || len(keys) != maximumAPIKeys {
 		t.Fatalf("keys at capacity = %d, %v", len(keys), err)
 	}

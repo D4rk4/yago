@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -1022,16 +1021,6 @@ func TestExactAndRawHelpers(t *testing.T) {
 		rawContent(nil) != "" ||
 		rawContent(&rawValue) != "raw" {
 		t.Fatal("exact helper mismatch")
-	}
-}
-
-func TestGeneratedRequestIDFallback(t *testing.T) {
-	previous := randomRead
-	randomRead = func([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
-	t.Cleanup(func() { randomRead = previous })
-
-	if !strings.HasPrefix(generatedRequestID(), "local-") {
-		t.Fatal("fallback request id missing local prefix")
 	}
 }
 

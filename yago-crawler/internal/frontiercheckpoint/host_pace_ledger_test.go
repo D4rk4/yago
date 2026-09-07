@@ -18,13 +18,14 @@ func TestHostPaceLedgerSurvivesRunDeletionAndEvictsOldest(t *testing.T) {
 		testPage("https://a.example/page", "a.example", "a-observation", 0),
 		testPage("https://b.example/page", "b.example", "b-observation", 0),
 		testPage("https://c.example/page", "c.example", "c-observation", 0),
+		testPage("https://a.example/second", "a.example", "a-second", 0),
 	}
 	if admitted, err := checkpoint.Admit(
 		testContext,
 		provenance,
 		pages,
 	); err != nil ||
-		admitted != 3 {
+		admitted != 4 {
 		t.Fatalf("admit host pace pages = %d, %v", admitted, err)
 	}
 	now := time.Date(2026, 7, 16, 15, 0, 0, 0, time.UTC)
@@ -39,13 +40,19 @@ func TestHostPaceLedgerSurvivesRunDeletionAndEvictsOldest(t *testing.T) {
 			Generation:      3,
 		},
 	}
-	for _, host := range []string{"a.example", "b.example", "a.example", "c.example"} {
-		if err := checkpoint.RecordHostState(
+	for _, page := range []Page{pages[0], pages[1], pages[3], pages[2]} {
+		host := page.Host
+		if err := checkpoint.CompletePage(
 			testContext,
 			provenance,
-			host,
-			HostProgress{Pace: states[host], PaceCapacity: 2},
-			nil,
+			page.URL,
+			PageCompletion{
+				HostProgress: &PageHostProgress{
+					Host:        host,
+					Progress:    HostProgress{Pace: states[host], PaceCapacity: 2},
+					DroppedURLs: nil,
+				},
+			},
 		); err != nil {
 			t.Fatalf("record %s pace: %v", host, err)
 		}
@@ -95,13 +102,21 @@ func TestHostPaceLedgerRejectsInvalidInputs(t *testing.T) {
 		{PaceCapacity: 1, Pace: crawlpace.HostState{Generation: 1, BackoffPenalty: time.Second}},
 	}
 	for index, progress := range invalid {
-		if err := checkpoint.RecordHostState(
+		if err := checkpoint.CompletePage(
 			context.Background(),
 			provenance,
-			page.Host,
-			progress,
-			nil,
-		); !errors.Is(err, ErrInvalidHostState) {
+			page.URL,
+			PageCompletion{
+				HostProgress: &PageHostProgress{
+					Host:        page.Host,
+					Progress:    progress,
+					DroppedURLs: nil,
+				},
+			},
+		); !errors.Is(
+			err,
+			ErrInvalidHostState,
+		) {
 			t.Fatalf("invalid pace %d error = %v", index, err)
 		}
 	}
@@ -111,8 +126,9 @@ func TestHostPaceLedgerRejectsStaleAndConflictingGenerations(t *testing.T) {
 	checkpoint := openTestCheckpoint(t, testCheckpointPath(t))
 	provenance := []byte("pace-generation")
 	beginTestRun(t, checkpoint, provenance, []byte("pace-generation-identity"))
-	page := testPage("https://busy.example/page", "busy.example", "observation", 0)
-	if _, err := checkpoint.Admit(testContext, provenance, []Page{page}); err != nil {
+	pages := checkpointTransitionTestPages("busy.example", 3)
+	page := pages[0]
+	if _, err := checkpoint.Admit(testContext, provenance, pages); err != nil {
 		t.Fatalf("admit pace generation page: %v", err)
 	}
 	now := time.Date(2026, 7, 16, 17, 0, 0, 0, time.UTC)
@@ -124,13 +140,19 @@ func TestHostPaceLedgerRejectsStaleAndConflictingGenerations(t *testing.T) {
 		Generation:      2,
 	}
 	stale := crawlpace.HostState{NextDueAt: now.Add(2 * time.Second), Generation: 1}
-	for _, state := range []crawlpace.HostState{newer, stale} {
-		if err := checkpoint.RecordHostState(
+	for index, state := range []crawlpace.HostState{newer, stale} {
+		page = pages[index]
+		if err := checkpoint.CompletePage(
 			testContext,
 			provenance,
-			page.Host,
-			HostProgress{Pace: state, PaceCapacity: 8},
-			nil,
+			page.URL,
+			PageCompletion{
+				HostProgress: &PageHostProgress{
+					Host:        page.Host,
+					Progress:    HostProgress{Pace: state, PaceCapacity: 8},
+					DroppedURLs: nil,
+				},
+			},
 		); err != nil {
 			t.Fatalf("record generated pace %+v: %v", state, err)
 		}
@@ -142,15 +164,24 @@ func TestHostPaceLedgerRejectsStaleAndConflictingGenerations(t *testing.T) {
 	if loaded[page.Host] != newer {
 		t.Fatalf("pace after stale write = %+v, want %+v", loaded[page.Host], newer)
 	}
+	page = pages[2]
 	conflict := newer
 	conflict.NextDueAt = conflict.NextDueAt.Add(time.Second)
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		page.Host,
-		HostProgress{Pace: conflict, PaceCapacity: 8},
-		nil,
-	); !errors.Is(err, ErrCorruptCheckpoint) {
+		page.URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        page.Host,
+				Progress:    HostProgress{Pace: conflict, PaceCapacity: 8},
+				DroppedURLs: nil,
+			},
+		},
+	); !errors.Is(
+		err,
+		ErrCorruptCheckpoint,
+	) {
 		t.Fatalf("conflicting pace generation error = %v", err)
 	}
 }

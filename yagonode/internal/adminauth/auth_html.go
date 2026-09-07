@@ -158,12 +158,7 @@ func (s *Service) handleSetupPage(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	setupToken, err := s.issueSetupFormToken(w, r)
-	if err != nil {
-		http.Error(w, "setup is temporarily unavailable", http.StatusServiceUnavailable)
-
-		return
-	}
+	setupToken := s.issueSetupFormToken(w, r)
 	s.renderAuthPage(
 		w,
 		r,

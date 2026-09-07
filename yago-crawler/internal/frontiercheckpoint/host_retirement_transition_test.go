@@ -23,12 +23,17 @@ func TestHostRetirementUsesBoundedChunks(t *testing.T) {
 	if err := checkpoint.FinishSeeding(testContext, provenance, testRunTally()); err != nil {
 		t.Fatalf("finish bounded retirement seeding: %v", err)
 	}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		"retired.example",
-		HostProgress{Generation: 7, Failures: 5, Retired: true},
-		checkpointPageURLs(retiredPages),
+		retiredPages[len(retiredPages)-1].URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        "retired.example",
+				Progress:    HostProgress{Generation: 7, Failures: 5, Retired: true},
+				DroppedURLs: checkpointPageURLs(retiredPages),
+			},
+		},
 	); err != nil {
 		t.Fatalf("retire bounded host pages: %v", err)
 	}
@@ -61,12 +66,17 @@ func TestHostRetirementResumesAfterReopen(t *testing.T) {
 	if err := checkpoint.FinishSeeding(testContext, provenance, testRunTally()); err != nil {
 		t.Fatalf("finish resumable retirement seeding: %v", err)
 	}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		"resume-retired.example",
-		HostProgress{Generation: 3, Failures: 5, Retired: true},
-		nil,
+		retiredPages[len(retiredPages)-1].URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        "resume-retired.example",
+				Progress:    HostProgress{Generation: 3, Failures: 5, Retired: true},
+				DroppedURLs: nil,
+			},
+		},
 	); err != nil {
 		t.Fatalf("mark resumable host retirement: %v", err)
 	}
@@ -85,7 +95,10 @@ func TestHostRetirementResumesAfterReopen(t *testing.T) {
 		t.Fatalf("bounded retirement cursor = %+v", record)
 	}
 	partial, err := checkpoint.Load(testContext, provenance)
-	if err != nil || partial.Counters.Pending != uint64(44+len(keptPages)) {
+	if err != nil ||
+		partial.Counters.Pending != uint64(
+			len(retiredPages)-retirementPagesPerTransaction-1+len(keptPages),
+		) {
 		t.Fatalf("partial retirement snapshot = %+v, %v", partial, err)
 	}
 	if err := checkpoint.Close(); err != nil {
@@ -137,12 +150,17 @@ func TestHostRetirementDoesNotMutateInterleavedHostsOrRuns(t *testing.T) {
 	if err := checkpoint.FinishSeeding(testContext, keptProvenance, testRunTally()); err != nil {
 		t.Fatalf("finish kept interleaved seeding: %v", err)
 	}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		retiredProvenance,
-		"interleaved.example",
-		HostProgress{Generation: 4, Failures: 5, Retired: true},
-		nil,
+		retiredHostPages[len(retiredHostPages)-1].URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        "interleaved.example",
+				Progress:    HostProgress{Generation: 4, Failures: 5, Retired: true},
+				DroppedURLs: nil,
+			},
+		},
 	); err != nil {
 		t.Fatalf("mark interleaved retirement: %v", err)
 	}
@@ -171,19 +189,24 @@ func TestHostRetirementReverseCompletionKeepsRecoveryCursor(t *testing.T) {
 	identity := []byte("reverse-retirement-order")
 	pages := checkpointTransitionTestPages(
 		"reverse-retired.example",
-		retirementPagesPerTransaction+1,
+		retirementPagesPerTransaction+2,
 	)
 	beginTestRun(t, checkpoint, provenance, identity)
 	admitCheckpointTestPages(t, checkpoint, provenance, pages)
 	if err := checkpoint.FinishSeeding(testContext, provenance, testRunTally()); err != nil {
 		t.Fatalf("finish reverse retirement seeding: %v", err)
 	}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		"reverse-retired.example",
-		HostProgress{Generation: 9, Failures: 5, Retired: true},
-		nil,
+		pages[len(pages)-1].URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        "reverse-retired.example",
+				Progress:    HostProgress{Generation: 9, Failures: 5, Retired: true},
+				DroppedURLs: nil,
+			},
+		},
 	); err != nil {
 		t.Fatalf("mark reverse retirement: %v", err)
 	}
@@ -196,12 +219,17 @@ func TestHostRetirementReverseCompletionKeepsRecoveryCursor(t *testing.T) {
 	); err != nil || done {
 		t.Fatalf("advance reverse retirement = done %t, %v", done, err)
 	}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		"reverse-retired.example",
-		HostProgress{Generation: 8, Failures: 1},
-		nil,
+		pages[len(pages)-2].URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        "reverse-retired.example",
+				Progress:    HostProgress{Generation: 8, Failures: 1},
+				DroppedURLs: nil,
+			},
+		},
 	); err != nil {
 		t.Fatalf("record reverse host completion: %v", err)
 	}

@@ -29,10 +29,11 @@ func TestDHTOutboundJournalRecoversBeforeFinalRedundancyCopy(t *testing.T) {
 		source,
 	)
 
-	receipt, err := distributor.Distribute(
+	receipt, err := distributor.DistributeReady(
 		ctx,
 		openDHTDurabilityGateState(),
 		openDHTDurabilityGateConfig(),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("Distribute: %v", err)
@@ -60,18 +61,20 @@ func TestDHTOutboundJournalFinalizesAfterEveryRedundancyCopy(t *testing.T) {
 		source,
 	)
 
-	first, err := distributor.Distribute(
+	first, err := distributor.DistributeReady(
 		ctx,
 		openDHTDurabilityGateState(),
 		openDHTDurabilityGateConfig(),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("first Distribute: %v", err)
 	}
-	second, err := distributor.Distribute(
+	second, err := distributor.DistributeReady(
 		ctx,
 		openDHTDurabilityGateState(),
 		openDHTDurabilityGateConfig(),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("second Distribute: %v", err)

@@ -1,8 +1,6 @@
 package searchremote
 
 import (
-	"context"
-	"io"
 	"strings"
 	"time"
 
@@ -10,33 +8,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagoproto"
 )
-
-func (s searcher) remoteSearch(
-	ctx context.Context,
-	peer yagomodel.Seed,
-	req searchcore.Request,
-) (yagoproto.SearchResponse, error) {
-	return s.sendRemoteSearch(
-		ctx,
-		peer,
-		remoteSearchRequestWithEvidence(req, s.networkName, s.perPeerTimeout),
-	)
-}
-
-func (s searcher) sendRemoteSearch(
-	ctx context.Context,
-	peer yagomodel.Seed,
-	searchReq yagoproto.SearchRequest,
-) (yagoproto.SearchResponse, error) {
-	response, _, err := s.sendRemoteSearchWithinLimit(
-		ctx,
-		peer,
-		searchReq,
-		remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap},
-	)
-
-	return response, err
-}
 
 func baseRemoteSearchRequest(
 	req searchcore.Request,
@@ -99,17 +70,6 @@ func remoteSearchRequest(
 	return searchReq
 }
 
-func remoteSearchRequestWithEvidence(
-	req searchcore.Request,
-	networkName string,
-	perPeerTimeout time.Duration,
-) yagoproto.SearchRequest {
-	searchReq := remoteSearchRequest(req, networkName, perPeerTimeout)
-	requestQueryMatchEvidence(&searchReq, req.Terms)
-
-	return searchReq
-}
-
 func requestQueryMatchEvidence(request *yagoproto.SearchRequest, terms []string) {
 	request.EvidenceVersion = yagoproto.QueryMatchEvidenceVersion
 	request.EvidenceTerms = terms
@@ -135,10 +95,4 @@ func termHashes(terms []string) []yagomodel.Hash {
 	}
 
 	return hashes
-}
-
-func readRemoteSearchResponse(body io.Reader) (yagoproto.SearchResponse, error) {
-	response, _, err := readRemoteSearchResponseWithinLimit(body, remoteSearchBodyCap)
-
-	return response, err
 }

@@ -14,7 +14,6 @@ import (
 
 type ContentClusters interface {
 	Replace(context.Context, contentcluster.Evidence) (contentcluster.Assignment, error)
-	Delete(context.Context, string) (bool, error)
 	Lookup(context.Context, string) (contentcluster.Assignment, bool, error)
 	Cluster(context.Context, string) (contentcluster.Cluster, bool, error)
 }
@@ -188,14 +187,6 @@ func assignedDocumentCluster(
 	return doc
 }
 
-func (c *IngestConsumer) storedClusterUpdates(
-	ctx context.Context,
-	cluster contentcluster.Cluster,
-	excluded map[string]struct{},
-) ([]documentstore.Document, error) {
-	return c.storedClusterProjection(ctx, cluster, excluded, false)
-}
-
 func (c *IngestConsumer) storedClusterProjection(
 	ctx context.Context,
 	cluster contentcluster.Cluster,
@@ -225,53 +216,6 @@ func (c *IngestConsumer) storedClusterProjection(
 	}
 
 	return updates, nil
-}
-
-func (c *IngestConsumer) deleteDocumentCluster(ctx context.Context, url string) error {
-	if c.clusters == nil {
-		return nil
-	}
-	if transitions, ok := c.clusters.(contentClusterTransitionDeleter); ok {
-		return c.deleteDocumentClusterTransition(ctx, url, transitions)
-	}
-	assignment, found, err := c.clusters.Lookup(ctx, url)
-	if err != nil {
-		return fmt.Errorf("look up removed content cluster: %w", err)
-	}
-	if _, err := c.clusters.Delete(ctx, url); err != nil {
-		return fmt.Errorf("delete removed content cluster: %w", err)
-	}
-	if !found {
-		return nil
-	}
-	cluster, found, err := c.clusters.Cluster(ctx, assignment.ClusterID)
-	if err != nil {
-		return fmt.Errorf("read surviving content cluster: %w", err)
-	}
-	if !found {
-		return nil
-	}
-	updates, err := c.storedClusterUpdates(ctx, cluster, nil)
-	if err != nil {
-		return err
-	}
-	if len(updates) == 0 {
-		return nil
-	}
-	receipt, err := c.documents.Receive(ctx, updates)
-	if err != nil {
-		return fmt.Errorf("store surviving content cluster: %w", err)
-	}
-	if receipt.Busy {
-		return fmt.Errorf("store surviving content cluster at capacity")
-	}
-	if c.index != nil {
-		if err := c.indexDocuments(ctx, updates); err != nil {
-			return fmt.Errorf("index surviving content cluster: %w", err)
-		}
-	}
-
-	return nil
 }
 
 func documentClusterURL(doc documentstore.Document) string {

@@ -38,20 +38,20 @@ func TestLexicalDependenceLiftsCoherentStrictCoverage(t *testing.T) {
 	}
 }
 
-func TestOrderedPositionFractionDoesNotCrossFields(t *testing.T) {
+func TestOrderedPositionEvidenceDoesNotCrossFields(t *testing.T) {
 	requirements := rerankQueryRequirements(Request{Terms: []string{"alpha", "beta"}})
 	fields := map[string]map[string][]int{
 		"title": {"alpha": {1}},
 		"body":  {"beta": {2}},
 	}
-	if got := orderedPositionFraction(fields, requirements); got != 0 {
+	if got, _ := orderedPositionEvidence(fields, requirements); got != 0 {
 		t.Fatalf("cross-field ordered fraction = %v", got)
 	}
 	fields["body"]["alpha"] = []int{1}
-	if got := orderedPositionFraction(fields, requirements); got != 1 {
+	if got, _ := orderedPositionEvidence(fields, requirements); got != 1 {
 		t.Fatalf("same-field ordered fraction = %v", got)
 	}
-	if got := orderedPositionFraction(
+	if got, _ := orderedPositionEvidence(
 		fields,
 		rerankQueryRequirements(Request{Terms: []string{"alpha"}}),
 	); got != 0 {
@@ -59,29 +59,29 @@ func TestOrderedPositionFractionDoesNotCrossFields(t *testing.T) {
 	}
 }
 
-func TestPositionsAtQueryDistanceHandlesEarlierAndMissingPositions(t *testing.T) {
-	if !positionsAtQueryDistance([]int{2}, []int{1, 3}, 1) {
+func TestPositionGapEvidenceHandlesEarlierAndMissingPositions(t *testing.T) {
+	if exact, gap := positionGapEvidence([]int{2}, []int{1, 3}, 1); !exact || gap != 1 {
 		t.Fatal("adjacency after an earlier right position was missed")
 	}
-	if positionsAtQueryDistance([]int{1, 5}, []int{3}, 1) {
+	if exact, _ := positionGapEvidence([]int{1, 5}, []int{3}, 1); exact {
 		t.Fatal("non-adjacent positions matched")
 	}
-	if positionsAtQueryDistance(nil, []int{1}, 1) {
+	if exact, gap := positionGapEvidence(nil, []int{1}, 1); exact || gap != 0 {
 		t.Fatal("empty left positions matched")
 	}
 }
 
-func TestOrderedTextFractionRequiresConsecutiveQueryTerms(t *testing.T) {
+func TestOrderedTextEvidenceRequiresConsecutiveQueryTerms(t *testing.T) {
 	requirements := rerankQueryRequirements(
 		Request{Terms: []string{"alpha", "beta", "gamma"}},
 	)
-	if got := orderedTextFraction("alpha beta filler gamma", requirements); got != 0.5 {
+	if got, _ := orderedTextEvidence("alpha beta filler gamma", requirements); got != 0.5 {
 		t.Fatalf("ordered text fraction = %v", got)
 	}
-	if got := orderedTextFraction("beta alpha", requirements); got != 0 {
+	if got, _ := orderedTextEvidence("beta alpha", requirements); got != 0 {
 		t.Fatalf("reversed ordered text fraction = %v", got)
 	}
-	if got := orderedTextFraction(
+	if got, _ := orderedTextEvidence(
 		"alpha",
 		rerankQueryRequirements(Request{Terms: []string{"alpha"}}),
 	); got != 0 {
@@ -89,25 +89,25 @@ func TestOrderedTextFractionRequiresConsecutiveQueryTerms(t *testing.T) {
 	}
 }
 
-func TestOrderedTextFractionMatchesRussianInflections(t *testing.T) {
+func TestOrderedTextEvidenceMatchesRussianInflections(t *testing.T) {
 	requirements := rerankQueryRequirements(Request{
 		Terms: []string{"чрезвычайные", "полномочия", "путина"},
 	})
-	if got := orderedTextFraction("чрезвычайных полномочий путина", requirements); got != 1 {
+	if got, _ := orderedTextEvidence("чрезвычайных полномочий путина", requirements); got != 1 {
 		t.Fatalf("Russian ordered fraction = %v", got)
 	}
 }
 
-func TestOrderedTextFractionTreatsIdentifierAsOnePosition(t *testing.T) {
+func TestOrderedTextEvidenceTreatsIdentifierAsOnePosition(t *testing.T) {
 	requirements := rerankQueryRequirements(Request{Terms: []string{"node.js", "guide"}})
-	if got := orderedTextFraction("Node.js guide", requirements); got != 1 {
+	if got, _ := orderedTextEvidence("Node.js guide", requirements); got != 1 {
 		t.Fatalf("identifier ordered fraction = %v", got)
 	}
 }
 
-func TestOrderedTextFractionUsesDistinctUnsegmentedSpans(t *testing.T) {
+func TestOrderedTextEvidenceUsesDistinctUnsegmentedSpans(t *testing.T) {
 	requirements := rerankQueryRequirements(Request{Terms: []string{"東京", "タワー"}})
-	if got := orderedTextFraction("東京タワー", requirements); got != 1 {
+	if got, _ := orderedTextEvidence("東京タワー", requirements); got != 1 {
 		t.Fatalf("unsegmented ordered fraction = %v", got)
 	}
 }
@@ -123,17 +123,17 @@ func TestOrderedDependencePreservesFilteredQueryDistance(t *testing.T) {
 	spaced := map[string]map[string][]int{
 		"body": {"alpha": {4}, "beta": {6}},
 	}
-	if got := orderedPositionFraction(spaced, requirements); got != 1 {
+	if got, _ := orderedPositionEvidence(spaced, requirements); got != 1 {
 		t.Fatalf("spaced ordered fraction = %v", got)
 	}
 	spaced["body"]["beta"] = []int{5}
-	if got := orderedPositionFraction(spaced, requirements); got != 0 {
+	if got, _ := orderedPositionEvidence(spaced, requirements); got != 0 {
 		t.Fatalf("collapsed ordered fraction = %v", got)
 	}
-	if got := orderedTextFraction("alpha and beta", requirements); got != 1 {
+	if got, _ := orderedTextEvidence("alpha and beta", requirements); got != 1 {
 		t.Fatalf("text ordered fraction = %v", got)
 	}
-	if got := orderedTextFraction("alpha beta", requirements); got != 0 {
+	if got, _ := orderedTextEvidence("alpha beta", requirements); got != 0 {
 		t.Fatalf("collapsed text ordered fraction = %v", got)
 	}
 }
@@ -193,7 +193,10 @@ func TestResultAnalyzerRequirementsPreserveDroppedTermDistance(t *testing.T) {
 		requirements[1].ordinal != 2 {
 		t.Fatalf("requirements = %#v", requirements)
 	}
-	if ordered := orderedPositionFraction(result.FieldTermPositions, requirements); ordered != 1 {
+	if ordered, _ := orderedPositionEvidence(
+		result.FieldTermPositions,
+		requirements,
+	); ordered != 1 {
 		t.Fatalf("ordered fraction = %v", ordered)
 	}
 }

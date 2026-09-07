@@ -43,34 +43,6 @@ func TestAPIKeyStoreCreateSurfacesPutError(t *testing.T) {
 	}
 }
 
-func TestAPIKeyStoreCreateSurfacesIDRandomError(t *testing.T) {
-	store, _, _ := newTestKeyStore(t)
-	original := randRead
-	randRead = func([]byte) (int, error) { return 0, errors.New("no entropy") }
-	t.Cleanup(func() { randRead = original })
-	if _, err := store.create(context.Background(), "ci", []Scope{ScopeAdminRead}); err == nil {
-		t.Fatal("create should fail when the identifier random source fails")
-	}
-}
-
-func TestAPIKeyStoreCreateSurfacesSecretRandomError(t *testing.T) {
-	store, _, _ := newTestKeyStore(t)
-	original := randRead
-	calls := 0
-	randRead = func(buf []byte) (int, error) {
-		calls++
-		if calls == 1 {
-			return original(buf)
-		}
-
-		return 0, errors.New("no entropy")
-	}
-	t.Cleanup(func() { randRead = original })
-	if _, err := store.create(context.Background(), "ci", []Scope{ScopeAdminRead}); err == nil {
-		t.Fatal("create should fail when the secret random source fails")
-	}
-}
-
 func TestAPIKeyStoreAuthenticateSucceedsWithoutTouchingLastUsed(t *testing.T) {
 	store, _, clock := newTestKeyStore(t)
 	created, err := store.create(
@@ -95,7 +67,8 @@ func TestAPIKeyStoreAuthenticateSucceedsWithoutTouchingLastUsed(t *testing.T) {
 	if _, err := store.touchLastUsed(context.Background(), created.ID); err != nil {
 		t.Fatalf("touchLastUsed: %v", err)
 	}
-	infos, err := store.list(context.Background())
+	infosPage, err := store.page(context.Background(), "", maximumAPIKeys)
+	infos := infosPage.infos
 	if err != nil || len(infos) != 1 || !infos[0].LastUsedAt.Equal(clock.now) {
 		t.Fatalf("list after touch = %#v, %v", infos, err)
 	}
@@ -227,7 +200,8 @@ func TestAPIKeyStoreTouchLastUsedSurfacesDecodeError(t *testing.T) {
 
 func TestAPIKeyStoreListReturnsEmpty(t *testing.T) {
 	store, _, _ := newTestKeyStore(t)
-	keys, err := store.list(context.Background())
+	keysPage, err := store.page(context.Background(), "", maximumAPIKeys)
+	keys := keysPage.infos
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -243,7 +217,8 @@ func TestAPIKeyStoreListSortsByCreation(t *testing.T) {
 	clock.now = time.Unix(1000, 0)
 	first, _ := store.create(context.Background(), "first", []Scope{ScopeAdminRead})
 
-	keys, err := store.list(context.Background())
+	keysPage, err := store.page(context.Background(), "", maximumAPIKeys)
+	keys := keysPage.infos
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -270,7 +245,8 @@ func TestAPIKeyStoreListTieBreaksByID(t *testing.T) {
 	if lo > hi {
 		lo, hi = hi, lo
 	}
-	keys, err := store.list(context.Background())
+	keysPage, err := store.page(context.Background(), "", maximumAPIKeys)
+	keys := keysPage.infos
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -286,7 +262,7 @@ func TestAPIKeyStoreListSurfacesDecodeError(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	engine.buckets[adminAPIKeysBucket][created.ID] = []byte("{corrupt")
-	if _, err := store.list(context.Background()); err == nil {
+	if _, err := store.page(context.Background(), "", maximumAPIKeys); err == nil {
 		t.Fatal("list should surface the decode error")
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,26 +19,14 @@ const (
 	setupFormTokenLifetime   = 10 * time.Minute
 )
 
-var setupFormSigningKeyRead = rand.Read
-
-func newSetupFormSigningKey() ([]byte, error) {
+func newSetupFormSigningKey() []byte {
 	key := make([]byte, setupFormSigningKeyBytes)
-	n, err := setupFormSigningKeyRead(key)
-	if err != nil {
-		return nil, fmt.Errorf("read setup form signing key: %w", err)
-	}
-	if n != len(key) {
-		return nil, fmt.Errorf("read setup form signing key: got %d bytes, want %d", n, len(key))
-	}
-
-	return key, nil
+	_, _ = rand.Read(key)
+	return key
 }
 
-func (s *Service) issueSetupFormToken(w http.ResponseWriter, r *http.Request) (string, error) {
-	nonce, err := newRandomToken(setupFormTokenBytes)
-	if err != nil {
-		return "", err
-	}
+func (s *Service) issueSetupFormToken(w http.ResponseWriter, r *http.Request) string {
+	nonce := newRandomToken(setupFormTokenBytes)
 	expires := s.now().Add(setupFormTokenLifetime)
 	payload := nonce + "." + strconv.FormatInt(expires.Unix(), 10)
 	token := payload + "." + base64.RawURLEncoding.EncodeToString(s.setupFormSignature(payload))
@@ -54,7 +41,7 @@ func (s *Service) issueSetupFormToken(w http.ResponseWriter, r *http.Request) (s
 		),
 	)
 
-	return token, nil
+	return token
 }
 
 func (s *Service) validSetupFormToken(r *http.Request) bool {

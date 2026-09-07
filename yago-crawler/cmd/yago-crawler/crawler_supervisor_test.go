@@ -73,7 +73,13 @@ func runSupervise(
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		superviseCrawl(ctx, worker, fakeOrderConsumer{}, 1, grace)
+		superviseCrawlWithConcurrency(
+			ctx,
+			worker,
+			fakeOrderConsumer{},
+			newWorkerConcurrency(1),
+			grace,
+		)
 		close(done)
 	}()
 	<-started
@@ -106,7 +112,7 @@ func TestSuperviseCrawlSuspendsRunsAndWaitsForSettlement(t *testing.T) {
 	}
 	done := make(chan struct{})
 	go func() {
-		superviseCrawl(ctx, worker, consumer, 1, time.Second)
+		superviseCrawlWithConcurrency(ctx, worker, consumer, newWorkerConcurrency(1), time.Second)
 		close(done)
 	}()
 	<-worker.started

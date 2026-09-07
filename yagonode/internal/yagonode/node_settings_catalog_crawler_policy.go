@@ -338,7 +338,7 @@ func crawlerRuntimeIntegerDefinition(specification crawlerRuntimeIntegerSetting)
 			return strconv.Itoa(specification.read(config.Crawl.RuntimePolicy))
 		},
 		normalize: func(raw string) (string, error) {
-			return normalizeCrawlerRuntimeInteger(raw, specification.minimum, specification.maximum)
+			return normalizeBoundedInteger(raw, specification.minimum, specification.maximum)
 		},
 		apply: func(config nodeConfig, value string) nodeConfig {
 			parsed, _ := strconv.Atoi(value)
@@ -399,15 +399,6 @@ func crawlerRuntimeDurationDefinition(
 			)
 		},
 	}
-}
-
-func normalizeCrawlerRuntimeInteger(raw string, minimum, maximum int) (string, error) {
-	value, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || value < minimum || value > maximum {
-		return "", fmt.Errorf("value must be an integer between %d and %d", minimum, maximum)
-	}
-
-	return strconv.Itoa(value), nil
 }
 
 func normalizeCrawlerRuntimeDuration(

@@ -120,8 +120,6 @@ type ErrorDetail struct {
 	Error string `json:"error"`
 }
 
-var randomRead = rand.Read
-
 func Mount(
 	mux *http.ServeMux,
 	search searchcore.Searcher,
@@ -168,23 +166,23 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := requestID(r)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", id)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	credentialAuthorized := false
 	if e.access.Authorizer == nil {
 		if decision := e.access.authorize(r, ScopeRead); decision != DecisionAllow {
-			writeAuthDecision(w, decision, id)
+			writeAuthDecision(w, decision)
 
 			return
 		}
 		credentialAuthorized = true
 	} else if _, ok := bearerToken(r.Header.Get("Authorization")); !ok {
-		writeAuthDecision(w, DecisionUnauthenticated, id)
+		writeAuthDecision(w, DecisionUnauthenticated)
 
 		return
 	}
-	releaseIntake, admitted := enterSearchRequestIntake(w, id, e.intake)
+	releaseIntake, admitted := enterSearchRequestIntake(w, e.intake)
 	if !admitted {
 		return
 	}
@@ -194,13 +192,7 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	releaseIntake()
 	if decodeErr != nil {
 		if isJSONRequestTooLarge(decodeErr) {
-			writeError(
-				w,
-				http.StatusRequestEntityTooLarge,
-				requestTooLargeErrorCode,
-				requestTooLargeErrorMessage,
-				id,
-			)
+			writeError(w, http.StatusRequestEntityTooLarge, requestTooLargeErrorMessage)
 
 			return
 		}
@@ -208,22 +200,17 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if isBadRequest(decodeErr) {
 			message = decodeErr.Error()
 		}
-		writeError(w, http.StatusBadRequest, "invalid_search_request", message, id)
+		writeError(w, http.StatusBadRequest, message)
 		return
 	}
 	if !credentialAuthorized {
 		if decision := e.access.authorize(r, searchScope(req)); decision != DecisionAllow {
-			writeAuthDecision(w, decision, id)
+			writeAuthDecision(w, decision)
 			return
 		}
 	}
 	callerContext := r.Context()
-	r, releaseWork, admitted := e.enterWork(
-		w,
-		r,
-		id,
-		req.IncludeRawContent.Enabled(),
-	)
+	r, releaseWork, admitted := e.enterWork(w, r, req.IncludeRawContent.Enabled())
 	if !admitted {
 		return
 	}
@@ -237,7 +224,7 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		start,
 		id,
 	)
-	writeSearchEndpointResponse(w, resp, err, id)
+	writeSearchEndpointResponse(w, resp, err)
 }
 
 func searchScope(req SearchRequest) SearchScope {
@@ -1034,9 +1021,7 @@ func validRequestID(id string) bool {
 
 func generatedRequestID() string {
 	var value [16]byte
-	if _, err := randomRead(value[:]); err != nil {
-		return fmt.Sprintf("local-%d", time.Now().UnixNano())
-	}
+	_, _ = rand.Read(value[:])
 
 	return fmt.Sprintf(
 		"%x-%x-%x-%x-%x",
@@ -1048,7 +1033,7 @@ func generatedRequestID() string {
 	)
 }
 
-func writeError(w http.ResponseWriter, status int, _ string, message, _ string) {
+func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(ErrorResponse{

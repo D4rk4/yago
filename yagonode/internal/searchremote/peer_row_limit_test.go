@@ -27,16 +27,11 @@ func TestSearchResultsRetainsBodyOnlyPeerHit(t *testing.T) {
 		"https://example.org/document",
 		"Unrelated metadata title",
 	)}
-	results, err := searchResults(
-		t.Context(),
-		searchcore.Request{
-			Terms:  []string{"body-only-token"},
-			Limit:  10,
-			Verify: searchcore.VerifyIfExist,
-		},
-		rows,
-		newRemoteScorer([]string{"body-only-token"}, DefaultRankingWeights()),
-	)
+	results, err := searchResultsWithinBudget(t.Context(), searchcore.Request{
+		Terms:  []string{"body-only-token"},
+		Limit:  10,
+		Verify: searchcore.VerifyIfExist,
+	}, rows, newRemoteScorer([]string{"body-only-token"}, DefaultRankingWeights()), newRemoteQueryBudget())
 	if err != nil || len(results) != 1 {
 		t.Fatalf("body-only peer results = %#v, %v", results, err)
 	}

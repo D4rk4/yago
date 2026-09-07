@@ -156,7 +156,10 @@ func TestAPIKeyAuthorizerRemainsAvailableOnLastUsedStoreError(t *testing.T) {
 func TestListAPIKeysErrorOnMalformedRecord(t *testing.T) {
 	service, engine := scriptedService(t)
 	engine.buckets[adminAPIKeysBucket]["bad"] = []byte("not-json")
-	if _, err := service.ListAPIKeys(context.Background()); err == nil {
+	if _, err := service.ListAPIKeyPage(
+		context.Background(),
+		APIKeyPageRequest{Limit: maximumAPIKeys},
+	); err == nil {
 		t.Fatal("expected a list error for a malformed record")
 	}
 }

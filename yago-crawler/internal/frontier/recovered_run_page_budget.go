@@ -77,25 +77,11 @@ func (f *Frontier) reloadRecoveredRunSnapshot(
 	ctx context.Context,
 	provenance []byte,
 ) (frontiercheckpoint.Snapshot, error) {
-	if bounded, supported := f.checkpoint.(boundedRecoveryCheckpoint); supported {
-		snapshot, err := bounded.LoadBounded(
-			context.WithoutCancel(ctx),
-			provenance,
-			frontierMutationBatchSize,
-		)
-		if err != nil {
-			return frontiercheckpoint.Snapshot{}, fmt.Errorf(
-				"reload bounded frontier checkpoint: %w",
-				err,
-			)
-		}
-
-		return snapshot, nil
-	}
-	snapshot, err := f.checkpoint.Load(context.WithoutCancel(ctx), provenance)
+	snapshot, err := f.checkpoint.LoadBounded(
+		context.WithoutCancel(ctx), provenance, frontierMutationBatchSize,
+	)
 	if err != nil {
 		return frontiercheckpoint.Snapshot{}, fmt.Errorf("reload frontier checkpoint: %w", err)
 	}
-
 	return snapshot, nil
 }

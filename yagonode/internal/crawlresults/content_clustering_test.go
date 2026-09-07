@@ -257,23 +257,6 @@ func TestClusterDocumentsPersistsRepresentativeChangesWithoutDroppingMembers(t *
 	if writes := persistClusterLifecycleDocument(t, lifecycle, second); len(writes) != 1 {
 		t.Fatalf("idempotent recrawl writes = %d, want 1", len(writes))
 	}
-	if err := lifecycle.consumer.deleteDocumentCluster(
-		t.Context(),
-		second.NormalizedURL,
-	); err != nil {
-		t.Fatalf("delete representative cluster: %v", err)
-	}
-	remaining, found, err := lifecycle.directory.Document(t.Context(), first.NormalizedURL)
-	if err != nil || !found || remaining.RepresentativeURL != first.NormalizedURL {
-		t.Fatalf("surviving representative = %+v, %v, %v", remaining, found, err)
-	}
-	if _, found, err := lifecycle.clusters.Lookup(
-		t.Context(),
-		second.NormalizedURL,
-	); err != nil ||
-		found {
-		t.Fatalf("deleted cluster assignment = %v, %v", found, err)
-	}
 	if count, err := lifecycle.directory.Count(t.Context()); err != nil || count != 2 {
 		t.Fatalf("stored document count = %d, %v", count, err)
 	}
@@ -587,7 +570,7 @@ func TestRemovalTombstoneInvokesConfiguredPurgerOnce(t *testing.T) {
 	}
 }
 
-func TestContentClusterFailuresRedeliverAdmissionAndRemoval(t *testing.T) {
+func TestContentClusterFailuresRedeliverAdmission(t *testing.T) {
 	sentinel := errors.New("cluster unavailable")
 	replaceScript := &contentClusterScript{lookupErr: sentinel}
 	consumer := &IngestConsumer{clusters: replaceScript}
@@ -602,28 +585,6 @@ func TestContentClusterFailuresRedeliverAdmissionAndRemoval(t *testing.T) {
 		NormalizedURL: "https://a.example",
 	}}); !errors.Is(err, sentinel) {
 		t.Fatalf("replacement failure = %v", err)
-	}
-	deleteScript := &contentClusterScript{lookupErr: sentinel}
-	consumer.clusters = deleteScript
-	if err := consumer.deleteDocumentCluster(
-		t.Context(),
-		"https://a.example",
-	); !errors.Is(
-		err,
-		sentinel,
-	) {
-		t.Fatalf("deletion lookup failure = %v", err)
-	}
-	deleteScript.lookupErr = nil
-	deleteScript.deleteErr = sentinel
-	if err := consumer.deleteDocumentCluster(
-		t.Context(),
-		"https://a.example",
-	); !errors.Is(
-		err,
-		sentinel,
-	) {
-		t.Fatalf("deletion failure = %v", err)
 	}
 }
 
@@ -644,9 +605,6 @@ func TestContentClusterSetterAndNoopPaths(t *testing.T) {
 	projection, err = consumer.prepareDocumentClusters(t.Context(), nil)
 	if err != nil || projection.documents != nil {
 		t.Fatalf("empty documents = %+v, %v", projection.documents, err)
-	}
-	if err := withoutClusters.deleteDocumentCluster(t.Context(), "https://a.example"); err != nil {
-		t.Fatalf("clusterless deletion: %v", err)
 	}
 }
 
@@ -704,10 +662,11 @@ func TestStoredClusterUpdatesBoundsAndSkipsCurrentRecords(t *testing.T) {
 			"https://stale.example",
 		},
 	}
-	if updates, err := (&IngestConsumer{}).storedClusterUpdates(
+	if updates, err := (&IngestConsumer{}).storedClusterProjection(
 		t.Context(),
 		cluster,
 		nil,
+		false,
 	); err != nil || updates != nil {
 		t.Fatalf("directory-free updates = %+v, %v", updates, err)
 	}
@@ -720,10 +679,11 @@ func TestStoredClusterUpdatesBoundsAndSkipsCurrentRecords(t *testing.T) {
 		"https://stale.example": {NormalizedURL: "https://stale.example"},
 	}}
 	consumer := &IngestConsumer{documents: directory}
-	updates, err := consumer.storedClusterUpdates(
+	updates, err := consumer.storedClusterProjection(
 		t.Context(),
 		cluster,
 		map[string]struct{}{"https://excluded.example": {}},
+		false,
 	)
 	if err != nil || len(updates) != 1 ||
 		updates[0].NormalizedURL != "https://stale.example" ||
@@ -754,112 +714,6 @@ func TestAssignDocumentClusterDefaultsCanonicalAndNormalizedURL(t *testing.T) {
 	if err != nil || assigned.NormalizedURL != "https://normalized.example" ||
 		assigned.CanonicalURL != "https://normalized.example" {
 		t.Fatalf("normalized fallback = %+v, %v", assigned, err)
-	}
-}
-
-func TestDeleteDocumentClusterReportsSurvivorUpdateFailures(t *testing.T) {
-	sentinel := errors.New("failure")
-	baseCluster := contentcluster.Cluster{
-		ID:                "cluster",
-		RepresentativeURL: "https://member.example",
-		MemberURLs:        []string{"https://member.example"},
-	}
-	tests := []struct {
-		name      string
-		script    *contentClusterScript
-		directory *clusterDocumentDirectoryScript
-		index     *anchorIndexScript
-	}{
-		{
-			name:      "surviving cluster read",
-			script:    survivingContentClusterScript(baseCluster),
-			directory: &clusterDocumentDirectoryScript{},
-		},
-		{
-			name:      "surviving document read",
-			script:    survivingContentClusterScript(baseCluster),
-			directory: &clusterDocumentDirectoryScript{readErr: sentinel},
-		},
-		{
-			name:   "surviving document store",
-			script: survivingContentClusterScript(baseCluster),
-			directory: &clusterDocumentDirectoryScript{
-				documents: map[string]documentstore.Document{
-					"https://member.example": {NormalizedURL: "https://member.example"},
-				},
-				receiveErr: sentinel,
-			},
-		},
-		{
-			name:   "surviving document capacity",
-			script: survivingContentClusterScript(baseCluster),
-			directory: &clusterDocumentDirectoryScript{
-				documents: map[string]documentstore.Document{
-					"https://member.example": {NormalizedURL: "https://member.example"},
-				},
-				receipt: documentstore.Receipt{Busy: true},
-			},
-		},
-		{
-			name:   "surviving document index",
-			script: survivingContentClusterScript(baseCluster),
-			directory: &clusterDocumentDirectoryScript{documents: map[string]documentstore.Document{
-				"https://member.example": {NormalizedURL: "https://member.example"},
-			}},
-			index: &anchorIndexScript{err: sentinel},
-		},
-	}
-	tests[0].script.clusterErr = sentinel
-	for _, test := range tests {
-		consumer := &IngestConsumer{
-			clusters:  test.script,
-			documents: test.directory,
-			index:     test.index,
-		}
-		if err := consumer.deleteDocumentCluster(t.Context(), "https://gone.example"); err == nil {
-			t.Fatalf("%s succeeded", test.name)
-		}
-	}
-}
-
-func survivingContentClusterScript(cluster contentcluster.Cluster) *contentClusterScript {
-	return &contentClusterScript{
-		lookup:       contentcluster.Assignment{ClusterID: cluster.ID},
-		lookupFound:  true,
-		cluster:      cluster,
-		clusterFound: true,
-	}
-}
-
-func TestDeleteDocumentClusterHandlesEmptySurvivorPaths(t *testing.T) {
-	baseCluster := contentcluster.Cluster{
-		ID:                "cluster",
-		RepresentativeURL: "https://member.example",
-		MemberURLs:        []string{"https://member.example"},
-	}
-	noAssignment := &IngestConsumer{clusters: &contentClusterScript{}}
-	if err := noAssignment.deleteDocumentCluster(t.Context(), "https://gone.example"); err != nil {
-		t.Fatalf("missing assignment deletion: %v", err)
-	}
-	noCluster := &IngestConsumer{clusters: &contentClusterScript{
-		lookup:       contentcluster.Assignment{ClusterID: "cluster"},
-		lookupFound:  true,
-		clusterFound: false,
-	}}
-	if err := noCluster.deleteDocumentCluster(t.Context(), "https://gone.example"); err != nil {
-		t.Fatalf("empty surviving cluster deletion: %v", err)
-	}
-	noUpdates := &IngestConsumer{
-		clusters: &contentClusterScript{
-			lookup:       contentcluster.Assignment{ClusterID: "cluster"},
-			lookupFound:  true,
-			cluster:      baseCluster,
-			clusterFound: true,
-		},
-		documents: &clusterDocumentDirectoryScript{documents: map[string]documentstore.Document{}},
-	}
-	if err := noUpdates.deleteDocumentCluster(t.Context(), "https://gone.example"); err != nil {
-		t.Fatalf("unchanged surviving cluster deletion: %v", err)
 	}
 }
 

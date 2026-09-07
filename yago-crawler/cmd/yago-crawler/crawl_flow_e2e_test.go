@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yago-crawler/internal/crawlermetrics"
 	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
@@ -174,7 +175,7 @@ func TestRunServiceMultipleWorkersFetchEachURLOnce(t *testing.T) {
 	}()
 
 	runDone := make(chan error, 1)
-	go func() { runDone <- RunService(ctx, flowConfig(t, 8), source) }()
+	go func() { runDone <- runServiceWithMetrics(ctx, flowConfig(t, 8), source, crawlermetrics.New()) }()
 
 	finished := awaitFinishedReport(t, exchange.progress)
 
@@ -236,7 +237,7 @@ func TestRunServiceBackpressureFromNodeStallsCrawler(t *testing.T) {
 	defer cancel()
 
 	runDone := make(chan error, 1)
-	go func() { runDone <- RunService(ctx, flowConfig(t, 4), source) }()
+	go func() { runDone <- runServiceWithMetrics(ctx, flowConfig(t, 4), source, crawlermetrics.New()) }()
 
 	// Phase 1 — ingest is never drained, so SubmitIngest blocks and the workers
 	// stall at Emit. Give the crawler time to reach that steady state, then confirm

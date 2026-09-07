@@ -58,7 +58,7 @@ func (f *Frontier) loadBoundedSeedCandidates(
 	cursor uint64,
 	limit int,
 ) ([]frontierCandidate, uint64, bool, error) {
-	checkpoint := f.checkpoint.(boundedRecoveryCheckpoint)
+	checkpoint := f.checkpoint
 	pages, next, complete, err := checkpoint.LoadSeedPageBatch(
 		context.WithoutCancel(ctx),
 		provenance,

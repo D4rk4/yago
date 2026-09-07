@@ -17,6 +17,7 @@ import (
 )
 
 type scriptedCheckpoint struct {
+	boundedRecoveryCheckpoint
 	status              frontiercheckpoint.RunStatus
 	statusError         error
 	beginError          error
@@ -138,17 +139,6 @@ func (checkpoint *scriptedCheckpoint) RecordRedirect(
 	return checkpoint.redirectDuplicate, checkpoint.redirectError
 }
 
-func (checkpoint *scriptedCheckpoint) RecordHostState(
-	context.Context,
-	[]byte,
-	string,
-	frontiercheckpoint.HostProgress,
-	[]string,
-) error {
-	checkpoint.hostProgressCalls++
-	return checkpoint.hostProgressError
-}
-
 func (checkpoint *scriptedCheckpoint) UpdateControl(
 	_ context.Context,
 	_ []byte,
@@ -168,9 +158,10 @@ func (checkpoint *scriptedCheckpoint) CancelQueuedPages(
 	return checkpoint.cancelQueuedError
 }
 
-func (checkpoint *scriptedCheckpoint) Load(
+func (checkpoint *scriptedCheckpoint) LoadBounded(
 	context.Context,
 	[]byte,
+	int,
 ) (frontiercheckpoint.Snapshot, error) {
 	checkpoint.loadCalls++
 	return checkpoint.snapshot, checkpoint.loadError

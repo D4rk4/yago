@@ -111,23 +111,22 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := requestID(r)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "use POST", id)
+		writeError(w, http.StatusMethodNotAllowed, "use POST")
 
 		return
 	}
 	// Crawling returns page content: the raw scope, like /extract.
 	if decision := e.access.authorize(r, ScopeRaw); decision != DecisionAllow {
-		writeAuthDecision(w, decision, id)
+		writeAuthDecision(w, decision)
 
 		return
 	}
 	if e.fetcher == nil {
-		writeError(w, http.StatusServiceUnavailable, "crawl_unavailable",
-			"crawl fetching is disabled on this node", id)
+		writeError(w, http.StatusServiceUnavailable, "crawl fetching is disabled on this node")
 
 		return
 	}
-	release, admitted := enterRawContentWork(w, id)
+	release, admitted := enterRawContentWork(w)
 	if !admitted {
 		return
 	}
@@ -140,17 +139,11 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req CrawlRequest
 	if err := decodeJSONRequest(w, r, &req); err != nil {
 		if isJSONRequestTooLarge(err) {
-			writeError(
-				w,
-				http.StatusRequestEntityTooLarge,
-				requestTooLargeErrorCode,
-				requestTooLargeErrorMessage,
-				id,
-			)
+			writeError(w, http.StatusRequestEntityTooLarge, requestTooLargeErrorMessage)
 
 			return
 		}
-		writeError(w, http.StatusBadRequest, "bad_request", "invalid JSON body", id)
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
 
 		return
 	}
@@ -162,12 +155,8 @@ func (e crawlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := e.now()
 	pages, baseURL, err := e.walk(workContext, req)
 	if err != nil {
-		status, code := rawContentResponseError(
-			err,
-			"crawl_failed",
-			"invalid_crawl_request",
-		)
-		writeError(w, status, code, err.Error(), id)
+		status := rawContentResponseStatus(err)
+		writeError(w, status, err.Error())
 
 		return
 	}

@@ -1,15 +1,11 @@
 package adminauth
 
 import (
-	"errors"
 	"testing"
 )
 
 func TestHashAndVerifyPassword(t *testing.T) {
-	encoded, err := hashPassword("correct horse battery staple")
-	if err != nil {
-		t.Fatalf("hashPassword: %v", err)
-	}
+	encoded := hashPassword("correct horse battery staple")
 	if encoded == "" {
 		t.Fatal("encoded hash is empty")
 	}
@@ -32,26 +28,10 @@ func TestHashAndVerifyPassword(t *testing.T) {
 }
 
 func TestHashPasswordDistinctSalts(t *testing.T) {
-	first, err := hashPassword("same")
-	if err != nil {
-		t.Fatalf("hashPassword first: %v", err)
-	}
-	second, err := hashPassword("same")
-	if err != nil {
-		t.Fatalf("hashPassword second: %v", err)
-	}
+	first := hashPassword("same")
+	second := hashPassword("same")
 	if first == second {
 		t.Fatal("hashes of the same password must differ by salt")
-	}
-}
-
-func TestHashPasswordReportsRandomFailure(t *testing.T) {
-	original := randRead
-	randRead = func([]byte) (int, error) { return 0, errors.New("no entropy") }
-	t.Cleanup(func() { randRead = original })
-
-	if _, err := hashPassword("x"); err == nil {
-		t.Fatal("hashPassword should fail when the random source fails")
 	}
 }
 

@@ -40,25 +40,6 @@ type leasedOrderAcknowledgment struct {
 	requeue         bool
 }
 
-func settleLease(
-	serviceCtx context.Context,
-	client OrderStreamer,
-	leaseID string,
-	requeue bool,
-) func(context.Context) error {
-	return settleLeaseWithPolicy(
-		serviceCtx,
-		client,
-		leaseID,
-		requeue,
-		leaseSettlementPolicy{
-			retryWait:        DefaultLeaseSettlementRetryWait,
-			maximumRetryWait: maximumLeaseSettlementRetryWait,
-			shutdownWait:     DefaultLeaseSettlementShutdownWait,
-		},
-	)
-}
-
 func settleLeaseForSession(
 	serviceCtx context.Context,
 	client OrderStreamer,
@@ -78,21 +59,6 @@ func settleLeaseForSession(
 			maximumRetryWait: maximumLeaseSettlementRetryWait,
 			shutdownWait:     DefaultLeaseSettlementShutdownWait,
 		},
-	)
-}
-
-func settleLeaseWithPolicy(
-	serviceCtx context.Context,
-	client OrderStreamer,
-	leaseID string,
-	requeue bool,
-	policy leaseSettlementPolicy,
-) func(context.Context) error {
-	return settleOrderAcknowledgmentWithPolicy(
-		serviceCtx,
-		client,
-		&crawlrpc.OrderAck{LeaseId: leaseID, Requeue: requeue},
-		policy,
 	)
 }
 
@@ -144,12 +110,6 @@ func (s leaseSettlementSession) settleResult() (*crawlrpc.OrderAckResult, error)
 	defer cancel()
 
 	return s.retryResult(shutdownCtx)
-}
-
-func (s leaseSettlementSession) retry(ctx context.Context) error {
-	_, err := s.retryResult(ctx)
-
-	return err
 }
 
 func (s leaseSettlementSession) retryResult(

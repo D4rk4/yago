@@ -20,8 +20,7 @@ type BrowserPoolState = browserpool.State
 type BrowserPoolObserver = browserpool.Observer
 
 type browserPoolObservation struct {
-	legacyDeadline func()
-	observer       browserpool.Observer
+	observer browserpool.Observer
 }
 
 func (o browserPoolObservation) observeWait(elapsed time.Duration) {
@@ -37,9 +36,6 @@ func (o browserPoolObservation) observeState(state browserpool.State) {
 }
 
 func (o browserPoolObservation) observeFailure(reason browserpool.FailureReason) {
-	if reason == BrowserFailureSlotDeadline && o.legacyDeadline != nil {
-		o.legacyDeadline()
-	}
 	if o.observer != nil {
 		o.observer.ObserveBrowserFailure(reason)
 	}

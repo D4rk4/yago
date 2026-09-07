@@ -92,14 +92,8 @@ func (s *apiKeyStore) create(
 	label string,
 	scopes []Scope,
 ) (createdAPIKey, error) {
-	id, err := newRandomToken(apiKeyIDBytes)
-	if err != nil {
-		return createdAPIKey{}, err
-	}
-	secret, err := newRandomToken(apiKeySecretBytes)
-	if err != nil {
-		return createdAPIKey{}, err
-	}
+	id := newRandomToken(apiKeyIDBytes)
+	secret := newRandomToken(apiKeySecretBytes)
 	record := apiKeyRecord{
 		SecretHash: hashToken(secret),
 		Scopes:     scopes,
@@ -190,18 +184,6 @@ func (s *apiKeyStore) touchLastUsed(ctx context.Context, id string) (bool, error
 	}
 
 	return foundRecord, nil
-}
-
-func (s *apiKeyStore) list(ctx context.Context) ([]apiKeyInfo, error) {
-	page, err := s.page(ctx, "", maximumAPIKeys)
-	if err != nil {
-		return nil, err
-	}
-	if page.nextCursor != "" {
-		return nil, errAPIKeyCompatibilityListingTruncated
-	}
-
-	return page.infos, nil
 }
 
 func (s *apiKeyStore) delete(ctx context.Context, id string) (bool, error) {

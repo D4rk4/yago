@@ -39,13 +39,19 @@ func TestOutboundDistributorCancelsWholeRejectedRedundancyBeforeRestore(t *testi
 	handoff := &handoffScript{receipt: indextransfer.HandoffReceipt{
 		State: indextransfer.HandoffRWIRejected,
 	}}
-	distributor := NewOutboundDistributor(
+	distributor := NewConfirmingOutboundDistributor(
 		queue,
 		handoff,
 		&wordRestorerScript{restored: 1},
+		nil,
 	)
 
-	first, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	first, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if err != nil || first.RestoredPostings != 1 || queue.PostingCount() != 0 ||
 		handoff.calls != 1 {
 		t.Fatalf(
@@ -57,7 +63,12 @@ func TestOutboundDistributorCancelsWholeRejectedRedundancyBeforeRestore(t *testi
 		)
 	}
 	handoff.receipt = acceptedHandoff(indextransfer.HandoffRWIOnly)
-	second, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	second, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if err != nil || second.State != DistributionQueueEmpty || handoff.calls != 1 ||
 		queue.PostingCount() != 0 {
 		t.Fatalf(
@@ -80,7 +91,7 @@ func TestOutboundDistributorCancelsRedundancyBeforeQuarantineRestore(t *testing.
 	queue.add(firstPeer, []yagomodel.RWIPosting{posting})
 	queue.add(secondPeer, []yagomodel.RWIPosting{posting})
 	restorer := &wordRestorerScript{restored: 1}
-	distributor := NewOutboundDistributor(queue, &handoffScript{}, restorer)
+	distributor := NewConfirmingOutboundDistributor(queue, &handoffScript{}, restorer, nil)
 
 	restored, requeued, err := distributor.RestoreRequeuedPeer(t.Context(), firstPeer.Hash)
 	if err != nil || restored != 1 || requeued != 0 {
@@ -110,7 +121,12 @@ func TestOutboundDistributorAcceptsAlreadyAbsentJournalRowsWithoutResending(t *t
 		confirmer,
 	)
 
-	first, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	first, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if !errors.Is(err, confirmErr) || first.State != DistributionSent ||
 		first.ConfirmedPostings != 0 || handoff.calls != 1 || queue.PostingCount() != 0 ||
 		!reflect.DeepEqual(queue.pendingTransferConfirmation(), postings) {
@@ -123,7 +139,12 @@ func TestOutboundDistributorAcceptsAlreadyAbsentJournalRowsWithoutResending(t *t
 			queue.pendingTransferConfirmation(),
 		)
 	}
-	second, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	second, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if err != nil || second.State != DistributionConfirmed || second.Peer != "" ||
 		second.ConfirmedPostings != 0 || handoff.calls != 1 ||
 		len(queue.pendingTransferConfirmation()) != 0 || len(confirmer.calls) != 2 {
@@ -148,9 +169,14 @@ func TestOutboundDistributorRetriesRejectedRestoreWithoutResending(t *testing.T)
 	}}
 	restoreErr := errors.New("local restore failed")
 	restorer := &wordRestorerScript{err: restoreErr}
-	distributor := NewOutboundDistributor(queue, handoff, restorer)
+	distributor := NewConfirmingOutboundDistributor(queue, handoff, restorer, nil)
 
-	first, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	first, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if !errors.Is(err, restoreErr) || first.State != DistributionSent ||
 		queue.PostingCount() != 0 || len(queue.pendingRestore()) != 1 || handoff.calls != 1 {
 		t.Fatalf(
@@ -162,7 +188,12 @@ func TestOutboundDistributorRetriesRejectedRestoreWithoutResending(t *testing.T)
 			handoff.calls,
 		)
 	}
-	second, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	second, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if !errors.Is(err, restoreErr) || second.State != DistributionRestorePending ||
 		second.Peer != "" || handoff.calls != 1 || len(queue.pendingRestore()) != 1 {
 		t.Fatalf(
@@ -176,7 +207,12 @@ func TestOutboundDistributorRetriesRejectedRestoreWithoutResending(t *testing.T)
 	restorer.err = nil
 	restorer.restored = 0
 	handoff.receipt = acceptedHandoff(indextransfer.HandoffRWIOnly)
-	third, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	third, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if err != nil || third.State != DistributionRestored || third.Peer != "" ||
 		third.RestoredPostings != 0 || handoff.calls != 1 ||
 		queue.PostingCount() != 0 || len(queue.pendingRestore()) != 0 {

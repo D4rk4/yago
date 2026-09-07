@@ -1,6 +1,9 @@
 package searchindex
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 func cloneResultSet(set SearchResultSet) SearchResultSet {
 	return SearchResultSet{
@@ -35,10 +38,10 @@ func cloneSearchResults(results []SearchResult) []SearchResult {
 		cloneSearchResultStrings(&cloned[index])
 		cloned[index].FieldScores = cloneFieldScores(result.FieldScores)
 		cloned[index].FieldTermPositions = cloneFieldTermPositions(result.FieldTermPositions)
-		cloned[index].EvidenceRequirementOrdinals = cloneValues(
+		cloned[index].EvidenceRequirementOrdinals = slices.Clone(
 			result.EvidenceRequirementOrdinals,
 		)
-		cloned[index].BodyQueryMatches = cloneValues(result.BodyQueryMatches)
+		cloned[index].BodyQueryMatches = slices.Clone(result.BodyQueryMatches)
 		cloned[index].Images = cloneResultImages(result.Images)
 	}
 
@@ -77,7 +80,7 @@ func cloneTermPositions(positions map[string][]int) map[string][]int {
 	}
 	cloned := make(map[string][]int, len(positions))
 	for term, values := range positions {
-		cloned[strings.Clone(term)] = cloneValues(values)
+		cloned[strings.Clone(term)] = slices.Clone(values)
 	}
 
 	return cloned
@@ -123,16 +126,6 @@ func cloneResultImages(images []ResultImage) []ResultImage {
 			Alt: strings.Clone(image.Alt),
 		}
 	}
-
-	return cloned
-}
-
-func cloneValues[T any](values []T) []T {
-	if values == nil {
-		return nil
-	}
-	cloned := make([]T, len(values))
-	copy(cloned, values)
 
 	return cloned
 }

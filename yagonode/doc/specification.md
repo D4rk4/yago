@@ -1080,7 +1080,8 @@ it is not an assumed deployment dependency.
   seeded queue depth before terminal settlement can publish a finished or
   cancelled state. Periodic running reports SHALL use the live pending depth and
   SHALL NOT follow a terminal report.
-* Production checkpoint recovery SHALL materialize at most 256 persisted pages per
+* Persistent crawl checkpoints SHALL provide bounded recovery as a required
+  capability. Production checkpoint recovery SHALL materialize at most 256 persisted pages per
   active run, refill only the unused portion of that live window after it drops
   below 128 pages, and query exact persisted visited, host-retirement, host-total,
   and run-total state in candidate batches instead of loading those sets. Every

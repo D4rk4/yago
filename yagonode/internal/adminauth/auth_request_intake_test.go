@@ -3,7 +3,6 @@ package adminauth
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -289,17 +288,17 @@ func setupWithConcurrentAdmin(t *testing.T) *Service {
 	t.Helper()
 	useFastCredentialWork(t)
 	service := testService(t)
-	credentialPasswordHash = func(password string) (string, error) {
+	credentialPasswordHash = func(password string) string {
 		err := service.creds.vault.Update(t.Context(), func(tx *vault.Txn) error {
 			return service.creds.records.Put(tx, adminKey, adminRecord{
 				Username: "winner", PasswordHash: "hash:winner",
 			})
 		})
 		if err != nil {
-			return "", fmt.Errorf("seed concurrent admin: %w", err)
+			t.Fatalf("seed concurrent admin: %v", err)
 		}
 
-		return "hash:" + password, nil
+		return "hash:" + password
 	}
 
 	return service

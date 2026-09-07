@@ -55,10 +55,7 @@ func TestDecodeRejectsAHashThatWouldCrashTheDerivation(t *testing.T) {
 func TestDecodeKeepsAcceptingTheHashesThisPackageWrites(t *testing.T) {
 	t.Parallel()
 
-	encoded, err := hashPassword("correct horse battery staple")
-	if err != nil {
-		t.Fatalf("hash password: %v", err)
-	}
+	encoded := hashPassword("correct horse battery staple")
 	params, salt, key, err := decodeArgon2id(encoded)
 	if err != nil {
 		t.Fatalf("decode own hash: %v", err)

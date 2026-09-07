@@ -406,13 +406,10 @@ func TestBrowserPageFetcherRejectsBadFinalURL(t *testing.T) {
 }
 
 func TestNewBrowserPageFetcherBuildsFetcher(t *testing.T) {
-	fetcher, cancel, err := NewBrowserPageFetcher(
-		BrowserLaunch{
-			UserAgent: "agent/1.0", Timeout: time.Second, MaxBytes: 4 << 20,
-			executableResolver: acceptTestFirefoxExecutable,
-		},
-		yagoegress.NewGuard(false),
-	)
+	fetcher, cancel, err := NewBrowserPageFetcherWithPoolObservation(BrowserLaunch{
+		UserAgent: "agent/1.0", Timeout: time.Second, MaxBytes: 4 << 20,
+		executableResolver: acceptTestFirefoxExecutable,
+	}, yagoegress.NewGuard(false), nil)
 	if err != nil {
 		t.Fatalf("new fetcher: %v", err)
 	}
@@ -424,17 +421,14 @@ func TestNewBrowserPageFetcherBuildsFetcher(t *testing.T) {
 }
 
 func TestNewBrowserPageFetcherHonorsSandboxAndExecPath(t *testing.T) {
-	fetcher, cancel, err := NewBrowserPageFetcher(
-		BrowserLaunch{
-			UserAgent:          "agent/1.0",
-			Timeout:            time.Second,
-			MaxBytes:           4 << 20,
-			ExecPath:           "/usr/bin/firefox-esr",
-			Sandbox:            true,
-			executableResolver: acceptTestFirefoxExecutable,
-		},
-		yagoegress.NewGuard(false),
-	)
+	fetcher, cancel, err := NewBrowserPageFetcherWithPoolObservation(BrowserLaunch{
+		UserAgent:          "agent/1.0",
+		Timeout:            time.Second,
+		MaxBytes:           4 << 20,
+		ExecPath:           "/usr/bin/firefox-esr",
+		Sandbox:            true,
+		executableResolver: acceptTestFirefoxExecutable,
+	}, yagoegress.NewGuard(false), nil)
 	if err != nil {
 		t.Fatalf("new fetcher: %v", err)
 	}
@@ -452,24 +446,22 @@ func TestNewBrowserPageFetcherFailsWhenProxyCannotListen(t *testing.T) {
 		return nil, errors.New("listen refused")
 	}
 
-	if _, _, err := NewBrowserPageFetcher(
-		BrowserLaunch{
-			UserAgent: "agent/1.0", Timeout: time.Second, MaxBytes: 4 << 20,
-			executableResolver: acceptTestFirefoxExecutable,
-		},
-		yagoegress.NewGuard(false),
-	); err == nil {
+	if _, _, err := NewBrowserPageFetcherWithPoolObservation(BrowserLaunch{
+		UserAgent: "agent/1.0", Timeout: time.Second, MaxBytes: 4 << 20,
+		executableResolver: acceptTestFirefoxExecutable,
+	}, yagoegress.NewGuard(false), nil); err == nil {
 		t.Fatal("expected error when the browser proxy cannot listen")
 	}
 }
 
 func TestNewBrowserPageFetcherRejectsUntrustedExecutableBeforeAssembly(t *testing.T) {
 	sentinel := errors.New("untrusted Firefox executable")
-	_, _, err := NewBrowserPageFetcher(
+	_, _, err := NewBrowserPageFetcherWithPoolObservation(
 		BrowserLaunch{executableResolver: func(string, bool) (string, error) {
 			return "", sentinel
 		}},
 		yagoegress.NewGuard(false),
+		nil,
 	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("preassembly executable error = %v", err)

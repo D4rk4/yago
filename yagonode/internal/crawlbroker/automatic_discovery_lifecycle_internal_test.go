@@ -642,6 +642,9 @@ func TestAutomaticDiscoveryNewAdmissionDoesNotScanQueueOrLeases(t *testing.T) {
 
 func TestDiscardedAutomaticDiscoveryDuplicateWakesNextOrder(t *testing.T) {
 	queue := memQueue(t)
+
+	server := newExchangeServer(queue, nil)
+	generation := activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	target := "https://duplicate-ahead.example/page"
 	requireAutomaticDiscoveryAdmission(t, queue, target, false)
 	data, _, found, err := queue.leasePopForSession(
@@ -681,7 +684,7 @@ func TestDiscardedAutomaticDiscoveryDuplicateWakesNextOrder(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
-	leased, err := queue.leaseNext(ctx)
+	leased, _, err := server.leaseNextForSession(ctx, "worker", testWorkerSessionID, generation)
 	if err != nil {
 		t.Fatalf("lease next order: %v", err)
 	}

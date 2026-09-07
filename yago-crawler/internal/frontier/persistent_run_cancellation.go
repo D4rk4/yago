@@ -154,10 +154,7 @@ func (f *Frontier) persistQueuedRunCancellation(
 	recoveryRemoved := uint64(0)
 	if checkpointErr == nil && cancellation.run.boundedRecovery &&
 		cancellation.recoveryCursor < cancellation.recoveryUpper {
-		checkpoint, supported := f.checkpoint.(boundedRecoveryCheckpoint)
-		if !supported {
-			return 0, false, frontiercheckpoint.ErrCorruptCheckpoint
-		}
+		checkpoint := f.checkpoint
 		recoveryRemoved, checkpointErr = checkpoint.CancelRecoveryPages(
 			context.Background(),
 			[]byte(cancellation.key),
@@ -167,10 +164,7 @@ func (f *Frontier) persistQueuedRunCancellation(
 	}
 	seedManifestDone := false
 	if checkpointErr == nil && cancellation.seedRecovery {
-		checkpoint, supported := f.checkpoint.(boundedRecoveryCheckpoint)
-		if !supported {
-			return recoveryRemoved, false, frontiercheckpoint.ErrCorruptCheckpoint
-		}
+		checkpoint := f.checkpoint
 		for checkpointErr == nil && !seedManifestDone {
 			var err error
 			seedManifestDone, err = checkpoint.CancelSeedManifestBatch(

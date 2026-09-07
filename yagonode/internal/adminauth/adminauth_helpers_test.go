@@ -177,10 +177,7 @@ func (b scriptedBucket) ReadPageAfter(after vault.Key, limit int) (vault.BucketP
 
 func injectAdmin(t *testing.T, engine *scriptedEngine, username, password string) {
 	t.Helper()
-	hash, err := hashPassword(password)
-	if err != nil {
-		t.Fatalf("hashPassword: %v", err)
-	}
+	hash := hashPassword(password)
 	data, err := json.Marshal(adminRecord{Username: username, PasswordHash: hash})
 	if err != nil {
 		t.Fatalf("marshal admin record: %v", err)

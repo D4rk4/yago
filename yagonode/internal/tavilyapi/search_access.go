@@ -51,36 +51,18 @@ func (p SearchAccessPolicy) authorize(r *http.Request, scope SearchScope) AuthDe
 	return DecisionUnauthenticated
 }
 
-func writeAuthDecision(w http.ResponseWriter, decision AuthDecision, id string) {
+func writeAuthDecision(w http.ResponseWriter, decision AuthDecision) {
 	switch decision {
 	case DecisionForbidden:
-		writeError(w, http.StatusForbidden, "forbidden", "insufficient scope", id)
+		writeError(w, http.StatusForbidden, "insufficient scope")
 	case DecisionThrottled:
 		w.Header().Set("Retry-After", "1")
-		writeError(
-			w,
-			http.StatusTooManyRequests,
-			"rate_limited",
-			"too many requests, try again later",
-			id,
-		)
+		writeError(w, http.StatusTooManyRequests, "too many requests, try again later")
 	case DecisionUnavailable:
 		w.Header().Set("Retry-After", "1")
-		writeError(
-			w,
-			http.StatusServiceUnavailable,
-			"auth_unavailable",
-			"authorization failed",
-			id,
-		)
+		writeError(w, http.StatusServiceUnavailable, "authorization failed")
 	default:
 		w.Header().Set("WWW-Authenticate", "Bearer")
-		writeError(
-			w,
-			http.StatusUnauthorized,
-			"unauthorized",
-			"missing or invalid bearer token",
-			id,
-		)
+		writeError(w, http.StatusUnauthorized, "missing or invalid bearer token")
 	}
 }

@@ -865,7 +865,6 @@ the gate.
 | [yagorank.md](yagonode/doc/yagorank.md) | the learned ranking stack: model, features, and the tuning loop |
 | [configuration.md](yagonode/doc/configuration.md) | every environment variable and its default |
 | [specification.md](yagonode/doc/specification.md) | the node's behavior specification |
-| [Subsystem complexity review](yagonode/doc/ponytail-review-2026-09-07.md) | workspace review and ranked simplification candidates |
 | [metrics.md](yagonode/doc/metrics.md) · [slo.md](doc/slo.md) | observability and alerting |
 | [backup-restore.md](doc/backup-restore.md) | the offline backup/restore procedure |
 | [yacy-dht-interop.md](yagonode/doc/yacy-dht-interop.md) | how DHT transfer selection works |

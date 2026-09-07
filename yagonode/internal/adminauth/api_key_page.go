@@ -11,9 +11,8 @@ import (
 )
 
 var (
-	errInvalidAPIKeyPageCursor             = errors.New("invalid API key page cursor")
-	errInvalidAPIKeyPageLimit              = errors.New("invalid API key page limit")
-	errAPIKeyCompatibilityListingTruncated = errors.New("API key listing requires pagination")
+	errInvalidAPIKeyPageCursor = errors.New("invalid API key page cursor")
+	errInvalidAPIKeyPageLimit  = errors.New("invalid API key page limit")
 )
 
 type apiKeyListingPage struct {

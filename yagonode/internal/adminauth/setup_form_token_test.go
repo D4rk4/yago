@@ -1,7 +1,6 @@
 package adminauth
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -145,40 +144,5 @@ func TestSetupFormRejectsExpiredAndMalformedTokens(t *testing.T) {
 	now = base.Add(setupFormTokenLifetime + time.Second)
 	if service.validSetupFormToken(setupFormTokenRequest(t, validToken, validCookie)) {
 		t.Fatal("expired token accepted")
-	}
-}
-
-func TestSetupFormEntropyFailuresAreUnavailable(t *testing.T) {
-	originalSigningRead := setupFormSigningKeyRead
-	originalRandomRead := randRead
-	t.Cleanup(func() {
-		setupFormSigningKeyRead = originalSigningRead
-		randRead = originalRandomRead
-	})
-	setupFormSigningKeyRead = func([]byte) (int, error) {
-		return 0, errors.New("no entropy")
-	}
-	if _, err := New(testVault(t), Config{}); err == nil {
-		t.Fatal("signing-key entropy failure accepted")
-	}
-	setupFormSigningKeyRead = func(buf []byte) (int, error) {
-		return len(buf) - 1, nil
-	}
-	if _, err := New(testVault(t), Config{}); err == nil {
-		t.Fatal("short signing-key read accepted")
-	}
-	setupFormSigningKeyRead = originalSigningRead
-
-	service := testService(t)
-	randRead = func([]byte) (int, error) {
-		return 0, errors.New("no entropy")
-	}
-	rec := doRequest(htmlSurface(t, service), http.MethodGet, PathSetupPage, "")
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("setup entropy failure status = %d, want 503", rec.Code)
-	}
-	if rec.Header().Get("Cache-Control") != authPageCache ||
-		rec.Header().Get("Content-Security-Policy") != authContentPolicy {
-		t.Fatal("setup entropy failure lost auth page policy")
 	}
 }

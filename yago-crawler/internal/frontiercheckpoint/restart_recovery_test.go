@@ -103,11 +103,6 @@ func TestRedirectHostStateAndFailureSurviveReopen(t *testing.T) {
 	); err != nil || !recorded {
 		t.Fatalf("same-source redirect replay = %v, %v", recorded, err)
 	}
-	if err := checkpoint.RecordHostState(
-		testContext, provenance, "two.example", HostProgress{Failures: 3, Retired: true}, nil,
-	); err != nil {
-		t.Fatalf("record host state: %v", err)
-	}
 	if err := checkpoint.FinishSeeding(testContext, provenance, testRunTally()); err != nil {
 		t.Fatalf("finish seeding: %v", err)
 	}
@@ -115,7 +110,13 @@ func TestRedirectHostStateAndFailureSurviveReopen(t *testing.T) {
 		testContext,
 		provenance,
 		page.URL,
-		testFailedPageCompletion(),
+		PageCompletion{
+			Tally: testFailedPageCompletion().Tally,
+			HostProgress: &PageHostProgress{
+				Host:     "two.example",
+				Progress: HostProgress{Failures: 3, Retired: true},
+			},
+		},
 	); err != nil {
 		t.Fatalf("complete page: %v", err)
 	}
@@ -181,12 +182,17 @@ func TestHostRetirementDropsOnlyNamedOutstandingPages(t *testing.T) {
 	if err := checkpoint.FinishSeeding(testContext, provenance, testRunTally()); err != nil {
 		t.Fatalf("finish seeding: %v", err)
 	}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		"one.example",
-		HostProgress{Failures: 5, Retired: true},
-		[]string{first.URL, second.URL, first.URL},
+		first.URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        "one.example",
+				Progress:    HostProgress{Failures: 5, Retired: true},
+				DroppedURLs: []string{first.URL, second.URL, first.URL},
+			},
+		},
 	); err != nil {
 		t.Fatalf("retire host: %v", err)
 	}

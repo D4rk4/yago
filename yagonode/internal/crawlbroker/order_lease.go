@@ -22,7 +22,6 @@ const (
 
 var (
 	nowFunc                = time.Now
-	newLeaseID             = randomLeaseID
 	afterLeaseRequeueChunk = func() {}
 )
 
@@ -59,37 +58,11 @@ func (leaseRecordCodec) Decode(raw []byte) (leaseRecord, error) {
 	return rec, nil
 }
 
-func randomLeaseID() (string, error) {
+func randomLeaseID() string {
 	buf := make([]byte, 16)
 	_, _ = rand.Read(buf)
 
-	return hex.EncodeToString(buf), nil
-}
-
-func (q *DurableOrderQueue) leaseNext(ctx context.Context) ([]byte, error) {
-	for {
-		changed := q.changes()
-		data, _, ok, err := q.leasePop(ctx, "worker")
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			return data, nil
-		}
-		beforeQueueWait()
-		select {
-		case <-changed:
-		case <-ctx.Done():
-			return nil, fmt.Errorf("await crawl order: %w", ctx.Err())
-		}
-	}
-}
-
-func (q *DurableOrderQueue) leasePop(
-	ctx context.Context,
-	workerID string,
-) ([]byte, string, bool, error) {
-	return q.leasePopForSession(ctx, workerID, "")
+	return hex.EncodeToString(buf)
 }
 
 func (q *DurableOrderQueue) leasePopForSession(
@@ -102,22 +75,13 @@ func (q *DurableOrderQueue) leasePopForSession(
 	if !q.workerLeaseCapacityAvailable(workerID, workerSessionID) {
 		return nil, "", false, nil
 	}
-	leaseID, err := newLeaseID()
-	if err != nil {
-		return nil, "", false, fmt.Errorf("create crawl lease identity: %w", err)
-	}
+	leaseID := randomLeaseID()
 	selected, found, err := q.claimPendingOrder(ctx, leaseID, workerID, workerSessionID)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("lease crawl order: %w", err)
 	}
 
 	return selected.data, leaseID, found, nil
-}
-
-func (q *DurableOrderQueue) ackLease(ctx context.Context, leaseID string) error {
-	_, err := q.ackLeaseWithTarget(ctx, leaseID)
-
-	return err
 }
 
 func (q *DurableOrderQueue) ackLeaseWithTarget(

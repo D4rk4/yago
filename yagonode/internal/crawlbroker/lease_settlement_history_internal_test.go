@@ -35,7 +35,7 @@ func TestLeaseSettlementIdentityCodecRejectsInvalidRecord(t *testing.T) {
 func TestLeaseSettlementHistoryRejectsCorruption(t *testing.T) {
 	fixture := scriptedQueue(t)
 	fixture.engine.buckets[leaseSettlementBucket]["corrupt"] = []byte{1}
-	if err := fixture.queue.ackLease(t.Context(), "corrupt"); err == nil {
+	if _, err := fixture.queue.ackLeaseWithTarget(t.Context(), "corrupt"); err == nil {
 		t.Fatal("corrupt settlement history was accepted")
 	}
 }
@@ -51,7 +51,7 @@ func TestTerminalLeaseSettlementSurvivesRestart(t *testing.T) {
 		t.Fatalf("open first queue: %v", err)
 	}
 	leaseID := leaseOne(t, first, "terminal", "worker")
-	if err := first.ackLease(t.Context(), leaseID); err != nil {
+	if _, err := first.ackLeaseWithTarget(t.Context(), leaseID); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
 	if err := storage.Close(); err != nil {
@@ -66,7 +66,7 @@ func TestTerminalLeaseSettlementSurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open second queue: %v", err)
 	}
-	if err := second.ackLease(t.Context(), leaseID); err != nil {
+	if _, err := second.ackLeaseWithTarget(t.Context(), leaseID); err != nil {
 		t.Fatalf("duplicate ack after restart: %v", err)
 	}
 	if err := second.deferLease(
@@ -187,7 +187,7 @@ func TestLeaseSettlementHistoryRetainsEveryRecordBeyondFormerWindow(t *testing.T
 	if err := assertExtendedLeaseSettlementHistory(t, queue); err != nil {
 		t.Fatalf("read retained settlements: %v", err)
 	}
-	if err := queue.ackLease(t.Context(), "old"); err != nil {
+	if _, err := queue.ackLeaseWithTarget(t.Context(), "old"); err != nil {
 		t.Fatalf("retry oldest settlement: %v", err)
 	}
 }

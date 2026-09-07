@@ -1,6 +1,7 @@
 package documentsearch
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/url"
@@ -30,10 +31,10 @@ func metadataConstraintsFromRequest(
 	operators queryOperators,
 ) (metadataConstraints, error) {
 	constraints := metadataConstraints{
-		author:   strings.ToLower(strings.TrimSpace(firstNonEmpty(operators.Author, req.Author))),
-		fileType: normalizedFileType(firstNonEmpty(operators.FileType, req.FileType)),
+		author:   strings.ToLower(strings.TrimSpace(cmp.Or(operators.Author, req.Author))),
+		fileType: normalizedFileType(cmp.Or(operators.FileType, req.FileType)),
 		protocol: strings.ToLower(
-			strings.TrimSpace(firstNonEmpty(operators.Protocol, req.Protocol)),
+			strings.TrimSpace(cmp.Or(operators.Protocol, req.Protocol)),
 		),
 	}
 	filter := req.Filter

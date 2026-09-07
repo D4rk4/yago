@@ -218,12 +218,17 @@ func TestSecurityScopeGroupsCoverKnownScopesWithoutOverlap(t *testing.T) {
 			seen[option.Value] = true
 		}
 	}
-	if len(seen) != len(adminauth.KnownScopes()) {
-		t.Fatalf(
-			"groups offer %d scopes, want all %d known",
-			len(seen),
-			len(adminauth.KnownScopes()),
-		)
+	want := []adminauth.Scope{
+		adminauth.ScopeAdminRead, adminauth.ScopeAdminWrite, adminauth.ScopeCrawlWrite,
+		adminauth.ScopeSearchRead, adminauth.ScopeSearchRaw,
+	}
+	if len(seen) != len(want) {
+		t.Fatalf("groups offer %d scopes, want %d", len(seen), len(want))
+	}
+	for _, scope := range want {
+		if !seen[string(scope)] {
+			t.Fatalf("scope %q is missing", scope)
+		}
 	}
 }
 

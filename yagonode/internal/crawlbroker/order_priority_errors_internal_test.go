@@ -197,7 +197,11 @@ func TestPrioritySelectionSurfacesStaleIndexDeletionErrors(t *testing.T) {
 			fixture := scriptedQueue(t)
 			fixture.engine.buckets[bucket][string(orderKey(0))] = priorityIndexMarker
 			fixture.engine.deleteErrors[bucket] = errors.New("delete failed")
-			if _, _, _, err := fixture.queue.leasePop(t.Context(), "worker"); err == nil {
+			if _, _, _, err := fixture.queue.leasePopForSession(
+				t.Context(),
+				"worker",
+				testWorkerSessionID,
+			); err == nil {
 				t.Fatal("expected stale priority marker deletion failure")
 			}
 		})

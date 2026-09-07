@@ -9,14 +9,6 @@ type pdfEncodingDifference struct {
 	text string
 }
 
-func pdfSimpleFontEncodingTable(font []byte, lookup pdfObjectLookup) *pdfCMap {
-	return pdfSimpleFontEncodingTableWithQuota(
-		font,
-		lookup,
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	)
-}
-
 func pdfSimpleFontEncodingTableWithQuota(
 	font []byte,
 	lookup pdfObjectLookup,

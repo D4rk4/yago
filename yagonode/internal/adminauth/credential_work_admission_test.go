@@ -15,8 +15,8 @@ func useFastCredentialWork(t *testing.T) {
 	t.Helper()
 	originalHash := credentialPasswordHash
 	originalVerify := credentialPasswordVerify
-	credentialPasswordHash = func(password string) (string, error) {
-		return "hash:" + password, nil
+	credentialPasswordHash = func(password string) string {
+		return "hash:" + password
 	}
 	credentialPasswordVerify = func(encoded, password string) (bool, error) {
 		return encoded == "hash:"+password, nil
@@ -122,11 +122,11 @@ func TestCredentialWorkConcurrentCapacityAndRelease(t *testing.T) {
 	originalHash := credentialPasswordHash
 	started := make(chan struct{}, maximumConcurrentCredentialWork)
 	unblock := make(chan struct{})
-	credentialPasswordHash = func(password string) (string, error) {
+	credentialPasswordHash = func(password string) string {
 		started <- struct{}{}
 		<-unblock
 
-		return "hash:" + password, nil
+		return "hash:" + password
 	}
 	t.Cleanup(func() { credentialPasswordHash = originalHash })
 
@@ -170,11 +170,11 @@ func TestConcurrentSetupCreatesExactlyOneAdministrator(t *testing.T) {
 	useFastCredentialWork(t)
 	started := make(chan struct{}, maximumConcurrentCredentialWork)
 	unblock := make(chan struct{})
-	credentialPasswordHash = func(password string) (string, error) {
+	credentialPasswordHash = func(password string) string {
 		started <- struct{}{}
 		<-unblock
 
-		return "hash:" + password, nil
+		return "hash:" + password
 	}
 	service := testService(t)
 	surface := mountAuth(t, service)

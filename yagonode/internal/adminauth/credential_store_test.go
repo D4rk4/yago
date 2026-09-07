@@ -194,14 +194,3 @@ func TestCredentialStoreSetAdminSurfacesPutError(t *testing.T) {
 		t.Fatal("setAdmin should surface the put error")
 	}
 }
-
-func TestCredentialStoreSetAdminSurfacesHashError(t *testing.T) {
-	original := randRead
-	randRead = func([]byte) (int, error) { return 0, errors.New("no entropy") }
-	t.Cleanup(func() { randRead = original })
-
-	store, _ := newCredentialStore(testVault(t))
-	if err := store.setAdmin(context.Background(), "admin", "pw"); err == nil {
-		t.Fatal("setAdmin should surface the hashing error")
-	}
-}

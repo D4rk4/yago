@@ -241,9 +241,21 @@ func TestCompleteOutstandingPageRejectsMissingAndCorruptRows(t *testing.T) {
 
 func TestHostStateRejectsDroppedPagesWithoutRetirement(t *testing.T) {
 	checkpoint, provenance, page := admittedCheckpoint(t)
-	if err := checkpoint.RecordHostState(
-		testContext, provenance, page.Host, HostProgress{}, []string{page.URL},
-	); !errors.Is(err, ErrInvalidHostState) {
+	if err := checkpoint.CompletePage(
+		testContext,
+		provenance,
+		page.URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        page.Host,
+				Progress:    HostProgress{},
+				DroppedURLs: []string{page.URL},
+			},
+		},
+	); !errors.Is(
+		err,
+		ErrInvalidHostState,
+	) {
 		t.Fatalf("nonretired dropped pages error = %v", err)
 	}
 }
@@ -251,31 +263,34 @@ func TestHostStateRejectsDroppedPagesWithoutRetirement(t *testing.T) {
 func TestHostStateReplayAndStaleGenerationDoNotRepeatRetirement(t *testing.T) {
 	checkpoint, provenance, page := admittedCheckpoint(t)
 	progress := HostProgress{Generation: 2, Failures: 1, Retired: true}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		page.Host,
-		progress,
-		nil,
+		page.URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{Host: page.Host, Progress: progress, DroppedURLs: nil},
+		},
 	); err != nil {
 		t.Fatalf("record generated host state: %v", err)
 	}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		page.Host,
-		progress,
-		nil,
+		page.URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{Host: page.Host, Progress: progress, DroppedURLs: nil},
+		},
 	); err != nil {
 		t.Fatalf("replay generated host state: %v", err)
 	}
 	stale := HostProgress{Generation: 1}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		page.Host,
-		stale,
-		nil,
+		page.URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{Host: page.Host, Progress: stale, DroppedURLs: nil},
+		},
 	); err != nil {
 		t.Fatalf("record stale host state: %v", err)
 	}

@@ -130,16 +130,16 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := requestID(r)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", id)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 
 		return
 	}
 	if decision := e.access.authorize(r, ScopeRaw); decision != DecisionAllow {
-		writeAuthDecision(w, decision, id)
+		writeAuthDecision(w, decision)
 
 		return
 	}
-	release, admitted := enterRawContentWork(w, id)
+	release, admitted := enterRawContentWork(w)
 	if !admitted {
 		return
 	}
@@ -153,13 +153,7 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req ExtractRequest
 	if err := decodeJSONRequest(w, r, &req); err != nil {
 		if isJSONRequestTooLarge(err) {
-			writeError(
-				w,
-				http.StatusRequestEntityTooLarge,
-				requestTooLargeErrorCode,
-				requestTooLargeErrorMessage,
-				id,
-			)
+			writeError(w, http.StatusRequestEntityTooLarge, requestTooLargeErrorMessage)
 
 			return
 		}
@@ -167,12 +161,12 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if isBadRequest(err) {
 			message = err.Error()
 		}
-		writeError(w, http.StatusBadRequest, "invalid_extract_request", message, id)
+		writeError(w, http.StatusBadRequest, message)
 
 		return
 	}
 	if err := validateExtractRequest(req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_extract_request", err.Error(), id)
+		writeError(w, http.StatusBadRequest, err.Error())
 
 		return
 	}
@@ -184,12 +178,8 @@ func (e extractEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := e.extractResponse(workContext, req, e.now(), id)
 	if err != nil {
-		status, code := rawContentResponseError(
-			err,
-			"extract_failed",
-			"invalid_extract_request",
-		)
-		writeError(w, status, code, err.Error(), id)
+		status := rawContentResponseStatus(err)
+		writeError(w, status, err.Error())
 
 		return
 	}

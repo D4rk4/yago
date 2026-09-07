@@ -189,9 +189,10 @@ func TestOpenRequeuesOnlyExpiredLeasesAndPreservesWorkerReplay(t *testing.T) {
 	if n := pendingCount(t, second.Orders); n != 1 {
 		t.Fatalf("pending = %d, want only the expired order", n)
 	}
-	replayed, err := second.Orders.leasedOrdersForWorker(
+	replayed, err := second.Orders.adoptWorkerSession(
 		context.Background(),
 		"live-worker",
+		testWorkerSessionID,
 	)
 	if err != nil {
 		t.Fatalf("replay live worker: %v", err)

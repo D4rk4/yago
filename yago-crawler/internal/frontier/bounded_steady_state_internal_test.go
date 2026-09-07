@@ -317,12 +317,23 @@ func TestPersistentAdmissionUsesDurableHostRetirement(t *testing.T) {
 		func(bool) { t.Error("retired-host run unexpectedly settled") },
 	)
 	held := internalReceive(t, crawlFrontier)
-	if err := checkpoint.RecordHostState(
+	completedURL := "https://retired-cold.example/completed"
+	if _, err := checkpoint.Admit(t.Context(), provenance, []frontiercheckpoint.Page{{
+		URL: completedURL, Host: "retired-cold.example", ProfileHandle: profile.Profile.Handle,
+		ObservationID: "completed-before-admission", ObservedAt: time.Now(),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkpoint.CompletePage(
 		context.Background(),
 		provenance,
-		"retired-cold.example",
-		frontiercheckpoint.HostProgress{Generation: 1, Retired: true},
-		nil,
+		completedURL,
+		frontiercheckpoint.PageCompletion{
+			HostProgress: &frontiercheckpoint.PageHostProgress{
+				Host:     "retired-cold.example",
+				Progress: frontiercheckpoint.HostProgress{Generation: 1, Retired: true},
+			},
+		},
 	); err != nil {
 		t.Fatalf("retire cold host: %v", err)
 	}
@@ -336,7 +347,7 @@ func TestPersistentAdmissionUsesDurableHostRetirement(t *testing.T) {
 		t.Fatalf("retired-host duplicates = %d", duplicates)
 	}
 	state, err := checkpoint.Inspect(context.Background(), provenance, identity)
-	if err != nil || state.Pages != 1 || state.Pending != 1 {
+	if err != nil || state.Pages != 2 || state.Pending != 1 {
 		t.Fatalf("retired-host state = %+v, %v", state, err)
 	}
 	assertColdPersistentAdmissionState(t, crawlFrontier, seeded.RunID, 1)
@@ -412,14 +423,18 @@ func TestBoundedHostRetirementReleasesReturnedAndQueuedResidentPages(t *testing.
 	identity := []byte("bounded-resident-retirement-order")
 	persistBoundedRecoveryPages(t, boundedRecoveryPersistence{
 		checkpoint: checkpoint, provenance: provenance, identity: identity,
-		profileHandle: profile.Profile.Handle, total: 5,
+		profileHandle: profile.Profile.Handle, total: 6,
 	})
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		context.Background(),
 		provenance,
-		boundedRecoveryHost(0, 0),
-		frontiercheckpoint.HostProgress{Generation: 4, Failures: 4},
-		nil,
+		boundedRecoveryPageURL(0, 5),
+		frontiercheckpoint.PageCompletion{
+			HostProgress: &frontiercheckpoint.PageHostProgress{
+				Host:     boundedRecoveryHost(0, 0),
+				Progress: frontiercheckpoint.HostProgress{Generation: 4, Failures: 4},
+			},
+		},
 	); err != nil {
 		t.Fatalf("persist pre-retirement failures: %v", err)
 	}

@@ -124,13 +124,3 @@ func matchReportingFromRequest(req yagoproto.SearchRequest) matchReporting {
 		return matchReporting{mode: reportRequestedTerms, terms: req.Abstracts.Hashes()}
 	}
 }
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-
-	return ""
-}

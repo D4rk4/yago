@@ -52,13 +52,6 @@ func parsePDF(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 	return pageparse.ParsedPage{URL: rawURL, Title: title, Text: extracted}, true
 }
 
-func pdfContentStreams(body []byte) [][]byte {
-	return pdfContentStreamsWithQuota(
-		body,
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	)
-}
-
 func pdfContentStreamsWithQuota(body []byte, quota *pdfDecodeQuota) [][]byte {
 	streams := make([][]byte, 0, 8)
 	for _, stream := range pdfPageDescriptionStreams(body) {
@@ -141,10 +134,6 @@ func pdfDecodeFilter(raw []byte, filter string, limit int) ([]byte, bool) {
 	return decoded, true
 }
 
-func pdfInflate(raw []byte) ([]byte, error) {
-	return pdfInflateWithin(raw, pdfMaxStreamBytes)
-}
-
 func pdfInflateWithin(raw []byte, limit int) ([]byte, error) {
 	reader, err := zlib.NewReader(bytes.NewReader(raw))
 	if err != nil {
@@ -157,10 +146,6 @@ func pdfInflateWithin(raw []byte, limit int) ([]byte, error) {
 	}
 
 	return data, nil
-}
-
-func pdfASCII85(raw []byte) ([]byte, error) {
-	return pdfASCII85Within(raw, pdfMaxStreamBytes)
 }
 
 func pdfASCII85Within(raw []byte, limit int) ([]byte, error) {
@@ -203,12 +188,6 @@ func pdfASCIIHexWithin(raw []byte, limit int) ([]byte, error) {
 	return data, nil
 }
 
-// pdfLZW decodes PDF's LZW variant; Go's MSB reader matches the common
-// EarlyChange=1 encoding real files use.
-func pdfLZW(raw []byte) ([]byte, error) {
-	return pdfLZWWithin(raw, pdfMaxStreamBytes)
-}
-
 func pdfLZWWithin(raw []byte, limit int) ([]byte, error) {
 	reader := lzw.NewReader(bytes.NewReader(raw), lzw.MSB, 8)
 	defer func() { _ = reader.Close() }()
@@ -218,13 +197,6 @@ func pdfLZWWithin(raw []byte, limit int) ([]byte, error) {
 	}
 
 	return data, nil
-}
-
-func pdfTextFromContent(content []byte, tables map[string]*pdfCMap) string {
-	out := newPDFTextCollector(pdfMaxTextBytes)
-	pdfWriteContentText(out, content, tables)
-
-	return out.String()
 }
 
 func writeShownStrings(
@@ -284,14 +256,6 @@ func pdfSkipDictionary(data []byte) int {
 	return len(data)
 }
 
-// pdfHexString decodes one <..> hex string starting at data[0]=='<' through
-// the byte decoder; odd-length runs pad their final nibble per the PDF rules.
-func pdfHexString(data []byte) (string, int) {
-	raw, consumed := pdfRawHexString(data)
-
-	return pdfDecodeStringBytes(raw), consumed
-}
-
 // pdfRawHexString reads one <..> hex string's raw bytes.
 func pdfRawHexString(data []byte) ([]byte, int) {
 	end := bytes.IndexByte(data, '>')
@@ -304,14 +268,6 @@ func pdfRawHexString(data []byte) ([]byte, int) {
 	}
 
 	return decoded, end
-}
-
-// pdfStringLiteral decodes one parenthesized literal through the byte
-// decoder; pdfInfoTitle and the PostScript extractor read plain text here.
-func pdfStringLiteral(data []byte) (string, int) {
-	raw, consumed := pdfRawStringLiteral(data)
-
-	return pdfDecodeStringBytes(raw), consumed
 }
 
 // pdfRawStringLiteral reads one parenthesized literal starting at

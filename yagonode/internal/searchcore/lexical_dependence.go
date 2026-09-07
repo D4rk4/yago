@@ -26,24 +26,3 @@ func lexicalDependenceComponents(
 
 	return coverage, proximity, ordered, gapAgreement
 }
-
-func orderedPositionFraction(
-	fields map[string]map[string][]int,
-	requirements []rerankQueryRequirement,
-) float64 {
-	exact, _ := orderedPositionEvidence(fields, requirements)
-
-	return exact
-}
-
-func positionsAtQueryDistance(left []int, right []int, distance int) bool {
-	exact, _ := positionGapEvidence(left, right, distance)
-
-	return exact
-}
-
-func orderedTextFraction(text string, requirements []rerankQueryRequirement) float64 {
-	exact, _ := orderedTextEvidence(text, requirements)
-
-	return exact
-}

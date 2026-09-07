@@ -198,6 +198,9 @@ func memQueue(t *testing.T) *DurableOrderQueue {
 
 func TestDurableOrderQueueFIFO(t *testing.T) {
 	queue := memQueue(t)
+
+	server := newExchangeServer(queue, nil)
+	generation := activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	ctx := context.Background()
 	for _, name := range []string{"a", "b", "c"} {
 		if err := queue.Publish(ctx, testOrder(name)); err != nil {
@@ -205,7 +208,7 @@ func TestDurableOrderQueueFIFO(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"a", "b", "c"} {
-		data, err := queue.leaseNext(ctx)
+		data, _, err := server.leaseNextForSession(ctx, "worker", testWorkerSessionID, generation)
 		if err != nil {
 			t.Fatalf("dequeue: %v", err)
 		}
@@ -221,6 +224,9 @@ func TestDurableOrderQueueFIFO(t *testing.T) {
 
 func TestPublishOnceIsIdempotent(t *testing.T) {
 	queue := memQueue(t)
+
+	server := newExchangeServer(queue, nil)
+	generation := activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	ctx := context.Background()
 
 	dup, err := queue.PublishOnce(ctx, "start", testOrder("x"))
@@ -236,7 +242,7 @@ func TestPublishOnceIsIdempotent(t *testing.T) {
 	}
 
 	for _, want := range []string{"x", "z"} {
-		data, err := queue.leaseNext(ctx)
+		data, _, err := server.leaseNextForSession(ctx, "worker", testWorkerSessionID, generation)
 		if err != nil {
 			t.Fatalf("dequeue: %v", err)
 		}
@@ -268,12 +274,15 @@ func TestPublishOnceSurfacesKeyErrors(t *testing.T) {
 
 func TestDurableOrderQueueDequeueBlocksThenWakes(t *testing.T) {
 	queue := memQueue(t)
+
+	server := newExchangeServer(queue, nil)
+	generation := activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	ctx := context.Background()
 	parked := signalOnQueueWait(t)
 
 	got := make(chan string, 1)
 	go func() {
-		data, err := queue.leaseNext(ctx)
+		data, _, err := server.leaseNextForSession(ctx, "worker", testWorkerSessionID, generation)
 		if err != nil {
 			got <- "error"
 
@@ -299,12 +308,15 @@ func TestDurableOrderQueueDequeueBlocksThenWakes(t *testing.T) {
 
 func TestDurableOrderQueueDequeueCancelledWhileBlocked(t *testing.T) {
 	queue := memQueue(t)
+
+	server := newExchangeServer(queue, nil)
+	generation := activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	ctx, cancel := context.WithCancel(context.Background())
 	parked := signalOnQueueWait(t)
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := queue.leaseNext(ctx)
+		_, _, err := server.leaseNextForSession(ctx, "worker", testWorkerSessionID, generation)
 		done <- err
 	}()
 
@@ -322,9 +334,17 @@ func TestDurableOrderQueueDequeueCancelledWhileBlocked(t *testing.T) {
 
 func TestDurableOrderQueueDequeueHonorsContext(t *testing.T) {
 	queue := memQueue(t)
+
+	server := newExchangeServer(queue, nil)
+	generation := activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := queue.leaseNext(ctx); err == nil {
+	if _, _, err := server.leaseNextForSession(
+		ctx,
+		"worker",
+		testWorkerSessionID,
+		generation,
+	); err == nil {
 		t.Fatal("expected dequeue to fail on cancelled context")
 	}
 }
@@ -383,7 +403,7 @@ func TestPublishReportsMarshalError(t *testing.T) {
 	}
 }
 
-func TestDurableOrderQueueSurfaceVaultErrors(t *testing.T) {
+func TestDurableOrderQueuePublishSurfacesVaultErrors(t *testing.T) {
 	ctx := context.Background()
 
 	seqPut := scriptedQueue(t)
@@ -417,23 +437,39 @@ func TestDurableOrderQueueSurfaceVaultErrors(t *testing.T) {
 	if err := seqDecode.queue.Publish(ctx, testOrder("z")); err == nil {
 		t.Fatal("expected enqueue error on sequence decode failure")
 	}
+}
+
+func TestDurableOrderQueueLeaseSurfacesVaultErrors(t *testing.T) {
+	ctx := context.Background()
 
 	scanFail := scriptedQueue(t)
 	_ = scanFail.queue.Publish(ctx, testOrder("y"))
 	scanFail.engine.scanErrors[normalOrderIndexBucket] = errors.New("scan failed")
-	if _, _, _, err := scanFail.queue.leasePop(ctx, "worker"); err == nil {
+	if _, _, _, err := scanFail.queue.leasePopForSession(
+		ctx,
+		"worker",
+		testWorkerSessionID,
+	); err == nil {
 		t.Fatal("expected pop error on scan failure")
 	}
 
 	automaticScanFail := scriptedQueue(t)
 	automaticScanFail.engine.scanErrors[automaticOrderIndexBucket] = errors.New("scan failed")
-	if _, _, _, err := automaticScanFail.queue.leasePop(ctx, "worker"); err == nil {
+	if _, _, _, err := automaticScanFail.queue.leasePopForSession(
+		ctx,
+		"worker",
+		testWorkerSessionID,
+	); err == nil {
 		t.Fatal("expected pop error on automatic scan failure")
 	}
 
 	burstDecode := scriptedQueue(t)
 	burstDecode.engine.buckets[seqBucket][string(priorityBurstKey)] = []byte{1, 2, 3}
-	if _, _, _, err := burstDecode.queue.leasePop(ctx, "worker"); err == nil {
+	if _, _, _, err := burstDecode.queue.leasePopForSession(
+		ctx,
+		"worker",
+		testWorkerSessionID,
+	); err == nil {
 		t.Fatal("expected pop error on priority burst decode failure")
 	}
 
@@ -441,21 +477,33 @@ func TestDurableOrderQueueSurfaceVaultErrors(t *testing.T) {
 	_ = burstPut.queue.Publish(ctx, testOrder("normal"))
 	_ = burstPut.queue.Publish(ctx, automaticOrder("automatic"))
 	burstPut.engine.putErrors[seqBucket] = errors.New("burst put failed")
-	if _, _, _, err := burstPut.queue.leasePop(ctx, "worker"); err == nil {
+	if _, _, _, err := burstPut.queue.leasePopForSession(
+		ctx,
+		"worker",
+		testWorkerSessionID,
+	); err == nil {
 		t.Fatal("expected pop error on priority burst put failure")
 	}
 
 	deleteFail := scriptedQueue(t)
 	_ = deleteFail.queue.Publish(ctx, testOrder("z"))
 	deleteFail.engine.deleteErrors[orderBucket] = errors.New("delete failed")
-	if _, _, _, err := deleteFail.queue.leasePop(ctx, "worker"); err == nil {
+	if _, _, _, err := deleteFail.queue.leasePopForSession(
+		ctx,
+		"worker",
+		testWorkerSessionID,
+	); err == nil {
 		t.Fatal("expected pop error on delete failure")
 	}
 
 	priorityDeleteFail := scriptedQueue(t)
 	_ = priorityDeleteFail.queue.Publish(ctx, testOrder("priority-delete"))
 	priorityDeleteFail.engine.deleteErrors[normalOrderIndexBucket] = errors.New("delete failed")
-	if _, _, _, err := priorityDeleteFail.queue.leasePop(ctx, "worker"); err == nil {
+	if _, _, _, err := priorityDeleteFail.queue.leasePopForSession(
+		ctx,
+		"worker",
+		testWorkerSessionID,
+	); err == nil {
 		t.Fatal("expected pop error on priority delete failure")
 	}
 }

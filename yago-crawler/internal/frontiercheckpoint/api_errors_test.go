@@ -53,12 +53,17 @@ func TestClosedCheckpointRejectsEveryDatabaseOperation(t *testing.T) {
 			return err
 		}},
 		{name: "host state", run: func() error {
-			return checkpoint.RecordHostState(
+			return checkpoint.CompletePage(
 				testContext,
 				[]byte("p"),
-				page.Host,
-				HostProgress{},
-				nil,
+				"https://example.com/page",
+				PageCompletion{
+					HostProgress: &PageHostProgress{
+						Host:        page.Host,
+						Progress:    HostProgress{},
+						DroppedURLs: nil,
+					},
+				},
 			)
 		}},
 		{
@@ -187,14 +192,45 @@ func invalidProgressInputChecks(
 			return err
 		}},
 		{name: "host state provenance", target: ErrInvalidProvenance, run: func() error {
-			return checkpoint.RecordHostState(testContext, nil, "example.com", HostProgress{}, nil)
+			return checkpoint.CompletePage(
+				testContext,
+				nil,
+				"https://example.com/page",
+				PageCompletion{
+					HostProgress: &PageHostProgress{
+						Host:        "example.com",
+						Progress:    HostProgress{},
+						DroppedURLs: nil,
+					},
+				},
+			)
 		}},
 		{name: "host state host", target: ErrInvalidPage, run: func() error {
-			return checkpoint.RecordHostState(testContext, []byte("p"), "", HostProgress{}, nil)
+			return checkpoint.CompletePage(
+				testContext,
+				[]byte("p"),
+				"https://example.com/page",
+				PageCompletion{
+					HostProgress: &PageHostProgress{
+						Host:        "",
+						Progress:    HostProgress{},
+						DroppedURLs: nil,
+					},
+				},
+			)
 		}},
 		{name: "host state url", target: ErrInvalidPage, run: func() error {
-			return checkpoint.RecordHostState(
-				testContext, []byte("p"), "example.com", HostProgress{}, []string{""},
+			return checkpoint.CompletePage(
+				testContext,
+				[]byte("p"),
+				"https://example.com/page",
+				PageCompletion{
+					HostProgress: &PageHostProgress{
+						Host:        "example.com",
+						Progress:    HostProgress{},
+						DroppedURLs: []string{""},
+					},
+				},
 			)
 		}},
 		{name: "load provenance", target: ErrInvalidProvenance, run: func() error {
@@ -252,12 +288,17 @@ func TestMissingRunRejectsRunMutations(t *testing.T) {
 			return err
 		},
 		func() error {
-			return checkpoint.RecordHostState(
+			return checkpoint.CompletePage(
 				testContext,
 				[]byte("missing"),
-				page.Host,
-				HostProgress{},
-				nil,
+				page.URL,
+				PageCompletion{
+					HostProgress: &PageHostProgress{
+						Host:        page.Host,
+						Progress:    HostProgress{},
+						DroppedURLs: nil,
+					},
+				},
 			)
 		},
 		func() error { _, err := checkpoint.Load(testContext, []byte("missing")); return err },

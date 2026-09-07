@@ -10,18 +10,13 @@ func writeSearchEndpointResponse(
 	w http.ResponseWriter,
 	response SearchResponse,
 	err error,
-	requestID string,
 ) {
 	if err != nil {
-		status, code := rawContentResponseError(
-			err,
-			"search_failed",
-			"invalid_search_request",
-		)
+		status := rawContentResponseStatus(err)
 		if errors.Is(err, errSearchUnavailable) {
 			w.Header().Set("Retry-After", "1")
 		}
-		writeError(w, status, code, err.Error(), requestID)
+		writeError(w, status, err.Error())
 		return
 	}
 

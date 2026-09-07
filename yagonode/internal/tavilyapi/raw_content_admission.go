@@ -14,19 +14,13 @@ const (
 
 var rawContentWorkAdmission = newRequestAdmission(maximumConcurrentRawContentWork)
 
-func enterRawContentWork(w http.ResponseWriter, id string) (func(), bool) {
+func enterRawContentWork(w http.ResponseWriter) (func(), bool) {
 	release, admitted := rawContentWorkAdmission.tryEnter()
 	if admitted {
 		return release, true
 	}
 	w.Header().Set("Retry-After", "1")
-	writeError(
-		w,
-		http.StatusServiceUnavailable,
-		"raw_content_capacity_exceeded",
-		"raw content capacity exceeded, try again later",
-		id,
-	)
+	writeError(w, http.StatusServiceUnavailable, "raw content capacity exceeded, try again later")
 
 	return nil, false
 }
@@ -49,14 +43,13 @@ func closeRequestBodyWhenDone(ctx context.Context, body io.Closer) func() bool {
 func enterOptionalRawContentWork(
 	w http.ResponseWriter,
 	r *http.Request,
-	id string,
 	enabled bool,
 	duration time.Duration,
 ) (*http.Request, func(), bool) {
 	if !enabled {
 		return r, func() {}, true
 	}
-	release, admitted := enterRawContentWork(w, id)
+	release, admitted := enterRawContentWork(w)
 	if !admitted {
 		return r, nil, false
 	}
@@ -71,13 +64,11 @@ func enterOptionalRawContentWork(
 func (e searchEndpoint) enterWork(
 	w http.ResponseWriter,
 	r *http.Request,
-	id string,
 	rawContent bool,
 ) (*http.Request, func(), bool) {
 	r, releaseRawContent, admitted := enterOptionalRawContentWork(
 		w,
 		r,
-		id,
 		rawContent,
 		e.rawWorkDuration,
 	)
@@ -87,7 +78,7 @@ func (e searchEndpoint) enterWork(
 	if e.admission == nil {
 		return r, releaseRawContent, true
 	}
-	releaseSearch, admitted := enterSearchAdmission(w, r, id, e.admission)
+	releaseSearch, admitted := enterSearchAdmission(w, r, e.admission)
 	if !admitted {
 		releaseRawContent()
 

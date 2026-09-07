@@ -52,16 +52,12 @@ func TestOpenRemoteSearchSendsIamWithMySeedInOneRound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := NewSearcher(Config{
+	_, _, err := NewSearcher(Config{
 		Client: server.Client(),
 		SelfSeed: func(context.Context) yagomodel.Seed {
 			return self
 		},
-	}).(searcher).remoteSearch(
-		t.Context(),
-		serverSeed(t, server.URL),
-		searchcore.Request{Terms: []string{"term"}, Limit: 1},
-	)
+	}).(searcher).sendRemoteSearchWithinLimit(t.Context(), serverSeed(t, server.URL), remoteSearchRequest(searchcore.Request{Terms: []string{"term"}, Limit: 1}, "", DefaultPerPeerTimeout), remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap})
 	if err != nil {
 		t.Fatal(err)
 	}

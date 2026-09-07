@@ -1,6 +1,7 @@
 package searchsession
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -41,22 +42,12 @@ func cloneSessionResult(result searchcore.Result) searchcore.Result {
 	result.Publisher = strings.Clone(result.Publisher)
 	result.Explanation = strings.Clone(result.Explanation)
 	result.Images = cloneSessionImages(result.Images)
-	result.QueryMatches = cloneSessionQueryMatches(result.QueryMatches)
-	result.BodyQueryMatches = cloneSessionQueryMatches(result.BodyQueryMatches)
+	result.QueryMatches = slices.Clone(result.QueryMatches)
+	result.BodyQueryMatches = slices.Clone(result.BodyQueryMatches)
 	result.FieldScores = cloneSessionScores(result.FieldScores)
 	result.FieldTermPositions = cloneSessionPositions(result.FieldTermPositions)
 
 	return result
-}
-
-func cloneSessionQueryMatches(matches []searchcore.QueryMatch) []searchcore.QueryMatch {
-	if matches == nil {
-		return nil
-	}
-	cloned := make([]searchcore.QueryMatch, len(matches))
-	copy(cloned, matches)
-
-	return cloned
 }
 
 func cloneSessionImages(images []searchcore.ResultImage) []searchcore.ResultImage {
@@ -106,18 +97,8 @@ func cloneSessionTermPositions(terms map[string][]int) map[string][]int {
 	}
 	cloned := make(map[string][]int, len(terms))
 	for term, positions := range terms {
-		cloned[strings.Clone(term)] = cloneSessionPositionValues(positions)
+		cloned[strings.Clone(term)] = slices.Clone(positions)
 	}
-
-	return cloned
-}
-
-func cloneSessionPositionValues(positions []int) []int {
-	if positions == nil {
-		return nil
-	}
-	cloned := make([]int, len(positions))
-	copy(cloned, positions)
 
 	return cloned
 }

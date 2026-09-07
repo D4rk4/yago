@@ -23,22 +23,6 @@ type firefoxPool struct {
 	observation      browserPoolObservation
 }
 
-func newFirefoxPool(
-	launch BrowserLaunch,
-	proxyURL string,
-	start func(context.Context, BrowserLaunch, string) (browserSession, error),
-	observeBrowserSlotAcquisitionDeadline ...func(),
-) *firefoxPool {
-	return newFirefoxPoolObserved(
-		launch,
-		proxyURL,
-		start,
-		browserPoolObservation{legacyDeadline: selectBrowserSlotAcquisitionDeadlineObserver(
-			observeBrowserSlotAcquisitionDeadline,
-		)},
-	)
-}
-
 func newFirefoxPoolObserved(
 	launch BrowserLaunch,
 	proxyURL string,

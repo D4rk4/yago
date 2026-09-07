@@ -92,7 +92,13 @@ func TestAcceptedNakRejectsConflictingAckDuringDelay(t *testing.T) {
 	if err := queue.deferLease(t.Context(), leaseID); err != nil {
 		t.Fatalf("defer: %v", err)
 	}
-	if err := queue.ackLease(t.Context(), leaseID); !errors.Is(err, errLeaseDispositionConflict) {
+	if _, err := queue.ackLeaseWithTarget(
+		t.Context(),
+		leaseID,
+	); !errors.Is(
+		err,
+		errLeaseDispositionConflict,
+	) {
 		t.Fatalf("conflicting ack = %v", err)
 	}
 	record, ok := leaseRecordFor(t, queue, leaseID)
@@ -115,7 +121,7 @@ func TestExpiredDeferredLeaseRejectsStaleSettlement(t *testing.T) {
 	if err := queue.sweepExpired(t.Context()); err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-	if err := queue.ackLease(
+	if _, err := queue.ackLeaseWithTarget(
 		t.Context(),
 		oldLeaseID,
 	); !errors.Is(
@@ -136,11 +142,15 @@ func TestExpiredDeferredLeaseRejectsStaleSettlement(t *testing.T) {
 	if n := pendingCount(t, queue); n != 1 {
 		t.Fatalf("pending after stale settlements = %d, want 1", n)
 	}
-	_, newLeaseID, found, err := queue.leasePop(t.Context(), "replacement")
+	_, newLeaseID, found, err := queue.leasePopForSession(
+		t.Context(),
+		"replacement",
+		testWorkerSessionID,
+	)
 	if err != nil || !found {
 		t.Fatalf("replacement lease: found=%v err=%v", found, err)
 	}
-	if err := queue.ackLease(
+	if _, err := queue.ackLeaseWithTarget(
 		t.Context(),
 		oldLeaseID,
 	); !errors.Is(
@@ -152,10 +162,10 @@ func TestExpiredDeferredLeaseRejectsStaleSettlement(t *testing.T) {
 	if _, ok := leaseRecordFor(t, queue, newLeaseID); !ok {
 		t.Fatal("stale ack deleted replacement lease")
 	}
-	if err := queue.ackLease(t.Context(), newLeaseID); err != nil {
+	if _, err := queue.ackLeaseWithTarget(t.Context(), newLeaseID); err != nil {
 		t.Fatalf("ack replacement: %v", err)
 	}
-	if err := queue.ackLease(t.Context(), newLeaseID); err != nil {
+	if _, err := queue.ackLeaseWithTarget(t.Context(), newLeaseID); err != nil {
 		t.Fatalf("duplicate replacement ack: %v", err)
 	}
 }
@@ -293,7 +303,12 @@ func newLiveDeferredOrderFixture(t *testing.T) liveDeferredOrderFixture {
 	if n := len(stream.sent); n != 0 {
 		t.Fatalf("immediate redeliveries = %d, want 0", n)
 	}
-	if _, _, found, err := queue.leasePop(t.Context(), "other-worker"); err != nil || found {
+	if _, _, found, err := queue.leasePopForSession(
+		t.Context(),
+		"other-worker",
+		testWorkerSessionID,
+	); err != nil ||
+		found {
 		t.Fatalf("lease before retry deadline: found=%v err=%v", found, err)
 	}
 

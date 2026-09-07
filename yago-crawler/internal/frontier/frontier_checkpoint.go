@@ -25,7 +25,6 @@ type checkpointRunLedger interface {
 		frontiercheckpoint.SeedBatch,
 	) (frontiercheckpoint.SeedBatchResult, error)
 	FinishSeeding(context.Context, []byte, yagocrawlcontract.CrawlRunTally) error
-	Load(context.Context, []byte) (frontiercheckpoint.Snapshot, error)
 	Delete(context.Context, []byte) error
 }
 
@@ -39,6 +38,7 @@ type checkpointControlLedger interface {
 }
 
 type Checkpoint interface {
+	boundedRecoveryCheckpoint
 	checkpointRunLedger
 	checkpointPageLedger
 	checkpointControlLedger

@@ -29,13 +29,19 @@ func TestLegacyLeaseSettlementExpiresAtFixedHorizon(t *testing.T) {
 	if err := queue.sweepExpired(t.Context()); err != nil {
 		t.Fatalf("sweep before horizon: %v", err)
 	}
-	if err := queue.ackLease(t.Context(), leaseID); err != nil {
+	if _, err := queue.ackLeaseWithTarget(t.Context(), leaseID); err != nil {
 		t.Fatalf("retry before horizon: %v", err)
 	}
 	assertLeaseSettlementRetentionCounts(t, queue, leaseSettlementRows{1, 1, 1, 1, 0})
 
 	set(base.Add(leaseSettlementRetention))
-	if err := queue.ackLease(t.Context(), leaseID); !errors.Is(err, errLeaseDispositionConflict) {
+	if _, err := queue.ackLeaseWithTarget(
+		t.Context(),
+		leaseID,
+	); !errors.Is(
+		err,
+		errLeaseDispositionConflict,
+	) {
 		t.Fatalf("retry at horizon = %v", err)
 	}
 	assertLeaseSettlementRetentionCounts(t, queue, leaseSettlementRows{1, 1, 1, 1, 0})
@@ -63,7 +69,13 @@ func TestExpiredSettlementPreservesPendingControlUntilReplay(t *testing.T) {
 		t.Fatalf("expire settlement: %v", err)
 	}
 	assertLeaseSettlementRetentionCounts(t, queue, leaseSettlementRows{pendingControls: 1})
-	if err := queue.ackLease(t.Context(), leaseID); !errors.Is(err, errLeaseDispositionConflict) {
+	if _, err := queue.ackLeaseWithTarget(
+		t.Context(),
+		leaseID,
+	); !errors.Is(
+		err,
+		errLeaseDispositionConflict,
+	) {
 		t.Fatalf("late ack with pending control = %v", err)
 	}
 	if err := queue.replayRunControlCompletions(t.Context(), newControlRegistry()); err != nil {
@@ -106,7 +118,13 @@ func TestLeaseSettlementRetentionSurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open second queue: %v", err)
 	}
-	if err := second.ackLease(t.Context(), leaseID); !errors.Is(err, errLeaseDispositionConflict) {
+	if _, err := second.ackLeaseWithTarget(
+		t.Context(),
+		leaseID,
+	); !errors.Is(
+		err,
+		errLeaseDispositionConflict,
+	) {
 		t.Fatalf("retry after restart horizon = %v", err)
 	}
 	assertLeaseSettlementRetentionCounts(t, second, leaseSettlementRows{1, 1, 1, 1, 0})
@@ -290,7 +308,7 @@ func TestLegacySettlementWithoutTimestampStartsHorizonOnRetry(t *testing.T) {
 	set(base)
 	queue := memQueue(t)
 	putUnmigratedLeaseSettlement(t, queue, "legacy")
-	if err := queue.ackLease(t.Context(), "legacy"); err != nil {
+	if _, err := queue.ackLeaseWithTarget(t.Context(), "legacy"); err != nil {
 		t.Fatalf("retry old settlement: %v", err)
 	}
 	assertLeaseSettlementRetentionCounts(t, queue, leaseSettlementRows{1, 1, 1, 0, 0})
@@ -305,7 +323,13 @@ func TestLegacySettlementWithoutTimestampStartsHorizonOnRetry(t *testing.T) {
 		t.Fatalf("read retried settlement: %v", err)
 	}
 	set(base.Add(leaseSettlementRetention))
-	if err := queue.ackLease(t.Context(), "legacy"); !errors.Is(err, errLeaseDispositionConflict) {
+	if _, err := queue.ackLeaseWithTarget(
+		t.Context(),
+		"legacy",
+	); !errors.Is(
+		err,
+		errLeaseDispositionConflict,
+	) {
 		t.Fatalf("retry old settlement at horizon = %v", err)
 	}
 }

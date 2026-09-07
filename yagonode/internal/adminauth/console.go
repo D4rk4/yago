@@ -43,17 +43,6 @@ var ErrPasswordMismatch = errors.New("current password is incorrect")
 // ErrInvalidScope reports that a requested API-key scope was empty or unknown.
 var ErrInvalidScope = errors.New("invalid api-key scope")
 
-// KnownScopes returns the assignable API-key scopes in a stable display order.
-func KnownScopes() []Scope {
-	return []Scope{
-		ScopeAdminRead,
-		ScopeAdminWrite,
-		ScopeCrawlWrite,
-		ScopeSearchRead,
-		ScopeSearchRaw,
-	}
-}
-
 // PrincipalFromContext returns the authenticated admin session's username. It is
 // present only for cookie-session requests, not API-key requests.
 func PrincipalFromContext(ctx context.Context) (string, bool) {
@@ -63,16 +52,6 @@ func PrincipalFromContext(ctx context.Context) (string, bool) {
 	}
 
 	return record.Username, true
-}
-
-// ListAPIKeys returns the stored API keys without their secrets.
-func (s *Service) ListAPIKeys(ctx context.Context) ([]APIKeyInfo, error) {
-	infos, err := s.apiKeys.list(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list api keys: %w", err)
-	}
-
-	return publicAPIKeyInfos(infos), nil
 }
 
 func (s *Service) ListAPIKeyPage(

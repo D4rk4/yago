@@ -244,7 +244,11 @@ func assertMigratedTarget(t *testing.T, ctx context.Context, target *vault.Vault
 func assertMigrationOrderSequence(t *testing.T, ctx context.Context, broker *CrawlBroker) {
 	t.Helper()
 	for index := range retainedBucketMigrationTestRows {
-		encoded, _, found, leaseErr := broker.Orders.leasePop(ctx, "target-worker")
+		encoded, _, found, leaseErr := broker.Orders.leasePopForSession(
+			ctx,
+			"target-worker",
+			testWorkerSessionID,
+		)
 		if leaseErr != nil || !found {
 			t.Fatalf("lease migrated row %d: found=%t error=%v", index, found, leaseErr)
 		}

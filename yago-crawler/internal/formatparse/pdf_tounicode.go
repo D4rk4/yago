@@ -28,10 +28,6 @@ var (
 	pdfHexTokenPattern     = regexp.MustCompile(`<([0-9A-Fa-f]+)>`)
 )
 
-func pdfToUnicodeTables(body []byte) map[string]*pdfCMap {
-	return pdfToUnicodeTablesWithQuota(body, newPDFDecodeQuota(pdfMaxDecodedDocumentBytes))
-}
-
 func pdfToUnicodeTablesWithQuota(
 	body []byte,
 	quota *pdfDecodeQuota,
@@ -123,16 +119,6 @@ func pdfToUnicodeObjectOf(objectValue func(string) []byte, object string) string
 	return string(ref[1])
 }
 
-// pdfObjectStream decodes the stream carried by object N through its own
-// /Filter chain; nil when the object or its stream is missing or undecodable.
-func pdfObjectStream(lookup pdfObjectLookup, object string) []byte {
-	return pdfObjectStreamWithQuota(
-		lookup.value,
-		object,
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	)
-}
-
 func pdfObjectStreamWithQuota(
 	objectValue func(string) []byte,
 	object string,
@@ -166,13 +152,6 @@ func pdfObjectStreamWithQuota(
 	}
 
 	return decoded
-}
-
-func pdfParseCMap(src []byte) *pdfCMap {
-	return pdfParseCMapWithQuota(
-		src,
-		newPDFCMapQuota(pdfMaxCMapEntries, pdfMaxCMapTextBytes),
-	)
 }
 
 func pdfParseCMapWithQuota(src []byte, quota *pdfCMapQuota) *pdfCMap {

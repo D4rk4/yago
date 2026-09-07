@@ -285,7 +285,8 @@ func storedAPIKeyLastUsed(t *testing.T, store *apiKeyStore, id string) time.Time
 
 func apiKeyLastUsedAt(t *testing.T, store *apiKeyStore) time.Time {
 	t.Helper()
-	infos, err := store.list(context.Background())
+	infosPage, err := store.page(context.Background(), "", maximumAPIKeys)
+	infos := infosPage.infos
 	if err != nil || len(infos) != 1 {
 		t.Fatalf("list = %#v, %v", infos, err)
 	}

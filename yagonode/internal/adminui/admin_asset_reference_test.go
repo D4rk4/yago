@@ -31,33 +31,33 @@ func (assets adminAssetReadFailureFS) Open(name string) (fs.File, error) {
 func TestAdminAssetReferencesChangeWithContent(t *testing.T) {
 	t.Parallel()
 
-	first, err := buildAdminAssetReferences(fstest.MapFS{
+	first, err := buildAdminAssetCatalog(fstest.MapFS{
 		"assets/carbon.css": {Data: []byte("first")},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := buildAdminAssetReferences(fstest.MapFS{
+	second, err := buildAdminAssetCatalog(fstest.MapFS{
 		"assets/carbon.css": {Data: []byte("second")},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first["carbon.css"] == second["carbon.css"] {
+	if first["carbon.css"].reference == second["carbon.css"].reference {
 		t.Fatal("asset reference did not change with content")
 	}
-	if !strings.HasPrefix(first["carbon.css"], "/admin/assets/carbon.css?v=") ||
+	if !strings.HasPrefix(first["carbon.css"].reference, "/admin/assets/carbon.css?v=") ||
 		len(
-			strings.TrimPrefix(first["carbon.css"], "/admin/assets/carbon.css?v="),
+			strings.TrimPrefix(first["carbon.css"].reference, "/admin/assets/carbon.css?v="),
 		) != adminAssetRevisionBytes*2 {
-		t.Fatalf("asset reference = %q", first["carbon.css"])
+		t.Fatalf("asset reference = %q", first["carbon.css"].reference)
 	}
 }
 
 func TestAdminAssetReferenceFailures(t *testing.T) {
 	t.Parallel()
 
-	if _, err := buildAdminAssetReferences(fstest.MapFS{}); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := buildAdminAssetCatalog(fstest.MapFS{}); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("missing asset root error = %v", err)
 	}
 	readErr := errors.New("asset read failed")
@@ -65,7 +65,7 @@ func TestAdminAssetReferenceFailures(t *testing.T) {
 		FS:  fstest.MapFS{"assets/carbon.css": {Data: []byte("body")}},
 		err: readErr,
 	}
-	if _, err := buildAdminAssetReferences(broken); !errors.Is(err, readErr) {
+	if _, err := buildAdminAssetCatalog(broken); !errors.Is(err, readErr) {
 		t.Fatalf("asset read error = %v", err)
 	}
 
@@ -80,7 +80,7 @@ func TestAdminAssetReferenceFailures(t *testing.T) {
 	}
 }
 
-func TestMustAdminAssetReferencesPanicsOnInvalidFilesystem(t *testing.T) {
+func TestMustAdminAssetCatalogPanicsOnInvalidFilesystem(t *testing.T) {
 	t.Parallel()
 
 	deferred := false
@@ -88,7 +88,7 @@ func TestMustAdminAssetReferencesPanicsOnInvalidFilesystem(t *testing.T) {
 		defer func() {
 			deferred = recover() != nil
 		}()
-		mustAdminAssetReferences(fstest.MapFS{})
+		mustAdminAssetCatalog(fstest.MapFS{})
 	}()
 	if !deferred {
 		t.Fatal("invalid asset filesystem did not panic")
@@ -98,7 +98,7 @@ func TestMustAdminAssetReferencesPanicsOnInvalidFilesystem(t *testing.T) {
 func TestVersionedAdminAssetReferenceIsServed(t *testing.T) {
 	t.Parallel()
 
-	reference := mustAdminAssetReferences(assetFS)["carbon.css"]
+	reference := embeddedAdminAssetCatalog["carbon.css"].reference
 	got := do(t, New(Options{}), reference)
 	if got.status != http.StatusOK || !strings.Contains(got.body, "--cds-interactive") {
 		t.Fatalf("versioned asset = %d %.80q", got.status, got.body)
@@ -140,10 +140,10 @@ func TestUnversionedAdminAssetRequiresRevalidation(t *testing.T) {
 func TestAdminAssetRejectsNoncurrentQueriesAndPathAliases(t *testing.T) {
 	t.Parallel()
 
-	references := mustAdminAssetReferences(assetFS)
-	carbonReference := references["carbon.css"]
+	references := embeddedAdminAssetCatalog
+	carbonReference := references["carbon.css"].reference
 	carbonQuery := strings.SplitN(carbonReference, "?", 2)[1]
-	photonQuery := strings.SplitN(references["photon.css"], "?", 2)[1]
+	photonQuery := strings.SplitN(references["photon.css"].reference, "?", 2)[1]
 	console := New(Options{})
 	tests := []struct {
 		name   string
@@ -232,7 +232,7 @@ func TestAdminAssetAliasFencePassesCanonicalAndUnrelatedPaths(t *testing.T) {
 func TestAdminAssetFileErrorsAreNotCached(t *testing.T) {
 	t.Parallel()
 
-	reference := mustAdminAssetReferences(assetFS)["carbon.css"]
+	reference := embeddedAdminAssetCatalog["carbon.css"].reference
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, reference, nil)
 	request.Header.Set("Range", "bytes=999999999999-")
 	recorder := httptest.NewRecorder()

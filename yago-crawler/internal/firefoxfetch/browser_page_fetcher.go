@@ -59,20 +59,6 @@ type BrowserLaunch struct {
 	executableResolver func(string, bool) (string, error)
 }
 
-func NewBrowserPageFetcher(
-	launch BrowserLaunch,
-	guard yagoegress.Guard,
-	observeBrowserSlotAcquisitionDeadline ...func(),
-) (*BrowserPageFetcher, func(), error) {
-	return newBrowserPageFetcher(
-		launch,
-		guard,
-		browserPoolObservation{legacyDeadline: selectBrowserSlotAcquisitionDeadlineObserver(
-			observeBrowserSlotAcquisitionDeadline,
-		)},
-	)
-}
-
 func NewBrowserPageFetcherWithPoolObservation(
 	launch BrowserLaunch,
 	guard yagoegress.Guard,

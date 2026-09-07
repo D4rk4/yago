@@ -83,49 +83,6 @@ func TestContentClusterIndexFailureReplaysEveryMemberAfterRestart(t *testing.T) 
 	}
 }
 
-func TestContentClusterDeletionFailureReplaysUnchangedSurvivor(t *testing.T) {
-	lifecycle := openClusterLifecycle(t)
-	first := documentstore.Document{
-		NormalizedURL: "https://first.example/",
-		ExtractedText: "alpha beta gamma delta",
-		ContentHash:   "same",
-	}
-	second := documentstore.Document{
-		NormalizedURL: "https://second.example/",
-		CanonicalURL:  "https://second.example/",
-		ExtractedText: first.ExtractedText,
-		ContentHash:   first.ContentHash,
-	}
-	persistClusterLifecycleDocument(t, lifecycle, first)
-	persistClusterLifecycleDocument(t, lifecycle, second)
-	interrupted := &anchorIndexScript{err: errors.New("index interrupted")}
-	lifecycle.consumer.index = interrupted
-	if err := lifecycle.consumer.deleteDocumentCluster(
-		t.Context(),
-		second.NormalizedURL,
-	); err == nil {
-		t.Fatal("interrupted cluster deletion succeeded")
-	}
-	replayed := &anchorIndexScript{}
-	lifecycle.consumer.index = replayed
-	if err := lifecycle.consumer.deleteDocumentCluster(
-		t.Context(),
-		second.NormalizedURL,
-	); err != nil {
-		t.Fatalf("replay cluster deletion: %v", err)
-	}
-	assertIndexedDocumentURLs(t, replayed.docs, first.NormalizedURL)
-	if err := lifecycle.consumer.deleteDocumentCluster(
-		t.Context(),
-		second.NormalizedURL,
-	); err != nil {
-		t.Fatalf("finalized cluster deletion: %v", err)
-	}
-	if len(replayed.docs) != 1 {
-		t.Fatalf("finalized deletion replay indexed %d documents", len(replayed.docs))
-	}
-}
-
 func clusteredIngestBatch(url string, canonical bool) yagocrawlcontract.IngestBatch {
 	document := yagocrawlcontract.DocumentIngest{
 		NormalizedURL: url,

@@ -84,16 +84,12 @@ func TestFailedRemoteSearchDoesNotCountReceivedResources(t *testing.T) {
 	defer server.Close()
 
 	var observations atomic.Int32
-	_, err := NewSearcher(Config{
+	_, _, err := NewSearcher(Config{
 		Client: server.Client(),
 		ObserveReceivedResources: func(context.Context, int) {
 			observations.Add(1)
 		},
-	}).(searcher).remoteSearch(
-		t.Context(),
-		serverSeed(t, server.URL),
-		searchcore.Request{Terms: []string{"resource"}, Limit: 10},
-	)
+	}).(searcher).sendRemoteSearchWithinLimit(t.Context(), serverSeed(t, server.URL), remoteSearchRequest(searchcore.Request{Terms: []string{"resource"}, Limit: 10}, "", DefaultPerPeerTimeout), remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap})
 	if err == nil {
 		t.Fatal("failed remote response was accepted")
 	}

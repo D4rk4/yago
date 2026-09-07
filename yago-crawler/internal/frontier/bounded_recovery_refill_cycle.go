@@ -63,7 +63,7 @@ func (f *Frontier) loadBoundedRecoveryBatch(
 	ctx context.Context,
 	load boundedRecoveryLoad,
 ) (frontiercheckpoint.RecoveryPageBatch, error) {
-	checkpoint := f.checkpoint.(boundedRecoveryCheckpoint)
+	checkpoint := f.checkpoint
 	batch, err := checkpoint.LoadRecoveryPageBatch(
 		context.WithoutCancel(ctx),
 		load.provenance,

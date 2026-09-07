@@ -1,6 +1,7 @@
 package adminauth
 
 import (
+	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
@@ -26,11 +27,9 @@ type argon2Params struct {
 	parallelism uint8
 }
 
-func hashPassword(password string) (string, error) {
+func hashPassword(password string) string {
 	salt := make([]byte, argonSaltLength)
-	if _, err := randRead(salt); err != nil {
-		return "", fmt.Errorf("read password salt: %w", err)
-	}
+	_, _ = rand.Read(salt)
 
 	return encodeArgon2id(
 		password,
@@ -41,7 +40,7 @@ func hashPassword(password string) (string, error) {
 			parallelism: argonParallelism,
 		},
 		argonKeyLength,
-	), nil
+	)
 }
 
 func encodeArgon2id(password string, salt []byte, params argon2Params, keyLen uint32) string {

@@ -80,10 +80,6 @@ func pdfPageDescriptionStreams(body []byte) []pdfEncodedStream {
 	return pdfFallbackDescriptionStreams(body, objects)
 }
 
-func pdfIndirectObjects(body []byte) []pdfIndirectObject {
-	return newPDFObjectLookup(body).objects
-}
-
 func newPDFObjectLookup(body []byte) pdfObjectLookup {
 	objects := pdfScanIndirectObjects(body)
 	byReference := make(map[string]pdfIndirectObject, len(objects))

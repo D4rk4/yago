@@ -119,7 +119,7 @@ func TestPortalDesignTabsRenderEditors(t *testing.T) {
 		"/admin/assets/vendor/grapes.min.js",
 		"/admin/assets/vendor/codemirror.min.js",
 		"/admin/assets/vendor/cm-simple.min.js",
-		mustAdminAssetReferences(assetFS)["portal_designer.js"],
+		embeddedAdminAssetCatalog["portal_designer.js"].reference,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Errorf("design tabs missing %q", want)

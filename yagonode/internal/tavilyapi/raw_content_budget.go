@@ -43,16 +43,14 @@ func (b *rawContentBudget) reserve(retained, output int) bool {
 	return true
 }
 
-func rawContentResponseError(
+func rawContentResponseStatus(
 	err error,
-	defaultCode string,
-	badRequestCode string,
-) (int, string) {
+) int {
 	if isBadRequest(err) {
-		return http.StatusBadRequest, badRequestCode
+		return http.StatusBadRequest
 	}
 	if errors.Is(err, errRawContentBudgetExceeded) {
-		return http.StatusRequestEntityTooLarge, "raw_content_too_large"
+		return http.StatusRequestEntityTooLarge
 	}
 	// An answer the node cannot vouch for is not an unavailable service: the
 	// search ran, within its budget, and part of a federated backend did not
@@ -63,10 +61,10 @@ func rawContentResponseError(
 	// admission refusals in search_access.go, search_admission.go, and
 	// raw_content_admission.go.
 	if errors.Is(err, errSearchUnavailable) {
-		return http.StatusConflict, "search_unavailable"
+		return http.StatusConflict
 	}
 
-	return http.StatusInternalServerError, defaultCode
+	return http.StatusInternalServerError
 }
 
 func rawContentJSONStringBytes(value string) int {

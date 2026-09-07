@@ -258,26 +258,55 @@ func completeOlderHostGeneration(
 	}
 }
 
-func TestHostOutcomeGenerationRejectsEqualSemanticConflict(t *testing.T) {
+func TestEqualHostGenerationAcceptsIdenticalAndRejectsConflictingProgress(t *testing.T) {
 	checkpoint := openTestCheckpoint(t, testCheckpointPath(t))
 	provenance := []byte("host-generation-conflict")
 	beginTestRun(t, checkpoint, provenance, []byte("host-generation-conflict-order"))
-	if err := checkpoint.RecordHostState(
+	pages := checkpointTransitionTestPages("example.com", 3)
+	admitCheckpointTestPages(t, checkpoint, provenance, pages)
+
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		"example.com",
-		HostProgress{Generation: 3, Failures: 1},
-		nil,
+		pages[0].URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        "example.com",
+				Progress:    HostProgress{Generation: 3, Failures: 1},
+				DroppedURLs: nil,
+			},
+		},
 	); err != nil {
 		t.Fatalf("record initial host generation: %v", err)
 	}
-	if err := checkpoint.RecordHostState(
+	prefix, _ := provenancePrefix(provenance)
+	before := loadTestHostRecord(t, checkpoint, prefix, "example.com")
+	if err := checkpoint.CompletePage(testContext, provenance, pages[1].URL, PageCompletion{
+		HostProgress: &PageHostProgress{
+			Host:     "example.com",
+			Progress: HostProgress{Generation: 3, Failures: 1},
+		},
+	}); err != nil {
+		t.Fatalf("identical host generation: %v", err)
+	}
+	if after := loadTestHostRecord(t, checkpoint, prefix, "example.com"); after != before {
+		t.Fatalf("identical progress changed host state: before=%+v after=%+v", before, after)
+	}
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		"example.com",
-		HostProgress{Generation: 3, Retired: true},
-		nil,
-	); !errors.Is(err, ErrCorruptCheckpoint) {
+		pages[2].URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        "example.com",
+				Progress:    HostProgress{Generation: 3, Retired: true},
+				DroppedURLs: nil,
+			},
+		},
+	); !errors.Is(
+		err,
+		ErrCorruptCheckpoint,
+	) {
 		t.Fatalf("equal host generation conflict error = %v", err)
 	}
 }

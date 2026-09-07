@@ -50,14 +50,6 @@ type OutboundDistributor struct {
 	confirmer SentPostingConfirmer
 }
 
-func NewOutboundDistributor(
-	queue *OutboundQueue,
-	handoff IndexHandoff,
-	restorer OutboundWordRestorer,
-) OutboundDistributor {
-	return OutboundDistributor{queue: queue, handoff: handoff, restorer: restorer}
-}
-
 func NewConfirmingOutboundDistributor(
 	queue *OutboundQueue,
 	handoff IndexHandoff,
@@ -70,14 +62,6 @@ func NewConfirmingOutboundDistributor(
 		restorer:  restorer,
 		confirmer: confirmer,
 	}
-}
-
-func (d OutboundDistributor) Distribute(
-	ctx context.Context,
-	state GateState,
-	config GateConfig,
-) (DistributionReceipt, error) {
-	return d.distribute(ctx, state, config, d.queue.DequeueLargest)
 }
 
 func (d OutboundDistributor) DistributeReady(

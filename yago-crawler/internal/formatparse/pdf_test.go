@@ -81,7 +81,12 @@ func TestParsePDFRejectsGarbageAndMissingText(t *testing.T) {
 	}
 	// A stream without a terminator ends the walk.
 	unterminated := []byte("%PDF-1.4\nstream\nabcdef")
-	if streams := pdfContentStreams(unterminated); len(streams) != 0 {
+	if streams := pdfContentStreamsWithQuota(
+		unterminated,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	); len(
+		streams,
+	) != 0 {
 		t.Fatalf("unterminated stream = %d", len(streams))
 	}
 	// A title without a nearby literal is ignored.
@@ -99,7 +104,9 @@ func TestParsePDFRejectsGarbageAndMissingText(t *testing.T) {
 		t.Fatalf("fallback title = %v %+v", parsed, page)
 	}
 	// An unterminated BT block ends the content walk.
-	if got := pdfTextFromContent([]byte("BT (never closed)"), nil); got != "" {
+	out := newPDFTextCollector(pdfMaxTextBytes)
+	pdfWriteContentText(out, []byte("BT (never closed)"), nil)
+	if got := out.String(); got != "" {
 		t.Fatalf("unterminated BT = %q", got)
 	}
 }
@@ -152,18 +159,18 @@ func TestPDFLiteralEdges(t *testing.T) {
 			t.Fatalf("escape %s/%s = %v/%v", named, octal, namedBytes, octalBytes)
 		}
 	}
-	if got, _ := pdfStringLiteral(
+	if got, _ := pdfRawStringLiteral(
 		[]byte("(trailing escape \\"),
 	); !strings.HasPrefix(
-		got,
+		pdfDecodeStringBytes(got),
 		"trailing escape",
 	) {
 		t.Fatalf("trailing escape = %q", got)
 	}
-	if got, consumed := pdfStringLiteral(
+	if got, consumed := pdfRawStringLiteral(
 		[]byte("(unterminated literal"),
 	); consumed != len("(unterminated literal") ||
-		got == "" {
+		pdfDecodeStringBytes(got) == "" {
 		t.Fatalf("unterminated literal = %q %d", got, consumed)
 	}
 	if !hasIndexableText("enough letters here") || hasIndexableText("123 456") {
@@ -189,12 +196,21 @@ func TestPDFBoundsAndNesting(t *testing.T) {
 	empty := []byte("%PDF-1.4\nstream\n")
 	empty = append(empty, z.Bytes()...)
 	empty = append(empty, []byte("\nendstream")...)
-	if streams := pdfContentStreams(empty); len(streams) != 0 {
+	if streams := pdfContentStreamsWithQuota(
+		empty,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	); len(
+		streams,
+	) != 0 {
 		t.Fatalf("empty inflate = %d", len(streams))
 	}
 
 	// Raw nested parentheses inside a literal keep their text.
-	if got, _ := pdfStringLiteral([]byte("(outer (inner) tail)")); got != "outer (inner) tail" {
+	if got, _ := pdfRawStringLiteral(
+		[]byte("(outer (inner) tail)"),
+	); pdfDecodeStringBytes(
+		got,
+	) != "outer (inner) tail" {
 		t.Fatalf("nested literal = %q", got)
 	}
 }
@@ -367,25 +383,41 @@ func TestPDFStringDecodingEdges(t *testing.T) {
 	if got := pdfDecodeStringBytes([]byte{'c', 'a', 'f', 0xE9}); got != "café" {
 		t.Fatalf("latin-1 string = %q", got)
 	}
-	if got, _ := pdfStringLiteral([]byte("(line\nbreak)")); got != "line break" {
+	if got, _ := pdfRawStringLiteral(
+		[]byte("(line\nbreak)"),
+	); pdfDecodeStringBytes(
+		got,
+	) != "line break" {
 		t.Fatalf("raw newline = %q", got)
 	}
-	if got, _ := pdfStringLiteral([]byte("(con\\\r\ntinued)")); got != "continued" {
+	if got, _ := pdfRawStringLiteral(
+		[]byte("(con\\\r\ntinued)"),
+	); pdfDecodeStringBytes(
+		got,
+	) != "continued" {
 		t.Fatalf("crlf continuation = %q", got)
 	}
-	if got, _ := pdfStringLiteral([]byte("(con\\\rtinued)")); got != "continued" {
+	if got, _ := pdfRawStringLiteral(
+		[]byte("(con\\\rtinued)"),
+	); pdfDecodeStringBytes(
+		got,
+	) != "continued" {
 		t.Fatalf("cr continuation = %q", got)
 	}
-	if got, _ := pdfStringLiteral([]byte("(con\\\ntinued)")); got != "continued" {
+	if got, _ := pdfRawStringLiteral(
+		[]byte("(con\\\ntinued)"),
+	); pdfDecodeStringBytes(
+		got,
+	) != "continued" {
 		t.Fatalf("lf continuation = %q", got)
 	}
-	if got, _ := pdfStringLiteral([]byte("(a\\bb)")); got != "ab" {
+	if got, _ := pdfRawStringLiteral([]byte("(a\\bb)")); pdfDecodeStringBytes(got) != "ab" {
 		t.Fatalf("backspace escape = %q", got)
 	}
-	if got, _ := pdfStringLiteral([]byte("(\\101\\13)")); got != "A" {
+	if got, _ := pdfRawStringLiteral([]byte("(\\101\\13)")); pdfDecodeStringBytes(got) != "A" {
 		t.Fatalf("octal escapes = %q", got)
 	}
-	if got, _ := pdfStringLiteral([]byte("(\\034rmly)")); got != "rmly" {
+	if got, _ := pdfRawStringLiteral([]byte("(\\034rmly)")); pdfDecodeStringBytes(got) != "rmly" {
 		t.Fatalf("control escape = %q", got)
 	}
 }
@@ -394,11 +426,11 @@ func TestPDFStringDecodingEdges(t *testing.T) {
 // missing their terminator or carrying junk yield nothing, dictionaries skip
 // whether terminated or not, and only large in-array kerns insert a space.
 func TestPDFShownStringHelpers(t *testing.T) {
-	if got, consumed := pdfHexString([]byte("<41 42")); got != "" ||
+	if got, consumed := pdfRawHexString([]byte("<41 42")); pdfDecodeStringBytes(got) != "" ||
 		consumed != len("<41 42") {
 		t.Fatalf("unterminated hex = %q %d", got, consumed)
 	}
-	if got, _ := pdfHexString([]byte("<zz>")); got != "" {
+	if got, _ := pdfRawHexString([]byte("<zz>")); pdfDecodeStringBytes(got) != "" {
 		t.Fatalf("junk hex = %q", got)
 	}
 	if got := pdfSkipDictionary([]byte("<< /K /V >> tail")); got != len("<< /K /V >") {
@@ -442,16 +474,19 @@ func TestPDFHexTitle(t *testing.T) {
 // a corrupt filter payload aborts the stream (nonnil error) rather than
 // emitting garbage, and an odd-length ASCIIHex run pads its final nibble.
 func TestPDFDecodeHelperEdges(t *testing.T) {
-	if _, err := pdfInflate([]byte("plainly not a zlib stream")); err == nil {
+	if _, err := pdfInflateWithin(
+		[]byte("plainly not a zlib stream"),
+		pdfMaxStreamBytes,
+	); err == nil {
 		t.Fatal("bad zlib header must error")
 	}
-	if _, err := pdfInflate([]byte{0x78, 0x9c, 0x00}); err == nil {
+	if _, err := pdfInflateWithin([]byte{0x78, 0x9c, 0x00}, pdfMaxStreamBytes); err == nil {
 		t.Fatal("truncated deflate body must error with no output")
 	}
-	if _, err := pdfASCII85([]byte("vwxy")); err == nil {
+	if _, err := pdfASCII85Within([]byte("vwxy"), pdfMaxStreamBytes); err == nil {
 		t.Fatal("invalid ascii85 characters must error")
 	}
-	if _, err := pdfLZW([]byte{0xff, 0xff}); err == nil {
+	if _, err := pdfLZWWithin([]byte{0xff, 0xff}, pdfMaxStreamBytes); err == nil {
 		t.Fatal("invalid lzw code must error")
 	}
 	if _, err := pdfASCIIHex([]byte("zz")); err == nil {

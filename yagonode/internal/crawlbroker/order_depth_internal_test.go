@@ -14,6 +14,9 @@ func TestQueueDepthOutstanding(t *testing.T) {
 
 func TestDurableOrderQueueDepthCountsPendingAndLeased(t *testing.T) {
 	queue := memQueue(t)
+
+	server := newExchangeServer(queue, nil)
+	generation := activateTestWorkerSession(t, server, "worker", testWorkerSessionID)
 	ctx := context.Background()
 
 	depth, err := queue.Depth(ctx)
@@ -38,7 +41,12 @@ func TestDurableOrderQueueDepthCountsPendingAndLeased(t *testing.T) {
 		t.Fatalf("pending depth = %+v, want 3 pending", depth)
 	}
 
-	if _, err := queue.leaseNext(ctx); err != nil {
+	if _, _, err := server.leaseNextForSession(
+		ctx,
+		"worker",
+		testWorkerSessionID,
+		generation,
+	); err != nil {
 		t.Fatalf("lease: %v", err)
 	}
 

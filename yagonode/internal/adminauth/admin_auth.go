@@ -70,10 +70,7 @@ type Service struct {
 
 func New(storage *vault.Vault, cfg Config) (*Service, error) {
 	cfg = cfg.withDefaults()
-	setupFormSigningKey, err := newSetupFormSigningKey()
-	if err != nil {
-		return nil, err
-	}
+	setupFormSigningKey := newSetupFormSigningKey()
 	creds, err := newCredentialStore(storage)
 	if err != nil {
 		return nil, err

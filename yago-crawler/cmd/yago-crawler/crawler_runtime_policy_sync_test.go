@@ -204,7 +204,7 @@ func TestReadCrawlerRuntimePolicyRejectsTransportAndPayloadFailures(t *testing.T
 func TestCrawlerRuntimePolicyChangeRequestsRestart(t *testing.T) {
 	effective := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
 	restarts := 0
-	apply := restartOnCrawlerRuntimePolicyChange(effective, func() { restarts++ })
+	apply := newCrawlerRuntimePolicyChange(effective, nil, nil, func() { restarts++ }).Apply
 	apply(effective)
 	changed := effective
 	changed.CrawlDelay = 2 * time.Second
@@ -212,5 +212,5 @@ func TestCrawlerRuntimePolicyChangeRequestsRestart(t *testing.T) {
 	if restarts != 1 {
 		t.Fatalf("restart requests = %d, want 1", restarts)
 	}
-	restartOnCrawlerRuntimePolicyChange(effective, nil)(changed)
+	newCrawlerRuntimePolicyChange(effective, nil, nil, nil).Apply(changed)
 }

@@ -51,10 +51,3 @@ func readCrawlerRuntimePolicy(
 
 	return resolved, nil
 }
-
-func restartOnCrawlerRuntimePolicyChange(
-	effective yagocrawlcontract.CrawlerRuntimePolicy,
-	restart func(),
-) func(yagocrawlcontract.CrawlerRuntimePolicy) {
-	return newCrawlerRuntimePolicyChange(effective, nil, nil, restart).Apply
-}

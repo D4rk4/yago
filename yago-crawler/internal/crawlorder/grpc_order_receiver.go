@@ -157,21 +157,6 @@ func (r *GRPCOrderReceiver) Receive() <-chan CrawlOrderDelivery {
 	return r.out
 }
 
-func streamCrawlOrders(
-	ctx context.Context,
-	client OrderStreamer,
-	workerID string,
-	out chan<- CrawlOrderDelivery,
-	retryWait time.Duration,
-) {
-	streamCrawlOrdersWithLeaseSession(ctx, crawlOrderStreamSession{
-		client:    client,
-		workerID:  workerID,
-		out:       out,
-		retryWait: retryWait,
-	})
-}
-
 func streamCrawlOrdersWithLeaseSession(
 	ctx context.Context,
 	session crawlOrderStreamSession,
@@ -202,7 +187,7 @@ func streamCrawlOrdersWithLeaseSession(
 			if session.fetchStartSession != nil {
 				session.fetchStartSession.Connected()
 			}
-			drainOrderStreamWithLeaseSession(streamCtx, crawlOrderStreamDrain{
+			drainCrawlOrderMessages(streamCtx, crawlOrderStreamDrain{
 				client:              session.client,
 				stream:              stream,
 				out:                 session.out,
@@ -238,33 +223,6 @@ func periodicHeartbeats(
 			heartbeat.deliver(ctx)
 		}
 	}
-}
-
-func drainOrderStream(
-	ctx context.Context,
-	client OrderStreamer,
-	stream grpc.ServerStreamingClient[crawlrpc.CrawlOrderMessage],
-	out chan<- CrawlOrderDelivery,
-) {
-	drainOrderStreamWithLeaseSession(ctx, crawlOrderStreamDrain{
-		client: client,
-		stream: stream,
-		out:    out,
-	})
-}
-
-func drainOrderStreamWithLeaseSession(
-	ctx context.Context,
-	drain crawlOrderStreamDrain,
-) {
-	drainCrawlOrderMessages(ctx, drain)
-}
-
-func deliverOrder(
-	ctx context.Context,
-	envelope crawlOrderDeliveryEnvelope,
-) bool {
-	return deliverOrderWithLeaseSession(ctx, envelope)
 }
 
 func deliverOrderWithLeaseSession(

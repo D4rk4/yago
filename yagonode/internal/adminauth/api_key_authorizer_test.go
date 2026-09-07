@@ -132,7 +132,8 @@ func TestAPIKeyAuthorizerTouchesOnlyAfterRateLimitAdmission(t *testing.T) {
 	); outcome != APIKeyAuthorized {
 		t.Fatalf("first outcome = %v, want authorized", outcome)
 	}
-	infos, err := service.apiKeys.list(context.Background())
+	infosPage, err := service.apiKeys.page(context.Background(), "", maximumAPIKeys)
+	infos := infosPage.infos
 	if err != nil || len(infos) != 1 || !infos[0].LastUsedAt.Equal(clock.now) {
 		t.Fatalf("keys after admission = %#v, %v", infos, err)
 	}
@@ -144,7 +145,8 @@ func TestAPIKeyAuthorizerTouchesOnlyAfterRateLimitAdmission(t *testing.T) {
 	); outcome != APIKeyThrottled {
 		t.Fatalf("second outcome = %v, want throttled", outcome)
 	}
-	infos, err = service.apiKeys.list(context.Background())
+	infosPage, err = service.apiKeys.page(context.Background(), "", maximumAPIKeys)
+	infos = infosPage.infos
 	if err != nil || len(infos) != 1 || !infos[0].LastUsedAt.Equal(firstUse) {
 		t.Fatalf("keys after throttle = %#v, %v", infos, err)
 	}

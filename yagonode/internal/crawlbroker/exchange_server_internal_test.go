@@ -83,7 +83,7 @@ func TestStreamOrdersKeepsLeaseOnSendError(t *testing.T) {
 	if n := pendingCount(t, queue); n != 0 {
 		t.Fatalf("pending = %d, want failed delivery held by its lease", n)
 	}
-	leasedOrders, err := queue.leasedOrdersForWorker(context.Background(), "w1")
+	leasedOrders, err := queue.adoptWorkerSession(context.Background(), "w1", testWorkerSessionID)
 	if err != nil {
 		t.Fatalf("read worker leases: %v", err)
 	}

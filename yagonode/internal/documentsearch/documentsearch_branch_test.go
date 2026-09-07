@@ -214,9 +214,6 @@ func TestSearchCriteriaRequestBranches(t *testing.T) {
 	); err == nil {
 		t.Fatal("expected bad URL filter error")
 	}
-	if got := firstNonEmpty("", "", "value"); got != "value" {
-		t.Fatalf("firstNonEmpty = %q, want value", got)
-	}
 }
 
 func TestTermAppearanceCriteriaBranches(t *testing.T) {

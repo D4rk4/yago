@@ -59,17 +59,19 @@ func pdfEncodingSourceLookup() pdfObjectLookup {
 
 func TestPDFSimpleFontEncodingSources(t *testing.T) {
 	lookup := pdfEncodingSourceLookup()
-	directName := pdfSimpleFontEncodingTable(
+	directName := pdfSimpleFontEncodingTableWithQuota(
 		[]byte("<< /Encoding /WinAnsiEncoding >>"),
 		lookup,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	)
 	if directName == nil || directName.text['A'] != "A" || directName.text[0x80] != "€" {
 		t.Fatalf("direct encoding = %#v", directName)
 	}
-	directDictionary := pdfSimpleFontEncodingTable(
+	directDictionary := pdfSimpleFontEncodingTableWithQuota(
 		[]byte("<< /Encoding << /BaseEncoding /StandardEncoding "+
 			"/Differences [65 /A#2Ealt 66 /.notdef 67 /UnknownGlyph] >> >>"),
 		lookup,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	)
 	if directDictionary == nil || directDictionary.text['A'] != "A" {
 		t.Fatalf("dictionary encoding = %#v", directDictionary)
@@ -79,7 +81,11 @@ func TestPDFSimpleFontEncodingSources(t *testing.T) {
 			t.Fatalf("unknown difference retained code %d", code)
 		}
 	}
-	indirect := pdfSimpleFontEncodingTable([]byte("<< /Encoding 7 0 R >>"), lookup)
+	indirect := pdfSimpleFontEncodingTableWithQuota(
+		[]byte("<< /Encoding 7 0 R >>"),
+		lookup,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	)
 	if indirect == nil || indirect.text['A'] != "Z" {
 		t.Fatalf("indirect encoding = %#v", indirect)
 	}
@@ -88,9 +94,10 @@ func TestPDFSimpleFontEncodingSources(t *testing.T) {
 			t.Fatalf("indirect unknown difference retained code %d", code)
 		}
 	}
-	differencesOnly := pdfSimpleFontEncodingTable(
+	differencesOnly := pdfSimpleFontEncodingTableWithQuota(
 		[]byte("<< /Encoding << /Differences [1 /A] >> >>"),
 		lookup,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	)
 	if differencesOnly == nil || differencesOnly.text[1] != "A" {
 		t.Fatalf("differences-only encoding = %#v", differencesOnly)
@@ -105,17 +112,29 @@ func TestPDFSimpleFontEncodingFailureModes(t *testing.T) {
 		[]byte("<< /Encoding << >> >>"),
 		[]byte("<< /Encoding << /BaseEncoding /WinAnsiEncoding /Differences broken >> >>"),
 	} {
-		if table := pdfSimpleFontEncodingTable(font, lookup); table != nil {
+		if table := pdfSimpleFontEncodingTableWithQuota(
+			font,
+			lookup,
+			newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+		); table != nil {
 			t.Fatalf("untrusted encoding = %#v for %q", table, font)
 		}
 	}
 	huge := append([]byte("<< /Encoding << /BaseEncoding /WinAnsiEncoding "),
 		bytes.Repeat([]byte{' '}, pdfMaxEncodingDictionaryBytes+1)...)
 	huge = append(huge, []byte(">> >>")...)
-	if table := pdfSimpleFontEncodingTable(huge, lookup); table != nil {
+	if table := pdfSimpleFontEncodingTableWithQuota(
+		huge,
+		lookup,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	); table != nil {
 		t.Fatalf("oversized encoding = %#v", table)
 	}
-	unsupported := pdfSimpleFontEncodingTable([]byte("<< /Encoding /UnknownEncoding >>"), lookup)
+	unsupported := pdfSimpleFontEncodingTableWithQuota(
+		[]byte("<< /Encoding /UnknownEncoding >>"),
+		lookup,
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	)
 	if unsupported == nil || len(unsupported.text) != 0 || !unsupported.omitUnmapped {
 		t.Fatalf("unsupported encoding = %#v", unsupported)
 	}

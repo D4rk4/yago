@@ -42,7 +42,7 @@ func TestRecoveredOrderReplayUsesOneBoundedHeartbeat(t *testing.T) {
 			}
 			stream := &fakeOrderStream{ctx: ctx, results: recoveredOrderResults(t, size)}
 			out := make(chan CrawlOrderDelivery, size)
-			drainOrderStreamWithLeaseSession(ctx, crawlOrderStreamDrain{
+			drainCrawlOrderMessages(ctx, crawlOrderStreamDrain{
 				client: client, stream: stream, out: out, workerID: "worker", heartbeat: heartbeat,
 			})
 			if len(out) != size {
@@ -86,7 +86,7 @@ func TestRecoveredOrderReplayRenewsSessionManifestBeforeBoundedBatches(t *testin
 	)
 	client := &fakeStreamer{ctx: t.Context(), renewActive: true, leaseTTL: time.Minute}
 	out := make(chan CrawlOrderDelivery, total)
-	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+	drainCrawlOrderMessages(t.Context(), crawlOrderStreamDrain{
 		client:   client,
 		stream:   &fakeOrderStream{ctx: t.Context(), results: results},
 		out:      out,
@@ -147,7 +147,7 @@ func TestRecoveredOrderReplayStopsWhenSessionManifestKeepaliveFails(t *testing.T
 	)
 	client := &fakeStreamer{ctx: t.Context(), beatErr: errors.New("keepalive failed")}
 	out := make(chan CrawlOrderDelivery, maximumRecoveredReplayFixture)
-	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+	drainCrawlOrderMessages(t.Context(), crawlOrderStreamDrain{
 		client: client,
 		stream: &fakeOrderStream{ctx: t.Context(), results: results},
 		out:    out,
@@ -179,7 +179,7 @@ func TestRecoveredOrderReplayRejectsInvalidSessionManifest(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			out := make(chan CrawlOrderDelivery, len(test.results))
-			drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+			drainCrawlOrderMessages(t.Context(), crawlOrderStreamDrain{
 				client: &fakeStreamer{ctx: t.Context()},
 				stream: &fakeOrderStream{ctx: t.Context(), results: test.results},
 				out:    out,
@@ -355,7 +355,7 @@ func TestRecoveredOrderReplayRejectsBrokenBatchBoundaries(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			out := make(chan CrawlOrderDelivery, 1)
-			drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+			drainCrawlOrderMessages(t.Context(), crawlOrderStreamDrain{
 				client: &fakeStreamer{ctx: t.Context()},
 				stream: &fakeOrderStream{ctx: t.Context(), results: test.results},
 				out:    out,
@@ -374,7 +374,7 @@ func TestRecoveredOrderReplayRejectsBrokenBatchBoundaries(t *testing.T) {
 func TestRecoveredOrderReplayRejectsOversizedBatch(t *testing.T) {
 	results := recoveredOrderResults(t, yagocrawlcontract.MaximumHeartbeatActiveLeases+1)
 	out := make(chan CrawlOrderDelivery, len(results))
-	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+	drainCrawlOrderMessages(t.Context(), crawlOrderStreamDrain{
 		client: &fakeStreamer{ctx: t.Context()},
 		stream: &fakeOrderStream{ctx: t.Context(), results: results},
 		out:    out,
@@ -464,7 +464,7 @@ func TestRecoveredMalformedOrderConfirmsThenSettles(t *testing.T) {
 		acknowledgments: &controlAcknowledgments{},
 		leaseGrants:     crawllease.NewGrantRegistry(t.Context(), 1),
 	}
-	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+	drainCrawlOrderMessages(t.Context(), crawlOrderStreamDrain{
 		client: client,
 		stream: &fakeOrderStream{ctx: t.Context(), results: []recvResult{
 			{msg: &crawlrpc.CrawlOrderMessage{
@@ -513,7 +513,7 @@ func TestRecoveredMalformedSettlementFailureRevokesConfirmedGrant(t *testing.T) 
 		acknowledgments: &controlAcknowledgments{},
 		leaseGrants:     registry,
 	}
-	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+	drainCrawlOrderMessages(t.Context(), crawlOrderStreamDrain{
 		client: client,
 		stream: &fakeOrderStream{ctx: t.Context(), results: []recvResult{{
 			msg: &crawlrpc.CrawlOrderMessage{
@@ -647,7 +647,7 @@ func TestRecoveredOrderBatchStopsWhenDeliveryFails(t *testing.T) {
 	result.msg.RecoveredBatchEnd = true
 	result.msg.RecoveredLeaseIds = []string{result.msg.GetLeaseId()}
 	out := make(chan CrawlOrderDelivery)
-	drainOrderStreamWithLeaseSession(cancelled, crawlOrderStreamDrain{
+	drainCrawlOrderMessages(cancelled, crawlOrderStreamDrain{
 		client: &fakeStreamer{ctx: cancelled},
 		stream: &fakeOrderStream{ctx: cancelled, results: []recvResult{result}},
 		out:    out,
@@ -665,7 +665,7 @@ func TestRecoveredOrderStreamStopsAfterBatchConfirmationFailure(t *testing.T) {
 	registry := crawllease.NewGrantRegistry(t.Context(), 1)
 	client := &fakeStreamer{ctx: t.Context()}
 	out := make(chan CrawlOrderDelivery, 1)
-	drainOrderStreamWithLeaseSession(t.Context(), crawlOrderStreamDrain{
+	drainCrawlOrderMessages(t.Context(), crawlOrderStreamDrain{
 		client: client,
 		stream: &fakeOrderStream{ctx: t.Context(), results: []recvResult{result}},
 		out:    out,

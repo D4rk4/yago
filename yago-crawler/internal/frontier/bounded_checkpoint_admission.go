@@ -32,7 +32,7 @@ func (f *Frontier) loadBoundedAdmissionState(
 	if run == nil || !run.boundedRecovery || len(candidates) == 0 {
 		return frontiercheckpoint.AdmissionBatchState{}, nil
 	}
-	checkpoint := f.checkpoint.(boundedRecoveryCheckpoint)
+	checkpoint := f.checkpoint
 	pages := make([]frontiercheckpoint.Page, 0, len(candidates))
 	for _, candidate := range candidates {
 		pages = append(pages, checkpointPage(candidate))

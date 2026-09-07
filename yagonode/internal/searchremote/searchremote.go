@@ -428,13 +428,6 @@ func (s searcher) queryPeers(
 	return s.queryPeerJobsWithinBudget(ctx, jobs, budget)
 }
 
-func (s searcher) queryPeerJobs(
-	ctx context.Context,
-	requests []peerSearchJob,
-) []peerSearchResult {
-	return s.queryPeerJobsWithinBudget(ctx, requests, newRemoteQueryBudget())
-}
-
 func (s searcher) queryPeerJob(
 	ctx context.Context,
 	job peerSearchJob,
@@ -503,21 +496,6 @@ func (s searcher) termTargets(
 	}
 
 	return targets, failures
-}
-
-func (s searcher) termAbstracts(
-	ctx context.Context,
-	req searchcore.Request,
-	targets []termPeerTargets,
-	reputation *reputationSession,
-) (map[yagomodel.Hash]map[yagomodel.Hash]struct{}, []searchcore.PartialFailure) {
-	return s.termAbstractsWithinBudget(
-		ctx,
-		req,
-		targets,
-		reputation,
-		newRemoteQueryBudget(),
-	)
 }
 
 func abstractSearchJobs(
@@ -751,15 +729,6 @@ func peerFailure(peer yagomodel.Seed, err error) searchcore.PartialFailure {
 func locallyCutRemoteCall(err error) bool {
 	return errors.Is(err, errRemoteSearchBudgetExhausted) ||
 		errors.Is(err, errRemoteSearchAdmissionCanceled)
-}
-
-func searchResults(
-	ctx context.Context,
-	req searchcore.Request,
-	rows []yagomodel.URIMetadataRow,
-	scorer remoteScorer,
-) ([]searchcore.Result, error) {
-	return searchResultsWithinBudget(ctx, req, rows, scorer, newRemoteQueryBudget())
 }
 
 func searchResultsWithinBudget(

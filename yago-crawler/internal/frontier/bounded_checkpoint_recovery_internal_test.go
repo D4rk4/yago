@@ -272,12 +272,16 @@ func TestInitiallyRetiredBoundedRecoverySettlesWithoutDispatch(t *testing.T) {
 		checkpoint: checkpoint, provenance: provenance, identity: identity,
 		profileHandle: profile.Profile.Handle, total: pages,
 	})
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		context.Background(),
 		provenance,
-		boundedRecoveryHost(0, 0),
-		frontiercheckpoint.HostProgress{Generation: 1, Retired: true},
-		nil,
+		boundedRecoveryPageURL(0, pages-1),
+		frontiercheckpoint.PageCompletion{
+			HostProgress: &frontiercheckpoint.PageHostProgress{
+				Host:     boundedRecoveryHost(0, 0),
+				Progress: frontiercheckpoint.HostProgress{Generation: 1, Retired: true},
+			},
+		},
 	); err != nil {
 		t.Fatalf("retire recovered host: %v", err)
 	}
@@ -290,7 +294,7 @@ func TestInitiallyRetiredBoundedRecoverySettlesWithoutDispatch(t *testing.T) {
 		profile,
 		func(succeeded bool) { finished <- succeeded },
 	)
-	if seeded.Queued != 37 || crawlFrontier.RunPending(seeded.RunID) != 37 {
+	if seeded.Queued != 36 || crawlFrontier.RunPending(seeded.RunID) != 36 {
 		t.Fatalf(
 			"retired recovery queued=%d pending=%d",
 			seeded.Queued,

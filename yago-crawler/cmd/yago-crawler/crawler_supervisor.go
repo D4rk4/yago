@@ -16,26 +16,6 @@ type orderConsumer interface {
 	WaitForSettlements()
 }
 
-// superviseCrawl runs the workers and the order consumer until ctx is cancelled,
-// then stops accepting new work and lets in-flight fetches finish within grace
-// before aborting them. Workers pull new jobs under ctx but fetch under a
-// separate context, so cancelling ctx halts intake without dropping current work.
-func superviseCrawl(
-	ctx context.Context,
-	worker crawlWorker,
-	consumer orderConsumer,
-	workers int,
-	grace time.Duration,
-) {
-	superviseCrawlWithConcurrency(
-		ctx,
-		worker,
-		consumer,
-		newWorkerConcurrency(workers),
-		grace,
-	)
-}
-
 func superviseCrawlWithConcurrency(
 	ctx context.Context,
 	worker crawlWorker,

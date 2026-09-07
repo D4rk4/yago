@@ -51,19 +51,12 @@ func setScriptedClock(at time.Time, active bool) {
 	scriptedClock.active = active
 }
 
-func withLeaseIDError(t *testing.T) {
-	t.Helper()
-	restore := newLeaseID
-	t.Cleanup(func() { newLeaseID = restore })
-	newLeaseID = func() (string, error) { return "", errors.New("mint failed") }
-}
-
 func leaseOne(t *testing.T, q *DurableOrderQueue, name, worker string) string {
 	t.Helper()
 	if err := q.Publish(context.Background(), testOrder(name)); err != nil {
 		t.Fatalf("publish %s: %v", name, err)
 	}
-	_, leaseID, ok, err := q.leasePop(context.Background(), worker)
+	_, leaseID, ok, err := q.leasePopForSession(context.Background(), worker, "")
 	if err != nil || !ok {
 		t.Fatalf("lease %s: ok=%v err=%v", name, ok, err)
 	}
@@ -109,10 +102,10 @@ func leaseRecordFor(t *testing.T, q *DurableOrderQueue, leaseID string) (leaseRe
 func TestAckLeaseDeletesLease(t *testing.T) {
 	queue := memQueue(t)
 	leaseID := leaseOne(t, queue, "done", "w1")
-	if err := queue.ackLease(context.Background(), leaseID); err != nil {
+	if _, err := queue.ackLeaseWithTarget(context.Background(), leaseID); err != nil {
 		t.Fatalf("ack: %v", err)
 	}
-	if err := queue.ackLease(context.Background(), leaseID); err != nil {
+	if _, err := queue.ackLeaseWithTarget(context.Background(), leaseID); err != nil {
 		t.Fatalf("duplicate ack: %v", err)
 	}
 	if _, ok := leaseRecordFor(t, queue, leaseID); ok {
@@ -124,9 +117,9 @@ func TestAckLeaseDeletesLease(t *testing.T) {
 }
 
 func TestAckLeaseUnknownIsRejected(t *testing.T) {
-	if err := memQueue(
+	if _, err := memQueue(
 		t,
-	).ackLease(context.Background(), "missing"); !errors.Is(
+	).ackLeaseWithTarget(context.Background(), "missing"); !errors.Is(
 		err,
 		errLeaseDispositionConflict,
 	) {
@@ -138,7 +131,7 @@ func TestAckLeaseSurfacesDeleteError(t *testing.T) {
 	fixture := scriptedQueue(t)
 	leaseID := leaseOne(t, fixture.queue, "x", "w1")
 	fixture.engine.deleteErrors[leaseBucket] = errors.New("delete failed")
-	if err := fixture.queue.ackLease(context.Background(), leaseID); err == nil {
+	if _, err := fixture.queue.ackLeaseWithTarget(context.Background(), leaseID); err == nil {
 		t.Fatal("expected ack to surface a delete error")
 	}
 }
@@ -147,14 +140,17 @@ func TestAckLeaseSurfacesReadAndSettlementErrors(t *testing.T) {
 	readFail := scriptedQueue(t)
 	readLeaseID := leaseOne(t, readFail.queue, "read", "w1")
 	readFail.engine.buckets[leaseBucket][readLeaseID] = []byte("not json")
-	if err := readFail.queue.ackLease(t.Context(), readLeaseID); err == nil {
+	if _, err := readFail.queue.ackLeaseWithTarget(t.Context(), readLeaseID); err == nil {
 		t.Fatal("expected ack to surface a lease read error")
 	}
 
 	settlementFail := scriptedQueue(t)
 	settlementLeaseID := leaseOne(t, settlementFail.queue, "settlement", "w1")
 	settlementFail.engine.putErrors[leaseSettlementBucket] = errors.New("put failed")
-	if err := settlementFail.queue.ackLease(t.Context(), settlementLeaseID); err == nil {
+	if _, err := settlementFail.queue.ackLeaseWithTarget(
+		t.Context(),
+		settlementLeaseID,
+	); err == nil {
 		t.Fatal("expected ack to surface a settlement error")
 	}
 }
@@ -372,24 +368,17 @@ func TestSweepExpiredMovesBoundedChunksAndAllowsLeaseRenewal(t *testing.T) {
 	}
 }
 
-func TestLeasePopSurfacesLeaseIDError(t *testing.T) {
-	withLeaseIDError(t)
-	queue := memQueue(t)
-	if err := queue.Publish(context.Background(), testOrder("x")); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	if _, _, _, err := queue.leasePop(context.Background(), "w1"); err == nil {
-		t.Fatal("expected lease pop to surface a lease id error")
-	}
-}
-
 func TestLeasePopSurfacesLeasePutError(t *testing.T) {
 	fixture := scriptedQueue(t)
 	if err := fixture.queue.Publish(context.Background(), testOrder("x")); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	fixture.engine.putErrors[leaseBucket] = errors.New("lease put failed")
-	if _, _, _, err := fixture.queue.leasePop(context.Background(), "w1"); err == nil {
+	if _, _, _, err := fixture.queue.leasePopForSession(
+		context.Background(),
+		"w1",
+		testWorkerSessionID,
+	); err == nil {
 		t.Fatal("expected lease pop to surface a lease put error")
 	}
 }
@@ -403,7 +392,11 @@ func TestLeasePopReplayDropsAbortedOrderState(t *testing.T) {
 	fixture.engine.betweenReplay = func() {
 		clear(fixture.engine.buckets[orderBucket])
 	}
-	data, _, found, err := fixture.queue.leasePop(context.Background(), "worker")
+	data, _, found, err := fixture.queue.leasePopForSession(
+		context.Background(),
+		"worker",
+		testWorkerSessionID,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

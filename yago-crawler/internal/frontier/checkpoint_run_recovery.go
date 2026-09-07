@@ -39,28 +39,13 @@ func (f *Frontier) loadCheckpointRun(
 			)
 		}
 	}
-	var snapshot frontiercheckpoint.Snapshot
-	var err error
-	bounded, supportsBounded := f.checkpoint.(boundedRecoveryCheckpoint)
-	if supportsBounded {
-		snapshot, err = bounded.LoadBounded(
-			context.WithoutCancel(ctx),
-			seed.Provenance,
-			frontierMutationBatchSize,
-		)
-	} else {
-		snapshot, err = f.checkpoint.Load(context.WithoutCancel(ctx), seed.Provenance)
-	}
+	snapshot, err := f.checkpoint.LoadBounded(
+		context.WithoutCancel(ctx), seed.Provenance, frontierMutationBatchSize,
+	)
 	if err != nil {
 		return frontiercheckpoint.Snapshot{}, true, fmt.Errorf(
 			"load frontier checkpoint: %w",
 			err,
-		)
-	}
-	if snapshot.RecoveryBounded && !supportsBounded {
-		return frontiercheckpoint.Snapshot{}, true, fmt.Errorf(
-			"%w: bounded recovery checkpoint is unavailable",
-			frontiercheckpoint.ErrCorruptCheckpoint,
 		)
 	}
 	if err := validateCheckpointSnapshot(snapshot, seed, priority, profileHandle); err != nil {

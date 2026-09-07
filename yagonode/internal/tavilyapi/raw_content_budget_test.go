@@ -79,7 +79,7 @@ func TestBoundedMarkdownRendering(t *testing.T) {
 		ExtractedText: "\nSection\n- item\n* other\nparagraph\n",
 	}
 	got, ok := boundedDocumentMarkdown(doc, maximumRawContentResponseBytes)
-	if !ok || got != documentMarkdown(doc) {
+	if !ok || got != "# Title\n\n## Section\n- item\n* other\n\nparagraph" {
 		t.Fatalf("bounded markdown = %q %t", got, ok)
 	}
 	if _, ok := boundedDocumentMarkdown(doc, 1); ok {

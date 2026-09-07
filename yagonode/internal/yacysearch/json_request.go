@@ -1,6 +1,7 @@
 package yacysearch
 
 import (
+	"cmp"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -37,12 +38,12 @@ func searchRequestFromValues(values url.Values) (searchcore.Request, error) {
 		Limit:            limit,
 		Offset:           offset,
 		ContentDomain:    searchcore.ContentDomain(values.Get(yagoproto.FieldContentDom)),
-		Language:         firstNonEmpty(values.Get(yagoproto.FieldLanguage), parsed.Language),
-		SiteHost:         firstNonEmpty(values.Get(yagoproto.FieldSiteHost), parsed.SiteHost),
+		Language:         cmp.Or(values.Get(yagoproto.FieldLanguage), parsed.Language),
+		SiteHost:         cmp.Or(values.Get(yagoproto.FieldSiteHost), parsed.SiteHost),
 		InURL:            parsed.InURL,
 		TLD:              parsed.TLD,
-		FileType:         firstNonEmpty(values.Get(yagoproto.FieldFileType), parsed.FileType),
-		Author:           firstNonEmpty(values.Get(yagoproto.FieldAuthor), parsed.Author),
+		FileType:         cmp.Or(values.Get(yagoproto.FieldFileType), parsed.FileType),
+		Author:           cmp.Or(values.Get(yagoproto.FieldAuthor), parsed.Author),
 		URLMaskFilter:    values.Get(yagoproto.FieldURLMaskFilter),
 		PreferMaskFilter: values.Get(yagoproto.FieldPreferMaskFilter),
 		Verify:           searchcore.VerifyMode(values.Get(yagoproto.FieldVerify)),
@@ -77,14 +78,4 @@ func optionalRequestInt(values url.Values, keys ...string) (int, error) {
 	}
 
 	return 0, nil
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-
-	return ""
 }

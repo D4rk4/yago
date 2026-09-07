@@ -15,7 +15,10 @@ func TestDocumentMarkdownRendersStructure(t *testing.T) {
 		ExtractedText: "Intro paragraph here.\nInstall\n- step one\n* step two\n" +
 			"Usage\nRun the binary.\n\n",
 	}
-	got := documentMarkdown(doc)
+	got, complete := boundedDocumentMarkdown(doc, maximumRawContentResponseBytes)
+	if !complete {
+		t.Fatal("document exceeds rendering limit")
+	}
 	for _, want := range []string{
 		"# Guide", "## Install", "## Usage", "- step one", "* step two",
 		"Intro paragraph here.", "Run the binary.",
@@ -29,16 +32,16 @@ func TestDocumentMarkdownRendersStructure(t *testing.T) {
 	}
 
 	// Titleless documents render their text alone.
-	if got := documentMarkdown(
-		documentstore.Document{ExtractedText: "just text"},
-	); got != "just text" {
+	if got, complete := boundedDocumentMarkdown(
+		documentstore.Document{ExtractedText: "just text"}, maximumRawContentResponseBytes,
+	); !complete || got != "just text" {
 		t.Fatalf("titleless = %q", got)
 	}
 	// Heading entries that are blank are ignored.
-	blank := documentMarkdown(documentstore.Document{
+	blank, complete := boundedDocumentMarkdown(documentstore.Document{
 		Title: "T", Headings: []string{"  "}, ExtractedText: "body",
-	})
-	if strings.Contains(blank, "##") {
+	}, maximumRawContentResponseBytes)
+	if !complete || strings.Contains(blank, "##") {
 		t.Fatalf("blank heading rendered: %q", blank)
 	}
 }

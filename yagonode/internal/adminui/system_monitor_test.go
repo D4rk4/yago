@@ -204,7 +204,7 @@ func TestSystemMonitorRendersLiveShelfAndFragment(t *testing.T) {
 		`aria-label="Main-vault logical live data versus soft admission quota"`,
 		`2.0 GiB / 8.0 GiB`,
 		`datetime="2026-07-16T09:08:07Z"`,
-		mustAdminAssetReferences(assetFS)["photon_shell.css"],
+		embeddedAdminAssetCatalog["photon_shell.css"].reference,
 	} {
 		if !strings.Contains(page.body, want) {
 			t.Fatalf("shelf missing %q", want)

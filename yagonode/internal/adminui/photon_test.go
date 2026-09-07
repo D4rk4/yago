@@ -18,7 +18,10 @@ func TestPhotonStylesheetLinkedAndServed(t *testing.T) {
 	})
 
 	page := do(t, console, "/admin/configuration")
-	if !strings.Contains(page.body, `href="`+mustAdminAssetReferences(assetFS)["photon.css"]+`"`) {
+	if !strings.Contains(
+		page.body,
+		`href="`+embeddedAdminAssetCatalog["photon.css"].reference+`"`,
+	) {
 		t.Fatal("layout does not link the Photon stylesheet")
 	}
 
@@ -38,10 +41,10 @@ func TestNavIconsRenderFromLocalColorAssets(t *testing.T) {
 
 	console := New(Options{Config: fakeConfig{view: ConfigView{}}})
 	got := do(t, console, "/admin/configuration")
-	references := mustAdminAssetReferences(assetFS)
+	references := embeddedAdminAssetCatalog
 	for _, item := range navItems {
 		reference, found := references[item.Icon]
-		if !found || !strings.Contains(got.body, `src="`+reference+`"`) {
+		if !found || !strings.Contains(got.body, `src="`+reference.reference+`"`) {
 			t.Fatalf("nav does not reference local icon %q", item.Icon)
 		}
 	}
@@ -49,7 +52,7 @@ func TestNavIconsRenderFromLocalColorAssets(t *testing.T) {
 		strings.Contains(got.body, `<svg class="cds-nav__icon"`) {
 		t.Fatal("nav icons missing their class")
 	}
-	asset := do(t, console, references[navItems[0].Icon])
+	asset := do(t, console, references[navItems[0].Icon].reference)
 	if asset.status != http.StatusOK || asset.header.Get("Content-Type") != "image/svg+xml" ||
 		asset.header.Get("Cache-Control") != adminAssetImmutableCacheControl {
 		t.Fatalf("local icon response = %d %v", asset.status, asset.header)

@@ -41,21 +41,6 @@ func adminAssetTemplateFunctions() template.FuncMap {
 	}
 }
 
-func mustAdminAssetReferences(assets fs.FS) map[string]string {
-	catalog := mustAdminAssetCatalog(assets)
-
-	return adminAssetReferences(catalog)
-}
-
-func buildAdminAssetReferences(assets fs.FS) (map[string]string, error) {
-	catalog, err := buildAdminAssetCatalog(assets)
-	if err != nil {
-		return nil, err
-	}
-
-	return adminAssetReferences(catalog), nil
-}
-
 func mustAdminAssetCatalog(assets fs.FS) adminAssetCatalog {
 	catalog, err := buildAdminAssetCatalog(assets)
 	if err != nil {
@@ -93,15 +78,6 @@ func buildAdminAssetCatalog(assets fs.FS) (adminAssetCatalog, error) {
 	}
 
 	return catalog, nil
-}
-
-func adminAssetReferences(catalog adminAssetCatalog) map[string]string {
-	references := make(map[string]string, len(catalog))
-	for name, asset := range catalog {
-		references[name] = asset.reference
-	}
-
-	return references
 }
 
 func RejectAdminAssetAliases(next http.Handler) http.Handler {

@@ -27,15 +27,11 @@ func TestFirefoxFetchesRealPagesThroughOneProcess(t *testing.T) {
 		t.Skipf("no firefox binary: %v", err)
 	}
 
-	fetcher, closeFetcher, err := NewBrowserPageFetcher(
-		BrowserLaunch{
-			UserAgent: "yago-crawler-integration/1.0",
-			Timeout:   60 * time.Second,
-			MaxBytes:  1 << 20,
-		},
-		// The production guard: blocks private/loopback, allows public hosts.
-		yagoegress.NewGuard(false),
-	)
+	fetcher, closeFetcher, err := NewBrowserPageFetcherWithPoolObservation(BrowserLaunch{
+		UserAgent: "yago-crawler-integration/1.0",
+		Timeout:   60 * time.Second,
+		MaxBytes:  1 << 20,
+	}, yagoegress.NewGuard(false), nil)
 	if err != nil {
 		t.Fatalf("new fetcher: %v", err)
 	}

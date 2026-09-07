@@ -35,16 +35,18 @@ func activateTestWorkerSession(
 	server *exchangeServer,
 	workerID string,
 	workerSessionID string,
-) {
+) uint64 {
 	t.Helper()
-	if _, _, err := server.activateWorkerSession(
+	_, generation, err := server.activateWorkerSession(
 		context.Background(),
 		workerID,
 		workerSessionID,
 		func() {},
-	); err != nil {
+	)
+	if err != nil {
 		t.Fatalf("activate worker session: %v", err)
 	}
+	return generation
 }
 
 func deactivateTestWorkerSession(

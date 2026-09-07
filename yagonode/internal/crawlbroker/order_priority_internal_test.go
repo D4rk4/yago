@@ -19,7 +19,7 @@ func automaticOrder(name string) yagocrawlcontract.CrawlOrder {
 
 func leaseOrderName(t *testing.T, queue *DurableOrderQueue) string {
 	t.Helper()
-	data, _, ok, err := queue.leasePop(t.Context(), "worker")
+	data, _, ok, err := queue.leasePopForSession(t.Context(), "worker", testWorkerSessionID)
 	if err != nil || !ok {
 		t.Fatalf("lease: ok=%v err=%v", ok, err)
 	}
@@ -136,7 +136,11 @@ func TestAutomaticDiscoveryPrioritySurvivesDeferredLease(t *testing.T) {
 	set(base)
 	queue := memQueue(t)
 	publishOrders(t, queue, automaticOrder("automatic"))
-	_, leaseID, ok, err := queue.leasePop(context.Background(), "worker")
+	_, leaseID, ok, err := queue.leasePopForSession(
+		context.Background(),
+		"worker",
+		testWorkerSessionID,
+	)
 	if err != nil || !ok {
 		t.Fatalf("lease automatic: ok=%v err=%v", ok, err)
 	}
@@ -159,7 +163,11 @@ func TestAutomaticDiscoveryPriorityRecoversFromLegacyLeasePayload(t *testing.T) 
 	set(base)
 	queue := memQueue(t)
 	publishOrders(t, queue, automaticOrder("automatic"))
-	_, leaseID, ok, err := queue.leasePop(context.Background(), "worker")
+	_, leaseID, ok, err := queue.leasePopForSession(
+		context.Background(),
+		"worker",
+		testWorkerSessionID,
+	)
 	if err != nil || !ok {
 		t.Fatalf("lease automatic: ok=%v err=%v", ok, err)
 	}
@@ -199,7 +207,7 @@ func TestAutomaticDiscoveryPrioritySurvivesExpiredLeaseRequeue(t *testing.T) {
 	set(base)
 	queue := memQueue(t)
 	publishOrders(t, queue, automaticOrder("automatic"))
-	_, _, ok, err := queue.leasePop(t.Context(), "worker")
+	_, _, ok, err := queue.leasePopForSession(t.Context(), "worker", "")
 	if err != nil || !ok {
 		t.Fatalf("lease automatic: ok=%v err=%v", ok, err)
 	}

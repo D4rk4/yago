@@ -3,19 +3,18 @@ package firefoxfetch
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func newSaturatedFirefoxPool(
 	t *testing.T,
-	observeBrowserSlotAcquisitionDeadline func(),
+	observer *recordedBrowserPoolObservation,
 ) (*firefoxPool, chan struct{}, <-chan error) {
 	t.Helper()
 	started := make(chan struct{})
 	release := make(chan struct{})
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
@@ -33,7 +32,7 @@ func newSaturatedFirefoxPool(
 				},
 			}, nil
 		},
-		observeBrowserSlotAcquisitionDeadline,
+		browserPoolObservation{observer: observer},
 	)
 	done := make(chan error, 1)
 	go func() {
@@ -50,16 +49,17 @@ func newSaturatedFirefoxPool(
 }
 
 func TestFirefoxPoolCountsBrowserSlotAcquisitionDeadline(t *testing.T) {
-	var deadlines atomic.Int32
-	pool, release, first := newSaturatedFirefoxPool(t, func() { deadlines.Add(1) })
+	observer := &recordedBrowserPoolObservation{}
+	pool, release, first := newSaturatedFirefoxPool(t, observer)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 	_, err := pool.render(ctx, "https://example.org/second")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("second render error = %v, want context deadline", err)
 	}
-	if got := deadlines.Load(); got != 1 {
-		t.Fatalf("browser slot acquisition deadlines = %d, want 1", got)
+	if _, _, failures := observer.snapshot(); len(failures) != 1 ||
+		failures[0] != BrowserFailureSlotDeadline {
+		t.Fatalf("browser slot acquisition failures = %v, want deadline", failures)
 	}
 	close(release)
 	if err := <-first; err != nil {
@@ -69,16 +69,16 @@ func TestFirefoxPoolCountsBrowserSlotAcquisitionDeadline(t *testing.T) {
 }
 
 func TestFirefoxPoolDoesNotCountBrowserSlotAcquisitionCancellation(t *testing.T) {
-	var deadlines atomic.Int32
-	pool, release, first := newSaturatedFirefoxPool(t, func() { deadlines.Add(1) })
+	observer := &recordedBrowserPoolObservation{}
+	pool, release, first := newSaturatedFirefoxPool(t, observer)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := pool.render(ctx, "https://example.org/second")
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("second render error = %v, want context cancellation", err)
 	}
-	if got := deadlines.Load(); got != 0 {
-		t.Fatalf("browser slot acquisition deadlines = %d, want 0", got)
+	if _, _, failures := observer.snapshot(); len(failures) != 0 {
+		t.Fatalf("browser slot acquisition failures = %v, want none", failures)
 	}
 	close(release)
 	if err := <-first; err != nil {
@@ -88,8 +88,8 @@ func TestFirefoxPoolDoesNotCountBrowserSlotAcquisitionCancellation(t *testing.T)
 }
 
 func TestFirefoxPoolDoesNotCountShutdownWhileWaitingForBrowserSlot(t *testing.T) {
-	var deadlines atomic.Int32
-	pool, release, first := newSaturatedFirefoxPool(t, func() { deadlines.Add(1) })
+	observer := &recordedBrowserPoolObservation{}
+	pool, release, first := newSaturatedFirefoxPool(t, observer)
 	second := make(chan error, 1)
 	go func() {
 		_, err := pool.render(context.Background(), "https://example.org/second")
@@ -115,8 +115,8 @@ func TestFirefoxPoolDoesNotCountShutdownWhileWaitingForBrowserSlot(t *testing.T)
 	case <-time.After(time.Second):
 		t.Fatal("pool shutdown did not cancel the browser slot wait")
 	}
-	if got := deadlines.Load(); got != 0 {
-		t.Fatalf("browser slot acquisition deadlines = %d, want 0", got)
+	if _, _, failures := observer.snapshot(); len(failures) != 0 {
+		t.Fatalf("browser slot acquisition failures = %v, want none", failures)
 	}
 	close(release)
 	if err := <-first; err != nil {
@@ -130,13 +130,13 @@ func TestFirefoxPoolDoesNotCountShutdownWhileWaitingForBrowserSlot(t *testing.T)
 }
 
 func TestFirefoxPoolNilBrowserSlotAcquisitionObserverStaysNoop(t *testing.T) {
-	pool := newFirefoxPool(
+	pool := newFirefoxPoolObserved(
 		BrowserLaunch{Sessions: 1},
 		"http://proxy.example",
 		func(context.Context, BrowserLaunch, string) (browserSession, error) {
 			return nil, errors.New("unexpected launch")
 		},
-		nil,
+		browserPoolObservation{},
 	)
 	<-pool.selection
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)

@@ -74,10 +74,11 @@ func TestOutboundSchedulerSendsReadyChunkAndObservesSuccess(t *testing.T) {
 	})
 	observer := &observedDistributions{}
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(
+		NewConfirmingOutboundDistributor(
 			queue,
 			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
 			&wordRestorerScript{},
+			nil,
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
 		observer,
@@ -120,7 +121,7 @@ func TestOutboundSchedulerDefersDelayedPeers(t *testing.T) {
 	handoff := &handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)}
 	observer := &observedDistributions{}
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(queue, handoff, &wordRestorerScript{}),
+		NewConfirmingOutboundDistributor(queue, handoff, &wordRestorerScript{}, nil),
 		retry,
 		observer,
 		func(context.Context) GateState { return openGateState() },
@@ -158,10 +159,11 @@ func TestOutboundSchedulerRestoresAfterBoundedTransportFailures(t *testing.T) {
 	restorer := &wordRestorerScript{restored: 1}
 	observer := &observedDistributions{}
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(
+		NewConfirmingOutboundDistributor(
 			queue,
 			&handoffScript{err: errors.New("transport failed")},
 			restorer,
+			nil,
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{
 			BaseDelay:          time.Second,
@@ -214,10 +216,11 @@ func TestOutboundSchedulerRetainsChunkWhenBoundedRestoreFails(t *testing.T) {
 	transportErr := errors.New("transport failed")
 	restoreErr := errors.New("restore failed")
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(
+		NewConfirmingOutboundDistributor(
 			queue,
 			&handoffScript{err: transportErr},
 			&wordRestorerScript{err: restoreErr},
+			nil,
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{
 			BaseDelay:          time.Second,
@@ -257,7 +260,7 @@ func TestOutboundSchedulerRejectedPeerDoesNotPinFreshFeed(t *testing.T) {
 	}}
 	feed := &queueFeedScript{queue: queue, peer: good, postings: postings}
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(queue, handoff, restorer),
+		NewConfirmingOutboundDistributor(queue, handoff, restorer, nil),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
 		&observedDistributions{},
 		func(context.Context) GateState { return openGateState() },
@@ -297,10 +300,11 @@ func TestOutboundSchedulerRunsFeederBeforeDistribution(t *testing.T) {
 	feed := &feedScript{receipt: OutboundFeedReceipt{State: OutboundFeedEmpty}}
 	observer := &observedDistributions{}
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(
+		NewConfirmingOutboundDistributor(
 			NewOutboundQueue(),
 			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
 			&wordRestorerScript{},
+			nil,
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
 		observer,
@@ -326,10 +330,11 @@ func TestOutboundSchedulerDoesNotFeedWhenGatesAreClosed(t *testing.T) {
 	closed := openGateState()
 	closed.OnlineCaution = "proxy"
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(
+		NewConfirmingOutboundDistributor(
 			NewOutboundQueue(),
 			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
 			&wordRestorerScript{},
+			nil,
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
 		&observedDistributions{},
@@ -358,10 +363,11 @@ func TestOutboundSchedulerReturnsFeederErrorBeforeDistribution(t *testing.T) {
 	}
 	observer := &observedDistributions{}
 	scheduler := NewOutboundScheduler(
-		NewOutboundDistributor(
+		NewConfirmingOutboundDistributor(
 			NewOutboundQueue(),
 			&handoffScript{receipt: acceptedHandoff(indextransfer.HandoffRWIOnly)},
 			&wordRestorerScript{},
+			nil,
 		),
 		NewOutboundRetryPolicy(OutboundRetryConfig{}),
 		observer,

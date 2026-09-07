@@ -477,11 +477,12 @@ func TestRemoteSearcherReportsIndexAbstractPeerFailures(t *testing.T) {
 
 func TestRemoteSearcherReportsMissingIndexAbstractResponses(t *testing.T) {
 	term := yagomodel.WordHash("alpha")
-	abstracts, failures := (searcher{}).termAbstracts(
+	abstracts, failures := (searcher{}).termAbstractsWithinBudget(
 		t.Context(),
 		searchcore.Request{},
 		[]termPeerTargets{{term: term}},
 		nil,
+		newRemoteQueryBudget(),
 	)
 	if len(abstracts) != 0 ||
 		len(failures) != 1 ||
@@ -694,10 +695,11 @@ func TestRemoteSearchReportsRequestConstructionFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { newRemoteSearchRequest = original })
 
-	_, err := NewSearcher(Config{}).(searcher).remoteSearch(
+	_, _, err := NewSearcher(Config{}).(searcher).sendRemoteSearchWithinLimit(
 		t.Context(),
 		serverSeed(t, "http://127.0.0.1:8090"),
-		searchcore.Request{Limit: 1},
+		remoteSearchRequest(searchcore.Request{Limit: 1}, "", DefaultPerPeerTimeout),
+		remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap},
 	)
 	if err == nil {
 		t.Fatal("expected request construction error")
@@ -705,10 +707,11 @@ func TestRemoteSearchReportsRequestConstructionFailure(t *testing.T) {
 }
 
 func TestRemoteSearchReportsTargetFailure(t *testing.T) {
-	_, err := NewSearcher(Config{}).(searcher).remoteSearch(
+	_, _, err := NewSearcher(Config{}).(searcher).sendRemoteSearchWithinLimit(
 		t.Context(),
 		yagomodel.Seed{Hash: hashFor("missing")},
-		searchcore.Request{Limit: 1},
+		remoteSearchRequest(searchcore.Request{Limit: 1}, "", DefaultPerPeerTimeout),
+		remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap},
 	)
 	if err == nil {
 		t.Fatal("expected target error")
@@ -723,10 +726,11 @@ func TestRemoteSearchReportsReadFailure(t *testing.T) {
 		}, nil
 	})}
 
-	_, err := NewSearcher(Config{Client: client}).(searcher).remoteSearch(
+	_, _, err := NewSearcher(Config{Client: client}).(searcher).sendRemoteSearchWithinLimit(
 		t.Context(),
 		serverSeed(t, "http://127.0.0.1:8090"),
-		searchcore.Request{Limit: 1},
+		remoteSearchRequest(searchcore.Request{Limit: 1}, "", DefaultPerPeerTimeout),
+		remoteSearchRequestLimits{responseBodyLimit: remoteSearchBodyCap},
 	)
 	if err == nil {
 		t.Fatal("expected read error")
@@ -734,8 +738,9 @@ func TestRemoteSearchReportsReadFailure(t *testing.T) {
 }
 
 func TestReadRemoteSearchResponseRejectsOversizedBody(t *testing.T) {
-	_, err := readRemoteSearchResponse(
+	_, _, err := readRemoteSearchResponseWithinLimit(
 		strings.NewReader(strings.Repeat("x", remoteSearchBodyCap+1)),
+		remoteSearchBodyCap,
 	)
 	if err == nil {
 		t.Fatal("expected oversized body error")

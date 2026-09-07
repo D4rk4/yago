@@ -47,12 +47,6 @@ func TestLegacyAPIKeyPagesAreBoundedCompleteAndDisjoint(t *testing.T) {
 			t.Fatalf("key %d = %q, want %q", index, seen[index], want[index])
 		}
 	}
-	if _, err := store.list(context.Background()); !errors.Is(
-		err,
-		errAPIKeyCompatibilityListingTruncated,
-	) {
-		t.Fatalf("compatibility list error = %v", err)
-	}
 }
 
 func TestAPIKeyPageRejectsInvalidCursorAndLimits(t *testing.T) {

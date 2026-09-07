@@ -1,6 +1,7 @@
 package yacysearch
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"strconv"
@@ -36,7 +37,7 @@ func parseSuggestParams(r *http.Request) suggestParams {
 	query := r.URL.Query()
 
 	return suggestParams{
-		query:    firstNonEmpty(query.Get("query"), query.Get("q")),
+		query:    cmp.Or(query.Get("query"), query.Get("q")),
 		limit:    suggestCount(query.Get("count")),
 		timeout:  suggestTimeout(query.Get("timeout")),
 		callback: sanitizeCallback(query.Get("callback")),

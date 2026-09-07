@@ -13,6 +13,8 @@ checks its current session and lease capacity before claiming work; cancellation
 ends an idle wait. Page checkpoints and terminal acknowledgments remain durable
 across independent node and crawler restarts. Progress and settlement retries
 share the same bounded jitter calculation.
+Persistent recovery uses bounded page windows. Host progress is committed with
+page completion, and cancellation uses the same durable recovery boundary.
 
 The node connection includes the upstream gRPC fragmented-stream memory
 correction. The container also pins corrected util-linux libraries used by its

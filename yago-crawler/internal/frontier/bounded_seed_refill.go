@@ -185,7 +185,7 @@ func (f *Frontier) finishBoundedSeedBatch(
 	runID uuid.UUID,
 	run *crawlRun,
 ) bool {
-	checkpoint := f.checkpoint.(boundedRecoveryCheckpoint)
+	checkpoint := f.checkpoint
 	done, err := checkpoint.FinishSeedingBatch(
 		context.WithoutCancel(ctx),
 		run.provenanceValue,
@@ -200,7 +200,7 @@ func (f *Frontier) cancelBoundedSeedBatch(
 	runID uuid.UUID,
 	run *crawlRun,
 ) bool {
-	checkpoint := f.checkpoint.(boundedRecoveryCheckpoint)
+	checkpoint := f.checkpoint
 	done, err := checkpoint.CancelSeedManifestBatch(
 		context.WithoutCancel(ctx),
 		run.provenanceValue,

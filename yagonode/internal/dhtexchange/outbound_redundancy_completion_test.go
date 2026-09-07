@@ -24,7 +24,12 @@ func TestOutboundDistributorConfirmsOnlyAfterFinalRedundancyCopy(t *testing.T) {
 		confirmer,
 	)
 
-	first, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	first, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("first Distribute: %v", err)
 	}
@@ -37,7 +42,12 @@ func TestOutboundDistributorConfirmsOnlyAfterFinalRedundancyCopy(t *testing.T) {
 		)
 	}
 
-	second, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	second, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("second Distribute: %v", err)
 	}
@@ -72,7 +82,7 @@ func TestOutboundDistributorRestoresOnlyErrorURLPostings(t *testing.T) {
 		}},
 		restorer,
 		confirmer,
-	).Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	).DistributeReady(t.Context(), openGateState(), DefaultGateConfig(), nil)
 	if err != nil {
 		t.Fatalf("Distribute: %v", err)
 	}
@@ -102,7 +112,12 @@ func TestOutboundDistributorCancelsRejectedRedundancyCopies(t *testing.T) {
 	confirmer := &sentPostingConfirmerScript{confirmed: 1}
 	distributor := NewConfirmingOutboundDistributor(queue, handoff, restorer, confirmer)
 
-	first, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	first, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("first Distribute: %v", err)
 	}
@@ -117,7 +132,12 @@ func TestOutboundDistributorCancelsRejectedRedundancyCopies(t *testing.T) {
 	}
 
 	handoff.receipt = acceptedHandoff(indextransfer.HandoffRWIOnly)
-	second, err := distributor.Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	second, err := distributor.DistributeReady(
+		t.Context(),
+		openGateState(),
+		DefaultGateConfig(),
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("second Distribute: %v", err)
 	}
@@ -148,7 +168,7 @@ func TestOutboundDistributorCancelsEmptyRejectedRedundancyChunk(t *testing.T) {
 		}},
 		&wordRestorerScript{restored: 1},
 		&sentPostingConfirmerScript{},
-	).Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	).DistributeReady(t.Context(), openGateState(), DefaultGateConfig(), nil)
 	if err != nil || receipt.RestoredPostings != 1 || receipt.ConfirmedPostings != 0 ||
 		queue.PostingCount() != 0 {
 		t.Fatalf("receipt/error/queue = %#v/%v/%d", receipt, err, queue.PostingCount())
@@ -174,7 +194,7 @@ func TestOutboundDistributorKeepsRejectedPostingInLocalRestoreRetry(t *testing.T
 		}},
 		&wordRestorerScript{err: restoreErr},
 		confirmer,
-	).Distribute(t.Context(), openGateState(), DefaultGateConfig())
+	).DistributeReady(t.Context(), openGateState(), DefaultGateConfig(), nil)
 	if !errors.Is(err, restoreErr) || receipt.RestoredPostings != 0 ||
 		receipt.RequeuedPostings != 0 || receipt.ConfirmedPostings != 1 ||
 		queue.PostingCount() != 0 || len(queue.pendingRestore()) != 1 ||

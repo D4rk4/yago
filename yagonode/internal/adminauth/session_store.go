@@ -59,14 +59,8 @@ func newSessionStore(
 }
 
 func (s *sessionStore) create(ctx context.Context, username string) (session, error) {
-	token, err := newRandomToken(sessionTokenBytes)
-	if err != nil {
-		return session{}, err
-	}
-	csrf, err := newRandomToken(csrfTokenBytes)
-	if err != nil {
-		return session{}, err
-	}
+	token := newRandomToken(sessionTokenBytes)
+	csrf := newRandomToken(csrfTokenBytes)
 	now := s.now()
 	record := sessionRecord{
 		Username:  username,
@@ -127,10 +121,7 @@ func (s *sessionStore) rotate(
 		return session{}, false, nil
 	}
 
-	replacement, err := newRandomToken(sessionTokenBytes)
-	if err != nil {
-		return session{}, false, err
-	}
+	replacement := newRandomToken(sessionTokenBytes)
 	expected := record
 	record.RenewAt = now.Add(s.renewal)
 	if record.RenewAt.After(record.ExpiresAt) {

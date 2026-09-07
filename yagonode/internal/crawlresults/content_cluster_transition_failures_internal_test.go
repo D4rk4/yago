@@ -12,7 +12,6 @@ import (
 
 type durableContentClusterScript struct {
 	contentClusterScript
-	deletion      contentcluster.EvidenceDeletion
 	transitionErr error
 	finalizeErr   error
 	replay        bool
@@ -56,13 +55,6 @@ func TestDurableContentClusterBatchMismatchReleasesProjection(t *testing.T) {
 	}
 }
 
-func (s *durableContentClusterScript) DeleteTransition(
-	context.Context,
-	string,
-) (contentcluster.EvidenceDeletion, error) {
-	return s.deletion, s.transitionErr
-}
-
 func (s *durableContentClusterScript) FinalizeEvidenceTransitions(
 	context.Context,
 	[]contentcluster.EvidenceFinalization,
@@ -76,72 +68,6 @@ func (s *durableContentClusterScript) ReleaseEvidenceTransitions(
 	[]contentcluster.EvidenceFinalization,
 ) {
 	s.released++
-}
-
-func TestDurableContentClusterDeletionSurfacesProjectionFailures(t *testing.T) {
-	sentinel := errors.New("failure")
-	tests := []struct {
-		name          string
-		transitionErr error
-		clusterErr    error
-		clusterFound  bool
-		readErr       error
-		receiveErr    error
-		busy          bool
-		finalizeErr   error
-		wantErr       bool
-	}{
-		{name: "transition", transitionErr: sentinel, wantErr: true},
-		{name: "cluster", clusterErr: sentinel, wantErr: true},
-		{name: "missing cluster"},
-		{name: "document", clusterFound: true, readErr: sentinel, wantErr: true},
-		{name: "receive", clusterFound: true, receiveErr: sentinel, wantErr: true},
-		{name: "capacity", clusterFound: true, busy: true, wantErr: true},
-		{name: "finalize", finalizeErr: sentinel, wantErr: true},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			script := &durableContentClusterScript{
-				contentClusterScript: contentClusterScript{
-					cluster: contentcluster.Cluster{
-						ID:                "cluster",
-						RepresentativeURL: "https://member.example/",
-						MemberURLs:        []string{"https://member.example/"},
-					},
-					clusterFound: test.clusterFound,
-					clusterErr:   test.clusterErr,
-				},
-				deletion: contentcluster.EvidenceDeletion{
-					AffectedClusterIDs: []string{"cluster"},
-				},
-				transitionErr: test.transitionErr,
-				finalizeErr:   test.finalizeErr,
-			}
-			directory := &clusterDocumentDirectoryScript{
-				documents: map[string]documentstore.Document{
-					"https://member.example/": {NormalizedURL: "https://member.example/"},
-				},
-				readErr:    test.readErr,
-				receiveErr: test.receiveErr,
-				receipt:    documentstore.Receipt{Busy: test.busy},
-			}
-			consumer := &IngestConsumer{clusters: script, documents: directory}
-			err := consumer.deleteDocumentCluster(t.Context(), "https://gone.example/")
-			if (err != nil) != test.wantErr {
-				t.Fatalf("delete error = %v, want error %t", err, test.wantErr)
-			}
-			if test.transitionErr != nil {
-				if script.released != 0 {
-					t.Fatalf("transition failure releases = %d", script.released)
-				}
-
-				return
-			}
-			if script.released != 1 {
-				t.Fatalf("projection releases = %d", script.released)
-			}
-		})
-	}
 }
 
 func TestDurableContentClusterFinalizationRedeliversSingleAndGroup(t *testing.T) {
@@ -251,25 +177,4 @@ func TestDurableContentClusterGroupReplayIndexesPreparedDocuments(t *testing.T) 
 		"https://first.example/",
 		"https://second.example/",
 	)
-}
-
-func TestLegacyContentClusterDeletionStoresAndIndexesSurvivor(t *testing.T) {
-	memberURL := "https://member.example/"
-	script := survivingContentClusterScript(contentcluster.Cluster{
-		ID:                "cluster",
-		RepresentativeURL: memberURL,
-		MemberURLs:        []string{memberURL},
-	})
-	directory := &clusterDocumentDirectoryScript{documents: map[string]documentstore.Document{
-		memberURL: {NormalizedURL: memberURL},
-	}}
-	index := &anchorIndexScript{}
-	consumer := &IngestConsumer{clusters: script, documents: directory, index: index}
-	if err := consumer.deleteDocumentCluster(t.Context(), "https://gone.example/"); err != nil {
-		t.Fatalf("legacy cluster deletion: %v", err)
-	}
-	if len(directory.received) != 1 || len(index.docs) != 1 ||
-		index.docs[0].RepresentativeURL != memberURL {
-		t.Fatalf("legacy survivor = %#v / %#v", directory.received, index.docs)
-	}
 }

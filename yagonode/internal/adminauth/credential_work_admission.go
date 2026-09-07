@@ -27,7 +27,7 @@ func hashCredentialPassword(password string) (string, error) {
 	}
 	defer release()
 
-	return credentialPasswordHash(password)
+	return credentialPasswordHash(password), nil
 }
 
 func verifyCredentialPassword(encoded, password string) (bool, error) {

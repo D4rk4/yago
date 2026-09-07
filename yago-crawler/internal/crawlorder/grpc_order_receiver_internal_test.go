@@ -40,16 +40,14 @@ func TestOrderStreamReceiveFailureIsLogged(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	client := &fakeStreamer{ctx: context.Background()}
-	drainOrderStream(
+	drainCrawlOrderMessages(
 		context.Background(),
-		client,
-		&fakeOrderStream{
+		crawlOrderStreamDrain{client: client, stream: &fakeOrderStream{
 			ctx: context.Background(),
 			results: []recvResult{{
 				err: status.Error(codes.Internal, "storage failed"),
 			}},
-		},
-		make(chan CrawlOrderDelivery),
+		}, out: make(chan CrawlOrderDelivery)},
 	)
 	logged := output.String()
 	if !strings.Contains(logged, msgOrderStreamReceiveFailed) ||
@@ -57,14 +55,12 @@ func TestOrderStreamReceiveFailureIsLogged(t *testing.T) {
 		t.Fatalf("order receive log = %q", logged)
 	}
 	output.Reset()
-	drainOrderStream(
+	drainCrawlOrderMessages(
 		context.Background(),
-		client,
-		&fakeOrderStream{
+		crawlOrderStreamDrain{client: client, stream: &fakeOrderStream{
 			ctx:     context.Background(),
 			results: []recvResult{{err: io.EOF}},
-		},
-		make(chan CrawlOrderDelivery),
+		}, out: make(chan CrawlOrderDelivery)},
 	)
 	if output.Len() != 0 {
 		t.Fatalf("normal order stream end logged %q", output.String())
@@ -477,7 +473,7 @@ func TestLeaseConfirmationPrecedesOrderDelivery(t *testing.T) {
 		{err: io.EOF},
 	}}
 	out := make(chan CrawlOrderDelivery, 1)
-	drainOrderStreamWithLeaseSession(
+	drainCrawlOrderMessages(
 		ctx,
 		crawlOrderStreamDrain{
 			client:    client,
@@ -517,7 +513,7 @@ func TestOmittedLeaseConfirmationStopsOrderDelivery(t *testing.T) {
 	}
 	stream := &fakeOrderStream{ctx: ctx, results: []recvResult{orderResult(t, "omitted")}}
 	out := make(chan CrawlOrderDelivery, 1)
-	drainOrderStreamWithLeaseSession(
+	drainCrawlOrderMessages(
 		ctx,
 		crawlOrderStreamDrain{
 			client:    client,
@@ -590,12 +586,18 @@ func TestSettleLeaseReportsAckError(t *testing.T) {
 		ctx:    context.Background(),
 		ackErr: status.Error(codes.InvalidArgument, "ack rejected"),
 	}
-	if err := settleLease(
+	if err := settleLeaseForSession(
 		context.Background(),
 		client,
-		"lease-x",
-		false,
-	)(context.Background()); err == nil {
+		leasedOrderAcknowledgment{
+			leaseID:         "lease-x",
+			requeue:         false,
+			workerID:        "worker",
+			workerSessionID: "session",
+		},
+	)(
+		context.Background(),
+	); err == nil {
 		t.Fatal("expected settleLease to surface the ack error")
 	}
 }
@@ -766,7 +768,10 @@ func TestDrainOrderStreamStopsOnRecvError(t *testing.T) {
 	ctx := context.Background()
 	stream := &fakeOrderStream{ctx: ctx, results: []recvResult{{err: errors.New("recv broken")}}}
 	out := make(chan CrawlOrderDelivery)
-	drainOrderStream(ctx, &fakeStreamer{ctx: ctx}, stream, out)
+	drainCrawlOrderMessages(
+		ctx,
+		crawlOrderStreamDrain{client: &fakeStreamer{ctx: ctx}, stream: stream, out: out},
+	)
 }
 
 func TestDrainOrderStreamStopsWhenCancelledMidSend(t *testing.T) {
@@ -774,14 +779,17 @@ func TestDrainOrderStreamStopsWhenCancelledMidSend(t *testing.T) {
 	cancel()
 	stream := &fakeOrderStream{ctx: ctx, results: []recvResult{orderResult(t, "unread")}}
 	out := make(chan CrawlOrderDelivery)
-	drainOrderStream(ctx, &fakeStreamer{ctx: ctx}, stream, out)
+	drainCrawlOrderMessages(
+		ctx,
+		crawlOrderStreamDrain{client: &fakeStreamer{ctx: ctx}, stream: stream, out: out},
+	)
 }
 
 func TestDeliverOrderSendsWhenReadable(t *testing.T) {
 	client := &fakeStreamer{ctx: context.Background()}
 	out := make(chan CrawlOrderDelivery, 1)
 	identity := crawlOrderPayloadIdentity([]byte("historical-payload"))
-	if !deliverOrder(context.Background(), crawlOrderDeliveryEnvelope{
+	if !deliverOrderWithLeaseSession(context.Background(), crawlOrderDeliveryEnvelope{
 		client:        client,
 		out:           out,
 		order:         yagocrawlcontract.CrawlOrder{},
@@ -811,7 +819,15 @@ func TestStreamCrawlOrdersStopsWhenContextCancelled(t *testing.T) {
 	out := make(chan CrawlOrderDelivery)
 	done := make(chan struct{})
 	go func() {
-		streamCrawlOrders(ctx, &fakeStreamer{ctx: ctx}, "worker-1", out, orderStreamRetryWait)
+		streamCrawlOrdersWithLeaseSession(
+			ctx,
+			crawlOrderStreamSession{
+				client:    &fakeStreamer{ctx: ctx},
+				workerID:  "worker-1",
+				out:       out,
+				retryWait: orderStreamRetryWait,
+			},
+		)
 		close(done)
 	}()
 	select {

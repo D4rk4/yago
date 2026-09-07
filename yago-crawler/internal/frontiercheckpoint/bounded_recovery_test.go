@@ -83,12 +83,17 @@ func TestBoundedRecoveryDropsInitiallyRetiredPagesBeforePendingIsTracked(t *test
 	if err := checkpoint.FinishSeeding(testContext, provenance, testRunTally()); err != nil {
 		t.Fatalf("finish retired recovery seeding: %v", err)
 	}
-	if err := checkpoint.RecordHostState(
+	if err := checkpoint.CompletePage(
 		testContext,
 		provenance,
-		host,
-		HostProgress{Generation: 1, Retired: true},
-		nil,
+		pages[len(pages)-1].URL,
+		PageCompletion{
+			HostProgress: &PageHostProgress{
+				Host:        host,
+				Progress:    HostProgress{Generation: 1, Retired: true},
+				DroppedURLs: nil,
+			},
+		},
 	); err != nil {
 		t.Fatalf("mark recovery host retired: %v", err)
 	}
@@ -98,7 +103,7 @@ func TestBoundedRecoveryDropsInitiallyRetiredPagesBeforePendingIsTracked(t *test
 		t.Fatalf("load retired bounded recovery: %v", err)
 	}
 	var expectedPending uint64
-	for range pages[RecoveryPageBatchSize:] {
+	for range pages[RecoveryPageBatchSize : len(pages)-1] {
 		expectedPending++
 	}
 	if len(snapshot.Outstanding) != 0 ||
@@ -116,7 +121,7 @@ func TestBoundedRecoveryDropsInitiallyRetiredPagesBeforePendingIsTracked(t *test
 	if err != nil {
 		t.Fatalf("drop remaining retired recovery pages: %v", err)
 	}
-	if len(batch.Pages) != 0 || batch.RetiredPages != 37 || !batch.Complete {
+	if len(batch.Pages) != 0 || batch.RetiredPages != expectedPending || !batch.Complete {
 		t.Fatalf("retired recovery batch = %+v", batch)
 	}
 	state, err := checkpoint.Inspect(testContext, provenance, []byte("bounded-retired-order"))

@@ -131,7 +131,7 @@ func TestAcknowledgmentWithoutRunControlTarget(t *testing.T) {
 	if err := queue.Publish(t.Context(), order); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	_, leaseID, found, err := queue.leasePop(t.Context(), "worker")
+	_, leaseID, found, err := queue.leasePopForSession(t.Context(), "worker", testWorkerSessionID)
 	if err != nil || !found {
 		t.Fatalf("lease: found=%v err=%v", found, err)
 	}
@@ -139,7 +139,7 @@ func TestAcknowledgmentWithoutRunControlTarget(t *testing.T) {
 	if err := server.acknowledgeOrder(t.Context(), leaseID); err != nil {
 		t.Fatalf("acknowledge: %v", err)
 	}
-	if err := queue.ackLease(t.Context(), leaseID); err != nil {
+	if _, err := queue.ackLeaseWithTarget(t.Context(), leaseID); err != nil {
 		t.Fatalf("duplicate acknowledgment: %v", err)
 	}
 }

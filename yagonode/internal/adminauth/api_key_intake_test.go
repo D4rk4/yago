@@ -240,7 +240,8 @@ func TestAPIKeyAuthorizerRejectsWhenAuthenticationAdmissionIsFull(t *testing.T) 
 	); outcome != APIKeyUnavailable {
 		t.Fatalf("outcome = %v, want unavailable", outcome)
 	}
-	infos, err := service.apiKeys.list(context.Background())
+	infosPage, err := service.apiKeys.page(context.Background(), "", maximumAPIKeys)
+	infos := infosPage.infos
 	if err != nil || len(infos) != 1 || !infos[0].LastUsedAt.IsZero() {
 		t.Fatalf("keys after rejection = %#v, %v", infos, err)
 	}

@@ -21,6 +21,8 @@ type boundedCheckpointScript struct {
 	boundedSnapshotError  error
 	recoveryBatch         frontiercheckpoint.RecoveryPageBatch
 	recoveryBatchError    error
+	recoveryCancelError   error
+	recoveryCanceled      uint64
 	seedPages             []frontiercheckpoint.Page
 	seedNext              uint64
 	seedComplete          bool
@@ -109,13 +111,13 @@ func (checkpoint *boundedCheckpointScript) AdmissionBatchState(
 	return state, checkpoint.admissionStateError
 }
 
-func (*boundedCheckpointScript) CancelRecoveryPages(
+func (checkpoint *boundedCheckpointScript) CancelRecoveryPages(
 	context.Context,
 	[]byte,
 	uint64,
 	uint64,
 ) (uint64, error) {
-	return 0, nil
+	return checkpoint.recoveryCanceled, checkpoint.recoveryCancelError
 }
 
 func (checkpoint *boundedCheckpointScript) FinishSeedingBatch(

@@ -77,7 +77,7 @@ func TestRestartIsANavItem(t *testing.T) {
 	t.Parallel()
 
 	got := do(t, New(Options{}), "/admin/overview")
-	restartIcon := mustAdminAssetReferences(assetFS)["icons/view-refresh.svg"]
+	restartIcon := embeddedAdminAssetCatalog["icons/view-refresh.svg"].reference
 	if !strings.Contains(got.body, `href="/admin/restart"`) ||
 		!strings.Contains(got.body, `cds-nav__label">Restart</span>`) ||
 		!strings.Contains(got.body, `src="`+restartIcon+`"`) {

@@ -133,10 +133,6 @@ func buildFetchChains(
 
 var newCrawlerAdaptivePace = crawldelay.NewAdaptivePace
 
-func RunService(ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource) error {
-	return runServiceWithMetrics(ctx, cfg, source, crawlermetrics.New())
-}
-
 func runServiceWithMetrics(
 	ctx context.Context, cfg ServiceConfig, source pagefetch.PageSource,
 	metrics *crawlermetrics.Metrics,

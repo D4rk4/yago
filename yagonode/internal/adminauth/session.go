@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"time"
 )
@@ -16,8 +15,6 @@ const (
 	csrfTokenBytes    = 32
 )
 
-var randRead = rand.Read
-
 type session struct {
 	Token     string
 	Username  string
@@ -25,13 +22,11 @@ type session struct {
 	ExpiresAt time.Time
 }
 
-func newRandomToken(size int) (string, error) {
+func newRandomToken(size int) string {
 	buf := make([]byte, size)
-	if _, err := randRead(buf); err != nil {
-		return "", fmt.Errorf("read random token: %w", err)
-	}
+	_, _ = rand.Read(buf)
 
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
 func hashToken(token string) string {

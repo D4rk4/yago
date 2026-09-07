@@ -63,7 +63,7 @@ func (s *FallbackSearcher) Search(
 		return s.recoverResults(ctx, req, response)
 	}
 	response, known := primaryCandidates(window, response)
-	if s.shouldFallback(response, window) {
+	if len(response.Results) < SupplementalCandidateTarget {
 		response, err = s.supplement(ctx, window, response, known)
 	}
 	return supplementalPage(response, req), err
@@ -82,10 +82,6 @@ func webProviderFailure() searchcore.PartialFailure {
 		Source: searchcore.PartialFailureSourceWeb,
 		Reason: msgFallbackFailed,
 	}
-}
-
-func (s *FallbackSearcher) shouldFallback(resp searchcore.Response, req searchcore.Request) bool {
-	return len(resp.Results) < SupplementalCandidateTarget && s.providerEligible(req)
 }
 
 func toCoreResults(results []Result, limit int) []searchcore.Result {

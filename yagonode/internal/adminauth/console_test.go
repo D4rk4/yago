@@ -21,7 +21,8 @@ func TestServiceAPIKeyLifecycle(t *testing.T) {
 		t.Fatal("created secret does not parse")
 	}
 
-	keys, err := service.ListAPIKeys(ctx)
+	keysPage, err := service.ListAPIKeyPage(ctx, APIKeyPageRequest{Limit: maximumAPIKeys})
+	keys := keysPage.Keys
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -33,7 +34,8 @@ func TestServiceAPIKeyLifecycle(t *testing.T) {
 	if err != nil || !existed {
 		t.Fatalf("revoke: existed=%v err=%v", existed, err)
 	}
-	after, err := service.ListAPIKeys(ctx)
+	afterPage, err := service.ListAPIKeyPage(ctx, APIKeyPageRequest{Limit: maximumAPIKeys})
+	after := afterPage.Keys
 	if err != nil {
 		t.Fatalf("list after revoke: %v", err)
 	}
@@ -65,7 +67,8 @@ func TestServiceCreateAPIKeyClassifiesInvalidScopeSeparately(t *testing.T) {
 	) {
 		t.Fatalf("unknown scope error = %v, want ErrInvalidScope", err)
 	}
-	keys, err := service.ListAPIKeys(ctx)
+	keysPage, err := service.ListAPIKeyPage(ctx, APIKeyPageRequest{Limit: maximumAPIKeys})
+	keys := keysPage.Keys
 	if err != nil || len(keys) != 0 {
 		t.Fatalf("refused scope still minted a key: %#v, %v", keys, err)
 	}
@@ -115,19 +118,5 @@ func TestServiceChangePassword(t *testing.T) {
 		"third-password-789",
 	); err != nil {
 		t.Fatalf("the new password did not take effect: %v", err)
-	}
-}
-
-func TestKnownScopesAreAllValid(t *testing.T) {
-	scopes := KnownScopes()
-	if len(scopes) == 0 {
-		t.Fatal("KnownScopes returned nothing")
-	}
-	names := make([]string, 0, len(scopes))
-	for _, scope := range scopes {
-		names = append(names, string(scope))
-	}
-	if _, err := parseScopes(names); err != nil {
-		t.Fatalf("KnownScopes are not all valid: %v", err)
 	}
 }

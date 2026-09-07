@@ -140,18 +140,18 @@ func TestPDFUnreferencedFormsCannotStarvePageContent(t *testing.T) {
 func TestPDFIndirectObjectSyntaxAndBounds(t *testing.T) {
 	oversized := make([]byte, pdfMaxObjScanBytes+1)
 	copy(oversized, []byte("1 0 obj\n<< /Value /First >>\nendobj\n"))
-	objects := pdfIndirectObjects(oversized)
+	objects := newPDFObjectLookup(oversized).objects
 	if len(objects) != 1 || !bytes.Contains(objects[0].value, []byte("First")) {
 		t.Fatalf("bounded object scan = %+v", objects)
 	}
 
 	incremental := []byte("1 0 obj\n<< /Value /Old >>\nendobj\r" +
 		"1 0 obj\n<< /Value /New >>\nendobj\r")
-	objects = pdfIndirectObjects(incremental)
+	objects = newPDFObjectLookup(incremental).objects
 	if len(objects) != 1 || !bytes.Contains(objects[0].value, []byte("New")) {
 		t.Fatalf("incremental object = %+v", objects)
 	}
-	if got := pdfIndirectObjects([]byte("1 0 obj\n<<")); len(got) != 0 {
+	if got := newPDFObjectLookup([]byte("1 0 obj\n<<")).objects; len(got) != 0 {
 		t.Fatalf("unterminated object scan = %+v", got)
 	}
 	if end := pdfIndirectObjectEnd([]byte("<< /Title (mainstream) >>\nendobj")); end < 0 {

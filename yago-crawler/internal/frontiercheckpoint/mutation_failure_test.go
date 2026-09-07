@@ -110,12 +110,17 @@ func missingBucketProgressOperations(page Page) []missingBucketOperation {
 			name:   "host",
 			bucket: visitedBucket,
 			run: func(checkpoint *FrontierCheckpoint, provenance []byte) error {
-				return checkpoint.RecordHostState(
+				return checkpoint.CompletePage(
 					testContext,
 					provenance,
-					page.Host,
-					HostProgress{},
-					nil,
+					page.URL,
+					PageCompletion{
+						HostProgress: &PageHostProgress{
+							Host:        page.Host,
+							Progress:    HostProgress{},
+							DroppedURLs: nil,
+						},
+					},
 				)
 			},
 		},
@@ -253,34 +258,62 @@ func TestHostStateRejectsMismatchedAndExcessDroppedPages(t *testing.T) {
 		mutateCheckpoint(t, checkpoint, func(transaction *bolt.Tx) error {
 			return transaction.Bucket(hostsBucket).Put(childRowKey(prefix, page.Host), []byte("{"))
 		})
-		if err := checkpoint.RecordHostState(
-			testContext, provenance, page.Host, HostProgress{Failures: 1, Retired: true}, nil,
-		); !errors.Is(err, ErrCorruptCheckpoint) {
+		if err := checkpoint.CompletePage(
+			testContext,
+			provenance,
+			page.URL,
+			PageCompletion{
+				HostProgress: &PageHostProgress{
+					Host:        page.Host,
+					Progress:    HostProgress{Failures: 1, Retired: true},
+					DroppedURLs: nil,
+				},
+			},
+		); !errors.Is(
+			err,
+			ErrCorruptCheckpoint,
+		) {
 			t.Fatalf("corrupt host state error = %v", err)
 		}
 	})
 	t.Run("host", func(t *testing.T) {
 		checkpoint, provenance, page := admittedCheckpoint(t)
-		if err := checkpoint.RecordHostState(
+		if err := checkpoint.CompletePage(
 			testContext,
 			provenance,
-			"other.example",
-			HostProgress{Failures: 1, Retired: true},
-			[]string{page.URL},
-		); !errors.Is(err, ErrCorruptCheckpoint) {
+			page.URL,
+			PageCompletion{
+				HostProgress: &PageHostProgress{
+					Host:        "other.example",
+					Progress:    HostProgress{Failures: 1, Retired: true},
+					DroppedURLs: []string{page.URL},
+				},
+			},
+		); !errors.Is(
+			err,
+			ErrCorruptCheckpoint,
+		) {
 			t.Fatalf("host mismatch error = %v", err)
 		}
 	})
 	t.Run("pending", func(t *testing.T) {
 		checkpoint, provenance, page := admittedCheckpoint(t)
 		mutateRunRecord(t, checkpoint, provenance, func(record *runRecord) { record.Pending = 0 })
-		if err := checkpoint.RecordHostState(
+		if err := checkpoint.CompletePage(
 			testContext,
 			provenance,
-			page.Host,
-			HostProgress{Failures: 1, Retired: true},
-			[]string{page.URL},
-		); !errors.Is(err, ErrCorruptCheckpoint) {
+			page.URL,
+			PageCompletion{
+				HostProgress: &PageHostProgress{
+					Host:        page.Host,
+					Progress:    HostProgress{Failures: 1, Retired: true},
+					DroppedURLs: []string{page.URL},
+				},
+			},
+		); !errors.Is(
+			err,
+			ErrCorruptCheckpoint,
+		) {
 			t.Fatalf("excess dropped page error = %v", err)
 		}
 	})

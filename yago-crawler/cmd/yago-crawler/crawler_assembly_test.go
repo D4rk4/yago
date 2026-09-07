@@ -362,7 +362,7 @@ func TestRunServiceDrivesOrdersToIngest(t *testing.T) {
 	defer cancel()
 
 	runDone := make(chan error, 1)
-	go func() { runDone <- RunService(ctx, serviceConfig(t), source) }()
+	go func() { runDone <- runServiceWithMetrics(ctx, serviceConfig(t), source, crawlermetrics.New()) }()
 
 	select {
 	case msg := <-ingestExchange.ingested:
@@ -402,7 +402,12 @@ func TestRunServiceReturnsDialError(t *testing.T) {
 		return nil, nil, sentinel
 	}
 
-	err := RunService(context.Background(), serviceConfig(t), htmlPageSource(map[string]string{}))
+	err := runServiceWithMetrics(
+		context.Background(),
+		serviceConfig(t),
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	)
 	if err == nil || !strings.Contains(err.Error(), "dial node control rpc") {
 		t.Fatalf("error = %v, want dial node control rpc error", err)
 	}
@@ -415,7 +420,12 @@ func TestRunServiceReturnsCheckpointOpenError(t *testing.T) {
 		t.Fatalf("write checkpoint parent: %v", err)
 	}
 	cfg.DataDir = parent
-	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
+	err := runServiceWithMetrics(
+		context.Background(),
+		cfg,
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	)
 	if err == nil || !strings.Contains(err.Error(), "open crawler frontier checkpoint") {
 		t.Fatalf("error = %v, want checkpoint open error", err)
 	}
@@ -424,7 +434,12 @@ func TestRunServiceReturnsCheckpointOpenError(t *testing.T) {
 func TestRunServiceReturnsWorkerIdentityError(t *testing.T) {
 	cfg := serviceConfig(t)
 	cfg.WorkerID = " "
-	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
+	err := runServiceWithMetrics(
+		context.Background(),
+		cfg,
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	)
 	if err == nil || !strings.Contains(err.Error(), "load crawler worker identity") {
 		t.Fatalf("error = %v, want worker identity error", err)
 	}
@@ -444,7 +459,12 @@ func TestRunServiceClosesControlConnectionWhenIngestDialFails(t *testing.T) {
 		return nil, nil, sentinel
 	}
 
-	err := RunService(context.Background(), serviceConfig(t), htmlPageSource(map[string]string{}))
+	err := runServiceWithMetrics(
+		context.Background(),
+		serviceConfig(t),
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	)
 	if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), "dial node ingest rpc") {
 		t.Fatalf("error = %v, want ingest dial error", err)
 	}
@@ -461,7 +481,12 @@ func TestRunServiceReturnsCrawlPaceError(t *testing.T) {
 	cfg := serviceConfig(t)
 	cfg.Crawl.HostCacheSize = 0
 
-	err := RunService(context.Background(), cfg, htmlPageSource(map[string]string{}))
+	err := runServiceWithMetrics(
+		context.Background(),
+		cfg,
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	)
 	if err == nil || !strings.Contains(err.Error(), "create crawl pace") {
 		t.Fatalf("error = %v, want create crawl pace error", err)
 	}
@@ -488,7 +513,12 @@ func TestRunServiceReturnsRobotsAdmissionError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := RunService(ctx, serviceConfig(t), htmlPageSource(map[string]string{}))
+	err := runServiceWithMetrics(
+		ctx,
+		serviceConfig(t),
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
@@ -517,7 +547,12 @@ func TestRunServiceReturnsMetricsBindError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := RunService(ctx, cfg, htmlPageSource(map[string]string{})); err == nil {
+	if err := runServiceWithMetrics(
+		ctx,
+		cfg,
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	); err == nil {
 		t.Fatal("expected crawler metrics bind error")
 	}
 }
@@ -633,7 +668,12 @@ func TestRunServiceReturnsInsecureRobotsAdmissionError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := RunService(ctx, serviceConfig(t), htmlPageSource(map[string]string{}))
+	err := runServiceWithMetrics(
+		ctx,
+		serviceConfig(t),
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
@@ -655,7 +695,12 @@ func TestRunServiceReturnsAdaptivePaceError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := RunService(ctx, serviceConfig(t), htmlPageSource(map[string]string{}))
+	err := runServiceWithMetrics(
+		ctx,
+		serviceConfig(t),
+		htmlPageSource(map[string]string{}),
+		crawlermetrics.New(),
+	)
 	if err == nil || !strings.Contains(err.Error(), "create adaptive crawl pace") {
 		t.Fatalf("error = %v, want create adaptive crawl pace error", err)
 	}

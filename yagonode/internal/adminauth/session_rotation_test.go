@@ -196,7 +196,7 @@ func TestSessionRotationRefusesStaleRecordOverwrite(t *testing.T) {
 	}
 }
 
-func TestSessionRotationBoundsRenewalAndSurfacesEntropyFailure(t *testing.T) {
+func TestSessionRotationBoundsRenewal(t *testing.T) {
 	clock := &mutableClock{now: time.Unix(70_000, 0)}
 	store, err := newSessionStore(testVault(t), 30*time.Minute, clock.Now)
 	if err != nil {
@@ -218,29 +218,6 @@ func TestSessionRotationBoundsRenewalAndSurfacesEntropyFailure(t *testing.T) {
 	stored, found, err := store.lookup(t.Context(), rotated.Token)
 	if err != nil || !found || !stored.RenewAt.Equal(stored.ExpiresAt) {
 		t.Fatalf("bounded record = %#v, %t, %v", stored, found, err)
-	}
-
-	entropyClock := &mutableClock{now: time.Unix(75_000, 0)}
-	entropyStore, err := newSessionStore(testVault(t), time.Hour, entropyClock.Now)
-	if err != nil {
-		t.Fatalf("new entropy session store: %v", err)
-	}
-	entropySession, err := entropyStore.create(t.Context(), "admin")
-	if err != nil {
-		t.Fatalf("create entropy session: %v", err)
-	}
-	entropyRecord, found, err := entropyStore.lookup(t.Context(), entropySession.Token)
-	if err != nil || !found {
-		t.Fatalf("lookup entropy session = %#v, %t, %v", entropyRecord, found, err)
-	}
-	entropyClock.now = entropyClock.now.Add(31 * time.Minute)
-	original := randRead
-	randRead = func([]byte) (int, error) { return 0, errors.New("no entropy") }
-	t.Cleanup(func() { randRead = original })
-	if _, changed, err = entropyStore.rotate(
-		t.Context(), entropySession.Token, entropyRecord,
-	); err == nil || changed {
-		t.Fatalf("entropy failure rotation = %t, %v", changed, err)
 	}
 }
 
