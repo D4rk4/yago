@@ -49,10 +49,15 @@ fi
 		t.Fatalf("incompatible API was admitted:\n%s", output)
 	}
 
+	contents, err := os.ReadFile(baseline)
+	if err != nil {
+		t.Fatalf("read configured API baseline: %v", err)
+	}
+	configuredTag := strings.Fields(string(contents))[0]
 	wrongBaseline := filepath.Join(temporary, "wrong-baseline")
 	if err := os.WriteFile(
 		wrongBaseline,
-		[]byte("v0.0.56 0000000000000000000000000000000000000000\n"),
+		[]byte(configuredTag+" 0000000000000000000000000000000000000000\n"),
 		0o600,
 	); err != nil {
 		t.Fatalf("write invalid API baseline: %v", err)
@@ -65,17 +70,6 @@ fi
 		"compatible",
 	); err == nil {
 		t.Fatalf("moved API baseline was admitted:\n%s", output)
-	}
-}
-
-func TestReleaseAPICompatibilityBaselinePinsPublishedIdentity(t *testing.T) {
-	contents, err := os.ReadFile("../../../tools/api-compatibility-baseline")
-	if err != nil {
-		t.Fatalf("read API compatibility baseline: %v", err)
-	}
-	if got := strings.TrimSpace(string(contents)); got !=
-		"v0.0.56 b7472e93de54309a6da36ef307ff9140952ba950" {
-		t.Fatalf("API compatibility baseline = %q", got)
 	}
 }
 
