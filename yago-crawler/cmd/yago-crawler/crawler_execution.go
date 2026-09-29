@@ -61,6 +61,7 @@ func (execution crawlerExecution) lifecycle(
 		pipeline.WithRobotsIgnoringFetchers(chains.verifyingDirect, chains.insecureDirect),
 		pipeline.WithHostLoadFeedback(execution.pace),
 		pipeline.WithLeaseGrants(execution.checkpoint.leaseGrants),
+		pipeline.WithSitemapURLLimit(cfg.Crawl.SitemapURLLimit),
 		pipeline.WithFetchStartAdmission(newOrderedCrawlerFetchStartAdmission(
 			execution.fetchBudget,
 			execution.fleetAdmission,

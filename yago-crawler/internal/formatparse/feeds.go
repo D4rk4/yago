@@ -43,10 +43,10 @@ type atomLink struct {
 	Href string `xml:"href,attr"`
 }
 
-// parseXMLFeeds handles the XML family: RSS and Atom feeds become one document
-// whose text carries the feed items (title/summary per entry, links followable,
-// the YaCy rssParser convention); other XML indexes its character data.
 func parseXMLFeeds(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
+	if page, parsed, sitemap := parseSitemapXML(rawURL, body); sitemap {
+		return page, parsed
+	}
 	if page, ok := parseRSS(rawURL, body); ok {
 		return page, true
 	}

@@ -4,6 +4,7 @@ import "time"
 
 type ParsedPage struct {
 	URL             string
+	Sitemap         bool
 	CanonicalURL    string
 	Description     string
 	Author          string

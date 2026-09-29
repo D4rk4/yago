@@ -20,8 +20,8 @@ require (
 	github.com/prometheus/client_model v0.6.1
 	go.etcd.io/bbolt v1.4.3
 	golang.org/x/crypto v0.55.0
-	golang.org/x/net v0.57.0
-	google.golang.org/grpc v1.83.1
+	golang.org/x/net v0.58.0
+	google.golang.org/grpc v1.83.2
 )
 
 require (

@@ -63,6 +63,7 @@ type Pipeline struct {
 	observer            Observer
 	leaseGrants         *crawllease.GrantRegistry
 	fetchStartAdmission FetchStartAdmission
+	sitemapURLLimit     int
 }
 
 func NewPipeline(
@@ -73,11 +74,12 @@ func NewPipeline(
 	opts ...Option,
 ) *Pipeline {
 	pipeline := &Pipeline{
-		frontier: frontier,
-		fetcher:  fetcher,
-		index:    index,
-		emitter:  emitter,
-		observer: noopObserver{},
+		frontier:        frontier,
+		fetcher:         fetcher,
+		index:           index,
+		emitter:         emitter,
+		observer:        noopObserver{},
+		sitemapURLLimit: yagocrawlcontract.DefaultCrawlerSitemapURLLimit,
 	}
 	for _, opt := range opts {
 		opt(pipeline)
@@ -309,11 +311,12 @@ func (p *Pipeline) processFetchedPage(
 	}
 	p.observer.FetchSucceeded(len(fetched.Body))
 	outcome.Fetched++
-	page, parsed := formatparse.Parse(
+	page, parsed := parseCrawlContent(
 		fetched.URL.String(),
 		fetched.ContentType,
 		fetched.Body,
 		job.Formats,
+		p.sitemapURLLimit,
 	)
 	if !parsed {
 		observeParseFailure(p.observer)
@@ -341,6 +344,9 @@ func (p *Pipeline) processFetchedPage(
 		}
 
 		return outcomeReason, nil
+	}
+	if parsed && page.Sitemap {
+		return sitemapDiscoveryOnlyReason, nil
 	}
 	if !job.Index {
 		slog.DebugContext(ctx, msgPageNotIndexed, slog.String("url", page.URL))

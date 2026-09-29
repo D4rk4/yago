@@ -21,7 +21,10 @@ func TestFallbackDropsUnrelatedProviderResultsAndSeedsOnlyVerified(t *testing.T)
 
 	resp, err := searcher.Search(
 		context.Background(),
-		searchcore.Request{Query: "православие", Terms: []string{"православие"}, Limit: 10},
+		searchcore.Request{
+			Query: "православие", Terms: []string{"православие"},
+			Limit: 10, Verify: searchcore.VerifyFalse,
+		},
 	)
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -42,14 +45,89 @@ func TestFallbackDropsUnrelatedProviderResultsAndSeedsOnlyVerified(t *testing.T)
 	}
 }
 
-func TestVerifiedWebResultsTrustsWhenVerifyFalse(t *testing.T) {
-	results := []Result{{Title: "unrelated", URL: "https://example.org/"}}
+func TestParallelSearchRequiresRelevantRowsWhenVerifyFalse(t *testing.T) {
+	provider := &stubProvider{results: []Result{
+		{Title: "Unrelated reference", URL: "https://noise.example/"},
+		{Title: "Alpha beta guide", URL: "https://query.example/guide"},
+	}}
+	seeder := &stubSeeder{done: make(chan struct{})}
+	searcher := NewParallelSearcher(&stubSearcher{}, provider, enabled, WithSeeder(seeder))
+
+	response, err := searcher.Search(t.Context(), searchcore.Request{
+		Query: "alpha beta", Source: searchcore.SourceGlobal,
+		Limit: 10, Verify: searchcore.VerifyFalse,
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(response.Results) != 1 || response.Results[0].URL != "https://query.example/guide" {
+		t.Fatalf("results = %#v", response.Results)
+	}
+	select {
+	case <-seeder.done:
+	case <-time.After(time.Second):
+		t.Fatal("verified result seeding did not run")
+	}
+	seeder.mutex.Lock()
+	seeded := append([]string(nil), seeder.urls...)
+	seeder.mutex.Unlock()
+	if len(seeded) != 1 || seeded[0] != "https://query.example/guide" {
+		t.Fatalf("seeded = %#v", seeded)
+	}
+}
+
+func TestIrrelevantWebOnlyAnswersStayHonestEmptyInBothModes(t *testing.T) {
+	provider := func() *stubProvider {
+		return &stubProvider{results: []Result{{
+			Title: "Unrelated reference", URL: "https://noise.example/",
+		}}}
+	}
+	fallback := NewFallbackSearcher(&stubSearcher{}, provider(), enabled, WithSeeder(&stubSeeder{}))
+	parallel := NewParallelSearcher(&stubSearcher{}, provider(), enabled, WithSeeder(&stubSeeder{}))
+	fallbackSchedules := 0
+	parallelSchedules := 0
+	fallback.spawnSeedWork = func(string, context.Context, func(context.Context)) bool {
+		fallbackSchedules++
+		return true
+	}
+	parallel.fallback.spawnSeedWork = func(string, context.Context, func(context.Context)) bool {
+		parallelSchedules++
+		return true
+	}
+	for _, test := range []struct {
+		name     string
+		searcher searchcore.Searcher
+		seeded   func() int
+	}{
+		{name: "supplement", searcher: fallback, seeded: func() int { return fallbackSchedules }},
+		{name: "always", searcher: parallel, seeded: func() int { return parallelSchedules }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := test.searcher.Search(t.Context(), searchcore.Request{
+				Query: "alpha beta", Source: searchcore.SourceGlobal,
+				Limit: 10, Verify: searchcore.VerifyFalse,
+			})
+			if err != nil || len(response.Results) != 0 || len(response.PartialFailures) != 0 {
+				t.Errorf("response = %#v, error = %v", response, err)
+			}
+			if test.seeded() != 0 {
+				t.Fatalf("seed scheduling calls = %d, want zero", test.seeded())
+			}
+		})
+	}
+}
+
+func TestVerifiedWebResultsRequiresRelevanceWhenVerifyFalse(t *testing.T) {
+	results := []Result{
+		{Title: "unrelated", URL: "https://example.org/"},
+		{Title: "Mind the gap", URL: "https://example.org/gap"},
+	}
 	kept := verifiedWebResults(
 		searchcore.Request{Query: "gap", Verify: searchcore.VerifyFalse},
 		results,
 	)
-	if len(kept) != 1 {
-		t.Fatalf("verify=false dropped rows: %#v", kept)
+	if len(kept) != 1 || kept[0] != results[1] {
+		t.Fatalf("verified results = %#v", kept)
 	}
 }
 

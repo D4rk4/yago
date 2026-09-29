@@ -244,7 +244,7 @@ required.
 | `YAGO_PEER_SNIPPET_FETCH` | `true` | Permit bounded, egress-guarded body fetches for the first peer rows whose visible title, snippet, and decoded URL do not prove every query requirement. Admin setting: `search.peer.snippet_fetch`. |
 | `YAGO_SWARM_MORPHOLOGY` | `false` | Add bounded corpus-observed and analyzer-verified surface forms to YaCy swarm retrieval while preserving exact RWI wire hashes. Admin setting: `swarm.morphology.enabled`. |
 | `YAGO_WEB_FALLBACK_ENABLED` | _(migration only)_ | Legacy on/off input accepted only when `YAGO_WEB_FALLBACK_PRIVACY` is unset (`true` becomes `enabled`, `false` becomes `disabled`). Canonical deployment examples omit it. |
-| `YAGO_WEB_FALLBACK_PRIVACY` | `disabled` | Controls the `Web search fallback (DDGS)` Admin setting. `disabled` never sends a query; `explicit` requires request consent; `enabled` supplements an exact local-plus-swarm window containing fewer than 100 verified unique candidates before pagination, overlapping any bounded local recovery; `always` starts bounded web retrieval alongside local and swarm for every eligible global query, then rank-fuses and deduplicates all completed results. Every Tavily search depth uses global local-plus-peer retrieval and carries fallback consent, while this operator setting remains authoritative: `enabled` also sends sparse nonempty searches externally and `always` starts it in parallel for every depth. `basic`, `fast`, and `ultra-fast` use `verify=false`; `advanced` uses `verify=ifexist`. YaCy `resource=local` and admin `scope=local` never use the provider. |
+| `YAGO_WEB_FALLBACK_PRIVACY` | `disabled` | Controls the `Web search fallback (DDGS)` Admin setting. `disabled` never sends a query; `explicit` requires request consent; `enabled` supplements an exact local-plus-swarm window containing fewer than 100 verified unique candidates before pagination, overlapping any bounded local recovery; `always` starts bounded web retrieval alongside local and swarm for every eligible global query, then rank-fuses and deduplicates all completed results. Every Tavily search depth uses global local-plus-peer retrieval and carries fallback consent, while this operator setting remains authoritative: `enabled` also sends sparse nonempty searches externally and `always` starts it in parallel for every depth. `basic`, `fast`, and `ultra-fast` use `verify=false`; `advanced` uses `verify=ifexist`. Every depth applies the same bounded query-relevance check to provider rows before serving or crawl seeding. YaCy `resource=local` and admin `scope=local` never use the provider. |
 | `YAGO_WEB_FALLBACK_PROVIDER` | _(migration only)_ | Legacy provider-family input; if present it must be exactly `ddgs`. The runtime provider is fixed, while `YAGO_WEB_FALLBACK_BACKEND` selects its engine. Canonical deployment examples omit this input. |
 | `YAGO_WEB_FALLBACK_BACKEND` | `auto` | Engine selection for the fallback. `auto` starts DuckDuckGo HTML first, then hedges DuckDuckGo Lite, Brave, Mojeek, and Bing at 50ms intervals until one answer survives relevance checks. Internal dash punctuation is sent as word boundaries so engines do not reinterpret a compound query as exclusion; an explicit leading minus and structured modifier values remain intact. At most eight engine fetch-and-parse attempts run process-wide. `mojeek`, `bing`, `brave`, or `duckduckgo` restrict the engine set. See `doc/adr/0021-in-house-metasearch-backend.md`. |
 | `YAGO_WEB_FALLBACK_MAX_RESULTS` | `10` | Maximum fallback results (1–20). |
@@ -295,7 +295,9 @@ bounded provider `site:` constraints when the complete encoded expression fits
 the fixed provider-query ceiling. IPv6 literals and oversized expressions retain
 the base provider query because DDGS does not define an unambiguous IPv6 `site:`
 operand.
-Normalized returned-host filtering remains authoritative. Internal provenance remains `ddgs`; the public portal and
+Normalized returned-host filtering remains authoritative. Every Tavily depth
+also requires bounded visible query evidence for provider rows, regardless of
+its `verify` value. Internal provenance remains `ddgs`; the public portal and
 Admin render plain `web`, YaCy HTML renders `[web]`, and Tavily-compatible
 payloads carry no provider marker. Human surfaces state that the provider
 received the query.
@@ -623,6 +625,12 @@ roots before normal frontier admission. A `robots` start reads each seed host's
 those URLs. A 404 or 410 discovers nothing; transient fetch failures requeue the
 leased order. Invalid order input and malformed sitemap content terminate without
 a poison retry loop.
+
+Sitemaps-protocol XML encountered during an ordinary URL crawl supplies links
+under the same sitemap URL limit and normal crawl scope, depth, and page bounds.
+The sitemap itself is not indexed, and successful discovery is not a parse
+failure. Previously stored sitemap documents remain until an operator removes
+them in Admin → Index.
 
 | Variable | Default | Description |
 | --- | --- | --- |

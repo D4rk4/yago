@@ -322,6 +322,7 @@ deps:
       - pageindex
       - pageparse
       - robots
+      - sitemap
       - weburl
     canUse:
       - yagocrawlcontract

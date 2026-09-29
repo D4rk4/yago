@@ -16,6 +16,7 @@ const (
 	redirectNotAdmittedReason          = "redirect target was not admitted"
 	unsupportedContentReason           = "content type is not enabled for this crawl"
 	contentParserNoDocumentReason      = "content parser produced no indexable document"
+	sitemapDiscoveryOnlyReason         = "sitemap used for URL discovery only"
 	pageDirectivesNoindexReason        = "page directives disabled indexing"
 	crawlProfileIndexDisabledReason    = "crawl profile disabled indexing"
 	documentRejectedByNodeReason       = "node content-quality gate rejected the document"

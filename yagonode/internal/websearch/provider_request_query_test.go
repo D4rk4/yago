@@ -3,6 +3,7 @@ package websearch
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,11 +36,17 @@ func TestColdScopedProviderQueryFiltersBeforeEngineSelectionAndCachesSeparately(
 	provider.engines = []engine{
 		tracingEngine(
 			"first",
-			Result{Title: "Unrelated", URL: "https://outside.example/reference"},
+			Result{
+				Title: "PostgreSQL official reference",
+				URL:   "https://outside.example/reference",
+			},
 		),
 		tracingEngine(
 			"second",
-			Result{Title: "Reference manual", URL: "https://postgresql.org/current/"},
+			Result{
+				Title: "PostgreSQL documentation manual",
+				URL:   "https://postgresql.org/current/",
+			},
 		),
 	}
 	searcher := NewFallbackSearcher(&stubSearcher{}, provider, enabled)
@@ -81,17 +88,12 @@ func TestColdScopedProviderQueryFiltersBeforeEngineSelectionAndCachesSeparately(
 		"PostgreSQL official documentation site:postgresql.org",
 		"PostgreSQL official documentation",
 	}
-	if len(queries) != len(wantQueries) {
+	if !slices.Equal(queries, wantQueries) {
 		t.Fatalf("provider queries = %q, want %q", queries, wantQueries)
-	}
-	for index := range wantQueries {
-		if queries[index] != wantQueries[index] {
-			t.Fatalf("provider queries = %q, want %q", queries, wantQueries)
-		}
 	}
 }
 
-func TestRequestVerifyFalseOverridesConfiguredLexicalAcceptance(t *testing.T) {
+func TestRequestVerifyFalseRejectsUnrelatedEngineWinner(t *testing.T) {
 	var secondCalls atomic.Int32
 	provider := NewDDGSProvider(DDGSConfig{
 		Client: &http.Client{Transport: roundTripFunc(func(request *http.Request) (
@@ -129,11 +131,11 @@ func TestRequestVerifyFalseOverridesConfiguredLexicalAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(response.Results) != 1 ||
-		response.Results[0].URL != "https://reference.example/" {
+		response.Results[0].URL != "https://second.example/" {
 		t.Fatalf("results = %#v", response.Results)
 	}
-	if secondCalls.Load() != 0 {
-		t.Fatalf("second engine calls = %d, want zero", secondCalls.Load())
+	if secondCalls.Load() != 1 {
+		t.Fatalf("second engine calls = %d, want one", secondCalls.Load())
 	}
 }
 
@@ -217,17 +219,17 @@ func TestProviderCacheSeparatesRequestVerificationModes(t *testing.T) {
 	strict := searchcore.Request{
 		Query: "alpha beta gamma", Limit: 10, Verify: searchcore.VerifyIfExist,
 	}
-	unverified := strict
-	unverified.Verify = searchcore.VerifyFalse
+	verifyFalse := strict
+	verifyFalse.Verify = searchcore.VerifyFalse
 
 	for _, test := range []struct {
 		request searchcore.Request
 		url     string
 	}{
 		{request: strict, url: "https://second.example/"},
-		{request: unverified, url: "https://first.example/"},
+		{request: verifyFalse, url: "https://second.example/"},
 		{request: strict, url: "https://second.example/"},
-		{request: unverified, url: "https://first.example/"},
+		{request: verifyFalse, url: "https://second.example/"},
 	} {
 		response, err := searcher.Search(t.Context(), test.request)
 		if err != nil {
@@ -237,7 +239,7 @@ func TestProviderCacheSeparatesRequestVerificationModes(t *testing.T) {
 			t.Fatalf("results = %#v, want %q", response.Results, test.url)
 		}
 	}
-	if firstCalls.Load() != 2 || secondCalls.Load() != 1 {
+	if firstCalls.Load() != 2 || secondCalls.Load() != 2 {
 		t.Fatalf(
 			"engine calls = first:%d second:%d",
 			firstCalls.Load(),

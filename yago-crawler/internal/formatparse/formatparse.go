@@ -173,9 +173,6 @@ func (f family) dispatch(
 	return f.parse(rawURL, contentType, body)
 }
 
-// Parse dispatches the fetched body. The bool reports whether a parser
-// produced an indexable page: HTML always parses; other families parse only
-// when their toggle is on and their parser is implemented.
 func Parse(
 	rawURL, contentType string,
 	body []byte,

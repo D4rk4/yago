@@ -268,6 +268,10 @@ within the profile cadence; advancing observations can learn a shorter change
 interval, while future, stale, and unchanged values cannot create an immediate
 recrawl loop.
 
+A sitemap encountered as a normal crawl URL supplies followable URLs and is not
+indexed as searchable text. This applies to future fetches; previously stored
+sitemap documents remain until an operator removes them in Admin → Index.
+
 Configuration comes from the environment (`YAGO_CRAWLER_NODE_RPC_ADDR` is required;
 `YAGO_DATA_DIR` defaults to `./data` and contains `crawler/frontier-v1.db`;
 `YAGO_CRAWLER_WORKER_ID` is an optional one-line display prefix of at most 219

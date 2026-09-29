@@ -130,9 +130,8 @@ and tested together; use matching releases when upgrading a node and crawler.
   standard shape without a provider field. A hyphen or dash inside an ordinary query word
   separates searchable words across local and web retrieval, while a leading
   minus remains an exclusion operator. Web rows always satisfy authoritative URL
-  and structured constraints. Requests using `verify=ifexist` additionally
-  require bounded visible query evidence; Tavily `basic`, `fast`, and
-  `ultra-fast` preserve `verify=false`.
+  and structured constraints, and every Tavily depth requires bounded visible
+  query evidence for each web row regardless of its `verify` value.
   A request with `safe_search=true` forces the strongest documented provider
   filter and excludes engines that cannot enforce it. The conservative result
   boundary admits only web rows carrying that provider-filter evidence; unknown
@@ -266,7 +265,8 @@ and tested together; use matching releases when upgrading a node and crawler.
   Every supported `search_depth` uses the shared global local-plus-peer
   retrieval pipeline. `basic`, `fast`, and `ultra-fast` retain `verify=false`;
   `advanced` uses `verify=ifexist` and shares the root portal's canonical ranking
-  for equivalent requests. The operator's web-fallback policy remains
+  for equivalent requests. Web rows use the same relevance check at every depth.
+  The operator's web-fallback policy remains
   authoritative, and `always` starts web retrieval in parallel for every depth.
   Domain includes narrow local Bleve candidates. DNS names and IPv4 literals are
   sent to the web provider as bounded `site:` constraints when the complete

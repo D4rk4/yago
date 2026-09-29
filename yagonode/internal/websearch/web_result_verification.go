@@ -23,9 +23,6 @@ func verifiedWebResults(req searchcore.Request, results []Result) []Result {
 // a constrained request discover nothing at all, silently, because the seeder
 // cannot tell an empty list from a provider that returned none.
 func relevantWebResults(req searchcore.Request, results []Result) []Result {
-	if req.Verify == searchcore.VerifyFalse {
-		return results
-	}
 	terms := req.Terms
 	if len(terms) == 0 {
 		terms = searchcore.ParseTextQuery(req.Query).Terms
