@@ -66,6 +66,21 @@ func TestAddRejectsEmptyValue(t *testing.T) {
 	}
 }
 
+func TestAddRejectsUnknownKindWithoutChangingState(t *testing.T) {
+	store := openStore(t)
+	if err := store.Add(
+		context.Background(),
+		urldenylist.Kind("other"),
+		"example.test",
+	); err == nil {
+		t.Fatal("adding an unknown entry kind succeeded")
+	}
+	entries, err := store.Entries(t.Context())
+	if err != nil || len(entries) != 0 || !store.Snapshot().IsEmpty() {
+		t.Fatalf("state after rejected kind = %#v, %v", entries, err)
+	}
+}
+
 func TestRemove(t *testing.T) {
 	store := openStore(t)
 	ctx := context.Background()

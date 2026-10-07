@@ -17,6 +17,29 @@ func TestWithPrivateAllowlistAdmitsListedRange(t *testing.T) {
 	}
 }
 
+func TestWithPrivateAllowlistSnapshotsPrefixes(t *testing.T) {
+	prefixes := []netip.Prefix{netip.MustParsePrefix("10.10.0.0/16")}
+	option := yagoegress.WithPrivateAllowlist(prefixes)
+	prefixes[0] = netip.MustParsePrefix("10.0.0.0/8")
+	guard := yagoegress.NewGuard(false, option)
+	prefixes[0] = netip.MustParsePrefix("0.0.0.0/0")
+	guards := map[string]yagoegress.Guard{
+		"created":       guard,
+		"reused option": yagoegress.NewGuard(false, option),
+	}
+	for name, candidate := range guards {
+		if err := candidate.AdmitAddr(netip.MustParseAddr("10.10.5.5")); err != nil {
+			t.Errorf("%s allowlisted address = %v, want nil", name, err)
+		}
+		if err := candidate.AdmitAddr(netip.MustParseAddr("10.20.0.5")); !errors.Is(
+			err,
+			yagoegress.ErrBlocked,
+		) {
+			t.Errorf("%s unlisted private address = %v, want ErrBlocked", name, err)
+		}
+	}
+}
+
 func TestWithPrivateAllowlistStillBlocksUnlistedPrivate(t *testing.T) {
 	guard := yagoegress.NewGuard(false, yagoegress.WithPrivateAllowlist(
 		[]netip.Prefix{netip.MustParsePrefix("10.10.0.0/16")},

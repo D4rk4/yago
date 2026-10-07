@@ -87,6 +87,137 @@ func TestMaximumMorphologyPlanCapsActualCallsAndProcessConcurrency(t *testing.T)
 	}
 }
 
+func TestRemoteSearcherReportsCallBudgetOmittedVariants(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts.Add(1)
+		writeFixtureResponse(t, w, yagoproto.SearchResponse{}.Encode().Encode())
+	}))
+	defer server.Close()
+
+	peers := make([]yagomodel.Seed, 32)
+	for partition := range 1 << 4 {
+		for candidate := range 2 {
+			position := partition*2 + candidate
+			peers[position] = serverSeedWithHash(
+				t,
+				server.URL,
+				partitionSearchHash(partition, candidate),
+			)
+		}
+	}
+	response, err := NewSearcher(Config{
+		Client:             server.Client(),
+		NetworkName:        "freeworld",
+		Peers:              fakePeerSource{peers: peers},
+		MaxPeers:           len(peers),
+		Redundancy:         len(peers),
+		MinimumPeerAgeDays: -1,
+		MinimumPeerRWIs:    -1,
+		PartitionExponent:  4,
+		ExpandWord: func(word string) []string {
+			return []string{word + "s", word + "ing"}
+		},
+	}).Search(t.Context(), searchcore.Request{
+		Query:  "run",
+		Terms:  []string{"run"},
+		Source: searchcore.SourceGlobal,
+		Limit:  10,
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if attempts.Load() != remoteQueryPeerCallBudget {
+		t.Fatalf(
+			"peer attempts = %d, want call budget %d",
+			attempts.Load(),
+			remoteQueryPeerCallBudget,
+		)
+	}
+	if len(response.Results) != 0 || len(response.PartialFailures) != 1 {
+		t.Fatalf("response = %#v, want an empty partial result", response)
+	}
+	failure := response.PartialFailures[0]
+	if failure.Source != searchcore.PartialFailureSourceRemoteStage ||
+		failure.Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteStage,
+			Cause: searchcore.FailureCauseBudget,
+		}) {
+		t.Fatalf("call-budget failure = %+v, want local budget omission", failure)
+	}
+}
+
+func TestRemoteSearcherReportsBudgetOmittedAbstractJobs(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts.Add(1)
+		writeFixtureResponse(t, w, yagoproto.SearchResponse{}.Encode().Encode())
+	}))
+	defer server.Close()
+
+	peers := make([]yagomodel.Seed, 32)
+	for partition := range 1 << 4 {
+		for candidate := range 2 {
+			position := partition*2 + candidate
+			peers[position] = serverSeedWithHash(
+				t,
+				server.URL,
+				partitionSearchHash(partition, candidate),
+			)
+		}
+	}
+	response, err := NewSearcher(Config{
+		Client:             server.Client(),
+		NetworkName:        "freeworld",
+		Peers:              fakePeerSource{peers: peers},
+		MaxPeers:           len(peers),
+		Redundancy:         len(peers),
+		MinimumPeerAgeDays: -1,
+		MinimumPeerRWIs:    -1,
+		PartitionExponent:  4,
+		ExpandWord: func(word string) []string {
+			forms := make([]string, 11)
+			for position := range forms {
+				forms[position] = word + "-variant-" + strconv.Itoa(position)
+			}
+
+			return forms
+		},
+	}).Search(t.Context(), searchcore.Request{
+		Query:  "alpha beta",
+		Terms:  []string{"alpha", "beta"},
+		Source: searchcore.SourceGlobal,
+		Limit:  10,
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if attempts.Load() != remoteQueryPeerCallBudget {
+		t.Fatalf(
+			"peer attempts = %d, want call budget %d",
+			attempts.Load(),
+			remoteQueryPeerCallBudget,
+		)
+	}
+	if len(response.Results) != 0 {
+		t.Fatalf("results = %#v, want none from empty peers", response.Results)
+	}
+	budgetFailure := false
+	for _, failure := range response.PartialFailures {
+		if failure.Diagnostic.Stage == searchcore.FailureStageRemoteStage &&
+			failure.Diagnostic.Cause == searchcore.FailureCauseBudget {
+			budgetFailure = true
+		}
+		if failure.Source == searchcore.PartialFailureSourceRemoteYaCy &&
+			failure.Diagnostic.Cause == searchcore.FailureCauseUnavailable {
+			t.Fatalf("local abstract omission blamed a remote peer source: %+v", failure)
+		}
+	}
+	if !budgetFailure {
+		t.Fatalf("abstract response = %#v, want a local budget failure", response)
+	}
+}
+
 func BenchmarkBoundedMaximumMorphologyPlan(b *testing.B) {
 	remote := searcher{expandWord: func(word string) []string {
 		forms := make([]string, 64)
@@ -110,6 +241,6 @@ func BenchmarkBoundedMaximumMorphologyPlan(b *testing.B) {
 			"freeworld",
 			DefaultPerPeerTimeout,
 		)
-		peerJobsWithinCallBudget(jobs, newRemoteQueryBudget())
+		_, _, _ = peerJobsWithinCallBudget(jobs, newRemoteQueryBudget())
 	}
 }

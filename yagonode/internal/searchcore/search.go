@@ -157,8 +157,9 @@ type QueryMatch struct {
 }
 
 type PartialFailure struct {
-	Source string `json:"source"`
-	Reason string `json:"reason"`
+	Source     string                   `json:"source"`
+	Reason     string                   `json:"reason"`
+	Diagnostic PartialFailureDiagnostic `json:"-"`
 }
 
 type Response struct {

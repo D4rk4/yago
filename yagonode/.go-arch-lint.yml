@@ -394,6 +394,8 @@ deps:
       - urldenylist
       - vault
       - memvault
+    canUse:
+      - yagocrawlcontract
   eventstore:
     mayDependOn:
       - eventstore
@@ -474,6 +476,7 @@ deps:
   publicportal:
     mayDependOn:
       - publicportal
+      - tracectx
   crawling:
     mayDependOn:
       - crawling
@@ -798,6 +801,7 @@ deps:
   websearch:
     mayDependOn:
       - websearch
+      - tracectx
       - sitehost
       - queryidentifier
       - searchcore

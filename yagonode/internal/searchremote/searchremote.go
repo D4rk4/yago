@@ -210,13 +210,63 @@ func (s searcher) Search(
 	}
 	reputation.flush(ctx)
 	if reputationErr != nil {
-		response.PartialFailures = append(response.PartialFailures, searchcore.PartialFailure{
-			Source: searchcore.PartialFailureSourcePeerReputation,
-			Reason: reputationErr.Error(),
-		})
+		appendPeerReputationFailure(&response, reputationErr)
 	}
+	response = finalizeRemoteBudgetFailures(response, budget)
 
 	return response, nil
+}
+
+func finalizeRemoteBudgetFailures(
+	response searchcore.Response,
+	budget *remoteQueryBudget,
+) searchcore.Response {
+	omitted := 0
+	if budget != nil {
+		omitted = budget.omittedPeerJobs
+	}
+	failures := make([]searchcore.PartialFailure, 0, len(response.PartialFailures))
+	for _, failure := range response.PartialFailures {
+		if failure.Source == searchcore.PartialFailureSourceRemoteStage &&
+			failure.Diagnostic.Stage == searchcore.FailureStageRemoteStage &&
+			failure.Diagnostic.Cause == searchcore.FailureCauseBudget {
+			omitted++
+			continue
+		}
+		failures = append(failures, failure)
+	}
+	if omitted == 0 {
+		return response
+	}
+	failures = append(failures, searchcore.PartialFailure{
+		Source: searchcore.PartialFailureSourceRemoteStage,
+		Reason: fmt.Sprintf(
+			"%d remote search job(s) omitted or truncated by the local budget",
+			omitted,
+		),
+		Diagnostic: searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteStage,
+			Cause: searchcore.FailureCauseBudget,
+		},
+	})
+	response.PartialFailures = failures
+
+	return response
+}
+
+func appendPeerReputationFailure(response *searchcore.Response, err error) {
+	response.PartialFailures = append(response.PartialFailures, peerReputationFailure(err))
+}
+
+func peerReputationFailure(err error) searchcore.PartialFailure {
+	return searchcore.PartialFailure{
+		Source: searchcore.PartialFailureSourcePeerReputation,
+		Reason: err.Error(),
+		Diagnostic: searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStagePeerReputation,
+			Cause: searchcore.FailureCauseFor(err),
+		},
+	}
 }
 
 func (s searcher) searchExact(
@@ -239,6 +289,10 @@ func (s searcher) searchExact(
 			PartialFailures: []searchcore.PartialFailure{{
 				Source: searchcore.PartialFailureSourceQueryShape,
 				Reason: noQueryTermsReason,
+				Diagnostic: searchcore.PartialFailureDiagnostic{
+					Stage: searchcore.FailureStageQueryShape,
+					Cause: searchcore.FailureCauseNoTarget,
+				},
 			}},
 		}
 	}
@@ -252,6 +306,10 @@ func (s searcher) searchExact(
 			PartialFailures: []searchcore.PartialFailure{{
 				Source: searchcore.PartialFailureSourceRemoteYaCy,
 				Reason: noPeersReason,
+				Diagnostic: searchcore.PartialFailureDiagnostic{
+					Stage: searchcore.FailureStageRemoteSearch,
+					Cause: searchcore.FailureCauseNoTarget,
+				},
 			}},
 		}
 	}
@@ -370,6 +428,10 @@ func skippedVariantsFailure(skipped []string, cause error) searchcore.PartialFai
 			len(skipped),
 			cause,
 		),
+		Diagnostic: searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteStage,
+			Cause: searchcore.FailureCauseFor(cause),
+		},
 	}
 }
 
@@ -489,6 +551,10 @@ func (s searcher) termTargets(
 			failures = append(failures, searchcore.PartialFailure{
 				Source: searchcore.PartialFailureSourceRemoteYaCy,
 				Reason: fmt.Sprintf("no dht search targets for %s: %s", term, reason),
+				Diagnostic: searchcore.PartialFailureDiagnostic{
+					Stage: searchcore.FailureStageRemoteSearch,
+					Cause: searchcore.FailureCauseNoTarget,
+				},
 			})
 			continue
 		}
@@ -606,7 +672,8 @@ func (s searcher) responseWithinBudget(
 	peerOrder := make([]string, 0, len(results))
 	peerResults := make(map[string][]searchcore.Result, len(results))
 	peerSeeds := make(map[string]yagomodel.Seed, len(results))
-	for _, result := range orderedPeerSearchResults(results) {
+	orderedResults := orderedPeerSearchResults(results)
+	for _, result := range orderedResults {
 		if result.err != nil {
 			recordPeerFailure(reputation, result.peer, result.err)
 			resp.PartialFailures = append(
@@ -628,11 +695,8 @@ func (s searcher) responseWithinBudget(
 		)
 		if err != nil {
 			if errors.Is(err, errRemoteSearchDecodedBudgetExhausted) {
-				resp.PartialFailures = append(resp.PartialFailures, searchcore.PartialFailure{
-					Source: searchcore.PartialFailureSourceRemoteYaCy,
-					Reason: err.Error(),
-				})
-				break
+				resp.PartialFailures = append(resp.PartialFailures, peerFailure(result.peer, err))
+				continue
 			}
 			reputation.record(result.peer, observationOutcome(nil, true))
 			resp.PartialFailures = append(resp.PartialFailures, peerFailure(result.peer, err))
@@ -646,6 +710,9 @@ func (s searcher) responseWithinBudget(
 				req.Offset+req.Limit,
 			))
 		reputation.record(result.peer, observationOutcome(nil, invalid))
+		if result.resourcesTruncated {
+			budget.omittedPeerJobs++
+		}
 		if len(normalized) == 0 {
 			continue
 		}
@@ -663,10 +730,7 @@ func (s searcher) responseWithinBudget(
 		peerSeeds,
 	)
 	if reputationErr != nil {
-		resp.PartialFailures = append(resp.PartialFailures, searchcore.PartialFailure{
-			Source: searchcore.PartialFailureSourcePeerReputation,
-			Reason: reputationErr.Error(),
-		})
+		appendPeerReputationFailure(&resp, reputationErr)
 	}
 	// The honest remote total is the verified, deduplicated rows actually in
 	// hand, not the peers' claimed join counts: an unverifiable claim must not
@@ -715,6 +779,10 @@ func peerFailure(peer yagomodel.Seed, err error) searchcore.PartialFailure {
 		return searchcore.PartialFailure{
 			Source: searchcore.PartialFailureSourceRemoteStage,
 			Reason: err.Error(),
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageRemoteStage,
+				Cause: remoteSearchFailureCause(err),
+			},
 		}
 	}
 	source := peer.Hash.String()
@@ -722,12 +790,29 @@ func peerFailure(peer yagomodel.Seed, err error) searchcore.PartialFailure {
 		source = searchcore.PartialFailureSourceRemoteYaCy
 	}
 
-	return searchcore.PartialFailure{Source: source, Reason: err.Error()}
+	return searchcore.PartialFailure{
+		Source: source,
+		Reason: err.Error(),
+		Diagnostic: searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemotePeer,
+			Cause: remoteSearchFailureCause(err),
+		},
+	}
+}
+
+func remoteSearchFailureCause(err error) searchcore.FailureCause {
+	if errors.Is(err, errRemoteSearchBudgetExhausted) ||
+		errors.Is(err, errRemoteSearchDecodedBudgetExhausted) {
+		return searchcore.FailureCauseBudget
+	}
+
+	return searchcore.FailureCauseFor(err)
 }
 
 // locallyCutRemoteCall reports that this node, not the peer, ended the call.
 func locallyCutRemoteCall(err error) bool {
 	return errors.Is(err, errRemoteSearchBudgetExhausted) ||
+		errors.Is(err, errRemoteSearchDecodedBudgetExhausted) ||
 		errors.Is(err, errRemoteSearchAdmissionCanceled)
 }
 

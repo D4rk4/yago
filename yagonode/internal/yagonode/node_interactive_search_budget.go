@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 const (
@@ -94,7 +95,7 @@ func (s interactiveBudgetSearcher) run(
 	defer func() {
 		outcome.failure = recover()
 		if outcome.failure != nil {
-			s.panicLog(ctx, interactiveSearchPanicMessage, slog.Any("panic", outcome.failure))
+			s.panicLog(ctx, interactiveSearchPanicMessage, tracectx.ServerSpanAttribute(ctx))
 		}
 		release()
 		outcomes <- outcome
@@ -125,11 +126,13 @@ func interactiveSearchResult(
 	err error,
 ) (searchcore.Response, error) {
 	reason := interactiveSearchFailed
+	cause := searchcore.FailureCauseFor(err)
 	if errors.Is(err, context.DeadlineExceeded) {
 		reason = interactiveSearchTimeoutFailure
 	}
 	if errors.Is(err, errInteractiveSearchCapacity) {
 		reason = interactiveSearchCapacityFailure
+		cause = searchcore.FailureCauseCapacity
 	}
 	response.Request = req
 	response.PartialFailures = append(
@@ -137,6 +140,10 @@ func interactiveSearchResult(
 		searchcore.PartialFailure{
 			Source: interactiveSearchFailureSource,
 			Reason: reason,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalSearch,
+				Cause: cause,
+			},
 		},
 	)
 

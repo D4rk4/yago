@@ -15,11 +15,8 @@ import (
 func instrumentHTTP(endpoints *metrics.HTTPEndpointMetrics, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
-		trace, ok := tracectx.Parse(r.Header.Get(tracectx.Header))
-		if !ok {
-			trace = tracectx.New()
-		}
-		r = r.WithContext(tracectx.WithContext(r.Context(), trace))
+		ctx, trace := tracectx.StartServerSpan(r.Context(), r.Header.Get(tracectx.Header))
+		r = r.WithContext(ctx)
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
 		elapsed := time.Since(started)

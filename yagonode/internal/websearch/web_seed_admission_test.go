@@ -1,13 +1,18 @@
 package websearch
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 type blockingWebSeeder struct {
@@ -176,16 +181,93 @@ func TestWebSeedAdmissionBoundsPendingWork(t *testing.T) {
 }
 
 func TestWebSeedCrawlDoesNotStartRejectedWork(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+	const traceID = "11111111111111112222222222222222"
+	const parentSpanID = "3333333333333333"
+	ctx, _ := tracectx.StartServerSpan(
+		t.Context(),
+		"00-"+traceID+"-"+parentSpanID+"-01",
+	)
+	serverSpanID, ok := tracectx.ServerSpanIDFromContext(ctx)
+	if !ok {
+		t.Fatal("server span ID missing")
+	}
 	seeder := &stubSeeder{}
 	searcher := &FallbackSearcher{
+		primary: &stubSearcher{},
+		provider: &stubProvider{results: []Result{{
+			Title: "synthetic search result",
+			URL:   "https://private.example/PRIVATE_URL_CANARY",
+		}}},
+		permit: enabled,
 		seeder: seeder,
 		spawnSeedWork: func(string, context.Context, func(context.Context)) bool {
 			return false
 		},
 	}
-	searcher.seedWebResults(t.Context(), []Result{{URL: "https://web.example/fresh"}})
+	if _, err := searcher.Search(ctx, searchcore.Request{
+		Query: "PRIVATE_QUERY_CANARY",
+		Limit: 1,
+	}); err != nil {
+		t.Fatalf("search: %v", err)
+	}
 	if seeder.calls != 0 {
 		t.Fatalf("seeder calls = %d", seeder.calls)
+	}
+	assertWebSeedAdmissionLogs(t, output.String(), serverSpanID, traceID, parentSpanID)
+}
+
+func assertWebSeedAdmissionLogs(
+	t *testing.T,
+	output, serverSpanID, traceID, parentSpanID string,
+) {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("seed log count = %d, want considered and rejected", len(lines))
+	}
+	seen := map[string]bool{}
+	for _, line := range lines {
+		entry := map[string]any{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decode seed log: %v", err)
+		}
+		message, _ := entry["msg"].(string)
+		seen[message] = true
+		if entry["serverSpanId"] != serverSpanID {
+			t.Errorf("%s serverSpanId = %v, want %s", message, entry["serverSpanId"], serverSpanID)
+		}
+		switch message {
+		case msgWebSeedConsidered:
+			if entry["results"] != float64(1) || entry["admitted"] != float64(1) {
+				t.Errorf("considered counts = %#v", entry)
+			}
+		case msgWebSeedRejected:
+			if entry["urls"] != float64(1) {
+				t.Errorf("rejected counts = %#v", entry)
+			}
+		}
+	}
+	if !seen[msgWebSeedConsidered] || !seen[msgWebSeedRejected] {
+		t.Fatalf("seed log messages = %v", seen)
+	}
+	assertWebSeedLogsRedact(t, output,
+		"PRIVATE_QUERY_CANARY",
+		"PRIVATE_URL_CANARY",
+		traceID,
+		parentSpanID,
+	)
+}
+
+func assertWebSeedLogsRedact(t *testing.T, output string, canaries ...string) {
+	t.Helper()
+	for _, canary := range canaries {
+		if strings.Contains(output, canary) {
+			t.Errorf("seed logs contain private canary %q", canary)
+		}
 	}
 }
 
@@ -218,20 +300,60 @@ func TestQueuedWebSeedWorkReceivesItsFullExecutionBudget(t *testing.T) {
 	}
 }
 
-func TestWebSeedWorkDoesNotRetainRequestContextValues(t *testing.T) {
+func TestWebSeedWorkCopiesOnlyTrustedServerSpan(t *testing.T) {
 	type requestValueKey struct{}
-	admission := newWebSeedAdmission(1, webSeedPendingPerWorker)
-	observed := make(chan any, 1)
-	requestContext := context.WithValue(t.Context(), requestValueKey{}, "request state")
+	type observedContext struct {
+		requestValue any
+		serverSpan   string
+		spanPresent  bool
+		tracePresent bool
+		deadline     bool
+		err          error
+	}
+	admission := newWebSeedAdmission(1, 2)
+	blockerStarted := make(chan struct{})
+	releaseBlocker := make(chan struct{})
+	if !admission.try("blocker", context.Background(), func(context.Context) {
+		close(blockerStarted)
+		<-releaseBlocker
+	}) {
+		t.Fatal("blocking work was rejected")
+	}
+	waitForWebSeedSignal(t, blockerStarted, "blocking work did not start")
+	parentContext, _ := tracectx.StartServerSpan(
+		t.Context(),
+		"00-11111111111111112222222222222222-3333333333333333-01",
+	)
+	requestContext, cancel := context.WithCancel(
+		context.WithValue(parentContext, requestValueKey{}, "request state"),
+	)
+	expectedServerSpanID, ok := tracectx.ServerSpanIDFromContext(requestContext)
+	if !ok {
+		t.Fatal("request server span ID missing")
+	}
+	observed := make(chan observedContext, 1)
 	if !admission.try("isolated", requestContext, func(ctx context.Context) {
-		observed <- ctx.Value(requestValueKey{})
+		_, tracePresent := tracectx.FromContext(ctx)
+		serverSpanID, spanPresent := tracectx.ServerSpanIDFromContext(ctx)
+		_, deadline := ctx.Deadline()
+		observed <- observedContext{
+			requestValue: ctx.Value(requestValueKey{}),
+			serverSpan:   serverSpanID,
+			spanPresent:  spanPresent,
+			tracePresent: tracePresent,
+			deadline:     deadline,
+			err:          ctx.Err(),
+		}
 	}) {
 		t.Fatal("isolated work was rejected")
 	}
+	cancel()
+	close(releaseBlocker)
 	select {
-	case value := <-observed:
-		if value != nil {
-			t.Fatalf("background work retained request value %#v", value)
+	case got := <-observed:
+		if got.requestValue != nil || !got.spanPresent || got.serverSpan != expectedServerSpanID ||
+			got.tracePresent || !got.deadline || got.err != nil {
+			t.Fatalf("background context = %+v", got)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("isolated work did not run")

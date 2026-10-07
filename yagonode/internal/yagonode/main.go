@@ -250,7 +250,10 @@ func buildRuntimeServers(
 ) []namedServer {
 	servers := []namedServer{
 		buildPeerServer(config, endpoints, assembled, toggles),
-		{"ops", buildServer(config.OpsAddr, redirectHTTPS(toggles, opsHandler))},
+		{"ops", buildServer(config.OpsAddr, redirectHTTPS(
+			toggles,
+			instrumentHTTP(endpoints, logHTTPRequests(opsHandler)),
+		))},
 	}
 	if config.PublicAddr != "" {
 		servers = append(servers, buildPublicServer(config, endpoints, assembled, toggles))
@@ -269,10 +272,9 @@ func buildPublicServer(
 	assembled node,
 	toggles *runtimeToggles,
 ) namedServer {
-	publicHandler := redirectHTTPS(toggles, wrapSearchCORS(
-		config.CrossOrigin.SearchOrigins,
-		logHTTPRequests(instrumentHTTP(endpoints, assembled.publicMux)),
-	))
+	publicHandler := redirectHTTPS(toggles, instrumentHTTP(endpoints, logHTTPRequests(
+		wrapSearchCORS(config.CrossOrigin.SearchOrigins, assembled.publicMux),
+	)))
 
 	return namedServer{"public search", buildServer(config.PublicAddr, publicHandler)}
 }
@@ -283,10 +285,9 @@ func buildPeerServer(
 	assembled node,
 	toggles *runtimeToggles,
 ) namedServer {
-	peerHandler := redirectHTTPS(toggles, wrapSearchCORS(
-		config.CrossOrigin.SearchOrigins,
-		logHTTPRequests(instrumentHTTP(endpoints, assembled.peerMux)),
-	))
+	peerHandler := redirectHTTPS(toggles, instrumentHTTP(endpoints, logHTTPRequests(
+		wrapSearchCORS(config.CrossOrigin.SearchOrigins, assembled.peerMux),
+	)))
 
 	return namedServer{"peer protocol", buildServer(config.PeerAddr, peerHandler)}
 }

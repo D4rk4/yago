@@ -91,7 +91,7 @@ func (s *ParallelSearcher) Search(
 	}
 	primary.response.Request = req
 	if primary.err != nil {
-		primary.response = failedParallelPrimaryResponse(primary.response)
+		primary.response = failedParallelPrimaryResponse(primary.response, primary.err)
 	}
 	response, err := s.fallback.completeWebSearch(ctx, req, primary.response, provider)
 	if err == nil && len(response.Results) == 0 && primary.err != nil {
@@ -171,10 +171,15 @@ func drainParallelOutcomes(
 
 func failedParallelPrimaryResponse(
 	response searchcore.Response,
+	err error,
 ) searchcore.Response {
 	response.PartialFailures = append(response.PartialFailures, searchcore.PartialFailure{
 		Source: searchcore.PartialFailureSourceLocalSearch,
 		Reason: msgParallelPrimaryFailed,
+		Diagnostic: searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageLocalSearch,
+			Cause: searchcore.FailureCauseFor(err),
+		},
 	})
 
 	return response
@@ -213,7 +218,7 @@ func failedParallelProviderResponse(
 	err error,
 ) searchcore.Response {
 	logProviderFailure(ctx, err)
-	response.PartialFailures = append(response.PartialFailures, webProviderFailure())
+	response.PartialFailures = append(response.PartialFailures, webProviderFailure(err))
 
 	return response
 }

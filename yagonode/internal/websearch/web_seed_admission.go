@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 const (
@@ -61,6 +63,7 @@ type webSeedAdmission struct {
 
 type webSeedWork struct {
 	key string
+	ctx context.Context
 	run func(context.Context)
 }
 
@@ -78,7 +81,7 @@ func newWebSeedAdmission(workers, pending int) *webSeedAdmission {
 
 func (a *webSeedAdmission) try(
 	key string,
-	_ context.Context,
+	ctx context.Context,
 	work func(context.Context),
 ) bool {
 	a.mutex.Lock()
@@ -86,8 +89,9 @@ func (a *webSeedAdmission) try(
 	if _, duplicate := a.admitted[key]; duplicate {
 		return true
 	}
+	correlationContext := tracectx.CopyServerSpan(context.Background(), ctx)
 	select {
-	case a.pending <- webSeedWork{key: key, run: work}:
+	case a.pending <- webSeedWork{key: key, ctx: correlationContext, run: work}:
 		a.admitted[key] = struct{}{}
 
 		return true
@@ -105,13 +109,13 @@ func (a *webSeedAdmission) run() {
 func (a *webSeedAdmission) execute(work webSeedWork) {
 	defer func() {
 		if recover() != nil {
-			slog.ErrorContext(context.Background(), msgWebSeedPanicked)
+			slog.ErrorContext(work.ctx, msgWebSeedPanicked, tracectx.ServerSpanAttribute(work.ctx))
 		}
 		a.mutex.Lock()
 		delete(a.admitted, work.key)
 		a.mutex.Unlock()
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), webSeedWriteTimeout)
+	ctx, cancel := context.WithTimeout(work.ctx, webSeedWriteTimeout)
 	defer cancel()
 	work.run(ctx)
 }
@@ -126,7 +130,8 @@ func (s *FallbackSearcher) seedWebResults(ctx context.Context, results []Result)
 	// the rows and their URLs, never from the query.
 	slog.InfoContext(ctx, msgWebSeedConsidered,
 		slog.Int("results", len(results)),
-		slog.Int("admitted", len(urls)))
+		slog.Int("admitted", len(urls)),
+		tracectx.ServerSpanAttribute(ctx))
 	rejected := 0
 	for _, url := range urls {
 		if !s.spawnSeedWork(url, ctx, func(seedContext context.Context) {
@@ -136,6 +141,9 @@ func (s *FallbackSearcher) seedWebResults(ctx context.Context, results []Result)
 		}
 	}
 	if rejected > 0 {
-		slog.WarnContext(ctx, msgWebSeedRejected, slog.Int("urls", rejected))
+		slog.WarnContext(ctx, msgWebSeedRejected,
+			slog.Int("urls", rejected),
+			tracectx.ServerSpanAttribute(ctx),
+		)
 	}
 }

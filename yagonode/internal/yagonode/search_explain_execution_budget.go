@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 const searchExplanationPanicMessage = "search explanation pipeline panicked"
@@ -78,7 +79,7 @@ func (b searchExplanationExecutionBudget) run(
 	defer func() {
 		outcome.failure = recover()
 		if outcome.failure != nil {
-			b.panicLog(ctx, searchExplanationPanicMessage, slog.Any("panic", outcome.failure))
+			b.panicLog(ctx, searchExplanationPanicMessage, tracectx.ServerSpanAttribute(ctx))
 		}
 		release()
 		outcomes <- outcome

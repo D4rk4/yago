@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 var (
@@ -96,7 +97,11 @@ func (s webFallbackExactStageBudgetSearcher) Search(
 	release, err := s.admission.tryAcquire(stageContext)
 	if err != nil {
 		if errors.Is(err, errInteractiveSearchCapacity) {
-			return webFallbackExactStageFailure(req, webFallbackExactStageCapacityFailure), nil
+			return webFallbackExactStageFailure(
+				req,
+				webFallbackExactStageCapacityFailure,
+				searchcore.FailureCauseCapacity,
+			), nil
 		}
 
 		return webFallbackExactStageResult(ctx, req, searchcore.Response{}, err)
@@ -158,11 +163,16 @@ func webFallbackExactStageResult(
 		return response, fmt.Errorf("search exact stage: %w", cause)
 	}
 	reason := webFallbackExactStageFailed
+	cause := searchcore.FailureCauseFor(err)
 	if errors.Is(err, context.DeadlineExceeded) {
 		reason = webFallbackExactStageTimeoutFailure
 	} else {
+		attributes := []any{
+			slog.String("cause", searchcore.FailureCauseLabel(cause)),
+			tracectx.ServerSpanAttribute(ctx),
+		}
 		slog.WarnContext(ctx, webFallbackExactStageFailedLogMessage,
-			slog.Any("error", err),
+			attributes...,
 		)
 	}
 	response.Request = req
@@ -171,6 +181,10 @@ func webFallbackExactStageResult(
 		searchcore.PartialFailure{
 			Source: webFallbackExactStageFailureSource,
 			Reason: reason,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageExactSearch,
+				Cause: cause,
+			},
 		},
 	)
 
@@ -187,7 +201,7 @@ func (s webFallbackExactStageBudgetSearcher) run(
 	defer func() {
 		outcome.failure = recover()
 		if outcome.failure != nil {
-			s.panicLog(ctx, webFallbackExactStagePanicMessage, slog.Any("panic", outcome.failure))
+			s.panicLog(ctx, webFallbackExactStagePanicMessage, tracectx.ServerSpanAttribute(ctx))
 		}
 		release()
 		outcomes <- outcome
@@ -198,12 +212,17 @@ func (s webFallbackExactStageBudgetSearcher) run(
 func webFallbackExactStageFailure(
 	req searchcore.Request,
 	reason string,
+	cause searchcore.FailureCause,
 ) searchcore.Response {
 	return searchcore.Response{
 		Request: req,
 		PartialFailures: []searchcore.PartialFailure{{
 			Source: webFallbackExactStageFailureSource,
 			Reason: reason,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageExactSearch,
+				Cause: cause,
+			},
 		}},
 	}
 }

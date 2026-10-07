@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 const (
@@ -74,13 +75,18 @@ func logProviderFailure(ctx context.Context, err error) {
 		ctx,
 		msgFallbackFailed,
 		slog.String("reason", webSearchFailureReason(err)),
+		tracectx.ServerSpanAttribute(ctx),
 	)
 }
 
-func webProviderFailure() searchcore.PartialFailure {
+func webProviderFailure(err error) searchcore.PartialFailure {
 	return searchcore.PartialFailure{
 		Source: searchcore.PartialFailureSourceWeb,
 		Reason: msgFallbackFailed,
+		Diagnostic: searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageWebSearch,
+			Cause: webSearchFailureCause(err),
+		},
 	}
 }
 

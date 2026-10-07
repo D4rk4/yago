@@ -1,13 +1,59 @@
 package yagonode
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
+
+func TestRecoveryStageFailureLogUsesBoundedCause(t *testing.T) {
+	var output bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+
+	ctx, _ := tracectx.StartServerSpan(
+		t.Context(),
+		"00-11111111111111112222222222222222-3333333333333333-01",
+	)
+	serverSpanID, ok := tracectx.ServerSpanIDFromContext(ctx)
+	if !ok {
+		t.Fatal("server span ID missing")
+	}
+	secret := "PRIVATE_ERROR_CANARY https://PRIVATE_URL_CANARY/"
+	response, err := (recoveryBudgetSearcher{
+		inner:     errorInteractiveSearch{err: errors.New(secret)},
+		budget:    time.Second,
+		grace:     time.Millisecond,
+		admission: newInteractiveSearchAdmission(1),
+		panicLog:  discardInteractiveSearchPanic,
+	}).Search(ctx, searchcore.Request{Query: "PRIVATE_QUERY_CANARY"})
+	if err != nil || len(response.PartialFailures) != 1 {
+		t.Fatalf("response/error = %#v/%v", response, err)
+	}
+	if !strings.Contains(output.String(), `"cause":"backend"`) ||
+		!strings.Contains(output.String(), `"serverSpanId":"`+serverSpanID+`"`) {
+		t.Fatalf("bounded cause missing: %s", output.String())
+	}
+	for _, canary := range []string{
+		"PRIVATE_ERROR_CANARY",
+		"PRIVATE_URL_CANARY",
+		"PRIVATE_QUERY_CANARY",
+		"11111111111111112222222222222222",
+		"3333333333333333",
+	} {
+		if strings.Contains(output.String(), canary) {
+			t.Fatalf("recovery warning exposed %q: %s", canary, output.String())
+		}
+	}
+}
 
 func TestRecoveryStageRetainsAdmissionUntilUncooperativeWorkStops(t *testing.T) {
 	inner := &blockingInteractiveSearch{

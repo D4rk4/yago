@@ -77,6 +77,10 @@ func (s localSearcher) Search(
 		response.PartialFailures = []searchcore.PartialFailure{{
 			Source: searchcore.PartialFailureSourceLocalSearch,
 			Reason: "local search incomplete",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalSearch,
+				Cause: searchcore.FailureCauseFor(candidateErr),
+			},
 		}}
 	}
 

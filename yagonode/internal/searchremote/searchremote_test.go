@@ -361,6 +361,12 @@ func TestRemoteSearcherReportsNoQueryTerms(t *testing.T) {
 	if source := resp.PartialFailures[0].Source; source != searchcore.PartialFailureSourceQueryShape {
 		t.Fatalf("source = %q, want the query-shape marker", source)
 	}
+	if resp.PartialFailures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+		Stage: searchcore.FailureStageQueryShape,
+		Cause: searchcore.FailureCauseNoTarget,
+	}) {
+		t.Fatalf("diagnostic = %+v, want query-shape no-target", resp.PartialFailures[0].Diagnostic)
+	}
 }
 
 func TestRemoteSearcherReportsNoTargetsForMultiTermSearch(t *testing.T) {
@@ -374,7 +380,8 @@ func TestRemoteSearcherReportsNoTargetsForMultiTermSearch(t *testing.T) {
 	// The primary conjunction search runs first for every query, so a missing
 	// peer source short-circuits before the abstract phase with one failure.
 	if len(resp.PartialFailures) != 1 ||
-		!strings.Contains(resp.PartialFailures[0].Reason, "no peer source configured") {
+		!strings.Contains(resp.PartialFailures[0].Reason, "no peer source configured") ||
+		resp.PartialFailures[0].Diagnostic.Cause != searchcore.FailureCauseNoTarget {
 		t.Fatalf("response = %#v", resp)
 	}
 }
@@ -398,7 +405,9 @@ func TestRemoteSearcherReportsNoDHTTargets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0].Reason != "no dht search targets" {
+	if len(resp.PartialFailures) != 1 ||
+		resp.PartialFailures[0].Reason != "no dht search targets" ||
+		resp.PartialFailures[0].Diagnostic.Cause != searchcore.FailureCauseNoTarget {
 		t.Fatalf("response = %#v", resp)
 	}
 }
@@ -486,7 +495,11 @@ func TestRemoteSearcherReportsMissingIndexAbstractResponses(t *testing.T) {
 	)
 	if len(abstracts) != 0 ||
 		len(failures) != 1 ||
-		!strings.Contains(failures[0].Reason, "no index abstract responses") {
+		!strings.Contains(failures[0].Reason, "no index abstract responses") ||
+		failures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteSearch,
+			Cause: searchcore.FailureCauseNoTarget,
+		}) {
 		t.Fatalf("abstracts=%#v failures=%#v", abstracts, failures)
 	}
 }

@@ -3,6 +3,7 @@ package websearch
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 func TestParallelReportsUnavailableEnginesAsPartialFailure(t *testing.T) {
@@ -45,7 +47,7 @@ func TestParallelReportsUnavailableEnginesAsPartialFailure(t *testing.T) {
 			t.Fatalf("primary response = %#v", response.Results)
 		}
 		if len(response.PartialFailures) != 1 ||
-			response.PartialFailures[0] != webProviderFailure() {
+			response.PartialFailures[0] != webProviderFailure(errWebSearchEnginesUnavailable) {
 			t.Fatalf("partial failures = %#v", response.PartialFailures)
 		}
 	}
@@ -133,13 +135,21 @@ func TestUnavailableLoggingDoesNotExposeSubmittedQuery(t *testing.T) {
 		Level: slog.LevelDebug,
 	})))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+	ctx, _ := tracectx.StartServerSpan(
+		t.Context(),
+		"00-11111111111111112222222222222222-3333333333333333-01",
+	)
+	serverSpanID, ok := tracectx.ServerSpanIDFromContext(ctx)
+	if !ok {
+		t.Fatal("server span ID missing")
+	}
 
 	provider := NewDDGSProvider(DDGSConfig{
 		Client: &http.Client{Transport: roundTripFunc(func(*http.Request) (
 			*http.Response,
 			error,
 		) {
-			return nil, errors.New("dial refused")
+			return nil, errors.New("PRIVATE_ERROR_CANARY https://PRIVATE_URL_CANARY/")
 		})},
 		Backend: backendDuckDuckGo,
 		Now:     fixedClock(),
@@ -149,8 +159,8 @@ func TestUnavailableLoggingDoesNotExposeSubmittedQuery(t *testing.T) {
 		TotalResults: 1,
 	}}
 	searcher := NewParallelSearcher(primary, provider, enabled)
-	response, err := searcher.Search(t.Context(), searchcore.Request{
-		Query: "private-search-phrase", Limit: 10,
+	response, err := searcher.Search(ctx, searchcore.Request{
+		Query: "PRIVATE_QUERY_CANARY", Limit: 10,
 	})
 	if err != nil || len(response.Results) != 1 {
 		t.Fatalf("response = %#v error = %v", response, err)
@@ -160,9 +170,57 @@ func TestUnavailableLoggingDoesNotExposeSubmittedQuery(t *testing.T) {
 		!strings.Contains(logged, msgFallbackFailed) {
 		t.Fatalf("missing outage logs: %s", logged)
 	}
-	for _, secret := range []string{"private-search-phrase", "private+search+phrase", "?q="} {
+	assertWebSearchLogOmits(t, logged,
+		"PRIVATE_QUERY_CANARY",
+		"PRIVATE_ERROR_CANARY",
+		"PRIVATE_URL_CANARY",
+		"11111111111111112222222222222222",
+		"3333333333333333",
+		"?q=",
+	)
+	assertWebSearchLogMessagesUseServerSpan(t, logged, serverSpanID,
+		msgWebSearchEnginesUnavailable,
+		msgFallbackFailed,
+		msgWebSearchEngineAttempt,
+	)
+}
+
+func assertWebSearchLogMessagesUseServerSpan(
+	t *testing.T,
+	logged, serverSpanID string,
+	messages ...string,
+) {
+	t.Helper()
+	for _, message := range messages {
+		found := false
+		for _, line := range strings.Split(strings.TrimSpace(logged), "\n") {
+			var record map[string]any
+			if err := json.Unmarshal([]byte(line), &record); err != nil {
+				t.Fatal(err)
+			}
+			if record["msg"] == message {
+				found = true
+				if record["serverSpanId"] != serverSpanID {
+					t.Fatalf(
+						"%s span = %#v, want %q",
+						message,
+						record["serverSpanId"],
+						serverSpanID,
+					)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("missing %s: %s", message, logged)
+		}
+	}
+}
+
+func assertWebSearchLogOmits(t *testing.T, logged string, canaries ...string) {
+	t.Helper()
+	for _, secret := range canaries {
 		if strings.Contains(logged, secret) {
-			t.Fatalf("outage log exposed %q: %s", secret, logged)
+			t.Fatalf("web search log exposed %q: %s", secret, logged)
 		}
 	}
 }
@@ -180,6 +238,24 @@ func TestWebSearchFailureReason(t *testing.T) {
 	for _, test := range tests {
 		if got := webSearchFailureReason(test.err); got != test.want {
 			t.Errorf("failure reason = %q, want %q", got, test.want)
+		}
+	}
+}
+
+func TestWebSearchFailureCauseUsesTypedCategories(t *testing.T) {
+	for _, test := range []struct {
+		err  error
+		want searchcore.FailureCause
+	}{
+		{nil, searchcore.FailureCauseUnknown},
+		{context.DeadlineExceeded, searchcore.FailureCauseDeadline},
+		{context.Canceled, searchcore.FailureCauseCanceled},
+		{errWebSearchEnginesUnavailable, searchcore.FailureCauseUnavailable},
+		{errStrictSafeSearchUnavailable, searchcore.FailureCauseUnsupported},
+		{errors.New("provider failed"), searchcore.FailureCauseBackend},
+	} {
+		if got := webSearchFailureCause(test.err); got != test.want {
+			t.Errorf("web search failure cause for %v = %d, want %d", test.err, got, test.want)
 		}
 	}
 }
@@ -223,7 +299,7 @@ func TestProviderFailureIsVisibleAtProductionLogLevel(t *testing.T) {
 	logged := output.String()
 	for _, want := range []string{
 		msgFallbackFailed,
-		"web-search engine attempt",
+		msgWebSearchEngineAttempt,
 		// The engine and its rate-limit state are what distinguish a blocked
 		// scrape from a throttled one; a bucketed reason alone cannot.
 		`"engine":"`,

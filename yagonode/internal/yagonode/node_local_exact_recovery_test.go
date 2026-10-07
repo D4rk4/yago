@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 type localExactCountingSearcher struct {
@@ -30,6 +31,7 @@ func TestLocalExactRecoveryKeepsKnownLocalResultAfterFederatedFailure(t *testing
 	primary := &localExactCountingSearcher{response: webFallbackExactStageFailure(
 		req,
 		webFallbackExactStageTimeoutFailure,
+		searchcore.FailureCauseDeadline,
 	)}
 	local := &localExactCountingSearcher{response: searchcore.Response{
 		Results: []searchcore.Result{{URL: "https://drunklab.example/"}},
@@ -87,6 +89,7 @@ func TestLocalExactRecoveryMissPreservesAllFailures(t *testing.T) {
 	primary := &localExactCountingSearcher{response: webFallbackExactStageFailure(
 		searchcore.Request{Query: "missing"},
 		webFallbackExactStageCapacityFailure,
+		searchcore.FailureCauseCapacity,
 	)}
 	local := &localExactCountingSearcher{response: searchcore.Response{
 		PartialFailures: []searchcore.PartialFailure{{
@@ -107,6 +110,7 @@ func TestLocalExactRecoveryWrapsCanceledRetry(t *testing.T) {
 	primary := &localExactCountingSearcher{response: webFallbackExactStageFailure(
 		searchcore.Request{Query: "cancel"},
 		webFallbackExactStageTimeoutFailure,
+		searchcore.FailureCauseDeadline,
 	)}
 	local := &localExactCountingSearcher{}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -153,26 +157,37 @@ func TestLocalExactRecoveryStageBoundsUncooperativeWork(t *testing.T) {
 func TestLocalExactRecoveryStageForwardsConfiguredPanic(t *testing.T) {
 	reported := make(chan interactiveSearchPanicRecord, 1)
 	searcher := recoveryBudgetSearcher{
-		inner:  panicSearcher{failure: "local panic"},
+		inner:  panicSearcher{failure: "PRIVATE_PANIC_CANARY"},
 		budget: time.Second, grace: time.Millisecond,
 		admission: newInteractiveSearchAdmission(1), profile: localExactRecoveryProfile,
 		panicLog: func(_ context.Context, message string, attributes ...any) {
 			reported <- interactiveSearchPanicRecord{
 				message: message,
-				value:   attributes[0].(slog.Attr).Value.Any(),
+				value:   attributes[0].(slog.Attr),
 			}
 		},
 	}
+	ctx, _ := tracectx.StartServerSpan(
+		t.Context(),
+		"00-11111111111111112222222222222222-3333333333333333-01",
+	)
+	serverSpanID, ok := tracectx.ServerSpanIDFromContext(ctx)
+	if !ok {
+		t.Fatal("server span ID missing")
+	}
 	defer func() {
-		if recover() != "local panic" {
+		if recover() != "PRIVATE_PANIC_CANARY" {
 			t.Fatal("local panic was not forwarded")
 		}
 		record := <-reported
-		if record.message != localExactRecoveryPanicMessage || record.value != "local panic" {
+		attribute, ok := record.value.(slog.Attr)
+		if record.message != localExactRecoveryPanicMessage || !ok ||
+			attribute.Key != "serverSpanId" || attribute.Value.String() != serverSpanID ||
+			attribute.Value.String() == "PRIVATE_PANIC_CANARY" {
 			t.Fatalf("panic record = %#v", record)
 		}
 	}()
-	_, _ = searcher.Search(t.Context(), searchcore.Request{Query: "panic"})
+	_, _ = searcher.Search(ctx, searchcore.Request{Query: "PRIVATE_QUERY_CANARY"})
 }
 
 func TestLocalExactRecoveryBudgetUsesProductionProfile(t *testing.T) {
@@ -191,6 +206,10 @@ func TestLocalExactRecoveryBudgetUsesProductionProfile(t *testing.T) {
 		response.PartialFailures[0] != (searchcore.PartialFailure{
 			Source: localExactRecoveryFailureSource,
 			Reason: localExactRecoveryFailed,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalExactSearch,
+				Cause: searchcore.FailureCauseBackend,
+			},
 		}) {
 		t.Fatalf("response = %#v, error = %v", response, err)
 	}

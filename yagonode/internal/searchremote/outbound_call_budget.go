@@ -2,6 +2,8 @@ package searchremote
 
 import (
 	"sync/atomic"
+
+	"github.com/D4rk4/yago/yagomodel"
 )
 
 const (
@@ -79,34 +81,75 @@ func acquireOutboundCall(budgets ...*outboundCallBudget) bool {
 func peerJobsWithinCallBudget(
 	requests []peerSearchJob,
 	budget *remoteQueryBudget,
-) []peerSearchJob {
+) (admitted []peerSearchJob, skipped int, skippedTerms map[yagomodel.Hash]struct{}) {
 	if budget == nil || budget.peerCalls == nil {
-		return nil
+		return nil, 0, nil
 	}
 	maximum := min(len(requests), budget.peerCalls.available())
-	limited := make([]peerSearchJob, 0, maximum)
+	admitted = make([]peerSearchJob, 0, maximum)
 	morphologyMaximum := 0
 	if budget.morphologyCalls != nil {
 		morphologyMaximum = budget.morphologyCalls.available()
 	}
 	morphologyPlanned := 0
-	for _, request := range requests {
-		if len(limited) == maximum {
+	for position, request := range requests {
+		if len(admitted) == maximum {
+			skipped += len(requests[position:])
+			skippedTerms = addOmittedPeerTerms(skippedTerms, requests[position:])
 			break
 		}
-		request.peerCalls = budget.peerCalls
-		request.transportAttempts = budget.transportAttempts
-		if request.morphology {
-			if morphologyPlanned == morphologyMaximum {
-				continue
-			}
-			request.morphologyCalls = budget.morphologyCalls
-			morphologyPlanned++
+		request, allowed := peerSearchJobWithinCallBudget(
+			request,
+			budget,
+			morphologyMaximum,
+			&morphologyPlanned,
+		)
+		if !allowed {
+			skipped++
+			skippedTerms = addOmittedPeerTerms(skippedTerms, []peerSearchJob{request})
+			continue
 		}
-		limited = append(limited, request)
+		admitted = append(admitted, request)
 	}
 
-	return limited
+	return admitted, skipped, skippedTerms
+}
+
+func peerSearchJobWithinCallBudget(
+	request peerSearchJob,
+	budget *remoteQueryBudget,
+	morphologyMaximum int,
+	morphologyPlanned *int,
+) (peerSearchJob, bool) {
+	request.peerCalls = budget.peerCalls
+	request.transportAttempts = budget.transportAttempts
+	if !request.morphology {
+		return request, true
+	}
+	if *morphologyPlanned >= morphologyMaximum {
+		return request, false
+	}
+	request.morphologyCalls = budget.morphologyCalls
+	*morphologyPlanned++
+
+	return request, true
+}
+
+func addOmittedPeerTerms(
+	terms map[yagomodel.Hash]struct{},
+	requests []peerSearchJob,
+) map[yagomodel.Hash]struct{} {
+	for _, request := range requests {
+		if request.term == "" {
+			continue
+		}
+		if terms == nil {
+			terms = make(map[yagomodel.Hash]struct{})
+		}
+		terms[request.term] = struct{}{}
+	}
+
+	return terms
 }
 
 func (s searcher) morphologySearchAdmission() chan struct{} {

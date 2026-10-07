@@ -59,6 +59,7 @@ func TestLocalExactCapacityRecoveryUsesExtendedBoundedBudget(t *testing.T) {
 	primary := &localExactCountingSearcher{response: webFallbackExactStageFailure(
 		request,
 		webFallbackExactStageCapacityFailure,
+		searchcore.FailureCauseCapacity,
 	)}
 	response, err := withLocalExactRecovery(
 		primary,
@@ -82,6 +83,7 @@ func TestLocalExactCapacityRecoveryWaitsForRetryAdmission(t *testing.T) {
 	primary := &localExactCountingSearcher{response: webFallbackExactStageFailure(
 		request,
 		webFallbackExactStageCapacityFailure,
+		searchcore.FailureCauseCapacity,
 	)}
 	outcome := make(chan interactiveSearchOutcome, 1)
 	go func() {
@@ -181,7 +183,11 @@ func TestLocalExactNonCapacityRecoveryRetainsOrdinaryBudget(t *testing.T) {
 
 	request := searchcore.Request{Query: "bounded retry"}
 	for _, response := range []searchcore.Response{
-		webFallbackExactStageFailure(request, webFallbackExactStageTimeoutFailure),
+		webFallbackExactStageFailure(
+			request,
+			webFallbackExactStageTimeoutFailure,
+			searchcore.FailureCauseDeadline,
+		),
 		{
 			PartialFailures: []searchcore.PartialFailure{{
 				Source: webFallbackExactStageFailureSource,

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -43,5 +44,65 @@ func TestTermAbstractReductionReportsTransportAndAbstractFailures(t *testing.T) 
 	)
 	if len(failures) != 2 {
 		t.Fatalf("failures = %#v", failures)
+	}
+}
+
+func TestTermAbstractReductionWithTargetsButNoAnswersIsUnavailable(t *testing.T) {
+	term := hashFor("empty-abstract-term")
+	peer := searchSeed(t, "empty-abstract-peer")
+	reduction := termAbstractReduction{
+		outcomes:  nil,
+		abstracts: map[yagomodel.Hash]map[yagomodel.Hash]struct{}{},
+	}
+	_, failures := reduction.finish(
+		[]termPeerTargets{{term: term, peers: []yagomodel.Seed{peer}}},
+		nil,
+	)
+	if len(failures) != 1 ||
+		failures[0].Source != searchcore.PartialFailureSourceRemoteYaCy ||
+		failures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteSearch,
+			Cause: searchcore.FailureCauseUnavailable,
+		}) {
+		t.Fatalf("empty abstract response failures = %#v", failures)
+	}
+}
+
+func TestTermAbstractReductionKeepsRespondedEmptyAbstractAsComplete(t *testing.T) {
+	term := hashFor("complete-empty-abstract-term")
+	peer := searchSeed(t, "complete-empty-abstract-peer")
+	reduction := termAbstractReduction{
+		outcomes: []peerAbstractOutcome{{
+			term:      term,
+			peer:      peer,
+			responded: true,
+		}},
+		abstracts: map[yagomodel.Hash]map[yagomodel.Hash]struct{}{},
+	}
+	_, failures := reduction.finish(
+		[]termPeerTargets{{term: term, peers: []yagomodel.Seed{peer}}},
+		nil,
+	)
+	if len(failures) != 0 {
+		t.Fatalf("complete empty abstract response failures = %#v", failures)
+	}
+}
+
+func TestTermAbstractReductionKeepsNoPeersAsNoTarget(t *testing.T) {
+	term := hashFor("no-peer-abstract-term")
+	reduction := termAbstractReduction{
+		outcomes:  nil,
+		abstracts: map[yagomodel.Hash]map[yagomodel.Hash]struct{}{},
+	}
+	_, failures := reduction.finish(
+		[]termPeerTargets{{term: term}},
+		nil,
+	)
+	if len(failures) != 1 ||
+		failures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteSearch,
+			Cause: searchcore.FailureCauseNoTarget,
+		}) {
+		t.Fatalf("no-peer abstract failures = %#v", failures)
 	}
 }

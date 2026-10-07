@@ -18,7 +18,11 @@ func TestRemoteSearchRetentionRejectsWorkAtCapacity(t *testing.T) {
 	if err != nil || response.Request.Query != "busy" || len(response.Results) != 0 ||
 		len(response.PartialFailures) != 1 ||
 		response.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteStage ||
-		response.PartialFailures[0].Reason != remoteSearchCapacityFailure || inner.calls != 0 {
+		response.PartialFailures[0].Reason != remoteSearchCapacityFailure ||
+		response.PartialFailures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteStage,
+			Cause: searchcore.FailureCauseCapacity,
+		}) || inner.calls != 0 {
 		t.Fatalf("response = %#v, error = %v, calls = %d", response, err, inner.calls)
 	}
 }

@@ -42,6 +42,10 @@ func TestInteractiveHardDeadlineRefusesUnfinishedWork(t *testing.T) {
 		response.PartialFailures[0] != (searchcore.PartialFailure{
 			Source: interactiveSearchFailureSource,
 			Reason: interactiveSearchTimeoutFailure,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalSearch,
+				Cause: searchcore.FailureCauseDeadline,
+			},
 		}) {
 		t.Fatalf("response = %#v, error = %v", response, err)
 	}

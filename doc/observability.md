@@ -10,7 +10,7 @@ Rate, Errors, and Duration for each HTTP endpoint:
 
 | Signal | Metric |
 |---|---|
-| Rate + Errors | `http_requests_total{endpoint,status_code}` — errors are the 4xx/5xx series |
+| Rate + Errors | `http_requests_total{endpoint,code}` — errors are the 4xx/5xx series |
 | Duration | `http_request_duration_seconds{endpoint}` histogram |
 
 Search adds its own quality series (`search_*` from SearchMetrics), and the
@@ -70,15 +70,38 @@ age-of-index gauge would require a corpus scan and remains a follow-up.
 
 ## Internal tracing (OPS-10)
 
-Every HTTP request roots a W3C Trace Context: a valid inbound `traceparent`
-is adopted, otherwise a fresh trace starts here, sampled 1-in-256. The trace
+Every instrumented HTTP request roots a W3C Trace Context: a valid inbound `traceparent`
+continues its trace with a fresh server span, otherwise a fresh trace starts
+here, sampled 1-in-256. The trace
 rides the request context; the peer fan-out stamps a child `traceparent` on
-every outbound peer search, so one public query correlates across its legs in
-the logs of cooperating nodes. Sampled traces attach their trace ID as an
+every outbound peer search. Public, peer and ops HTTP request logs use the
+server-generated `serverSpanId` for local correlation. They do not copy the
+incoming trace ID, span ID or client request ID into log fields. Sampled traces
+retain their trace ID as an
 **exemplar** on `http_request_duration_seconds` — Grafana links a slow bucket
 straight to a live trace ID. Scope is deliberately this node plus its own
 outbound legs; a full OpenTelemetry export would need a collector dependency
 (ADR required) and is not planned until an operator asks for one.
+
+## Search execution diagnostics
+
+Tavily, portal, YaCy and Admin searches share the `search execution incomplete`
+event. `failureCounts` identifies the affected stages and bounded cause
+categories, without peer identifiers or error text. `retrievedRows` and
+`totalResults` describe the search result. An execution error adds a bounded
+`errorCategory`. A zero-row or error outcome is `WARN`; a usable partial result
+is `DEBUG`. Without an execution error, complete searches and query-shape-only
+notes do not produce this event.
+
+Use `serverSpanId` to join this event with web-engine attempts and the HTTP
+request record. The latter supplies the actual response status and duration;
+a search diagnostic is not an HTTP status decision. HTTP request logs use the
+registered route pattern or `unmatched` when no matched route was reached,
+never the raw path or query string. Methods use standard HTTP names or `other`
+for extension tokens.
+Operational diagnostic records exclude query text, submitted URLs, credentials,
+request bodies, peer identifiers and raw error messages. They remain available
+when query logging is off and follow the ordinary log-level threshold.
 
 ## SLOs and burn-rate alerts (OPS-11)
 

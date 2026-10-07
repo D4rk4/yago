@@ -10,7 +10,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -25,7 +27,10 @@ type Trace struct {
 	Sampled bool
 }
 
-type contextKey struct{}
+type (
+	contextKey             struct{}
+	serverSpanIDContextKey struct{}
+)
 
 var traceparentPattern = regexp.MustCompile(
 	`^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$`,
@@ -39,11 +44,12 @@ func Parse(header string) (Trace, bool) {
 		match[2] == strings.Repeat("0", 16) {
 		return Trace{}, false
 	}
+	flags, _ := strconv.ParseUint(match[3], 16, 8)
 
 	return Trace{
 		TraceID: match[1],
 		SpanID:  match[2],
-		Sampled: match[3] == "01",
+		Sampled: flags&1 != 0,
 	}, true
 }
 
@@ -61,6 +67,43 @@ func New() Trace {
 // Child derives the next hop: same trace, fresh span.
 func (t Trace) Child() Trace {
 	return Trace{TraceID: t.TraceID, SpanID: randomHex(8), Sampled: t.Sampled}
+}
+
+func StartServerSpan(ctx context.Context, parentHeader string) (context.Context, Trace) {
+	trace, ok := Parse(parentHeader)
+	if !ok {
+		trace = New()
+	} else {
+		trace = trace.Child()
+	}
+	ctx = WithContext(ctx, trace)
+	ctx = context.WithValue(ctx, serverSpanIDContextKey{}, trace.SpanID)
+
+	return ctx, trace
+}
+
+func ServerSpanIDFromContext(ctx context.Context) (string, bool) {
+	spanID, ok := ctx.Value(serverSpanIDContextKey{}).(string)
+
+	return spanID, ok && spanID != ""
+}
+
+func CopyServerSpan(targetCtx, sourceCtx context.Context) context.Context {
+	spanID, ok := ServerSpanIDFromContext(sourceCtx)
+	if !ok {
+		return targetCtx
+	}
+
+	return context.WithValue(targetCtx, serverSpanIDContextKey{}, spanID)
+}
+
+func ServerSpanAttribute(ctx context.Context) slog.Attr {
+	spanID, ok := ServerSpanIDFromContext(ctx)
+	if !ok {
+		return slog.Attr{}
+	}
+
+	return slog.String("serverSpanId", spanID)
 }
 
 // Header renders the trace back into a traceparent value.

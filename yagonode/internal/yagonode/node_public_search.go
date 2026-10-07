@@ -341,7 +341,7 @@ func assembleConfiguredPublicSearcher(
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withEffectiveWebFallbackRequest(search, assembly.webFallback)
 
-	return withParsedQuery(search)
+	return withParsedQuery(withSearchExecutionDiagnostics(search))
 }
 
 func searchEvidenceSource(index searchindex.SearchIndex) searchindex.SearchEvidenceSource {

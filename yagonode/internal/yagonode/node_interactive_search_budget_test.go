@@ -16,6 +16,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchsession"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 type deadlineSearch struct {
@@ -248,6 +249,10 @@ func TestInteractiveSearchBudgetClassifiesErrorsAndPreservesPanics(t *testing.T)
 		response.PartialFailures[0] != (searchcore.PartialFailure{
 			Source: interactiveSearchFailureSource,
 			Reason: interactiveSearchFailed,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalSearch,
+				Cause: searchcore.FailureCauseBackend,
+			},
 		}) {
 		t.Fatalf("operational failure = %#v, %v", response, err)
 	}
@@ -275,6 +280,10 @@ func TestInteractiveSearchBudgetClassifiesNestedCapacityFailure(t *testing.T) {
 		response.PartialFailures[0] != (searchcore.PartialFailure{
 			Source: interactiveSearchFailureSource,
 			Reason: interactiveSearchCapacityFailure,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalSearch,
+				Cause: searchcore.FailureCauseCapacity,
+			},
 		}) {
 		t.Fatalf("capacity failure = %#v, %v", response, err)
 	}
@@ -292,11 +301,19 @@ func TestInteractiveSearchBudgetContainsPanicAfterDeadline(t *testing.T) {
 		panicLog: func(_ context.Context, message string, attributes ...any) {
 			reported <- interactiveSearchPanicRecord{
 				message: message,
-				value:   attributes[0].(slog.Attr).Value.Any(),
+				value:   attributes[0].(slog.Attr),
 			}
 		},
 	}
-	ctx, cancel := context.WithCancelCause(t.Context())
+	ctx, _ := tracectx.StartServerSpan(
+		t.Context(),
+		"00-11111111111111112222222222222222-3333333333333333-01",
+	)
+	serverSpanID, ok := tracectx.ServerSpanIDFromContext(ctx)
+	if !ok {
+		t.Fatal("server span ID missing")
+	}
+	ctx, cancel := context.WithCancelCause(ctx)
 	result := make(chan interactiveSearchOutcome, 1)
 	go func() {
 		response, err := searcher.Search(ctx, searchcore.Request{Query: "panic"})
@@ -329,7 +346,10 @@ func TestInteractiveSearchBudgetContainsPanicAfterDeadline(t *testing.T) {
 		runtime.Gosched()
 	}
 	record := <-reported
-	if record.message != interactiveSearchPanicMessage || record.value != wantPanic {
+	attribute, ok := record.value.(slog.Attr)
+	if record.message != interactiveSearchPanicMessage || !ok ||
+		attribute.Key != "serverSpanId" || attribute.Value.String() != serverSpanID ||
+		attribute.Value.String() == wantPanic {
 		t.Fatalf("panic log = %#v", record)
 	}
 }

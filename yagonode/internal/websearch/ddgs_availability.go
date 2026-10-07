@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 const msgWebSearchEnginesUnavailable = "web-search engines unavailable"
@@ -13,6 +16,7 @@ const (
 	webSearchFailureCanceled    = "canceled"
 	webSearchFailureDeadline    = "deadline"
 	webSearchFailureNone        = "none"
+	webSearchFailureUnsupported = "unsupported"
 	webSearchFailureUnavailable = "unavailable"
 )
 
@@ -31,6 +35,7 @@ func (p *DDGSProvider) reportUnavailable(ctx context.Context, err error) {
 		ctx,
 		msgWebSearchEnginesUnavailable,
 		slog.String("reason", webSearchFailureReason(err)),
+		tracectx.ServerSpanAttribute(ctx),
 	)
 }
 
@@ -46,11 +51,30 @@ func webSearchFailureReason(err error) string {
 		return webSearchFailureNone
 	case errors.Is(err, errWebSearchEnginesUnavailable):
 		return webSearchFailureUnavailable
+	case errors.Is(err, errStrictSafeSearchUnavailable):
+		return webSearchFailureUnsupported
 	case errors.Is(err, context.Canceled):
 		return webSearchFailureCanceled
 	case errors.Is(err, context.DeadlineExceeded):
 		return webSearchFailureDeadline
 	default:
 		return webSearchFailureBackend
+	}
+}
+
+func webSearchFailureCause(err error) searchcore.FailureCause {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return searchcore.FailureCauseDeadline
+	case errors.Is(err, context.Canceled):
+		return searchcore.FailureCauseCanceled
+	case errors.Is(err, errWebSearchEnginesUnavailable):
+		return searchcore.FailureCauseUnavailable
+	case errors.Is(err, errStrictSafeSearchUnavailable):
+		return searchcore.FailureCauseUnsupported
+	case err == nil:
+		return searchcore.FailureCauseUnknown
+	default:
+		return searchcore.FailureCauseBackend
 	}
 }

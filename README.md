@@ -175,6 +175,10 @@ and tested together; use matching releases when upgrading a node and crawler.
   200 with an empty result list, as does a request whose own date, domain, or
   exact-match filters retained none of the rows that were retrieved, and
   completed partial rows remain HTTP 200.
+  Tavily, portal, YaCy and Admin searches share operational diagnostics with
+  bounded failure stages and causes. A server-generated span identifier joins
+  these records to HTTP and web-provider events. These diagnostic records do
+  not contain query text, URLs, credentials, peer identifiers or raw errors.
   A strict non-facet candidate pass skips relaxed retrieval only when it fills
   the requested result window and reports further strict rows (`Total > window`);
   this preserves relaxed evidence at the exact pagination boundary.
@@ -519,6 +523,9 @@ and tested together; use matching releases when upgrading a node and crawler.
   failures retire only that host's remaining URLs in the current run; a success
   resets the evidence, and URL-specific rejections do not penalize a healthy
   host. A single-host run then finishes while a multi-host run continues. The
+  exact URL denylist rules match canonical aliases while retaining raw entries
+  for individual removal. New changes must fit the shared policy bounds;
+  existing oversized policies stay removable. The
   Index URL/domain denylist is revisioned to every connected crawler and
   enforced before frontier admission and around each fetch. Further safeguards
   include persistent near-duplicate clustering, crawl-trap defense, per-host and
@@ -704,7 +711,7 @@ and tested together; use matching releases when upgrading a node and crawler.
 - Outbound traffic is screened in-process at dial time: private networks,
   loopback, link-local, and the cloud metadata range are blocked by default,
   with explicit CIDR allowlists (`YAGO_EGRESS_ALLOW_CIDRS`) when you need
-  them.
+  them. Each guard keeps a fixed snapshot of its configured CIDR allowances.
 
 ---
 

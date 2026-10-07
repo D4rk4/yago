@@ -62,6 +62,47 @@ func TestDenylistRetainsLastGoodPolicy(t *testing.T) {
 	}
 }
 
+func TestDenylistCanonicalizesExactURLsAfterVerifyingWireRevision(t *testing.T) {
+	first := "https://EXAMPLE.test:443/a/../blocked?utm_source=synthetic"
+	second := "https://example.test/blocked?utm_campaign=synthetic"
+	policy, err := yagocrawlcontract.NewCrawlURLDenylist([]string{first, second}, nil)
+	if err != nil {
+		t.Fatalf("build policy: %v", err)
+	}
+	wantRevision := append([]byte(nil), policy.Revision...)
+	denylist := crawldenylist.New()
+	if err := denylist.Apply(policy); err != nil {
+		t.Fatalf("apply policy: %v", err)
+	}
+	if !bytes.Equal(denylist.Revision(), wantRevision) {
+		t.Fatal("compiled runtime policy changed the verified wire revision")
+	}
+	if !denylist.Blocks("https://example.test/blocked") ||
+		denylist.Blocks("https://example.test/allowed") {
+		t.Fatal("exact URL policy did not match only its canonical URL")
+	}
+	remaining, err := yagocrawlcontract.NewCrawlURLDenylist([]string{second}, nil)
+	if err != nil {
+		t.Fatalf("build remaining alias policy: %v", err)
+	}
+	if err := denylist.Apply(remaining); err != nil {
+		t.Fatalf("apply remaining alias policy: %v", err)
+	}
+	if !denylist.Blocks("https://example.test/blocked") {
+		t.Fatal("replacing an alias policy with one retained rule unblocked its canonical URL")
+	}
+	empty, err := yagocrawlcontract.NewCrawlURLDenylist(nil, nil)
+	if err != nil {
+		t.Fatalf("build empty policy: %v", err)
+	}
+	if err := denylist.Apply(empty); err != nil {
+		t.Fatalf("apply empty policy: %v", err)
+	}
+	if denylist.Blocks("https://example.test/blocked") {
+		t.Fatal("empty replacement policy retained a canonical exact URL")
+	}
+}
+
 func TestDenylistWaitObservesFirstPolicy(t *testing.T) {
 	denylist := crawldenylist.New()
 	ready := make(chan bool, 1)
@@ -88,7 +129,7 @@ func TestDenylistWaitStopsWithContext(t *testing.T) {
 
 func TestAdmissionFetcherRejectsBeforeAndAfterInnerFetch(t *testing.T) {
 	policy, err := yagocrawlcontract.NewCrawlURLDenylist(
-		[]string{"https://blocked.example/exact"},
+		[]string{"https://BLOCKED.example:443/a/../exact?utm_source=synthetic"},
 		[]string{"redirected.example"},
 	)
 	if err != nil {

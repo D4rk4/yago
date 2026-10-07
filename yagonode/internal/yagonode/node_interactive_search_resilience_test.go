@@ -49,6 +49,10 @@ func TestInteractiveSearchPreservesUsableOperationalResponse(t *testing.T) {
 		response.PartialFailures[1] != (searchcore.PartialFailure{
 			Source: interactiveSearchFailureSource,
 			Reason: interactiveSearchFailed,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalSearch,
+				Cause: searchcore.FailureCauseBackend,
+			},
 		}) {
 		t.Fatalf("response = %#v, error = %v", response, err)
 	}

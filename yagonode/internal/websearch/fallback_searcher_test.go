@@ -253,7 +253,8 @@ func TestFallbackDegradesOnProviderError(t *testing.T) {
 	if len(resp.Results) != 0 {
 		t.Errorf("results = %#v, want empty", resp.Results)
 	}
-	if len(resp.PartialFailures) != 1 || resp.PartialFailures[0] != webProviderFailure() {
+	if len(resp.PartialFailures) != 1 ||
+		resp.PartialFailures[0] != webProviderFailure(provider.err) {
 		t.Errorf("partial failures = %#v", resp.PartialFailures)
 	}
 	if seeder.calls != 0 {

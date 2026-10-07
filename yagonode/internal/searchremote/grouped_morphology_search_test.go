@@ -277,7 +277,7 @@ func testGroupedMorphologySurfaceCap(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := NewSearcher(Config{
+	response, err := NewSearcher(Config{
 		Client:      server.Client(),
 		NetworkName: "freeworld",
 		Peers: fakePeerSource{peers: []yagomodel.Seed{
@@ -301,6 +301,9 @@ func testGroupedMorphologySurfaceCap(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(response.Results) != 0 || len(response.PartialFailures) != 0 {
+		t.Fatalf("fully queried empty abstract response = %#v", response)
 	}
 
 	requestsMu.Lock()

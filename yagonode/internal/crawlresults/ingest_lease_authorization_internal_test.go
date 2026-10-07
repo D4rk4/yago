@@ -7,7 +7,7 @@ import (
 )
 
 func TestAuthorizeIngestDeliveryRejectsLeaseLossBeforeMutation(t *testing.T) {
-	want := errors.New("lease lost")
+	want := ErrLeaseLost
 	leaseLost := 0
 	nacked := 0
 	released := 0
@@ -36,6 +36,80 @@ func TestAuthorizeIngestDeliveryRejectsLeaseLossBeforeMutation(t *testing.T) {
 			nacked,
 			released,
 		)
+	}
+}
+
+func TestAuthorizeIngestDeliveryNaksCanceledValidation(t *testing.T) {
+	leaseLost, nacked, snapshotCalls, mutationCalls := 0, 0, 0, 0
+	delivery := IngestDelivery{
+		ValidateMutation: func(context.Context) error { return context.Canceled },
+		AuthorizeLeaseSnapshot: func(context.Context) error {
+			snapshotCalls++
+
+			return nil
+		},
+		BeginMutation: func(context.Context) (func(), error) {
+			mutationCalls++
+
+			return func() {}, nil
+		},
+		LeaseLost: func(context.Context) error { leaseLost++; return nil },
+		Nak:       func(context.Context) error { nacked++; return nil },
+	}
+	expectIngestDeliveryNak(t, delivery)
+	if leaseLost != 0 || nacked != 1 || snapshotCalls != 0 || mutationCalls != 0 {
+		t.Fatalf(
+			"leaseLost/nacked/snapshot/mutation = %d/%d/%d/%d",
+			leaseLost, nacked, snapshotCalls, mutationCalls,
+		)
+	}
+}
+
+func TestAuthorizeIngestDeliveryNaksDeadlineSnapshot(t *testing.T) {
+	leaseLost, nacked, mutationCalls := 0, 0, 0
+	delivery := IngestDelivery{
+		AuthorizeLeaseSnapshot: func(context.Context) error { return context.DeadlineExceeded },
+		BeginMutation: func(context.Context) (func(), error) {
+			mutationCalls++
+
+			return func() {}, nil
+		},
+		LeaseLost: func(context.Context) error { leaseLost++; return nil },
+		Nak:       func(context.Context) error { nacked++; return nil },
+	}
+	expectIngestDeliveryNak(t, delivery)
+	if leaseLost != 0 || nacked != 1 || mutationCalls != 0 {
+		t.Fatalf("leaseLost/nacked/mutation = %d/%d/%d", leaseLost, nacked, mutationCalls)
+	}
+}
+
+func TestAuthorizeIngestDeliveryNaksStorageMutationFailure(t *testing.T) {
+	leaseLost, nacked, beginCalls := 0, 0, 0
+	delivery := IngestDelivery{
+		BeginMutation: func(context.Context) (func(), error) {
+			beginCalls++
+
+			return nil, errors.New("storage unavailable")
+		},
+		LeaseLost: func(context.Context) error { leaseLost++; return nil },
+		Nak:       func(context.Context) error { nacked++; return nil },
+	}
+	release, authorized := authorizeIngestDelivery(t.Context(), delivery)
+	release()
+	if authorized || leaseLost != 0 || nacked != 1 || beginCalls != 1 {
+		t.Fatalf(
+			"authorized/leaseLost/nacked/begin = %t/%d/%d/%d",
+			authorized, leaseLost, nacked, beginCalls,
+		)
+	}
+}
+
+func expectIngestDeliveryNak(t *testing.T, delivery IngestDelivery) {
+	t.Helper()
+	release, authorized := authorizeIngestDelivery(t.Context(), delivery)
+	release()
+	if authorized {
+		t.Fatal("delivery with a non-lease authorization error was authorized")
 	}
 }
 
@@ -71,7 +145,7 @@ func TestAuthorizeIngestDeliveryRejectsStaleLeaseSnapshot(t *testing.T) {
 	legacyMutations := 0
 	delivery := IngestDelivery{
 		AuthorizeLeaseSnapshot: func(context.Context) error {
-			return errors.New("stale snapshot")
+			return ErrLeaseLost
 		},
 		BeginMutation: func(context.Context) (func(), error) {
 			legacyMutations++
@@ -107,7 +181,7 @@ func TestAuthorizeIngestGroupRetainsOnlyLiveLeases(t *testing.T) {
 		},
 		{
 			BeginMutation: func(context.Context) (func(), error) {
-				return nil, errors.New("stale")
+				return nil, ErrLeaseLost
 			},
 			LeaseLost: func(context.Context) error {
 				lost++
@@ -224,7 +298,7 @@ func TestAuthorizeIngestGroupValidatesBeforeOpeningMutationFence(t *testing.T) {
 	leaseLost := 0
 	groupOpened := false
 	stale := IngestDelivery{
-		ValidateMutation: func(context.Context) error { return errors.New("stale") },
+		ValidateMutation: func(context.Context) error { return ErrLeaseLost },
 		LeaseLost: func(context.Context) error {
 			leaseLost++
 

@@ -334,7 +334,9 @@ policy, Firefox executable and content sandbox, browser failure threshold,
 loopback metrics listener, origin timeouts, crawl delay, depth, per-host
 concurrency, per-run default rate, sitemap limit, shutdown grace, and HTTP
 User-Agent belong in both service environments. Before assembling its fetch
-stack, the crawler reads the node's typed authoritative policy. A sandbox-only
+stack, the crawler reads the node's typed authoritative policy. This startup
+read waits for a temporarily unavailable connection within the existing connect
+timeout; caller cancellation or deadline expiry still stops startup. A sandbox-only
 heartbeat change lets an active render finish and retires the affected Firefox
 session before that slot's next render. A frontier-state boundary change applies
 live and wakes fresh orders waiting at the old boundary; every other policy
@@ -363,6 +365,19 @@ replace the last valid snapshot. Exact URLs and domain suffixes are rejected
 before seed or discovered-link frontier admission and around every HTTP,
 sitemap, and browser fetch, including its final redirected URL. This reuses the
 existing Index policy and introduces no crawler environment variable.
+Canonicalizable exact URL rules also block equivalent host case, default-port,
+path and tracking-parameter spellings. Domain suffix rules are unchanged. The
+crawler verifies the received policy revision before compiling these lookups;
+noncanonicalizable exact values retain literal matching. The node refuses new
+policy changes above the shared 4,096-entry or 1 MiB limits and per-entry bounds.
+Legacy oversized or malformed policies remain visible and removable in the node's Index
+page; reduce them to the supported bounds before crawler policy delivery can
+resume.
+
+An ingest authorization failure revokes a grant only when the node confirms
+that its lease was lost. Temporary authorization and storage failures use the
+existing retryable `Unavailable` response and keep a valid grant available for
+retry.
 
 The service runs until it receives `SIGINT` or
 `SIGTERM`, then shuts down gracefully: it stops pulling new jobs but lets
@@ -465,7 +480,8 @@ sitelist expansion imports at most `YAGO_CRAWLER_SITEMAP_URL_LIMIT` URLs per
 seed. The container image bundles Firefox ESR on a pinned Alpine runtime and
 runs as a non-root user. Its Go builder and Alpine runtime bases are pinned by
 SHA-256 digest, and its OpenSSL runtime libraries are pinned to Alpine
-`3.5.8-r0` so the base image cannot retain an older affected revision. The
+`3.5.9-r0` so the base image cannot retain an older affected revision. The
+browser runtime also pins PCRE2 to `10.49-r0`. The
 builder keeps normal Go checksum authentication while a shared bounded
 downloader retries two transport failures and refuses the third. A build with
 `SOURCE_REVISION=$(git rev-parse HEAD) make compose-images` records that commit

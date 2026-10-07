@@ -5,9 +5,14 @@ import (
 	"log/slog"
 	"slices"
 	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
-const engineHedgeDelay = 50 * time.Millisecond
+const (
+	engineHedgeDelay          = 50 * time.Millisecond
+	msgWebSearchEngineAttempt = "web-search engine attempt"
+)
 
 type engineAttempt struct {
 	preference  int
@@ -168,16 +173,16 @@ func (r *engineRace) evaluate(attempts []engineAttempt) []Result {
 				r.query.known(r.ctx),
 			)
 		}
-		// Info, not Debug: this is the only record that says why the provider
-		// stage was lost, and production runs at Info. Every field here is
-		// derived from the engine and its counts, never from the query, so the
-		// line stays safe to emit at a level operators actually read.
-		slog.InfoContext(r.ctx, "web-search engine attempt",
+		slog.InfoContext(
+			r.ctx,
+			msgWebSearchEngineAttempt,
 			slog.String("engine", attempt.backend.name),
 			slog.Int("fetched", fetched),
 			slog.Int("accepted", len(attempt.results)),
 			slog.Bool("rateLimited", attempt.rateLimited),
-			slog.String("failure", webSearchFailureReason(attempt.err)))
+			slog.String("failure", webSearchFailureReason(attempt.err)),
+			tracectx.ServerSpanAttribute(r.ctx),
+		)
 		if attempt.rateLimited {
 			r.provider.recordBackoff(attempt.backend.name)
 			r.limited[attempt.preference] = true

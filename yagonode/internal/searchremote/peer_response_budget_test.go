@@ -55,6 +55,73 @@ func TestDistributedLimitsBoundTotalAndPreserveRequestOrder(t *testing.T) {
 	}
 }
 
+func TestTermAbstractCallBudgetOmissionUsesLocalBudgetFailure(t *testing.T) {
+	term := hashFor("abstract-budget-term")
+	budget := newRemoteQueryBudget()
+	budget.peerCalls = newOutboundCallBudget(0)
+	catalog, failures := (searcher{networkName: "freeworld"}).termAbstractCatalogWithinBudget(
+		t.Context(),
+		searchcore.Request{Terms: []string{"abstract-budget-term"}},
+		[]termPeerTargets{{
+			term:  term,
+			peers: []yagomodel.Seed{{Hash: hashFor("abstract-budget-peer")}},
+		}},
+		nil,
+		budget,
+	)
+	if len(catalog.terms) != 0 || budget.omittedPeerJobs != 1 {
+		t.Fatalf("abstract terms/skipped jobs = %#v/%d", catalog.terms, budget.omittedPeerJobs)
+	}
+	for _, failure := range failures {
+		if failure.Source == searchcore.PartialFailureSourceRemoteYaCy &&
+			failure.Diagnostic.Cause == searchcore.FailureCauseUnavailable {
+			t.Fatalf("locally omitted abstract job blamed a peer: %+v", failure)
+		}
+	}
+	response := finalizeRemoteBudgetFailures(
+		searchcore.Response{PartialFailures: failures},
+		budget,
+	)
+	if len(response.PartialFailures) != 1 {
+		t.Fatalf("abstract failures = %#v, want one local budget failure", failures)
+	}
+	if response.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteStage ||
+		response.PartialFailures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteStage,
+			Cause: searchcore.FailureCauseBudget,
+		}) {
+		t.Fatalf("abstract failure = %+v, want local budget omission", response.PartialFailures[0])
+	}
+}
+
+func TestTermAbstractLocalBudgetCutDoesNotAddRemoteUnavailable(t *testing.T) {
+	term := hashFor("locally-cut-abstract-term")
+	peer := yagomodel.Seed{Hash: hashFor("locally-cut-abstract-peer")}
+	reduction := termAbstractReduction{
+		outcomes: []peerAbstractOutcome{{
+			term:        term,
+			peer:        peer,
+			responseErr: errRemoteSearchBudgetExhausted,
+		}},
+		abstracts: map[yagomodel.Hash]map[yagomodel.Hash]struct{}{},
+		catalog: termAbstractCatalog{
+			peerTerms: map[string]map[yagomodel.Hash]map[yagomodel.Hash]struct{}{},
+		},
+	}
+	_, failures := reduction.finish(
+		[]termPeerTargets{{term: term, peers: []yagomodel.Seed{peer}}},
+		nil,
+	)
+	if len(failures) != 1 ||
+		failures[0].Source != searchcore.PartialFailureSourceRemoteStage ||
+		failures[0].Diagnostic.Cause != searchcore.FailureCauseBudget {
+		t.Fatalf(
+			"local abstract budget cut failures = %#v, want only a local budget failure",
+			failures,
+		)
+	}
+}
+
 func TestQueryPeerJobsReducesResourcesAsTheyArriveWithinSharedBudget(t *testing.T) {
 	secondAnswered := make(chan struct{})
 	firstRows := []yagomodel.URIMetadataRow{

@@ -1,11 +1,16 @@
 package searchremote
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerreputation"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagoproto"
 )
@@ -108,12 +113,111 @@ func TestResponseStopsAtDecodedBudgetWithoutPenalizingPeer(t *testing.T) {
 		budget,
 	)
 	if len(response.Results) != 0 || len(response.PartialFailures) != 1 ||
-		response.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteYaCy ||
+		response.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteStage ||
+		response.PartialFailures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteStage,
+			Cause: searchcore.FailureCauseBudget,
+		}) ||
 		!strings.Contains(
 			response.PartialFailures[0].Reason,
 			errRemoteSearchDecodedBudgetExhausted.Error(),
 		) {
 		t.Fatalf("decoded-budget response = %#v", response)
+	}
+}
+
+func TestLocalResultEntryBudgetReportsOmissionWithoutPenalizingPeer(t *testing.T) {
+	rows := []yagomodel.URIMetadataRow{
+		metadataRow(t, hashFor("entry-budget-one"), "https://example.org/one", "one"),
+		metadataRow(t, hashFor("entry-budget-two"), "https://example.org/two", "two"),
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		writeFixtureResponse(t, w, searchResponse(rows...).Encode().Encode())
+	}))
+	defer server.Close()
+	remote := NewSearcher(Config{Client: server.Client(), NetworkName: "freeworld"}).(searcher)
+	remote.lifecycle = newPeerLifecycleSession(nil)
+	request := searchcore.Request{
+		Query: "alpha", Terms: []string{"alpha"}, Source: searchcore.SourceGlobal, Limit: 1,
+	}
+	wireRequest := remoteSearchRequest(request, "freeworld", time.Second)
+	evidenceBinding := identityQueryMatchEvidenceBinding(request.Terms)
+	evidenceBinding.request(&wireRequest)
+	budget := newRemoteQueryBudget()
+	budget.resultEntriesRemaining = 0
+	results := remote.queryPeerJobsWithinBudget(t.Context(), []peerSearchJob{{
+		peer:            serverSeed(t, server.URL),
+		request:         wireRequest,
+		evidenceBinding: evidenceBinding,
+	}}, budget)
+	var observed []peerreputation.Observation
+	reputation := &reputationSession{observations: reputationObservationSinkFunc(
+		func(_ context.Context, rows []peerreputation.Observation) {
+			observed = append(observed, rows...)
+		},
+	)}
+	response := remote.responseWithinBudget(t.Context(), request, results, reputation, budget)
+	response = finalizeRemoteBudgetFailures(response, budget)
+	reputation.flush(t.Context())
+	if len(results) != 1 || !results[0].resourcesTruncated || len(response.Results) != 0 {
+		t.Fatalf("results/response = %#v/%#v", results, response)
+	}
+	if budget.omittedPeerJobs != 1 {
+		t.Fatalf("omitted peer jobs = %d, want 1", budget.omittedPeerJobs)
+	}
+	if len(observed) != 1 || observed[0].Outcome != peerreputation.OutcomeSuccess {
+		t.Fatalf("local result-budget observations = %#v, want peer success", observed)
+	}
+	if len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteStage ||
+		response.PartialFailures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteStage,
+			Cause: searchcore.FailureCauseBudget,
+		}) {
+		t.Fatalf("local result-budget failure = %#v", response.PartialFailures)
+	}
+}
+
+func TestDecodedBudgetPreservesLaterPeerFailure(t *testing.T) {
+	firstPeer := yagomodel.Seed{Hash: "peer-a"}
+	laterPeer := yagomodel.Seed{Hash: "peer-b"}
+	budget := newRemoteQueryBudget()
+	budget.decodedBytesRemaining = 0
+	row := metadataRow(t, hashFor("decode-budget"), "https://example.org/", "title")
+	response := (searcher{weights: weightsOrDefault(nil)}).responseWithinBudget(
+		t.Context(),
+		searchcore.Request{Query: "alpha", Terms: []string{"alpha"}, Limit: 1},
+		[]peerSearchResult{
+			{peer: firstPeer, response: searchResponse(row)},
+			{peer: laterPeer, err: errors.New("connection refused")},
+		},
+		nil,
+		budget,
+	)
+	response = finalizeRemoteBudgetFailures(response, budget)
+
+	if len(response.PartialFailures) != 2 {
+		t.Fatalf(
+			"decoded-budget failures = %#v, want local budget and later peer failure",
+			response.PartialFailures,
+		)
+	}
+	var localBudget, laterPeerFailure bool
+	for _, failure := range response.PartialFailures {
+		if failure.Source == searchcore.PartialFailureSourceRemoteStage &&
+			failure.Diagnostic.Cause == searchcore.FailureCauseBudget {
+			localBudget = strings.Contains(failure.Reason, "1 remote search job")
+		}
+		if failure.Source == laterPeer.Hash.String() &&
+			failure.Diagnostic.Stage == searchcore.FailureStageRemotePeer {
+			laterPeerFailure = true
+		}
+	}
+	if !localBudget || !laterPeerFailure {
+		t.Fatalf(
+			"decoded-budget failures = %#v, want one local omission and later peer failure",
+			response.PartialFailures,
+		)
 	}
 }
 

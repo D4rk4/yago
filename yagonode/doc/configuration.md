@@ -282,6 +282,31 @@ can therefore diagnose which bounded search stage failed without retaining what
 people searched for. Web-provider outage diagnostics never include the provider
 request URL.
 
+**Operational search diagnostics.** These records work independently of
+`YAGO_QUERY_LOG_MODE`, including when it is `off`. Every search surface uses the
+same `search execution incomplete` event. A search with source failures or an
+execution error emits `WARN` when it has no retrieved rows or returned an error;
+a partial search with usable rows emits `DEBUG`. Without an execution error,
+complete searches and query-shape-only notes do not emit this event. The response
+status and body are unchanged.
+
+The event contains `retrievedRows`, `totalResults`, bounded `failureCounts`
+with stage, cause and count, and an `errorCategory` when execution returned an
+error. Unknown categories are reported as `other`. The `serverSpanId` joins
+search diagnostics, web-engine attempts and HTTP request records. It is generated
+by the server and does not reuse a client request ID or incoming span ID. These
+records never include query text, submitted URLs, request bodies, credentials,
+peer identifiers or raw error messages. The ordinary `LOG_LEVEL` threshold
+applies; no query-logging setting needs to be enabled.
+
+Public, peer and ops HTTP listeners use the same request log fields:
+`method`, `path`, `status`, `durationMs` and `serverSpanId`. The `path` is the
+registered route pattern; requests that do not reach a matched route use
+`unmatched`. Standard HTTP methods retain their names; other method tokens use
+`other`. Raw paths and query strings are not recorded by this request logger.
+The duration field was previously named `duration_ms`; update log queries that
+select that field to use `durationMs`.
+
 **External web-search egress (`YAGO_WEB_FALLBACK_PRIVACY`).** The node can consult
 an external keyless metasearch provider. The provider necessarily receives the
 query, and any pages it returns may be queued for this node to crawl (see

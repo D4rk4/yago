@@ -7,12 +7,15 @@ package urldenylist
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -88,6 +91,9 @@ func Open(v *vault.Vault, now func() time.Time) (*Store, error) {
 // Add puts a URL or domain on the denylist. Adding an existing entry refreshes
 // its recorded time and is not an error.
 func (s *Store) Add(ctx context.Context, kind Kind, value string) error {
+	if err := validateRawEntry(kind, value); err != nil {
+		return err
+	}
 	value = normalize(kind, value)
 	if value == "" {
 		return fmt.Errorf("denylist %s value is empty", kind)
@@ -96,13 +102,22 @@ func (s *Store) Add(ctx context.Context, kind Kind, value string) error {
 	defer s.snapshots.mutations.Unlock()
 
 	rec := record{AddedAt: s.now().UTC()}
+	var next Snapshot
 	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
+		candidate, err := s.prospectiveSnapshot(tx, kind, value)
+		if err != nil {
+			return fmt.Errorf("validate prospective crawl policy: %w", err)
+		}
+		next = candidate
 		if err := s.records.Put(tx, s.key(kind, value), rec); err != nil {
 			return fmt.Errorf("store denylist entry: %w", err)
 		}
 
 		return nil
 	}); err != nil {
+		if errors.Is(err, errInvalidCrawlPolicy) {
+			return fmt.Errorf("validate crawl policy: %w", err)
+		}
 		return s.reconcileFailedMutation(
 			ctx,
 			fmt.Errorf("update denylist: %w", err),
@@ -111,7 +126,7 @@ func (s *Store) Add(ctx context.Context, kind Kind, value string) error {
 			true,
 		)
 	}
-	s.snapshots.storeAdded(kind, value)
+	s.snapshots.current.Store(&next)
 
 	return nil
 }
@@ -173,8 +188,12 @@ func (s *Store) Entries(ctx context.Context) ([]Entry, error) {
 // Snapshot is an in-memory copy of the denylist for fast per-result matching
 // within a single search, avoiding a store read per candidate result.
 type Snapshot struct {
-	urls    map[string]struct{}
-	domains map[string]struct{}
+	urls           map[string]struct{}
+	canonicalURLs  map[string]int
+	domains        map[string]struct{}
+	canonicalHosts map[string]struct{}
+	wireURLs       []string
+	wireDomains    []string
 }
 
 func (s *Store) Snapshot() Snapshot {
@@ -198,7 +217,7 @@ func (s *Store) loadSnapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("view denylist: %w", err)
 	}
 
-	return snap, nil
+	return compileSnapshot(snap), nil
 }
 
 // IsEmpty reports whether the snapshot holds no entries, letting callers skip
@@ -213,13 +232,22 @@ func (s Snapshot) Blocks(rawURL string) bool {
 	if _, ok := s.urls[rawURL]; ok {
 		return true
 	}
+	if len(s.canonicalURLs) > 0 {
+		if canonical, ok := yagocrawlcontract.CanonicalURL(rawURL); ok &&
+			s.canonicalURLs[canonical] > 0 {
+			return true
+		}
+	}
 
 	host := hostOf(rawURL)
 	if host == "" {
 		return false
 	}
 	for {
-		if _, ok := s.domains[host]; ok {
+		if _, found := s.domains[host]; found {
+			return true
+		}
+		if _, found := s.canonicalHosts[host]; found {
 			return true
 		}
 		separator := strings.IndexByte(host, '.')
@@ -259,4 +287,29 @@ func hostOf(rawURL string) string {
 	}
 
 	return strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+}
+
+func validateRawEntry(kind Kind, value string) error {
+	maximumBytes := yagocrawlcontract.MaximumCrawlURLBytes
+	switch kind {
+	case KindURL:
+	case KindDomain:
+		maximumBytes = yagocrawlcontract.MaximumCrawlURLDenylistDomainBytes
+	default:
+		return fmt.Errorf("denylist kind is invalid")
+	}
+	if !utf8.ValidString(value) || len(value) > maximumBytes {
+		return fmt.Errorf("denylist %s value is invalid", kind)
+	}
+
+	return nil
+}
+
+func (s Snapshot) CrawlURLDenylist() (yagocrawlcontract.CrawlURLDenylist, error) {
+	policy, err := yagocrawlcontract.NewCrawlURLDenylist(s.wireURLs, s.wireDomains)
+	if err != nil {
+		return yagocrawlcontract.CrawlURLDenylist{}, fmt.Errorf("build crawl URL denylist: %w", err)
+	}
+
+	return policy, nil
 }

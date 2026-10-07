@@ -3,11 +3,13 @@ package yagonode
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 type blockedSearchExplanationSource struct {
@@ -31,21 +33,32 @@ func TestSearchExplanationExecutionBudgetHandlesShortBudgetAndPanic(t *testing.T
 	); err != nil || len(outcome.partialFailures) != 0 {
 		t.Fatalf("short execution = %#v, %v", outcome, err)
 	}
-	logged := false
+	ctx, _ := tracectx.StartServerSpan(
+		t.Context(),
+		"00-11111111111111112222222222222222-3333333333333333-01",
+	)
+	serverSpanID, ok := tracectx.ServerSpanIDFromContext(ctx)
+	if !ok {
+		t.Fatal("server span ID missing")
+	}
+	var logged slog.Attr
 	panicValue := func() (recovered any) {
 		defer func() { recovered = recover() }()
 		panicBudget := newSearchExplanationExecutionBudget()
 		panicBudget.admission = newInteractiveSearchAdmission(1)
-		panicBudget.panicLog = func(context.Context, string, ...any) { logged = true }
+		panicBudget.panicLog = func(_ context.Context, _ string, attributes ...any) {
+			logged = attributes[0].(slog.Attr)
+		}
 		_, _ = panicBudget.execute(
-			t.Context(),
-			func(context.Context) (searchExplainOutcome, error) { panic("explain panic") },
+			ctx,
+			func(context.Context) (searchExplainOutcome, error) { panic("PRIVATE_PANIC_CANARY") },
 		)
 
 		return nil
 	}()
-	if panicValue != "explain panic" || !logged {
-		t.Fatalf("panic = %#v, logged = %t", panicValue, logged)
+	if panicValue != "PRIVATE_PANIC_CANARY" || logged.Key != "serverSpanId" ||
+		logged.Value.String() != serverSpanID || logged.Value.String() == "PRIVATE_PANIC_CANARY" {
+		t.Fatalf("panic = %#v, logged = %#v", panicValue, logged)
 	}
 }
 

@@ -57,7 +57,7 @@ func (s *FallbackSearcher) supplement(
 	if outcomes.primaryReady {
 		primary = outcomes.primary.response
 		if outcomes.primary.err != nil {
-			primary = failedParallelPrimaryResponse(primary)
+			primary = failedParallelPrimaryResponse(primary, outcomes.primary.err)
 		}
 	}
 	if !outcomes.providerReady {

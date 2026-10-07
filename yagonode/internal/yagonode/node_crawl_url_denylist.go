@@ -14,9 +14,7 @@ func crawlURLDenylistSource(
 	store *urldenylist.Store,
 ) crawlbroker.CrawlURLDenylistSource {
 	return func() (yagocrawlcontract.CrawlURLDenylist, error) {
-		exactURLs, domains := store.Snapshot().Values()
-
-		return yagocrawlcontract.NewCrawlURLDenylist(exactURLs, domains)
+		return store.Snapshot().CrawlURLDenylist()
 	}
 }
 

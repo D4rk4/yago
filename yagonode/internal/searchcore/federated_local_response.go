@@ -11,10 +11,15 @@ func federatedBranchFailure(
 	response Response,
 	source string,
 	reason string,
+	err error,
 ) Response {
 	response.PartialFailures = append(response.PartialFailures, PartialFailure{
 		Source: source,
 		Reason: reason,
+		Diagnostic: PartialFailureDiagnostic{
+			Stage: FailureStageForSource(source),
+			Cause: FailureCauseFor(err),
+		},
 	})
 
 	return response

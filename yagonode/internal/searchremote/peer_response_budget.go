@@ -32,6 +32,7 @@ type remoteQueryBudget struct {
 	decodedBytesRemaining    int
 	resultEntriesRemaining   int
 	abstractEntriesRemaining int
+	omittedPeerJobs          int
 	peerCalls                *outboundCallBudget
 	transportAttempts        *outboundCallBudget
 	morphologyCalls          *outboundCallBudget
@@ -56,6 +57,7 @@ type termAbstractReduction struct {
 	outcomes        []peerAbstractOutcome
 	entryLimits     []int
 	abstracts       map[yagomodel.Hash]map[yagomodel.Hash]struct{}
+	skippedTerms    map[yagomodel.Hash]struct{}
 	catalog         termAbstractCatalog
 	responseBytes   int
 	retainedEntries int
@@ -174,7 +176,9 @@ func (s searcher) queryPeerJobsWithinBudget(
 	requests []peerSearchJob,
 	budget *remoteQueryBudget,
 ) []peerSearchResult {
-	requests = peerJobsWithinCallBudget(requests, budget)
+	var skipped int
+	requests, skipped, _ = peerJobsWithinCallBudget(requests, budget)
+	budget.omittedPeerJobs += skipped
 	limited := peerJobsWithResponseLimits(requests, budget.responseBytesRemaining)
 	reduction := peerResourceReduction{
 		results: make([]peerSearchResult, len(limited)),
@@ -258,7 +262,10 @@ func (s searcher) termAbstractCatalogWithinBudget(
 	budget *remoteQueryBudget,
 ) (termAbstractCatalog, []searchcore.PartialFailure) {
 	requests := abstractSearchJobs(req, targets, s.networkName, s.perPeerTimeout)
-	requests = peerJobsWithinCallBudget(requests, budget)
+	var skipped int
+	var skippedTerms map[yagomodel.Hash]struct{}
+	requests, skipped, skippedTerms = peerJobsWithinCallBudget(requests, budget)
+	budget.omittedPeerJobs += skipped
 	limited := peerJobsWithResponseLimits(requests, budget.responseBytesRemaining)
 	reduction := termAbstractReduction{
 		outcomes: make([]peerAbstractOutcome, len(limited)),
@@ -267,7 +274,8 @@ func (s searcher) termAbstractCatalogWithinBudget(
 			len(limited),
 			budget.abstractEntriesRemaining,
 		),
-		abstracts: make(map[yagomodel.Hash]map[yagomodel.Hash]struct{}, len(targets)),
+		abstracts:    make(map[yagomodel.Hash]map[yagomodel.Hash]struct{}, len(targets)),
+		skippedTerms: skippedTerms,
 		catalog: termAbstractCatalog{
 			peerTerms: make(
 				map[string]map[yagomodel.Hash]map[yagomodel.Hash]struct{},
@@ -322,9 +330,13 @@ func (reduction *termAbstractReduction) finish(
 	reputation *reputationSession,
 ) (termAbstractCatalog, []searchcore.PartialFailure) {
 	successes := make(map[yagomodel.Hash]int, len(targets))
+	locallyCutTerms := make(map[yagomodel.Hash]struct{})
 	var failures []searchcore.PartialFailure
 	for _, outcome := range reduction.outcomes {
 		if !outcome.responded {
+			if outcome.term != "" && locallyCutRemoteCall(outcome.responseErr) {
+				locallyCutTerms[outcome.term] = struct{}{}
+			}
 			recordPeerFailure(reputation, outcome.peer, outcome.responseErr)
 			failures = append(failures, peerFailure(outcome.peer, outcome.responseErr))
 			continue
@@ -338,17 +350,49 @@ func (reduction *termAbstractReduction) finish(
 		reputation.record(outcome.peer, observationOutcome(nil, false))
 	}
 	for _, target := range targets {
-		if successes[target.term] == 0 {
-			failures = append(failures, searchcore.PartialFailure{
-				Source: searchcore.PartialFailureSourceRemoteYaCy,
-				Reason: "no index abstract responses for " + target.term.String(),
-			})
+		failure, found := abstractResponseFailure(
+			target,
+			successes[target.term],
+			reduction.skippedTerms,
+			locallyCutTerms,
+		)
+		if found {
+			failures = append(failures, failure)
 		}
 	}
 
 	reduction.catalog.terms = reduction.abstracts
 
 	return reduction.catalog, failures
+}
+
+func abstractResponseFailure(
+	target termPeerTargets,
+	successes int,
+	skippedTerms, locallyCutTerms map[yagomodel.Hash]struct{},
+) (searchcore.PartialFailure, bool) {
+	if successes > 0 {
+		return searchcore.PartialFailure{}, false
+	}
+	if _, skipped := skippedTerms[target.term]; skipped {
+		return searchcore.PartialFailure{}, false
+	}
+	if _, cut := locallyCutTerms[target.term]; cut {
+		return searchcore.PartialFailure{}, false
+	}
+	cause := searchcore.FailureCauseNoTarget
+	if len(target.peers) > 0 {
+		cause = searchcore.FailureCauseUnavailable
+	}
+
+	return searchcore.PartialFailure{
+		Source: searchcore.PartialFailureSourceRemoteYaCy,
+		Reason: "no index abstract responses for " + target.term.String(),
+		Diagnostic: searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteSearch,
+			Cause: cause,
+		},
+	}, true
 }
 
 func recordPeerFailure(

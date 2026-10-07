@@ -73,10 +73,10 @@ yagonode/internal/searchindex/raw_requirement_positions.go:60:14
 yagonode/internal/searchindex/stored_hit_evidence.go:343:15
 yagonode/internal/searchindex/stored_requirement_evidence.go:208:27
 yagonode/internal/searchindex/stored_requirement_evidence.go:208:6
-yagonode/internal/searchremote/peer_response_budget.go:101:41
+yagonode/internal/searchremote/peer_response_budget.go:103:41
 yagonode/internal/snippetmark/query_matches.go:151:33
 yagonode/internal/spellcheck/frequency_synopsis.go:40:27
 yagonode/internal/spellcheck/symspell.go:182:10
 yagonode/internal/websearch/ddgs_provider.go:197:30
-yagonode/internal/websearch/web_seed_admission.go:91:3
+yagonode/internal/websearch/web_seed_admission.go:95:3
 yagonode/internal/yagonode/node_login_processor_model.go:33:14

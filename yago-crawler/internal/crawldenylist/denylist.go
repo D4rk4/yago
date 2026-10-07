@@ -13,9 +13,10 @@ import (
 )
 
 type snapshot struct {
-	revision []byte
-	urls     map[string]struct{}
-	domains  map[string]struct{}
+	revision      []byte
+	urls          map[string]struct{}
+	canonicalURLs map[string]int
+	domains       map[string]struct{}
 }
 
 type Denylist struct {
@@ -42,12 +43,16 @@ func (d *Denylist) Apply(policy yagocrawlcontract.CrawlURLDenylist) error {
 		return nil
 	}
 	next := &snapshot{
-		revision: append([]byte(nil), verified.Revision...),
-		urls:     make(map[string]struct{}, len(verified.ExactURLs)),
-		domains:  make(map[string]struct{}, len(verified.Domains)),
+		revision:      append([]byte(nil), verified.Revision...),
+		urls:          make(map[string]struct{}, len(verified.ExactURLs)),
+		canonicalURLs: make(map[string]int, len(verified.ExactURLs)),
+		domains:       make(map[string]struct{}, len(verified.Domains)),
 	}
 	for _, exactURL := range verified.ExactURLs {
 		next.urls[exactURL] = struct{}{}
+		if canonical, ok := yagocrawlcontract.CanonicalURL(exactURL); ok {
+			next.canonicalURLs[canonical]++
+		}
 	}
 	for _, domain := range verified.Domains {
 		next.domains[domain] = struct{}{}
@@ -87,6 +92,12 @@ func (d *Denylist) Blocks(rawURL string) bool {
 	}
 	if _, blocked := current.urls[rawURL]; blocked {
 		return true
+	}
+	if len(current.canonicalURLs) > 0 {
+		if canonical, ok := yagocrawlcontract.CanonicalURL(rawURL); ok &&
+			current.canonicalURLs[canonical] > 0 {
+			return true
+		}
 	}
 	parsed, err := url.Parse(rawURL)
 	if err != nil {

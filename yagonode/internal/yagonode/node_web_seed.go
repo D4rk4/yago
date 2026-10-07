@@ -11,6 +11,7 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 const (
@@ -148,7 +149,8 @@ func (s *webCrawlSeeder) Seed(ctx context.Context, urls []string) {
 		slog.Int("coalesced", coalesced),
 		slog.Int("failed", failed),
 		slog.Int("alreadyStored", known),
-		slog.Int("unusableUrl", unusable))
+		slog.Int("unusableUrl", unusable),
+		tracectx.ServerSpanAttribute(ctx))
 }
 
 func (*webCrawlSeeder) AdmitCrawlSeedURL(raw string) (string, bool) {

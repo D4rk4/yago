@@ -2,14 +2,13 @@ package crawlresults
 
 import (
 	"context"
-	"errors"
 	"testing"
 )
 
 func TestSingleIngestRejectsStaleValidationThroughNakFallback(t *testing.T) {
 	nacked := 0
 	delivery := IngestDelivery{
-		ValidateMutation: func(context.Context) error { return errors.New("stale") },
+		ValidateMutation: func(context.Context) error { return ErrLeaseLost },
 		Nak: func(context.Context) error {
 			nacked++
 

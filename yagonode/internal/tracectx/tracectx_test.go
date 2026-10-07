@@ -1,9 +1,14 @@
 package tracectx
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
+	"encoding/json"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseAcceptsValidTraceparent(t *testing.T) {
@@ -15,6 +20,46 @@ func TestParseAcceptsValidTraceparent(t *testing.T) {
 	if trace, ok := Parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00"); !ok ||
 		trace.Sampled {
 		t.Fatalf("unsampled flag misread: %+v", trace)
+	}
+}
+
+func TestParseSamplesTraceFlagBitZero(t *testing.T) {
+	for _, test := range []struct {
+		flags   string
+		sampled bool
+	}{
+		{flags: "00"},
+		{flags: "01", sampled: true},
+		{flags: "02"},
+		{flags: "03", sampled: true},
+	} {
+		header := "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-" + test.flags
+		trace, ok := Parse(header)
+		if !ok || trace.Sampled != test.sampled {
+			t.Fatalf("Parse(%q) = %+v, ok=%v; sampled=%v", header, trace, ok, test.sampled)
+		}
+		rendered, valid := Parse(trace.Header())
+		if !valid || rendered.Sampled != test.sampled {
+			t.Fatalf("trace header %q did not preserve sample state", trace.Header())
+		}
+	}
+}
+
+func TestStartServerSpanPreservesSampledBitFromParent(t *testing.T) {
+	ctx, trace := StartServerSpan(
+		context.Background(),
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-03",
+	)
+	if !trace.Sampled {
+		t.Fatal("server child cleared the sampled bit from its parent")
+	}
+	stored, ok := FromContext(ctx)
+	if !ok || stored != trace {
+		t.Fatalf("stored child trace = %+v, ok=%v; want %+v", stored, ok, trace)
+	}
+	parsed, ok := Parse(trace.Header())
+	if !ok || parsed != trace {
+		t.Fatalf("server child header = %q parsed as %+v, ok=%v", trace.Header(), parsed, ok)
 	}
 }
 
@@ -59,6 +104,171 @@ func TestContextRoundTrip(t *testing.T) {
 		t.Fatal("empty context must carry no trace")
 	}
 }
+
+func TestStartServerSpanPreservesTraceAndCreatesNewSpan(t *testing.T) {
+	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	const parentID = "00f067aa0ba902b7"
+	ctx, trace := StartServerSpan(
+		context.Background(),
+		"00-"+traceID+"-"+parentID+"-01",
+	)
+	if trace.TraceID != traceID || !trace.Sampled {
+		t.Fatalf("server trace = %+v, want preserved trace ID and sampling", trace)
+	}
+	if trace.SpanID == parentID {
+		t.Fatal("server span reused the caller's parent ID")
+	}
+	if stored, ok := FromContext(ctx); !ok || stored != trace {
+		t.Fatalf("stored trace = %+v, ok=%v; want %+v", stored, ok, trace)
+	}
+	serverSpanID, ok := ServerSpanIDFromContext(ctx)
+	if !ok || serverSpanID != trace.SpanID {
+		t.Fatalf("server span ID = %q, ok=%v; want %q", serverSpanID, ok, trace.SpanID)
+	}
+}
+
+func TestStartServerSpanCreatesFreshTraceForInvalidOrMissingParent(t *testing.T) {
+	for _, header := range []string{"", "invalid-traceparent"} {
+		ctx, trace := StartServerSpan(context.Background(), header)
+		if len(trace.TraceID) != 32 || len(trace.SpanID) != 16 {
+			t.Errorf("trace for header %q has invalid ID lengths: %+v", header, trace)
+		}
+		if _, err := hex.DecodeString(trace.TraceID + trace.SpanID); err != nil {
+			t.Errorf("trace for header %q has invalid hexadecimal IDs: %v", header, err)
+		}
+		serverSpanID, ok := ServerSpanIDFromContext(ctx)
+		if !ok || serverSpanID != trace.SpanID {
+			t.Errorf("server span ID for header %q = %q, ok=%v", header, serverSpanID, ok)
+		}
+	}
+}
+
+func TestServerSpanIDDoesNotTrustTraceOnlyContext(t *testing.T) {
+	clientTrace, ok := Parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	if !ok {
+		t.Fatal("synthetic traceparent was rejected")
+	}
+	ctx := WithContext(context.Background(), clientTrace)
+	if serverSpanID, ok := ServerSpanIDFromContext(ctx); ok {
+		t.Fatalf("trace-only context exposed server span ID %q", serverSpanID)
+	}
+}
+
+func TestServerSpanAttributeOnlyEmitsTrustedServerSpan(t *testing.T) {
+	clientTrace, ok := Parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	if !ok {
+		t.Fatal("synthetic traceparent was rejected")
+	}
+	trustedContext, serverTrace := StartServerSpan(
+		context.Background(),
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+	)
+	for _, test := range []struct {
+		name       string
+		ctx        context.Context
+		wantSpanID string
+	}{
+		{name: "absent", ctx: context.Background()},
+		{name: "caller trace", ctx: WithContext(context.Background(), clientTrace)},
+		{name: "trusted server span", ctx: trustedContext, wantSpanID: serverTrace.SpanID},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&output, nil))
+			logger.LogAttrs(test.ctx, slog.LevelInfo, "event", ServerSpanAttribute(test.ctx))
+
+			entry := map[string]any{}
+			if err := json.Unmarshal(output.Bytes(), &entry); err != nil {
+				t.Fatalf("decode log record: %v", err)
+			}
+			spanID, present := entry["serverSpanId"].(string)
+			if test.wantSpanID == "" {
+				if present {
+					t.Fatalf("untrusted context emitted server span ID %q", spanID)
+				}
+
+				return
+			}
+			if !present || spanID != test.wantSpanID {
+				t.Fatalf(
+					"serverSpanId = %q, present=%v; want %q",
+					spanID,
+					present,
+					test.wantSpanID,
+				)
+			}
+		})
+	}
+}
+
+func TestCopyServerSpanRequiresTrustedSource(t *testing.T) {
+	target := context.WithValue(context.Background(), copyServerSpanTargetKey{}, "target")
+	clientTrace, ok := Parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	if !ok {
+		t.Fatal("synthetic traceparent was rejected")
+	}
+	for _, source := range []context.Context{
+		context.Background(),
+		WithContext(context.Background(), clientTrace),
+	} {
+		if copied := CopyServerSpan(target, source); copied != target {
+			t.Fatal("source without a trusted server span changed target context")
+		}
+	}
+}
+
+func TestCopyServerSpanPreservesTargetContextAndCopiesOnlyServerID(t *testing.T) {
+	sourceBase, cancelSource := context.WithCancel(
+		context.WithValue(context.Background(), copyServerSpanSourceKey{}, "source"),
+	)
+	defer cancelSource()
+	sourceDeadlineContext, cancelSourceDeadline := context.WithDeadline(
+		sourceBase,
+		time.Now().Add(2*time.Hour),
+	)
+	defer cancelSourceDeadline()
+	source, trace := StartServerSpan(
+		sourceDeadlineContext,
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+	)
+	targetBase, cancelTarget := context.WithDeadline(
+		context.WithValue(context.Background(), copyServerSpanTargetKey{}, "target"),
+		time.Now().Add(time.Hour),
+	)
+	defer cancelTarget()
+	copied := CopyServerSpan(targetBase, source)
+
+	serverSpanID, ok := ServerSpanIDFromContext(copied)
+	if !ok || serverSpanID != trace.SpanID {
+		t.Fatalf("copied server span ID = %q, ok=%v; want %q", serverSpanID, ok, trace.SpanID)
+	}
+	if _, ok := FromContext(copied); ok {
+		t.Fatal("copy inherited the source trace context")
+	}
+	if copied.Value(copyServerSpanTargetKey{}) != "target" ||
+		copied.Value(copyServerSpanSourceKey{}) != nil {
+		t.Fatal("copy did not preserve only target values")
+	}
+	targetDeadline, targetHasDeadline := targetBase.Deadline()
+	copiedDeadline, copiedHasDeadline := copied.Deadline()
+	if !targetHasDeadline || !copiedHasDeadline || !copiedDeadline.Equal(targetDeadline) {
+		t.Fatal("copy did not preserve target deadline")
+	}
+
+	cancelSource()
+	if copied.Err() != nil {
+		t.Fatalf("source cancellation reached copied context: %v", copied.Err())
+	}
+	cancelTarget()
+	if copied.Err() != context.Canceled {
+		t.Fatalf("target cancellation = %v, want %v", copied.Err(), context.Canceled)
+	}
+}
+
+type (
+	copyServerSpanSourceKey struct{}
+	copyServerSpanTargetKey struct{}
+)
 
 func TestSamplingIsAMinorityShare(t *testing.T) {
 	sampled := 0

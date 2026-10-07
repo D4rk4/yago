@@ -144,6 +144,7 @@ func TestRecoverySkipsFuzzyRetryAfterExactStageHardFailure(t *testing.T) {
 	inner := staticSearcher{resp: webFallbackExactStageFailure(
 		searchcore.Request{Query: "slow"},
 		webFallbackExactStageTimeoutFailure,
+		searchcore.FailureCauseDeadline,
 	)}
 	response, err := withZeroResultRecovery(inner, retry, nil).Search(
 		t.Context(),

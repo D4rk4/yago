@@ -3,6 +3,7 @@ package searchsession
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -18,6 +19,82 @@ type refreshSequenceSearcher struct {
 type cancelingExtensionSearcher struct {
 	cancel context.CancelFunc
 	calls  int
+}
+
+func TestMergedSessionFailuresUsesVisibleIdentityAndRefreshesDiagnostics(t *testing.T) {
+	current := []searchcore.PartialFailure{
+		{
+			Source: searchcore.PartialFailureSourceRemoteYaCy,
+			Reason: "peer timed out",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageRemoteSearch,
+				Cause: searchcore.FailureCauseDeadline,
+			},
+		},
+		{
+			Source: searchcore.PartialFailureSourceLocalSearch,
+			Reason: "local index timed out",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalSearch,
+				Cause: searchcore.FailureCauseDeadline,
+			},
+		},
+	}
+	additional := []searchcore.PartialFailure{
+		{
+			Source: searchcore.PartialFailureSourceRemoteYaCy,
+			Reason: "peer timed out",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageRemoteSearch,
+				Cause: searchcore.FailureCauseBudget,
+			},
+		},
+		{
+			Source: searchcore.PartialFailureSourceRemoteYaCy,
+			Reason: "peer unavailable",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageRemoteSearch,
+				Cause: searchcore.FailureCauseUnavailable,
+			},
+		},
+		{
+			Source: searchcore.PartialFailureSourceRemoteStage,
+			Reason: "peer timed out",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageRemoteStage,
+				Cause: searchcore.FailureCauseCapacity,
+			},
+		},
+	}
+	currentBefore := cloneSessionFailures(current)
+	additionalBefore := cloneSessionFailures(additional)
+
+	got := mergedSessionFailures(current, additional)
+	want := []searchcore.PartialFailure{
+		{
+			Source: searchcore.PartialFailureSourceRemoteYaCy,
+			Reason: "peer timed out",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageRemoteSearch,
+				Cause: searchcore.FailureCauseBudget,
+			},
+		},
+		current[1],
+		additional[1],
+		additional[2],
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("merged failures = %#v, want %#v", got, want)
+	}
+	if !reflect.DeepEqual(current, currentBefore) {
+		t.Fatal("merging failures mutated the current slice")
+	}
+	if !reflect.DeepEqual(additional, additionalBefore) {
+		t.Fatal("merging failures mutated the additional slice")
+	}
+	if unchanged := mergedSessionFailures(current, nil); !reflect.DeepEqual(unchanged, current) {
+		t.Fatalf("correct failure rows changed without refresh: %#v", unchanged)
+	}
 }
 
 func (s *cancelingExtensionSearcher) Search(

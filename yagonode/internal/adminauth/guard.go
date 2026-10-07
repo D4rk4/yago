@@ -110,7 +110,9 @@ func (s *Service) guardSession(w http.ResponseWriter, r *http.Request, next http
 		)
 	}
 
-	next.ServeHTTP(w, r.WithContext(contextWithSession(r.Context(), record)))
+	request := r.WithContext(contextWithSession(r.Context(), record))
+	next.ServeHTTP(w, request)
+	r.Pattern = request.Pattern
 }
 
 // unauthenticated redirects a browser navigation to the login page (or the

@@ -9,15 +9,15 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
-// TestInstrumentHTTPAdoptsInboundTrace pins OPS-10: a valid inbound
-// traceparent reaches the handler's context unchanged, and a request without
-// one gets a fresh trace rooted here.
-func TestInstrumentHTTPAdoptsInboundTrace(t *testing.T) {
+func TestInstrumentHTTPStartsServerSpan(t *testing.T) {
 	var seen tracectx.Trace
+	var seenServerSpanID string
+	var hasServerSpanID bool
 	handler := instrumentHTTP(
 		metrics.NewHTTPEndpointMetrics(),
 		http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			seen, _ = tracectx.FromContext(r.Context())
+			seenServerSpanID, hasServerSpanID = tracectx.ServerSpanIDFromContext(r.Context())
 		}),
 	)
 
@@ -32,12 +32,31 @@ func TestInstrumentHTTPAdoptsInboundTrace(t *testing.T) {
 	if seen.TraceID != "4bf92f3577b34da6a3ce929d0e0e4736" || !seen.Sampled {
 		t.Fatalf("inbound trace not adopted: %+v", seen)
 	}
+	if seen.SpanID == "00f067aa0ba902b7" {
+		t.Fatal("server reused the caller's parent span ID")
+	}
+	if !hasServerSpanID || seenServerSpanID != seen.SpanID {
+		t.Fatalf(
+			"server span ID = %q, ok=%v; want %q",
+			seenServerSpanID,
+			hasServerSpanID,
+			seen.SpanID,
+		)
+	}
 
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, "/yacysearch.json", nil,
 	))
 	if len(seen.TraceID) != 32 || seen.TraceID == "4bf92f3577b34da6a3ce929d0e0e4736" {
 		t.Fatalf("fresh trace missing: %+v", seen)
+	}
+	if !hasServerSpanID || seenServerSpanID != seen.SpanID {
+		t.Fatalf(
+			"fresh server span ID = %q, ok=%v; want %q",
+			seenServerSpanID,
+			hasServerSpanID,
+			seen.SpanID,
+		)
 	}
 }
 

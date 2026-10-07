@@ -47,8 +47,11 @@ func mergedSessionFailures(
 	merged := cloneSessionFailures(current)
 	for _, candidate := range additional {
 		found := false
-		for _, existing := range merged {
-			if existing == candidate {
+		for index := range merged {
+			sameVisibleFailure := merged[index].Source == candidate.Source &&
+				merged[index].Reason == candidate.Reason
+			if sameVisibleFailure {
+				merged[index].Diagnostic = candidate.Diagnostic
 				found = true
 
 				break

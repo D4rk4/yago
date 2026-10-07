@@ -25,6 +25,13 @@ for the crawler runtime. Install the Alpine v3.24 packages
 OpenSSL 3.5.7 packages inherited from the pinned base. These versions are
 available for both release architectures, `amd64` and `arm64`.
 
+Maintenance update, 2026-10-07: the current package pins are
+`ca-certificates=20260909-r0`, `libcrypto3=3.5.9-r0`, `libssl3=3.5.9-r0`, and
+`pcre2=10.49-r0`. PCRE2 addresses CVE-2026-103111; the OpenSSL revisions replace
+pins no longer present in the Alpine package index. The complete pinned package
+set resolves on both release architectures. The runtime base and service layout
+remain as decided above.
+
 Alpine Linux is distributed under multiple open-source licenses. Firefox ESR is
 MPL-2.0 with GPL and LGPL components, CA certificates are MPL-2.0 and MIT, and
 Liberation fonts are OFL-1.1. The statically linked Go crawler remains unchanged.

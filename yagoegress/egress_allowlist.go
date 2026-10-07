@@ -1,6 +1,9 @@
 package yagoegress
 
-import "net/netip"
+import (
+	"net/netip"
+	"slices"
+)
 
 // Option adjusts a Guard at construction time.
 type Option func(*Guard)
@@ -13,6 +16,8 @@ type Option func(*Guard)
 // grade NAT, multicast, and reserved ranges stay blocked, so a non-private
 // prefix in the list never grants access to those ranges.
 func WithPrivateAllowlist(prefixes []netip.Prefix) Option {
+	prefixes = slices.Clone(prefixes)
+
 	return func(g *Guard) {
 		g.allowedPrivatePrefixes = prefixes
 	}

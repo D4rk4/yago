@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -27,6 +28,7 @@ func readCrawlerRuntimePolicy(
 	message, err := client.ReadRuntimePolicy(
 		readContext,
 		&crawlrpc.CrawlerRuntimePolicyRequest{WorkerId: config.WorkerID},
+		grpc.WaitForReady(true),
 	)
 	if status.Code(err) == codes.Unimplemented {
 		return config, nil

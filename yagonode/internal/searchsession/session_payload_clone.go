@@ -112,8 +112,9 @@ func cloneSessionFailures(
 	cloned := make([]searchcore.PartialFailure, len(failures))
 	for index, failure := range failures {
 		cloned[index] = searchcore.PartialFailure{
-			Source: strings.Clone(failure.Source),
-			Reason: strings.Clone(failure.Reason),
+			Source:     strings.Clone(failure.Source),
+			Reason:     strings.Clone(failure.Reason),
+			Diagnostic: failure.Diagnostic,
 		}
 	}
 

@@ -67,5 +67,5 @@ func assembleExplanationEvidenceSearcher(
 	explanation := assembleRankingEvidenceStages(retrieval, assembly)
 	explanation = withEffectiveWebFallbackRequest(explanation, assembly.webFallback)
 
-	return withParsedQuery(explanation)
+	return withParsedQuery(withSearchExecutionDiagnostics(explanation))
 }

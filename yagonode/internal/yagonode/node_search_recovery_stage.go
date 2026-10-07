@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 var (
@@ -83,10 +84,14 @@ func (s recoveryBudgetSearcher) Search(
 	release, err := acquire(stageContext)
 	if err != nil {
 		if errors.Is(err, errInteractiveSearchCapacity) {
-			return recoverySearchFailure(req, profile, profile.capacityFailure), nil
+			return recoverySearchFailure(
+				req, profile, profile.capacityFailure, searchcore.FailureCauseCapacity,
+			), nil
 		}
 		if errors.Is(err, context.DeadlineExceeded) && context.Cause(ctx) == nil {
-			return recoverySearchFailure(req, profile, profile.timeoutFailure), nil
+			return recoverySearchFailure(
+				req, profile, profile.timeoutFailure, searchcore.FailureCauseDeadline,
+			), nil
 		}
 
 		return searchcore.Response{}, fmt.Errorf("%s admission: %w", profile.operation, err)
@@ -96,45 +101,68 @@ func (s recoveryBudgetSearcher) Search(
 
 	select {
 	case outcome := <-outcomes:
-		if outcome.failure != nil {
-			panic(outcome.failure)
-		}
-		if outcome.err == nil {
-			return outcome.response, nil
-		}
-		if errors.Is(outcome.err, context.DeadlineExceeded) {
-			outcome.response.Request = req
-			outcome.response.PartialFailures = append(
-				outcome.response.PartialFailures,
-				searchcore.PartialFailure{
-					Source: profile.failureSource,
-					Reason: profile.timeoutFailure,
-				},
-			)
-
-			return outcome.response, nil
-		}
-		outcome.response.Request = req
-		slog.WarnContext(ctx, recoveryStageFailedLogMessage,
-			slog.String("stage", profile.failureSource),
-			slog.Any("error", outcome.err),
-		)
-		outcome.response.PartialFailures = append(
-			outcome.response.PartialFailures,
-			searchcore.PartialFailure{
-				Source: profile.failureSource,
-				Reason: profile.failedMessage,
-			},
-		)
-
-		return outcome.response, nil
+		return recoverySearchOutcomeResult(ctx, req, profile, outcome), nil
 	case <-hardContext.Done():
 		if ctx.Err() != nil {
 			return searchcore.Response{}, fmt.Errorf("%s: %w", profile.operation, ctx.Err())
 		}
 
-		return recoverySearchFailure(req, profile, profile.timeoutFailure), nil
+		return recoverySearchFailure(
+			req, profile, profile.timeoutFailure, searchcore.FailureCauseDeadline,
+		), nil
 	}
+}
+
+func recoverySearchOutcomeResult(
+	ctx context.Context,
+	req searchcore.Request,
+	profile recoveryStageProfile,
+	outcome recoverySearchOutcome,
+) searchcore.Response {
+	if outcome.failure != nil {
+		panic(outcome.failure)
+	}
+	if outcome.err == nil {
+		return outcome.response
+	}
+	outcome.response.Request = req
+	if errors.Is(outcome.err, context.DeadlineExceeded) {
+		outcome.response.PartialFailures = append(
+			outcome.response.PartialFailures,
+			searchcore.PartialFailure{
+				Source: profile.failureSource,
+				Reason: profile.timeoutFailure,
+				Diagnostic: searchcore.PartialFailureDiagnostic{
+					Stage: searchcore.FailureStageForSource(profile.failureSource),
+					Cause: searchcore.FailureCauseDeadline,
+				},
+			},
+		)
+
+		return outcome.response
+	}
+
+	cause := searchcore.FailureCauseFor(outcome.err)
+	slog.WarnContext(
+		ctx,
+		recoveryStageFailedLogMessage,
+		slog.String("stage", profile.failureSource),
+		slog.String("cause", searchcore.FailureCauseLabel(cause)),
+		tracectx.ServerSpanAttribute(ctx),
+	)
+	outcome.response.PartialFailures = append(
+		outcome.response.PartialFailures,
+		searchcore.PartialFailure{
+			Source: profile.failureSource,
+			Reason: profile.failedMessage,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageForSource(profile.failureSource),
+				Cause: cause,
+			},
+		},
+	)
+
+	return outcome.response
 }
 
 func (s recoveryBudgetSearcher) run(
@@ -147,7 +175,7 @@ func (s recoveryBudgetSearcher) run(
 	defer func() {
 		outcome.failure = recover()
 		if outcome.failure != nil {
-			s.panicLog(ctx, s.effectiveProfile().panicMessage, slog.Any("panic", outcome.failure))
+			s.panicLog(ctx, s.effectiveProfile().panicMessage, tracectx.ServerSpanAttribute(ctx))
 		}
 		release()
 		outcomes <- outcome
@@ -159,12 +187,17 @@ func recoverySearchFailure(
 	req searchcore.Request,
 	profile recoveryStageProfile,
 	reason string,
+	cause searchcore.FailureCause,
 ) searchcore.Response {
 	return searchcore.Response{
 		Request: req,
 		PartialFailures: []searchcore.PartialFailure{{
 			Source: profile.failureSource,
 			Reason: reason,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageForSource(profile.failureSource),
+				Cause: cause,
+			},
 		}},
 	}
 }

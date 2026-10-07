@@ -1,8 +1,12 @@
 package websearch
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -89,5 +93,61 @@ func TestStrictSafeSearchRefusesBackendWithoutEnforcement(t *testing.T) {
 		errStrictSafeSearchUnavailable,
 	) {
 		t.Fatalf("strict-safe error = %v", err)
+	}
+}
+
+func TestStrictSafeSearchUnavailableUsesBoundedUnsupportedClassification(t *testing.T) {
+	wrapped := fmt.Errorf("PRIVATE_ERROR_CANARY: %w", errStrictSafeSearchUnavailable)
+	if got := webSearchFailureReason(wrapped); got != "unsupported" {
+		t.Fatalf("strict-safe reason = %q, want unsupported", got)
+	}
+	if got := webSearchFailureCause(wrapped); got != searchcore.FailureCauseUnsupported {
+		t.Fatalf("strict-safe cause = %v, want unsupported", got)
+	}
+
+	previousLogger := slog.Default()
+	var output bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+	provider := NewDDGSProvider(DDGSConfig{
+		Client: &http.Client{Transport: roundTripFunc(func(*http.Request) (
+			*http.Response,
+			error,
+		) {
+			t.Fatal("unsupported backend received a strict-safe request")
+			return nil, nil
+		})},
+		Backend:    backendBing,
+		SafeSearch: safeSearchStrict,
+		Now:        fixedClock(),
+	})
+	primary := &stubSearcher{resp: searchcore.Response{
+		Results: []searchcore.Result{{URL: "https://local.example/"}},
+	}}
+	response, err := NewParallelSearcher(primary, provider, enabled).Search(
+		t.Context(),
+		searchcore.Request{Query: "PRIVATE_QUERY_CANARY", Limit: 5},
+	)
+	if err != nil || len(response.Results) != 1 || len(response.PartialFailures) != 1 {
+		t.Fatalf("parallel strict-safe result = %#v, %v", response, err)
+	}
+	failure := response.PartialFailures[0]
+	if failure.Diagnostic.Stage != searchcore.FailureStageWebSearch ||
+		failure.Diagnostic.Cause != searchcore.FailureCauseUnsupported {
+		t.Fatalf("strict-safe partial failure = %+v", failure)
+	}
+	logged := output.String()
+	if !strings.Contains(logged, msgFallbackFailed) ||
+		!strings.Contains(logged, `"reason":"unsupported"`) {
+		t.Fatalf("strict-safe failure log lacks bounded cause: %s", logged)
+	}
+	for _, canary := range []string{
+		"PRIVATE_QUERY_CANARY",
+		"PRIVATE_ERROR_CANARY",
+		errStrictSafeSearchUnavailable.Error(),
+	} {
+		if strings.Contains(logged, canary) {
+			t.Fatalf("strict-safe failure log exposed %q: %s", canary, logged)
+		}
 	}
 }

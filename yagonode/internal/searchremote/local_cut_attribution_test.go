@@ -3,6 +3,7 @@ package searchremote
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -21,16 +22,28 @@ func TestPeerFailureBlamesTheLocalStageForThisNodesOwnCuts(t *testing.T) {
 	t.Parallel()
 
 	peer := yagomodel.Seed{Hash: yagomodel.WordHash("peer")}
-	for _, cause := range []error{
-		errRemoteSearchBudgetExhausted,
-		errRemoteSearchAdmissionCanceled,
+	for _, test := range []struct {
+		err   error
+		cause searchcore.FailureCause
+	}{
+		{err: errRemoteSearchBudgetExhausted, cause: searchcore.FailureCauseBudget},
+		{
+			err:   fmt.Errorf("%w: %w", errRemoteSearchAdmissionCanceled, context.DeadlineExceeded),
+			cause: searchcore.FailureCauseDeadline,
+		},
 	} {
-		failure := peerFailure(peer, cause)
+		failure := peerFailure(peer, test.err)
 		if failure.Source != searchcore.PartialFailureSourceRemoteStage {
-			t.Fatalf("source for %v = %q, want the local remote stage", cause, failure.Source)
+			t.Fatalf("source for %v = %q, want the local remote stage", test.err, failure.Source)
 		}
-		if failure.Reason != cause.Error() {
-			t.Fatalf("reason for %v = %q", cause, failure.Reason)
+		if failure.Reason != test.err.Error() {
+			t.Fatalf("reason for %v = %q", test.err, failure.Reason)
+		}
+		if failure.Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteStage,
+			Cause: test.cause,
+		}) {
+			t.Fatalf("diagnostic for %v = %+v", test.err, failure.Diagnostic)
 		}
 	}
 
@@ -40,11 +53,18 @@ func TestPeerFailureBlamesTheLocalStageForThisNodesOwnCuts(t *testing.T) {
 	if refused.Source != peer.Hash.String() {
 		t.Fatalf("peer error source = %q, want the peer hash %q", refused.Source, peer.Hash)
 	}
+	if refused.Diagnostic != (searchcore.PartialFailureDiagnostic{
+		Stage: searchcore.FailureStageRemotePeer,
+		Cause: searchcore.FailureCauseBackend,
+	}) {
+		t.Fatalf("peer error diagnostic = %+v", refused.Diagnostic)
+	}
 	if anonymous := peerFailure(
 		yagomodel.Seed{},
 		errors.New("connection refused"),
-	); anonymous.Source != searchcore.PartialFailureSourceRemoteYaCy {
-		t.Fatalf("hashless peer source = %q", anonymous.Source)
+	); anonymous.Source != searchcore.PartialFailureSourceRemoteYaCy ||
+		anonymous.Diagnostic.Stage != searchcore.FailureStageRemotePeer {
+		t.Fatalf("hashless peer source/diagnostic = %q/%+v", anonymous.Source, anonymous.Diagnostic)
 	}
 }
 
@@ -64,7 +84,11 @@ func TestTermlessFanOutIsDecidedOnWordHashesNotTermCount(t *testing.T) {
 		newRemoteQueryBudget(),
 	)
 	if len(resp.PartialFailures) != 1 ||
-		resp.PartialFailures[0].Source != searchcore.PartialFailureSourceQueryShape {
+		resp.PartialFailures[0].Source != searchcore.PartialFailureSourceQueryShape ||
+		resp.PartialFailures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageQueryShape,
+			Cause: searchcore.FailureCauseNoTarget,
+		}) {
 		t.Fatalf("failures = %#v, want a single query-shape note", resp.PartialFailures)
 	}
 
@@ -78,7 +102,11 @@ func TestTermlessFanOutIsDecidedOnWordHashesNotTermCount(t *testing.T) {
 		newRemoteQueryBudget(),
 	)
 	if len(real.PartialFailures) != 1 ||
-		real.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteYaCy {
+		real.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteYaCy ||
+		real.PartialFailures[0].Diagnostic != (searchcore.PartialFailureDiagnostic{
+			Stage: searchcore.FailureStageRemoteSearch,
+			Cause: searchcore.FailureCauseNoTarget,
+		}) {
 		t.Fatalf(
 			"failures = %#v, want the missing peer source reported as a loss",
 			real.PartialFailures,
@@ -116,6 +144,12 @@ func TestSearchVariantsReportsThePassesItSkipped(t *testing.T) {
 	}
 	if !strings.Contains(failure.Reason, "3 query variant(s) skipped") {
 		t.Fatalf("reason = %q, want the three unrun passes counted", failure.Reason)
+	}
+	if failure.Diagnostic != (searchcore.PartialFailureDiagnostic{
+		Stage: searchcore.FailureStageRemoteStage,
+		Cause: searchcore.FailureCauseCanceled,
+	}) {
+		t.Fatalf("diagnostic = %+v", failure.Diagnostic)
 	}
 }
 

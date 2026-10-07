@@ -45,29 +45,39 @@ func TestOutboundCallBudgetAcquisitionAndRestoration(t *testing.T) {
 }
 
 func TestPeerJobsWithinCallBudgetCapsMorphologyAndAttachesAttemptBudgets(t *testing.T) {
-	if got := peerJobsWithinCallBudget(nil, nil); got != nil {
-		t.Fatalf("nil query budget jobs = %#v", got)
+	if got, skipped, terms := peerJobsWithinCallBudget(
+		nil,
+		nil,
+	); got != nil || skipped != 0 || terms != nil {
+		t.Fatalf("nil query budget plan = %#v/%d/%v", got, skipped, terms)
 	}
-	if got := peerJobsWithinCallBudget(
+	if got, skipped, terms := peerJobsWithinCallBudget(
 		[]peerSearchJob{{}},
 		&remoteQueryBudget{},
-	); got != nil {
-		t.Fatalf("missing call budget jobs = %#v", got)
+	); got != nil || skipped != 0 || terms != nil {
+		t.Fatalf("missing call budget plan = %#v/%d/%v", got, skipped, terms)
 	}
 
 	budget := &remoteQueryBudget{
 		peerCalls:       newOutboundCallBudget(3),
 		morphologyCalls: newOutboundCallBudget(1),
 	}
-	got := peerJobsWithinCallBudget([]peerSearchJob{
-		{morphology: true},
-		{morphology: true},
-		{},
-		{},
-		{},
+	got, skipped, skippedTerms := peerJobsWithinCallBudget([]peerSearchJob{
+		{term: hashFor("morphology-a"), morphology: true},
+		{term: hashFor("morphology-b"), morphology: true},
+		{term: hashFor("exact-a")},
+		{term: hashFor("exact-b")},
+		{term: hashFor("exact-c")},
 	}, budget)
-	if len(got) != 3 || !got[0].morphology || got[1].morphology || got[2].morphology {
+	if len(got) != 3 || !got[0].morphology || got[1].morphology || got[2].morphology ||
+		skipped != 2 || len(skippedTerms) != 2 {
 		t.Fatalf("planned jobs = %#v", got)
+	}
+	if _, ok := skippedTerms[hashFor("morphology-b")]; !ok {
+		t.Fatalf("morphology budget omission was not tracked: %v", skippedTerms)
+	}
+	if _, ok := skippedTerms[hashFor("exact-c")]; !ok {
+		t.Fatalf("call budget omission was not tracked: %v", skippedTerms)
 	}
 	for position, job := range got {
 		if job.peerCalls != budget.peerCalls {
@@ -83,16 +93,19 @@ func TestPeerJobsWithinCallBudgetCapsMorphologyAndAttachesAttemptBudgets(t *test
 	}
 
 	budget.peerCalls = newOutboundCallBudget(0)
-	if got := peerJobsWithinCallBudget([]peerSearchJob{{}}, budget); len(got) != 0 {
-		t.Fatalf("exhausted query budget jobs = %#v", got)
+	if got, skipped, terms := peerJobsWithinCallBudget(
+		[]peerSearchJob{{term: hashFor("exhausted")}},
+		budget,
+	); len(got) != 0 || skipped != 1 || len(terms) != 1 {
+		t.Fatalf("exhausted query budget plan = %#v/%d/%v", got, skipped, terms)
 	}
 	budget.peerCalls = newOutboundCallBudget(1)
 	budget.morphologyCalls = nil
-	if got := peerJobsWithinCallBudget(
-		[]peerSearchJob{{morphology: true}, {}},
+	if got, skipped, terms := peerJobsWithinCallBudget(
+		[]peerSearchJob{{term: hashFor("morphology-no-budget"), morphology: true}, {}},
 		budget,
-	); len(got) != 1 || got[0].morphology {
-		t.Fatalf("missing morphology budget jobs = %#v", got)
+	); len(got) != 1 || got[0].morphology || skipped != 1 || len(terms) != 1 {
+		t.Fatalf("missing morphology budget plan = %#v/%d/%v", got, skipped, terms)
 	}
 }
 

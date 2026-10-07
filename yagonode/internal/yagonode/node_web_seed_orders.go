@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 const (
@@ -60,11 +62,15 @@ func (s *webCrawlSeeder) publishWebSeedOrder(
 		duplicate, publishErr := s.queue.PublishOnce(ctx, identity, order)
 		err = publishErr
 		if err == nil {
+			outcome := "published"
+			if duplicate {
+				outcome = "coalesced"
+			}
 			slog.DebugContext(
 				ctx,
 				msgWebSeedPublished,
-				slog.String("url", identity),
-				slog.Bool("coalesced", duplicate),
+				slog.String("outcome", outcome),
+				tracectx.ServerSpanAttribute(ctx),
 			)
 
 			if duplicate {
@@ -78,15 +84,12 @@ func (s *webCrawlSeeder) publishWebSeedOrder(
 			break
 		}
 	}
-	// The profile name is the constant "web-fallback-seed", so on its own it
-	// attributes nothing; the URL is what an operator needs to chase a seed
-	// that never became a document.
 	slog.WarnContext(
 		ctx,
 		msgWebSeedFailed,
-		slog.String("profile", order.Profile.Name),
-		slog.String("url", identity),
-		slog.Any("error", err),
+		slog.String("outcome", "failed"),
+		slog.String("cause", searchcore.FailureCauseLabel(searchcore.FailureCauseFor(err))),
+		tracectx.ServerSpanAttribute(ctx),
 	)
 
 	return webSeedPublicationFailed

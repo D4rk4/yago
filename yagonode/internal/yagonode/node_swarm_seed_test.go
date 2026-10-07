@@ -131,9 +131,16 @@ func TestNodePublicSearchInstallsSwarmSeedCrawl(t *testing.T) {
 	if !ok {
 		t.Fatalf("searcher = %T, want a parsedQuerySearcher", searcher)
 	}
-	effective, ok := parsed.inner.(effectiveWebFallbackRequestSearcher)
+	diagnostics, ok := parsed.inner.(searchExecutionDiagnosticsSearcher)
 	if !ok {
-		t.Fatalf("parsed inner = %T, want an effectiveWebFallbackRequestSearcher", parsed.inner)
+		t.Fatalf("parsed inner = %T, want search execution diagnostics", parsed.inner)
+	}
+	effective, ok := diagnostics.next.(effectiveWebFallbackRequestSearcher)
+	if !ok {
+		t.Fatalf(
+			"diagnostic inner = %T, want an effectiveWebFallbackRequestSearcher",
+			diagnostics.next,
+		)
 	}
 	continuity, ok := effective.inner.(searchsession.RecentSuccessSearcher)
 	if !ok {

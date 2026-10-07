@@ -2,10 +2,13 @@ package crawlresults
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 )
 
 const msgIngestLeaseLost = "crawl ingest lease lost"
+
+var ErrLeaseLost = errors.New("crawl lease lost")
 
 func authorizeIngestDelivery(
 	ctx context.Context,
@@ -61,13 +64,18 @@ func rejectIngestAuthorization(
 	delivery IngestDelivery,
 	err error,
 ) {
-	slog.DebugContext(ctx, msgIngestLeaseLost,
-		slog.String("sourceUrl", delivery.Batch.SourceURL),
-		slog.Any("error", err),
-	)
-	if delivery.LeaseLost != nil {
-		_ = delivery.LeaseLost(ctx)
-	} else if delivery.Nak != nil {
+	if errors.Is(err, ErrLeaseLost) {
+		slog.DebugContext(ctx, msgIngestLeaseLost,
+			slog.String("sourceUrl", delivery.Batch.SourceURL),
+			slog.Any("error", err),
+		)
+		if delivery.LeaseLost != nil {
+			_ = delivery.LeaseLost(ctx)
+
+			return
+		}
+	}
+	if delivery.Nak != nil {
 		_ = delivery.Nak(ctx)
 	}
 }

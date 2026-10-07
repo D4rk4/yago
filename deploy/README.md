@@ -834,9 +834,10 @@ Both product Dockerfiles pin the Go builder and final runtime base images by
 SHA-256 digest. Base-image changes are therefore explicit source changes rather
 than mutable-tag resolution at build time. The readable tags remain beside the
 digests so operators can see the selected release. The crawler Dockerfile also
-pins its Alpine OpenSSL runtime libraries to `3.5.8-r0` and the browser's
+pins its Alpine OpenSSL runtime libraries to `3.5.9-r0` and the browser's
 `libblkid` and `libmount` dependencies to the corrected `2.42.3-r1`; package-index movement
-cannot silently choose another revision during a release build.
+cannot silently choose another revision during a release build. PCRE2 is pinned
+to `10.49-r0` for the corrected browser runtime.
 
 Release CI supplies `VERSION` and `SOURCE_REVISION` from the exact tag and
 source commit. Set `SOURCE_REVISION` explicitly when building another source

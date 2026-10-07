@@ -236,6 +236,10 @@ func TestParallelSearcherKeepsVerifiedWebAnswerAfterPrimaryFailure(t *testing.T)
 		response.PartialFailures[0] != (searchcore.PartialFailure{
 			Source: searchcore.PartialFailureSourceLocalSearch,
 			Reason: msgParallelPrimaryFailed,
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageLocalSearch,
+				Cause: searchcore.FailureCauseBackend,
+			},
 		}) {
 		t.Fatalf("response = %#v, error = %v", response, err)
 	}
@@ -505,7 +509,8 @@ func TestParallelSearcherProviderFailureKeepsPrimaryAnswer(t *testing.T) {
 		enabled,
 	).Search(t.Context(), searchcore.Request{Query: "gap", Limit: 10})
 	if err != nil || len(response.Results) != 1 || response.Results[0].Title != "Local gap" ||
-		len(response.PartialFailures) != 1 || response.PartialFailures[0] != webProviderFailure() {
+		len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0] != webProviderFailure(errors.New("provider failed")) {
 		t.Fatalf("response = %#v, error = %v", response, err)
 	}
 }

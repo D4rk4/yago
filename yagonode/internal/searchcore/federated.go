@@ -36,6 +36,7 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 				resp,
 				PartialFailureSourceLocalSearch,
 				federatedLocalSearchFailed,
+				err,
 			)
 			resp.Request = req
 			if len(resp.Results) > 0 {
@@ -67,6 +68,7 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 			localResp,
 			PartialFailureSourceLocalSearch,
 			federatedLocalSearchFailed,
+			localErr,
 		)
 	}
 	remoteResp := remote.resp
@@ -75,6 +77,7 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 			remoteResp,
 			PartialFailureSourceRemoteYaCy,
 			federatedRemoteSearchFailed,
+			remote.err,
 		)
 	}
 	localResp = responseSatisfyingDomainConstraints(req, localResp)

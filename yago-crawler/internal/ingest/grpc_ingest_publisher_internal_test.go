@@ -157,6 +157,32 @@ func TestGRPCIngestPublisherFencesLeaseSession(t *testing.T) {
 	}
 }
 
+func TestGRPCIngestPublisherPreservesGrantWhenRetryingUnavailable(t *testing.T) {
+	registry := crawllease.NewGrantRegistry(t.Context(), 1)
+	if err := registry.Track("lease"); err != nil {
+		t.Fatal(err)
+	}
+	registry.Renew(time.Now(), time.Hour, []string{"lease"}, []string{"lease"})
+	client := &fakeSubmitter{responses: []error{
+		status.Error(codes.Unavailable, "lease authorization retry"),
+		nil,
+	}}
+	publisher := NewGRPCIngestPublisher(
+		client,
+		WithIngestLeaseSession("worker", "session", registry),
+	)
+	ctx := crawllease.WithLeaseID(t.Context(), "lease")
+	if err := publisher.Publish(ctx, testBatch()); err != nil {
+		t.Fatalf("publish after transient authorization error: %v", err)
+	}
+	if client.calls != 2 {
+		t.Fatalf("submit calls = %d, want one retry", client.calls)
+	}
+	if !registry.Confirmed("lease") {
+		t.Fatal("unavailable ingest revoked the live lease grant")
+	}
+}
+
 func TestGRPCIngestPublisherRejectsMissingLeaseIdentity(t *testing.T) {
 	registry := crawllease.NewGrantRegistry(t.Context(), 1)
 	client := &fakeSubmitter{}

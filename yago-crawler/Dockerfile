@@ -42,10 +42,11 @@ RUN apk add --no-cache \
     firefox-esr=140.12.0-r0 \
     font-liberation=2.1.5-r2 \
     libblkid=2.42.3-r1 \
-    libcrypto3=3.5.8-r0 \
+    libcrypto3=3.5.9-r0 \
     libexpat=2.8.5-r0 \
     libmount=2.42.3-r1 \
-    libssl3=3.5.8-r0
+    libssl3=3.5.9-r0 \
+    pcre2=10.49-r0
 
 ENV HOME=/tmp \
     XDG_CACHE_HOME=/tmp/.cache \

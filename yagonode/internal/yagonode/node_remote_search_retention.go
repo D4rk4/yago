@@ -50,6 +50,10 @@ func (s remoteSearchRetentionSearcher) Search(
 			PartialFailures: []searchcore.PartialFailure{{
 				Source: searchcore.PartialFailureSourceRemoteStage,
 				Reason: remoteSearchCapacityFailure,
+				Diagnostic: searchcore.PartialFailureDiagnostic{
+					Stage: searchcore.FailureStageRemoteStage,
+					Cause: searchcore.FailureCauseCapacity,
+				},
 			}},
 		}, nil
 	}

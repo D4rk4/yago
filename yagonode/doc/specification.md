@@ -326,7 +326,10 @@ it is not an assumed deployment dependency.
   or transport boundary SHALL require a separate accepted ADR and synchronized
   Docker, systemd, and package changes before implementation.
 * Completed local, peer, and web rows SHALL be preserved symmetrically when a sibling source fails or loses a cancellation race.
+* Remote query work omitted by call or response budgets SHALL be recorded as a local budget failure. Completed peer failures SHALL remain attributable after a local decoding limit is reached. A fully queried empty answer SHALL remain complete; omitted query-bearing work SHALL NOT establish exhaustion.
+* Ingest authorization SHALL distinguish confirmed lease loss from operational authorization failures. Only confirmed loss SHALL return FailedPrecondition and revoke a crawler grant; context, storage and other non-lease authorization failures SHALL remain retryable without revoking a valid grant.
 * The served-result denylist SHALL load its immutable snapshot at startup and SHALL publish a changed snapshot after a successful mutation or a durable reconciliation. An add whose durable state cannot be read SHALL fail closed by including the requested entry; an indeterminate remove SHALL retain the prior policy. Request-time filtering SHALL NOT scan persistent storage or iterate every configured domain for each result.
+* Canonicalizable exact URL denylist rules SHALL match the shared canonical URL identity in served results and crawl admission. Persisted raw aliases SHALL remain individually removable, and removing one alias SHALL NOT unblock another retained alias. Domain suffix rules and literal matching for values outside canonicalization SHALL remain supported. Additions SHALL validate both retained raw rules and the canonical outgoing policy against the shared contract limits within the serialized mutation, before durable or visible state changes. Rejected additions SHALL leave both unchanged. Legacy oversized policies SHALL remain readable and removable without automatic pruning. The receiver SHALL verify the existing wire revision before compiling canonical match indexes.
 * The same durable URL/domain denylist SHALL be the crawler admission policy.
   Before a current crawler opens its order stream, the node SHALL provide one
   canonical revisioned snapshot and the crawler SHALL fail closed until that
@@ -1049,7 +1052,9 @@ it is not an assumed deployment dependency.
   A current node SHALL also include explicit crawler storage-reserve and
   hysteresis values in optional startup runtime-policy fields 19 and 20,
   including zero. A current crawler SHALL apply those values before checkpoint
-  maintenance and storage-gate construction. Omission by an older node SHALL
+  maintenance and storage-gate construction. The startup policy read SHALL wait
+  for connection readiness within the existing connect timeout and caller
+  cancellation boundary. Omission by an older node SHALL
   preserve the crawler's environment bootstrap; later live changes SHALL
   continue through heartbeat storage-policy fields.
   At or above the boundary, a fresh order SHALL wait before expansion and SHALL

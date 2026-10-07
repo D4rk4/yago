@@ -55,7 +55,14 @@ func TestStableWindowDetachesAndIsolatesCompletePayload(t *testing.T) {
 				"body": {"term": {1, 2}},
 			},
 		}},
-		PartialFailures: []searchcore.PartialFailure{{Source: "peer", Reason: "late"}},
+		PartialFailures: []searchcore.PartialFailure{{
+			Source: "peer",
+			Reason: "late",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageRemotePeer,
+				Cause: searchcore.FailureCauseDeadline,
+			},
+		}},
 		Facets: []searchcore.FacetGroup{{
 			Name: "host", Terms: []searchcore.FacetTerm{{Term: "example.test", Count: 1}},
 		}},
@@ -96,7 +103,12 @@ func TestStableWindowDetachesAndIsolatesCompletePayload(t *testing.T) {
 		result.FieldTermPositions["body"]["term"][0] != 1 ||
 		result.FieldTermPositions["body"]["term"][1] != 2 ||
 		cached.PartialFailures[0] != (searchcore.PartialFailure{
-			Source: "peer", Reason: "late",
+			Source: "peer",
+			Reason: "late",
+			Diagnostic: searchcore.PartialFailureDiagnostic{
+				Stage: searchcore.FailureStageRemotePeer,
+				Cause: searchcore.FailureCauseDeadline,
+			},
 		}) || cached.Facets[0].Name != "host" ||
 		cached.Facets[0].Terms[0].Term != "example.test" {
 		t.Fatalf("cached payload changed: %#v", cached)

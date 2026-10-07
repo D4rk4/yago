@@ -3,15 +3,15 @@ package crawlbroker
 import (
 	"context"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-var errLeaseLost = errors.New("crawl lease lost")
+var errLeaseLost = crawlresults.ErrLeaseLost
 
 var beforeLeaseRenewalWrite = func() {}
 

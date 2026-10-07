@@ -16,14 +16,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/tracectx"
 )
 
 //go:embed templates/portal.tmpl
 var templateFS embed.FS
 
 const (
-	brand    = "yago"
-	htmlType = "text/html; charset=utf-8"
+	brand                 = "yago"
+	htmlType              = "text/html; charset=utf-8"
+	msgPortalSearchFailed = "public portal search failed"
 	// portalPageSize is how many results one portal page shows; portalMaxPage
 	// bounds how deep a visitor can page so a crafted ?p= cannot request an
 	// unbounded window.
@@ -278,7 +281,11 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		started := portalClock()
 		results, err := p.source.Search(r.Context(), query, dom, offset, portalPageSize)
 		if err != nil {
-			slog.WarnContext(r.Context(), "public portal search failed", slog.Any("error", err))
+			slog.WarnContext(
+				r.Context(),
+				msgPortalSearchFailed,
+				tracectx.ServerSpanAttribute(r.Context()),
+			)
 			data.Error = "Search is temporarily unavailable."
 		} else {
 			window := portalSearchWindow{
