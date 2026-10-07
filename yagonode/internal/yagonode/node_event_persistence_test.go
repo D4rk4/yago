@@ -255,7 +255,7 @@ func TestVaultCloseHandlesAbsentAndCompletedEventDrain(t *testing.T) {
 
 func TestVaultCloseSkipsActiveEventWriterAfterBoundedWait(t *testing.T) {
 	previousLogger := slog.Default()
-	var logOutput bytes.Buffer
+	var logOutput concurrentLogCapture
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&logOutput, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
 	active := &atomic.Bool{}

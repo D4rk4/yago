@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -424,7 +423,7 @@ func TestCrawlRuntimeReportsOwnedStateCloseFailure(t *testing.T) {
 	}
 	want := errors.New("state close failed")
 	closeCrawlRuntimeStateVault = func(*vault.Vault) error { return want }
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })

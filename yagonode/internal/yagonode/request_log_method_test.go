@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -37,7 +36,7 @@ func TestRequestLogMethodBucketsCustomAndEmptyValues(t *testing.T) {
 }
 
 func TestRequestLogBucketsMethodWithoutChangingHandlerRequest(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	defer slog.SetDefault(previousLogger)

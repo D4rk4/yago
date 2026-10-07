@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"context"
 	"log/slog"
 	"net/http"
@@ -19,7 +18,7 @@ import (
 func TestConfigureLogging(t *testing.T) {
 	previous := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(previous) })
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	if err := configureLoggingTo(func(string) string { return "debug" }, &output); err != nil {
 		t.Fatalf("configure: %v", err)
 	}

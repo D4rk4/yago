@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -38,7 +37,7 @@ func (q *webSeedPublicationQueue) PublishOnce(
 
 func TestWebSeedOutcomeDistinguishesPublishedCoalescedAndFailed(t *testing.T) {
 	previous := slog.Default()
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	})))

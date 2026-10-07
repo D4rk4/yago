@@ -231,6 +231,7 @@ func TestBuildCrawlRuntimeAppliesQualityGate(t *testing.T) {
 	if runtime == nil {
 		t.Fatal("an enabled crawl config must yield a runtime")
 	}
+	t.Cleanup(runtime.Close)
 }
 
 func TestLoadDerivedConfigsRejectsRemainingBadEnv(t *testing.T) {

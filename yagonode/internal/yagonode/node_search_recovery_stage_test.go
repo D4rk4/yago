@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -14,7 +13,7 @@ import (
 )
 
 func TestRecoveryStageFailureLogUsesBoundedCause(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })

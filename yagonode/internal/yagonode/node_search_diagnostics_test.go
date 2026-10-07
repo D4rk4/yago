@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -83,7 +82,7 @@ func assertDiagnosticCanariesAbsent(t *testing.T, logged string, canaries ...str
 }
 
 func TestAssembledSearchLogsBoundedSourceSummary(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
@@ -292,7 +291,7 @@ func privateDiagnosticFailure() error {
 
 func assertSearchExecutionDiagnosticCase(t *testing.T, test searchExecutionDiagnosticCase) {
 	t.Helper()
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -359,7 +358,7 @@ func assertDiagnosticFailureCount(
 }
 
 func TestTavilyDiagnosticAndAccessLogsShareServerSpan(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
@@ -441,7 +440,7 @@ func TestTavilyDiagnosticAndAccessLogsShareServerSpan(t *testing.T) {
 }
 
 func TestPortalSearchErrorDoesNotLogSourceError(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
@@ -493,7 +492,7 @@ func TestPortalSearchErrorDoesNotLogSourceError(t *testing.T) {
 }
 
 func TestPublicAndAdminSearchSurfacesShareDiagnostics(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })
@@ -610,7 +609,7 @@ func assertOneSearchDiagnosticAdded(t *testing.T, logged func() string, before i
 }
 
 func TestAdminExplainSearchUsesOneSharedDiagnostic(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previousLogger) })

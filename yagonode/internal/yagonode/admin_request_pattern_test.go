@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -15,7 +14,7 @@ import (
 )
 
 func TestAuthenticatedOpsRequestLogsMatchedRouteAndBucketsUnmatchedPath(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -29,7 +28,10 @@ func TestAuthenticatedOpsRequestLogsMatchedRouteAndBucketsUnmatchedPath(t *testi
 	assertUnmatchedOpsRequestLog(t, handler, &output, updatedCookies)
 }
 
-func authenticatedOpsLogHandler(t *testing.T, output *bytes.Buffer) (http.Handler, []*http.Cookie) {
+func authenticatedOpsLogHandler(
+	t *testing.T,
+	output *concurrentLogCapture,
+) (http.Handler, []*http.Cookie) {
 	t.Helper()
 	endpoints := metrics.NewHTTPEndpointMetrics()
 	service, err := provisionAdminAuth(
@@ -65,7 +67,7 @@ func authenticatedOpsLogHandler(t *testing.T, output *bytes.Buffer) (http.Handle
 func assertMatchedOpsRequestLog(
 	t *testing.T,
 	handler http.Handler,
-	output *bytes.Buffer,
+	output *concurrentLogCapture,
 	cookies []*http.Cookie,
 ) []*http.Cookie {
 	t.Helper()
@@ -104,7 +106,7 @@ func assertMatchedOpsRequestLog(
 func assertUnmatchedOpsRequestLog(
 	t *testing.T,
 	handler http.Handler,
-	output *bytes.Buffer,
+	output *concurrentLogCapture,
 	cookies []*http.Cookie,
 ) {
 	t.Helper()
@@ -129,7 +131,7 @@ func assertUnmatchedOpsRequestLog(
 	assertOpsLogOmits(t, output.String(), unmatchedPath, unmatchedQuery)
 }
 
-func singleOpsRequestLog(t *testing.T, output *bytes.Buffer) map[string]any {
+func singleOpsRequestLog(t *testing.T, output *concurrentLogCapture) map[string]any {
 	t.Helper()
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
 	if len(lines) != 1 {

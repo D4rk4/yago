@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -25,10 +24,10 @@ func (p *peerBlockReadProbe) Blocked(ctx context.Context) ([]peerblock.Blocked, 
 	return p.read(ctx)
 }
 
-func capturePeerBlockLifecycleLogs(t *testing.T) *bytes.Buffer {
+func capturePeerBlockLifecycleLogs(t *testing.T) *concurrentLogCapture {
 	t.Helper()
 	previous := slog.Default()
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	})))

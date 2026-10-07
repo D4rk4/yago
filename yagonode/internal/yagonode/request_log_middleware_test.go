@@ -1,7 +1,6 @@
 package yagonode
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
@@ -15,7 +14,7 @@ import (
 )
 
 func TestRuntimeServerFailureLogsUseDistinctServerSpansAndSafeRoutes(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	defer slog.SetDefault(previousLogger)
@@ -255,7 +254,7 @@ func assertRuntimeServerFailureMetrics(
 }
 
 func TestRuntimeServerFailureLogBucketsUnmatchedPath(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previousLogger := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	defer slog.SetDefault(previousLogger)

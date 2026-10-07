@@ -446,7 +446,7 @@ func crawlStateCompactionPostInstallCases(
 }
 
 func TestCrawlStateCompactionReportsInstalledDurabilityWarning(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
@@ -464,7 +464,7 @@ func TestCrawlStateCompactionReportsInstalledDurabilityWarning(t *testing.T) {
 }
 
 func TestCrawlStateCompactionReportsInstalledSuccess(t *testing.T) {
-	var output bytes.Buffer
+	var output concurrentLogCapture
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
