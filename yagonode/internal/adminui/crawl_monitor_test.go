@@ -75,7 +75,7 @@ func TestConsoleCrawlRendersMonitor(t *testing.T) {
 		t.Fatalf("status %d", got.status)
 	}
 	for _, want := range []string{
-		"Crawl monitor", "news-crawl", "cds-tag--info", "7 pending, 2 leased",
+		"Crawl monitor", "news-crawl", "cds-tag--info", "7 pending orders, 2 leased orders",
 		"Crawl results and rejections", "Robots-denied", "currently retained in this monitor",
 		"Whole-run max (pages)", "Per-host max (pages)", ">900<", ">250<",
 		"one page can increment both", "Crawler connection:", ">Connected<",
@@ -105,10 +105,10 @@ func TestConsoleCrawlMonitorShowsUnavailableQueue(t *testing.T) {
 
 	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: CrawlMonitor{}}})
 	got := do(t, console, "/admin/crawl/monitor")
-	if !strings.Contains(got.body, "order queue: Unavailable") {
+	if !strings.Contains(got.body, "Node order queue:</strong> Unavailable") {
 		t.Fatal("failed queue probe should render unavailable")
 	}
-	if strings.Contains(got.body, "0 pending, 0 leased") {
+	if strings.Contains(got.body, "0 pending orders, 0 leased orders") {
 		t.Fatal("failed queue probe rendered fabricated zero depths")
 	}
 }

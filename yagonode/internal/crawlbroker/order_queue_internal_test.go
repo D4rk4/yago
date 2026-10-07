@@ -22,8 +22,14 @@ type scriptedEngine struct {
 	readErrors      map[vault.Name]error
 	deleteErrors    map[vault.Name]error
 	scanErrors      map[vault.Name]error
+	pageErrors      map[vault.Name]error
 	replayNext      bool
 	betweenReplay   func()
+	afterUpdate     func()
+	afterViewAt     int
+	afterView       func()
+	viewCount       int
+	transactional   bool
 }
 
 func newScriptedEngine() *scriptedEngine {
@@ -35,6 +41,7 @@ func newScriptedEngine() *scriptedEngine {
 		readErrors:      map[vault.Name]error{},
 		deleteErrors:    map[vault.Name]error{},
 		scanErrors:      map[vault.Name]error{},
+		pageErrors:      map[vault.Name]error{},
 	}
 }
 
@@ -44,17 +51,41 @@ func (e *scriptedEngine) Update(ctx context.Context, fn func(vault.EngineTxn) er
 	}
 	if e.replayNext {
 		e.replayNext = false
-		before := cloneScriptedBuckets(e.buckets)
-		if err := fn(scriptedTxn{engine: e, writable: true}); err != nil {
-			return err
+		if e.transactional {
+			trial := *e
+			trial.buckets = cloneScriptedBuckets(e.buckets)
+			if err := fn(scriptedTxn{engine: &trial, writable: true}); err != nil {
+				return err
+			}
+		} else {
+			before := cloneScriptedBuckets(e.buckets)
+			if err := fn(scriptedTxn{engine: e, writable: true}); err != nil {
+				return err
+			}
+			e.buckets = before
 		}
-		e.buckets = before
 		if e.betweenReplay != nil {
 			e.betweenReplay()
 		}
 	}
 
-	return fn(scriptedTxn{engine: e, writable: true})
+	if e.transactional {
+		transaction := *e
+		transaction.buckets = cloneScriptedBuckets(e.buckets)
+		if err := fn(scriptedTxn{engine: &transaction, writable: true}); err != nil {
+			return err
+		}
+		e.buckets = transaction.buckets
+	} else if err := fn(scriptedTxn{engine: e, writable: true}); err != nil {
+		return err
+	}
+	if e.afterUpdate != nil {
+		afterUpdate := e.afterUpdate
+		e.afterUpdate = nil
+		afterUpdate()
+	}
+
+	return nil
 }
 
 func cloneScriptedBuckets(
@@ -75,8 +106,19 @@ func (e *scriptedEngine) View(ctx context.Context, fn func(vault.EngineTxn) erro
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
 	}
+	if err := fn(scriptedTxn{engine: e}); err != nil {
+		return err
+	}
+	if e.afterView != nil {
+		e.viewCount++
+		if e.viewCount == e.afterViewAt {
+			afterView := e.afterView
+			e.afterView = nil
+			afterView()
+		}
+	}
 
-	return fn(scriptedTxn{engine: e})
+	return nil
 }
 
 func (e *scriptedEngine) Provision(name vault.Name) error {
@@ -171,6 +213,51 @@ func (b scriptedBucket) Scan(prefix vault.Key, fn func(vault.Key, []byte) (bool,
 	}
 
 	return nil
+}
+
+func (b scriptedBucket) ReadPageAfter(after vault.Key, limit int) (vault.BucketPage, error) {
+	if err := b.engine.pageErrors[b.name]; err != nil {
+		return vault.BucketPage{}, err
+	}
+	if err := b.engine.scanErrors[b.name]; err != nil {
+		return vault.BucketPage{}, err
+	}
+	keys := make([]string, 0, len(b.engine.buckets[b.name]))
+	for key := range b.engine.buckets[b.name] {
+		if after == nil || bytes.Compare([]byte(key), after) > 0 {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	more := len(keys) > limit
+	if more {
+		keys = keys[:limit]
+	}
+	page := vault.BucketPage{Entries: make([]vault.BucketPageEntry, 0, len(keys)), More: more}
+	for _, key := range keys {
+		page.Entries = append(page.Entries, vault.BucketPageEntry{
+			Key:   vault.Key(key),
+			Value: append([]byte(nil), b.engine.buckets[b.name][key]...),
+		})
+	}
+
+	return page, nil
+}
+
+func (b scriptedBucket) LastKey() (vault.Key, error) {
+	if err := b.engine.scanErrors[b.name]; err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(b.engine.buckets[b.name]))
+	for key := range b.engine.buckets[b.name] {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	return vault.Key(keys[len(keys)-1]), nil
 }
 
 func testOrder(name string) yagocrawlcontract.CrawlOrder {

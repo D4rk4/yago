@@ -631,6 +631,10 @@ and tested together; use matching releases when upgrading a node and crawler.
   states that queued orders remain pending until a crawler connects;
   totals and health use the complete snapshot, and each running row keeps its
   controls plus the effective pages-per-minute value together.
+  **Clear pending orders** removes waiting node orders after confirmation;
+  already leased work and later arrivals remain. Each run's **Cancel** action
+  clears that run's pending URLs while in-flight processing finishes. Both
+  actions preserve indexed documents. See [Clearing crawl queues](yagonode/doc/crawl-queue-management.md).
 - First-run **setup wizard**, CSRF everywhere, strict CSP, login rate
   limiting, and a config-events audit trail. The no-JavaScript login leaves the
   account name empty and shows only bounded public node status; individual

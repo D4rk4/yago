@@ -5,6 +5,9 @@
 {{if .Error}}
 <div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>
 {{end}}
+{{if .Section.Message}}
+<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Section.Message}}</div>
+{{end}}
 {{with .Result}}
 <div class="cds-inline-notification cds-inline-notification--success" role="status">
   {{if .Duplicate}}Existing crawl request recognized under profile <code>{{.ProfileHandle}}</code>; no new seeds were enqueued.{{else}}Crawl accepted: {{.Seeds}} seed(s) queued under profile <code>{{.ProfileHandle}}</code>.{{end}}

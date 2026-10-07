@@ -1,0 +1,26 @@
+{{define "content"}}
+<nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / <a href="/admin/crawl">Crawler</a> / Clear pending orders</nav>
+<h1 class="cds-h1">Clear pending orders</h1>
+<p class="cds-muted">The node fixes a boundary before deleting pending orders. Orders accepted after that boundary remain queued. The clear leaves leased orders, active crawl runs, URLs inside those runs, indexed documents, and schedules unchanged.</p>
+<p class="cds-muted">Run Cancel drops URLs from one crawl run. Clearing pending orders applies to the node queue shown below.</p>
+{{if .Error}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>{{end}}
+{{if .QueueKnown}}
+<p role="status"><strong>Current node order queue:</strong> {{.Pending}} pending orders, {{.Leased}} leased orders.</p>
+{{if .CanClear}}
+<form class="cds-form" method="post" action="/admin/crawl/queue/clear" hx-boost="false">
+  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <div class="cds-field">
+    <label class="cds-label" for="clear-order-confirmation">Type CLEAR PENDING ORDERS to confirm</label>
+    <input class="cds-input" id="clear-order-confirmation" name="confirmation" type="text" autocomplete="off" spellcheck="false" required aria-describedby="clear-order-confirmation-help">
+    <span class="cds-muted" id="clear-order-confirmation-help">The confirmation must match the words above exactly.</span>
+  </div>
+  <button class="cds-btn cds-btn--danger" type="submit">Clear pending orders</button>
+</form>
+{{else}}
+<p class="cds-inline-notification" role="status">No pending orders are waiting. Nothing can be cleared.</p>
+{{end}}
+{{else}}
+<p class="cds-inline-notification cds-inline-notification--warn" role="status">Pending order counts are unavailable. Nothing was changed.</p>
+{{end}}
+<p><a class="cds-btn cds-btn--ghost" href="/admin/crawl">Cancel</a></p>
+{{end}}

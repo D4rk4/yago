@@ -508,7 +508,10 @@ durable page. The default 50,000-page per-run limit still bounds the durable run
 that value. Workers atomically claim jobs through `Frontier.Take`, with no
 buffered prefetch layer. Pause withholds pending work until resume, while
 cancel persists its marker before removing queued pages and waits for any in-flight
-page outcome. A process crash treats only still-outstanding pages as replayable;
+page outcome. The corresponding Admin action is **Cancel** on the run's
+row in **Crawler → Crawl monitor**. **Clear pending orders** on that page acts
+on the node's separate waiting-order queue; it leaves work already handed to
+a crawler and later submissions intact. Neither action deletes indexed documents. A process crash treats only still-outstanding pages as replayable;
 already committed pages retain their exact observations and are not fetched again.
 If the node replaces an order-stream lease, the frontier atomically rebinds the run
 and rejects stale completion under the old lease. Unconfirmed grants park fetch

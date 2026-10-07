@@ -2,7 +2,8 @@
 <div id="crawl-monitor" hx-get="{{.Pagination.RefreshURL}}" hx-trigger="every 5s"
      hx-swap="outerHTML" role="region" aria-label="Crawl monitor">
   <h2 class="cds-h2">Crawl monitor</h2>
-  <p class="cds-muted">Run totals, immutable effective caps, and rates cover the crawl tasks currently retained in this monitor. Fetched counts accepted response bodies; the failed count additionally includes fetch or processing failures, so one page can increment both after parsing fails.</p>
+  <p class="cds-muted">Run totals, immutable effective caps, and rates cover the crawl tasks currently retained in this monitor. Fetched counts accepted response bodies; the failed count additionally includes fetch or processing failures, so one page can increment both after parsing fails. Pending URLs belong to each run’s worker frontier. Pending orders wait in the node queue.</p>
+  <p class="cds-muted">Run Cancel drops only that run’s pending URLs. Clear pending orders leaves leased orders and active fetches alone. Orders accepted after the deletion boundary is set remain queued.</p>
   <p role="status" aria-label="Crawler connection">
     <strong>Crawler connection:</strong>
     <span class="cds-tag cds-tag--{{.CrawlerConnection.Tag}}">{{.CrawlerConnection.State}}</span>
@@ -11,7 +12,8 @@
   <p>
     <button class="cds-btn cds-btn--ghost" type="button"
             hx-get="{{.Pagination.RefreshURL}}" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>
-    <span class="cds-muted" role="status">order queue: {{if .Monitor.QueueAvailable}}{{.Monitor.QueuePending}} pending, {{.Monitor.QueueLeased}} leased{{else}}Unavailable{{end}} — updates every 5s</span>
+    <span class="cds-muted" role="status"><strong>Node order queue:</strong> {{if .Monitor.QueueAvailable}}{{.Monitor.QueuePending}} pending orders, {{.Monitor.QueueLeased}} leased orders{{else}}Unavailable{{end}} — updates every 5s</span>
+    {{if .ClearPendingOrders}}<a class="cds-btn cds-btn--danger" href="/admin/crawl/queue/clear">Clear pending orders</a>{{end}}
   </p>
   <div class="cds-tile-grid" role="group" aria-label="Crawl results and rejections">
     <section class="cds-tile">
@@ -68,7 +70,7 @@
           <th scope="col">Failed</th>
           <th scope="col">Robots</th>
           <th scope="col">Duplicates</th>
-          <th scope="col">Pending</th>
+          <th scope="col">Pending URLs</th>
           <th scope="col">Whole-run max (pages)</th>
           <th scope="col">Per-host max (pages)</th>
           <th scope="col">Runtime</th>
@@ -103,7 +105,7 @@
                 <button class="cds-btn cds-btn--danger" type="submit" name="action" value="cancel"
                         hx-post="/admin/crawl/control" hx-include="closest form"
                         hx-target="#crawl-monitor" hx-swap="outerHTML"
-                        hx-confirm="Cancel this crawl run? Pending pages are dropped; in-flight fetches finish.">Cancel</button>
+                        hx-confirm="Cancel this crawl run? Pending URLs in this run are dropped; in-flight fetches finish. Node orders are unchanged.">Cancel</button>
               </form>
               <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
                 <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">

@@ -175,6 +175,8 @@ type Options struct {
 	// When PublicBaseURL is unset the Public search link is derived from the
 	// request host and this port; an empty/disabled address hides the link.
 	PublicAddr string
+
+	CrawlOrderClearSource CrawlOrderClearSource
 }
 
 type sectionView struct {
@@ -299,13 +301,14 @@ type crawlRunPageData struct {
 // crawlMonitorView wraps the crawl monitor snapshot with the per-request data the
 // control buttons need: the CSRF token and whether control actions are wired.
 type crawlMonitorView struct {
-	Monitor           CrawlMonitor
-	Pagination        CrawlRunPagination
-	Health            CrawlHealth
-	CrawlerConnection crawlConnectionView
-	CSRF              string
-	Controllable      bool
-	Details           bool
+	Monitor            CrawlMonitor
+	Pagination         CrawlRunPagination
+	Health             CrawlHealth
+	CrawlerConnection  crawlConnectionView
+	CSRF               string
+	Controllable       bool
+	Details            bool
+	ClearPendingOrders bool
 }
 
 type configPageData struct {
@@ -432,6 +435,8 @@ type templates struct {
 	restart       *template.Template
 	backup        *template.Template
 	portal        *template.Template
+
+	crawlOrderClear *template.Template
 }
 
 // Console is the server-rendered admin console handler.
@@ -486,6 +491,8 @@ type Console struct {
 	searchSuggest        http.Handler
 	publicBase           string
 	publicPort           string
+
+	crawlOrderClearSource CrawlOrderClearSource
 }
 
 // New builds the console with its embedded templates, assets, and providers.
@@ -546,6 +553,7 @@ func New(opts Options) *Console {
 		publicBase:           strings.TrimRight(opts.PublicBaseURL, "/"),
 		publicPort:           publicListenerPort(opts.PublicAddr),
 	}
+	console.crawlOrderClearSource = opts.CrawlOrderClearSource
 	console.registerRoutes(assets)
 
 	return console
@@ -578,7 +586,7 @@ func buildTemplates() templates {
 		return template.Must(template.Must(layout.Clone()).Funcs(fns).ParseFS(templateFS, files...))
 	}
 
-	return templates{
+	built := templates{
 		placeholder: clone(nil, "templates/placeholder.tmpl"),
 		overview:    clone(overviewFuncs, "templates/overview.tmpl", "templates/metrics.tmpl"),
 		search:      clone(nil, "templates/search.tmpl"),
@@ -608,6 +616,9 @@ func buildTemplates() templates {
 		backup:      clone(nil, "templates/backup.tmpl"),
 		portal:      clone(nil, "templates/portal.tmpl"),
 	}
+	built.crawlOrderClear = clone(nil, "templates/crawl_order_clear.tmpl")
+
+	return built
 }
 
 func (c *Console) registerRoutes(assets fs.FS) {
@@ -1795,6 +1806,8 @@ func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 		CSRF:              csrfToken(r),
 		Controllable:      c.control != nil,
 		Details:           c.crawlRunDetails != nil,
+		ClearPendingOrders: c.crawlOrderClearSource != nil &&
+			monitor.QueueAvailable && monitor.QueuePending > 0,
 	}
 }
 

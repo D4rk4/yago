@@ -32,7 +32,7 @@ func TestRecoveredSessionManifestReleasesOrdinaryDelivery(t *testing.T) {
 	if !waitFor(30*time.Second, func() bool {
 		monitor, ok := crawlMonitorBody(ctx, node.opsURL, session)
 
-		return ok && strings.Contains(monitor, "0 pending, 20 leased")
+		return ok && strings.Contains(monitor, "0 pending orders, 20 leased orders")
 	}) {
 		monitor, _ := crawlMonitorBody(ctx, node.opsURL, session)
 		t.Fatalf("recovery manifest fixture was not fully leased: %s", monitor)
@@ -127,7 +127,7 @@ func TestNodeAndCrawlerRestartResumeUnfinishedFrontier(t *testing.T) {
 	if !waitFor(30*time.Second, func() bool {
 		monitor, ok := crawlMonitorBody(ctx, node.opsURL, session)
 
-		return ok && strings.Contains(monitor, "0 pending, 0 leased") &&
+		return ok && strings.Contains(monitor, "0 pending orders, 0 leased orders") &&
 			strings.Contains(monitor, ">"+combinedCrawlName+"<") &&
 			strings.Contains(monitor, ">finished<")
 	}) {

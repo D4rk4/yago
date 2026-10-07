@@ -139,6 +139,7 @@ func applyCrawlAdminOptions(
 	}
 	if registry := crawlRunRegistry(assembled.crawl); registry != nil {
 		options.Monitor = newCrawlMonitorSource(registry, crawlDepth.probe)
+		options.CrawlOrderClearSource = newCrawlOrderClearSource(assembled.crawl)
 		options.CrawlRunDetails = newCrawlRunDetailSource(registry)
 		if control := crawlControlRegistry(assembled.crawl); control != nil {
 			options.Control = newCrawlControlSource(

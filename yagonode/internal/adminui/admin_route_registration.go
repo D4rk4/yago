@@ -24,6 +24,8 @@ func (c *Console) registerCrawlRoutes() {
 	c.mux.HandleFunc("GET "+crawlRunPath, c.handleCrawlRunDetail)
 	c.mux.HandleFunc("GET "+crawlMonitorPath, c.handleCrawlMonitor)
 	c.mux.HandleFunc("POST "+crawlControlPath, c.handleCrawlControl)
+	c.mux.HandleFunc("GET "+crawlOrderClearPath, c.handleCrawlOrderClearConfirmation)
+	c.mux.HandleFunc("POST "+crawlOrderClearPath, c.handleCrawlOrderClear)
 	c.mux.HandleFunc("GET "+autocrawlerPath, handleAutocrawlerRedirect)
 	c.mux.HandleFunc("POST "+autocrawlerPath, handleAutocrawlerRedirect)
 	c.mux.HandleFunc("POST "+autocrawlerPath+"/formats", handleAutocrawlerRedirect)
