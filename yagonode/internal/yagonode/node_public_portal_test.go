@@ -155,6 +155,27 @@ func TestPortalSourceCarriesBoundedPartialFailureState(t *testing.T) {
 	}
 }
 
+func TestPortalSourceMarksShardCoveragePartialWithoutCallingItSourceFailure(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		TotalResults: 1,
+		Results: []searchcore.Result{{
+			Title: "Sampled result", URL: "https://sample.example/result",
+		}},
+		Coverage: &searchcore.SearchCoverage{
+			CompletedShards: 8, SampledShards: 8, TotalShards: 8, Complete: false,
+		},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "sample", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if results.Incomplete || !results.CoverageIncomplete || len(results.Results) != 1 {
+		t.Fatalf("sampled coverage state = %+v", results)
+	}
+}
+
 // TestPortalSourceDoesNotCallAQueryShapeMissIncomplete stops the portal
 // contradicting itself. A modifier-only query such as "site:example.com" gives
 // the DHT no word hash to send, and marking that incomplete printed "Some

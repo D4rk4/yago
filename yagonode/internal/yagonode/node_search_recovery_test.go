@@ -169,6 +169,26 @@ func TestRecoveryPreservesParentCancellation(t *testing.T) {
 	}
 }
 
+func TestLocalResultRecoveryWrapsExactRetryError(t *testing.T) {
+	req := searchcore.Request{Query: "query"}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	primary := webFallbackExactStageFailure(
+		req,
+		webFallbackExactStageTimeoutFailure,
+		searchcore.FailureCauseDeadline,
+	)
+	recovery := localResultRecovery{local: &localExactCountingSearcher{}}
+
+	response, err := recovery.recover(ctx, req, primary)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("recover error = %v, want wrapped cancellation", err)
+	}
+	if len(response.Results) != 0 {
+		t.Fatalf("response = %#v, want the original incomplete response", response)
+	}
+}
+
 func TestRecoverySuggestsFromIndexVocabularyOnTotalMiss(t *testing.T) {
 	// The fuzzy retry also finds nothing, but the index-vocabulary corrector
 	// still points at the intended spelling.

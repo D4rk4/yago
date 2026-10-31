@@ -99,6 +99,7 @@ func (s portalSource) Search(
 		PeersFailed:           peerSearchFailureTotal(response.PartialFailures),
 		FederationUnavailable: federationSearchUnavailable(response.PartialFailures),
 		Incomplete:            response.LostSourceFailures() > 0,
+		CoverageIncomplete:    response.Coverage != nil && !response.Coverage.Complete,
 		Hint:                  modifierhint.Text(response.Request, response.TotalResults),
 	}
 	out.DidYouMean = response.DidYouMean

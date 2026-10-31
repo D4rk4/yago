@@ -127,7 +127,8 @@ func Mount(
 	access SearchAccessPolicy,
 	admission SearchAdmission,
 ) {
-	mux.Handle(PathSearch, newSearchEndpoint(search, documents, access, admission))
+	endpoint := newSearchEndpoint(search, documents, access, admission)
+	mux.Handle(PathSearch, endpoint)
 }
 
 func NewSearchEndpoint(
@@ -150,7 +151,7 @@ func newSearchEndpoint(
 	documents documentstore.DocumentDirectory,
 	access SearchAccessPolicy,
 	admission SearchAdmission,
-) http.Handler {
+) searchEndpoint {
 	return searchEndpoint{
 		search:          search,
 		documents:       documents,
@@ -303,10 +304,14 @@ func (e searchEndpoint) searchResponseForCaller(
 	// count intact. Until the window's removals are counted separately from the
 	// sources' answers, a bounded request cannot be scored this way, and the
 	// specification already says such a window answers 200 with an empty list.
-	if !coreReq.FirstSeenBounded() {
+	failureCount := searchAvailabilityFailureCount(resp)
+	if coreReq.FirstSeenBounded() {
+		failureCount = searchAvailabilityFailureCountForFirstSeen(resp)
+	}
+	if !coreReq.FirstSeenBounded() || failureCount > 0 {
 		if availabilityErr := searchAvailabilityError(
 			len(resp.Results),
-			resp.LostSourceFailures(),
+			failureCount,
 			callerContext.Err(),
 		); availabilityErr != nil {
 			return SearchResponse{}, availabilityErr

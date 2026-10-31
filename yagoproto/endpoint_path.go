@@ -25,15 +25,16 @@ const (
 	// /p2p/seeds bootstrap endpoint: the same list principal peers upload to a
 	// bootstrap position, in the plain genSeedStr form and the peers-array
 	// JSON form the seedlist endpoints already serve.
-	PathP2PSeeds       = "/p2p/seeds"
-	PathP2PSeedsJSON   = "/p2p/seeds.json"
-	PathCrawlReceipt   = "/yacy/crawlReceipt.html"
-	PathYaCySearchHTML = "/yacysearch.html"
-	PathYaCySearchJSON = "/yacysearch.json"
-	PathYaCySearchRSS  = "/yacysearch.rss"
-	PathOpenSearch     = "/opensearchdescription.xml"
-	PathSuggestJSON    = "/suggest.json"
-	PathSuggestXML     = "/suggest.xml"
+	PathP2PSeeds         = "/p2p/seeds"
+	PathP2PSeedsJSON     = "/p2p/seeds.json"
+	PathCrawlReceipt     = "/yacy/crawlReceipt.html"
+	PathYaCySearchHTML   = "/yacysearch.html"
+	PathYaCySearchJSON   = "/yacysearch.json"
+	PathYaCySearchNDJSON = "/yacysearch.ndjson"
+	PathYaCySearchRSS    = "/yacysearch.rss"
+	PathOpenSearch       = "/opensearchdescription.xml"
+	PathSuggestJSON      = "/suggest.json"
+	PathSuggestXML       = "/suggest.xml"
 )
 
 const (

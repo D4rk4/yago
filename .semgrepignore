@@ -1,5 +1,6 @@
 # Semgrep's default ignores are replaced by this file, so re-state the baseline.
 .git/
+**/node_modules/
 # Vendored, pinned, minified third-party editor assets (GrapesJS, CodeMirror —
 # see deploy/THIRD_PARTY_ASSETS.md and ADR-0033). Upstream minified bundles are
 # not actionable for this repo's static analysis (audit hits and rule timeouts

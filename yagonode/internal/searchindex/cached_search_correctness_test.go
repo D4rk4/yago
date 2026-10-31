@@ -347,6 +347,12 @@ func cacheRequestFilterFieldVariants(base SearchRequest) map[string]SearchReques
 	addCacheVariant(variants, "CandidateOnly", base, func(req *SearchRequest) {
 		req.CandidateOnly = true
 	})
+	addCacheVariant(variants, "TitleOnly", base, func(req *SearchRequest) {
+		req.TitleOnly = true
+	})
+	addCacheVariant(variants, "AllowCandidateSampling", base, func(req *SearchRequest) {
+		req.AllowCandidateSampling = true
+	})
 	addCacheVariant(variants, "Fuzzy", base, func(req *SearchRequest) {
 		req.Fuzzy = false
 	})

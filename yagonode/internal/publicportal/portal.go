@@ -84,6 +84,7 @@ type SearchResults struct {
 	PeersFailed           int
 	FederationUnavailable bool
 	Incomplete            bool
+	CoverageIncomplete    bool
 	UnconfirmedPage       bool
 	Results               []SearchResult
 	// Recovered marks results found by the zero-result fuzzy retry, so the page
