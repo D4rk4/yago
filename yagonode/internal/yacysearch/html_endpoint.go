@@ -212,7 +212,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
     var q = input.value.trim();
     if (q.length < 2) { close(); return; }
     timer = setTimeout(function () {
-      fetch("/suggest.json?q=" + encodeURIComponent(q))
+      fetch("/suggest.json?q=" + encodeURIComponent(q) + "&timeout=1000")
         .then(function (r) { return r.json(); })
         .then(function (data) { render((data && data[1]) || []); })
         .catch(close);
@@ -446,8 +446,13 @@ func responseHTMLItems(
 ) []htmlSearchItem {
 	items := make([]htmlSearchItem, 0, len(results))
 	for index, result := range results {
+		displayResult := result
+		displayResult.Snippet = searchcore.DisplayDescriptionForTitle(result.Title, result.Snippet)
+		if displayResult.Snippet != result.Snippet {
+			displayResult.QueryMatches = nil
+		}
 		item := htmlSearchItem{
-			Title:    result.Title,
+			Title:    searchcore.DisplayTitle(result.Title),
 			URL:      result.URL,
 			Identity: result.URL,
 			// Rank is the result's 1-based position across all pages, so click
@@ -456,7 +461,7 @@ func responseHTMLItems(
 			DisplayURL: result.DisplayURL,
 			// Highlight escapes the snippet before adding <mark>, so this is
 			// the only HTML the description may carry.
-			Description: highlightedResultSnippet(result, terms),
+			Description: highlightedResultSnippet(displayResult, terms),
 			Date:        result.DisplayDate(),
 			SizeName:    sizeName(result.Size),
 			Reasons:     resultreason.For(result),
