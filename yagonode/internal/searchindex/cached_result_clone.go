@@ -7,9 +7,13 @@ import (
 
 func cloneResultSet(set SearchResultSet) SearchResultSet {
 	return SearchResultSet{
-		Facets:  cloneFacetGroups(set.Facets),
-		Results: cloneSearchResults(set.Results),
-		Total:   set.Total,
+		Facets:          cloneFacetGroups(set.Facets),
+		Results:         cloneSearchResults(set.Results),
+		Total:           set.Total,
+		Incomplete:      set.Incomplete,
+		CompletedShards: set.CompletedShards,
+		SampledShards:   set.SampledShards,
+		TotalShards:     set.TotalShards,
 	}
 }
 

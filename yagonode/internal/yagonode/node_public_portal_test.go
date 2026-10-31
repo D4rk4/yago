@@ -69,6 +69,24 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	assertPortalSearchCachedLinks(t, results)
 }
 
+func TestPortalSourceDisplaysImportedTitleArray(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		Results: []searchcore.Result{{
+			Title: `["A displayed title", "An alternate title"]`,
+			URL:   "https://example.org/page",
+		}},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "displayed", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results.Results) != 1 || results.Results[0].Title != "A displayed title" {
+		t.Fatalf("portal titles = %#v", results.Results)
+	}
+}
+
 func assertPortalSearchWindow(
 	t *testing.T,
 	searcher *stubPortalSearcher,
@@ -152,6 +170,27 @@ func TestPortalSourceCarriesBoundedPartialFailureState(t *testing.T) {
 	}
 	if !results.Incomplete || !results.FederationUnavailable || results.PeersFailed != 1 {
 		t.Fatalf("partial state = %+v", results)
+	}
+}
+
+func TestPortalSourceMarksShardCoveragePartialWithoutCallingItSourceFailure(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		TotalResults: 1,
+		Results: []searchcore.Result{{
+			Title: "Sampled result", URL: "https://sample.example/result",
+		}},
+		Coverage: &searchcore.SearchCoverage{
+			CompletedShards: 8, SampledShards: 8, TotalShards: 8, Complete: false,
+		},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "sample", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if results.Incomplete || !results.CoverageIncomplete || len(results.Results) != 1 {
+		t.Fatalf("sampled coverage state = %+v", results)
 	}
 }
 

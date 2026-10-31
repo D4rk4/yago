@@ -26,7 +26,11 @@ func (s safeSearchSearcher) Search(ctx context.Context, req Request) (Response, 
 		// with one opaque stage timeout, losing the diagnosis exactly when the
 		// answer is empty and the operator most needs to know who did not
 		// answer. Results are still discarded: they were never filtered.
-		return Response{Request: req, PartialFailures: response.PartialFailures},
+		return Response{
+				Request:         req,
+				PartialFailures: response.PartialFailures,
+				Coverage:        response.Coverage,
+			},
 			fmt.Errorf("safe search inner search: %w", err)
 	}
 	if !req.SafeSearch {

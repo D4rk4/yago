@@ -15,6 +15,7 @@ func TestPortalRendersAccessibleAutocomplete(t *testing.T) {
 		`role="listbox"`,
 		`autocomplete="off"`,
 		"/suggest.json?q=",
+		"&timeout=1000",
 		"aria-activedescendant",
 	} {
 		if !strings.Contains(body, want) {

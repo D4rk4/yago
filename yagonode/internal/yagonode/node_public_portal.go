@@ -99,6 +99,7 @@ func (s portalSource) Search(
 		PeersFailed:           peerSearchFailureTotal(response.PartialFailures),
 		FederationUnavailable: federationSearchUnavailable(response.PartialFailures),
 		Incomplete:            response.LostSourceFailures() > 0,
+		CoverageIncomplete:    response.Coverage != nil && !response.Coverage.Complete,
 		Hint:                  modifierhint.Text(response.Request, response.TotalResults),
 	}
 	out.DidYouMean = response.DidYouMean
@@ -128,7 +129,7 @@ func (s portalSource) Search(
 			clusterIdentity = result.URL
 		}
 		out.Results = append(out.Results, publicportal.SearchResult{
-			Title:           result.Title,
+			Title:           searchcore.DisplayTitle(result.Title),
 			URL:             result.URL,
 			DisplayURL:      result.DisplayURL,
 			Snippet:         result.Snippet,

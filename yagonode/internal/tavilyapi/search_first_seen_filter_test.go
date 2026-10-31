@@ -1,6 +1,7 @@
 package tavilyapi
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -294,5 +295,56 @@ func TestFirstSeenWindowThatRetainsNothingAnswers200(t *testing.T) {
 		"id-no-window",
 	); err == nil {
 		t.Fatal("an unbounded request that retrieved nothing must still refuse")
+	}
+
+	localFailure, localFailureSearch, _ := firstSeenSearchEndpoint()
+	localFailureSearch.response.Results = nil
+	localFailureSearch.response.PartialFailures = []searchcore.PartialFailure{{
+		Source: searchcore.PartialFailureSourceLocalSearch,
+		Reason: "local backend failed",
+	}}
+	if _, err = localFailure.searchResponse(
+		t.Context(),
+		SearchRequest{Query: "golang", FirstSeenStart: "2026-07-01"},
+		time.Unix(100, 0),
+		"id-local-failure",
+	); err == nil {
+		t.Fatal("a failed local search with no rows must remain unavailable")
+	}
+}
+
+func TestFirstSeenWindowUsesShardCoverageForAvailability(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		complete    bool
+		unavailable bool
+	}{
+		{name: "incomplete coverage", complete: false, unavailable: true},
+		{name: "complete coverage", complete: true, unavailable: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			endpoint, search, _ := firstSeenSearchEndpoint()
+			search.response.Results = nil
+			search.response.Coverage = &searchcore.SearchCoverage{
+				CompletedShards: 2,
+				TotalShards:     8,
+				Complete:        test.complete,
+			}
+			_, err := endpoint.searchResponse(
+				t.Context(),
+				SearchRequest{Query: "golang", FirstSeenStart: "2026-07-01"},
+				time.Unix(100, 0),
+				"id-first-seen-coverage",
+			)
+			if test.unavailable {
+				if !errors.Is(err, errSearchUnavailable) {
+					t.Fatalf("incomplete first-seen coverage error = %v, want unavailable", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("complete first-seen coverage refused a valid empty result: %v", err)
+			}
+		})
 	}
 }

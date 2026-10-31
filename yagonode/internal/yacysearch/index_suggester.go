@@ -75,7 +75,7 @@ func titleSuggestions(results []searchcore.Result, prefix string, limit int) []s
 }
 
 func normalizeSuggestion(raw string) string {
-	title := strings.Join(strings.Fields(raw), " ")
+	title := strings.Join(strings.Fields(searchcore.DisplayTitle(raw)), " ")
 	if title == "" {
 		return ""
 	}

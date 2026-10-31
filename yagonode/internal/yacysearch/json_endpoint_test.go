@@ -98,6 +98,85 @@ func TestJSONEndpointReturnsYaCySearchShape(t *testing.T) {
 	}
 }
 
+func TestJSONEndpointMarksEmptyPartialCoverage(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		Coverage: &searchcore.SearchCoverage{
+			CompletedShards: 2, TotalShards: 8, Complete: false,
+		},
+		PartialFailures: []searchcore.PartialFailure{{
+			Source: searchcore.PartialFailureSourceLocalSearch,
+			Reason: "incomplete shard coverage",
+		}},
+	}}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		yagoproto.PathYaCySearchJSON+"?query=sample&resource=local",
+		nil,
+	)
+	jsonEndpoint{search: search}.ServeHTTP(recorder, request)
+	var response jsonResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.Code != http.StatusOK || response.Complete || response.Coverage == nil ||
+		response.Coverage.CompletedShards != 2 || response.Coverage.TotalShards != 8 ||
+		len(response.Channels) != 1 || response.Channels[0].TotalResults != "0" ||
+		len(response.Channels[0].PartialFailures) != 1 {
+		t.Fatalf("status=%d response=%+v", recorder.Code, response)
+	}
+}
+
+func TestJSONEndpointKeepsSampledResultsUsable(t *testing.T) {
+	search := &fakeSearch{response: searchcore.Response{
+		TotalResults: 7,
+		Results: []searchcore.Result{{
+			Title: "Sampled result", URL: "https://sample.example/result",
+		}},
+		Coverage: &searchcore.SearchCoverage{
+			CompletedShards: 8, SampledShards: 8, TotalShards: 8, Complete: false,
+		},
+	}}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet,
+		yagoproto.PathYaCySearchJSON+"?query=sample&resource=local", nil,
+	)
+	jsonEndpoint{search: search}.ServeHTTP(recorder, request)
+	var response jsonResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.Code != http.StatusOK || response.Complete || response.Coverage == nil ||
+		response.Coverage.SampledShards != 8 || len(response.Channels) != 1 ||
+		len(response.Channels[0].Items) != 1 ||
+		len(response.Channels[0].PartialFailures) != 0 {
+		t.Fatalf("status=%d response=%+v", recorder.Code, response)
+	}
+}
+
+func TestJSONEndpointMarksHonestEmptySearchComplete(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		yagoproto.PathYaCySearchJSON+"?query=missing&resource=local",
+		nil,
+	)
+	jsonEndpoint{search: &fakeSearch{response: searchcore.Response{}}}.
+		ServeHTTP(recorder, request)
+	var response jsonResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.Code != http.StatusOK || !response.Complete || response.Coverage != nil ||
+		len(response.Channels) != 1 || response.Channels[0].TotalResults != "0" ||
+		len(response.Channels[0].PartialFailures) != 0 {
+		t.Fatalf("status=%d response=%+v", recorder.Code, response)
+	}
+}
+
 func TestJSONEndpointRejectsBadRequests(t *testing.T) {
 	cases := []string{
 		"?maximumRecords=bad",

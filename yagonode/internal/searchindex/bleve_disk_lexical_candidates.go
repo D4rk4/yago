@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/blevesearch/bleve/v2"
 	blevequery "github.com/blevesearch/bleve/v2/search/query"
@@ -16,16 +17,30 @@ func (b *BleveDiskIndex) searchLexicalCandidateHitPage(
 	req SearchRequest,
 	size int,
 ) (*bleve.SearchResult, error) {
+	result, _, err := b.searchLexicalCandidateHitPageWithStatus(ctx, req, size)
+
+	return result, err
+}
+
+func (b *BleveDiskIndex) searchLexicalCandidateHitPageWithStatus(
+	ctx context.Context,
+	req SearchRequest,
+	size int,
+) (*bleve.SearchResult, bool, error) {
 	query := bleveSearchQuery(req, b.multilingual, b.analyzerScope)
-	if b.analyzerScope && !req.Explain {
+	incomplete := &atomic.Bool{}
+	if b.analyzerScope && !req.Explain && !req.TitleOnly {
 		query = bleveLexicalCandidateScoringQuery{bleve.NewConjunctionQuery(
 			query,
-			newBleveLexicalCandidateSnapshotQuery(req, b.multilingual),
+			newBleveLexicalCandidateSnapshotQuery(
+				req, b.multilingual, req.AllowCandidateSampling, incomplete,
+			),
 		)}
 	}
 	query = withBleveSearchDeadline(req, query)
+	result, err := b.executeRequestedHitPage(ctx, req, query, size)
 
-	return b.executeRequestedHitPage(ctx, req, query, size)
+	return result, incomplete.Load(), err
 }
 
 func (b *BleveDiskIndex) executeRequestedHitPage(

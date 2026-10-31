@@ -14,6 +14,22 @@ type SearchIndex interface {
 	Stats(ctx context.Context) (IndexStats, error)
 }
 
+type ProgressiveSearchIndex interface {
+	SearchProgressively(
+		ctx context.Context,
+		req SearchRequest,
+		notify func(SearchProgress),
+	) (SearchResultSet, error)
+}
+
+type SearchProgress struct {
+	Results         SearchResultSet
+	CompletedShards int
+	SampledShards   int
+	TotalShards     int
+	Complete        bool
+}
+
 type SearchEvidenceSource interface {
 	SearchEvidence(
 		ctx context.Context,
@@ -49,10 +65,12 @@ type SearchRequest struct {
 	// field (bleve locations) in each result's FieldTermPositions, so a caller
 	// can measure query-term coverage and proximity over the document itself
 	// rather than the truncated snippet.
-	IncludePositions bool
-	CandidateOnly    bool
-	Fuzzy            bool
-	Relaxed          bool
+	IncludePositions       bool
+	CandidateOnly          bool
+	TitleOnly              bool
+	AllowCandidateSampling bool
+	Fuzzy                  bool
+	Relaxed                bool
 	// Author keeps only documents whose extracted author metadata contains this
 	// text (case-insensitive).
 	Author string
@@ -93,9 +111,13 @@ type SearchRequest struct {
 
 type SearchResultSet struct {
 	// Facets carries the facet groups when the request asked for them.
-	Facets  []FacetGroup
-	Results []SearchResult
-	Total   int
+	Facets          []FacetGroup
+	Results         []SearchResult
+	Total           int
+	Incomplete      bool
+	CompletedShards int
+	SampledShards   int
+	TotalShards     int
 }
 
 type SearchResult struct {

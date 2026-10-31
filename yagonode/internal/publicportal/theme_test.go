@@ -215,7 +215,7 @@ func assertResultsView(t *testing.T, view map[string]any) {
 	for key, want := range map[string]any{
 		"query": "cats", "totalResults": 12, "localCount": 5, "peerCount": 4,
 		"webCount": 3, "peersFailed": 1, "federationUnavailable": true,
-		"incomplete": true, "recovered": true,
+		"incomplete": true, "coverageIncomplete": false, "recovered": true,
 		"didYouMean": "cat", "didYouMeanUrl": "/?q=cat",
 	} {
 		if results[key] != want {
