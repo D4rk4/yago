@@ -253,7 +253,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
     var q = input.value.trim();
     if (q.length < 2) { close(); return; }
     timer = setTimeout(function () {
-      fetch("/suggest.json?q=" + encodeURIComponent(q))
+      fetch("/suggest.json?q=" + encodeURIComponent(q) + "&timeout=1000")
         .then(function (r) { return r.json(); })
         .then(function (data) { render((data && data[1]) || []); })
         .catch(close);

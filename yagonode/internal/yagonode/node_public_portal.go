@@ -71,15 +71,31 @@ func resultProvenance(result searchcore.Result) string {
 	}
 }
 
+func portalDisplaySnippet(result searchcore.Result) searchcore.Result {
+	snippet := searchcore.DisplayDescriptionForTitle(result.Title, result.Snippet)
+	if snippet == result.Snippet {
+		return result
+	}
+
+	result.Snippet = snippet
+	result.QueryMatches = nil
+	return result
+}
+
+func portalContentDomain(domain string) searchcore.ContentDomain {
+	if domain == "" {
+		return searchcore.ContentDomainText
+	}
+
+	return searchcore.ContentDomain(domain)
+}
+
 func (s portalSource) Search(
 	ctx context.Context,
 	query, dom string,
 	offset, limit int,
 ) (publicportal.SearchResults, error) {
-	domain := searchcore.ContentDomainText
-	if dom != "" {
-		domain = searchcore.ContentDomain(dom)
-	}
+	domain := portalContentDomain(dom)
 	response, err := s.searcher.Search(ctx, searchcore.Request{
 		Query:         query,
 		Source:        searchcore.SourceGlobal,
@@ -128,12 +144,13 @@ func (s portalSource) Search(
 		if clusterIdentity == "" {
 			clusterIdentity = result.URL
 		}
+		displayResult := portalDisplaySnippet(result)
 		out.Results = append(out.Results, publicportal.SearchResult{
-			Title:           result.Title,
+			Title:           searchcore.DisplayTitle(result.Title),
 			URL:             result.URL,
 			DisplayURL:      result.DisplayURL,
-			Snippet:         result.Snippet,
-			SnippetHTML:     highlightedResultSnippet(result, response.Request.Terms),
+			Snippet:         displayResult.Snippet,
+			SnippetHTML:     highlightedResultSnippet(displayResult, response.Request.Terms),
 			Host:            result.Host,
 			Date:            result.DisplayDate(),
 			SizeName:        resultSizeName(result.Size),

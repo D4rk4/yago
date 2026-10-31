@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
@@ -67,6 +68,37 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	assertPortalSearchWindow(t, searcher, results)
 	assertPortalSearchProvenance(t, results)
 	assertPortalSearchCachedLinks(t, results)
+}
+
+func TestPortalSourceDisplaysImportedTitleArray(t *testing.T) {
+	t.Parallel()
+
+	snippet := `["A displayed title"]`
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		Request: searchcore.Request{Terms: []string{"displayed"}},
+		Results: []searchcore.Result{
+			{
+				Title:   `["A displayed title", "An alternate title"]`,
+				Snippet: snippet,
+				QueryMatches: []searchcore.QueryMatch{
+					{
+						Start: strings.Index(snippet, "displayed"),
+						End:   strings.Index(snippet, "displayed") + len("displayed"),
+					},
+				},
+				URL: "https://example.org/page",
+			},
+		},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "displayed", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results.Results) != 1 || results.Results[0].Title != "A displayed title" ||
+		results.Results[0].Snippet != "A displayed title" ||
+		string(results.Results[0].SnippetHTML) != "A <mark>displayed</mark> title" {
+		t.Fatalf("portal titles = %#v", results.Results)
+	}
 }
 
 func assertPortalSearchWindow(
