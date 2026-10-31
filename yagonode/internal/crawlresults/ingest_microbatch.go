@@ -15,13 +15,22 @@ import (
 // grouped documents land in the vault through one Receive and in bleve through
 // one batch per shard, amortizing the per-write flush that made
 // document-at-a-time ingest the crawl bottleneck (PERF-05).
-const ingestMicroBatch = 64
+const ingestMicroBatch = yagocrawlcontract.MaximumIngestBatchRecords
 
 // absorbGroup absorbs the deliveries as one unit: admission gates run per
 // delivery, the surviving documents are stored and indexed together, and the
 // per-delivery tail (metadata, postings, ack) runs for everything that made it
 // through. A single delivery takes the plain absorb path unchanged.
 func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery) {
+	if len(group) > 1 {
+		segments := splitIngestGroupByImportMode(group)
+		if len(segments) > 1 {
+			for _, segment := range segments {
+				c.absorbGroup(ctx, segment)
+			}
+			return
+		}
+	}
 	if len(group) == 1 {
 		c.absorb(ctx, group[0])
 
@@ -37,15 +46,7 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 		}
 	}
 	admitted = coalesceIngestDeliveries(admitted)
-	regular := make([]IngestDelivery, 0, len(admitted))
-	removals := make([]IngestDelivery, 0, len(admitted))
-	for _, delivery := range admitted {
-		if delivery.Batch.Removed {
-			removals = append(removals, delivery)
-			continue
-		}
-		regular = append(regular, delivery)
-	}
+	regular, removals := splitIngestRemovals(admitted)
 	for _, delivery := range c.beginObservations(ctx, removals) {
 		c.purgeRemoval(ctx, delivery)
 	}
@@ -85,6 +86,33 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 		withDocs = nil
 	}
 	c.absorbReservedTailGroup(ctx, append(tail, withDocs...), reservation)
+}
+
+func splitIngestRemovals(group []IngestDelivery) ([]IngestDelivery, []IngestDelivery) {
+	regular := make([]IngestDelivery, 0, len(group))
+	removals := make([]IngestDelivery, 0, len(group))
+	for _, delivery := range group {
+		if delivery.Batch.Removed {
+			removals = append(removals, delivery)
+		} else {
+			regular = append(regular, delivery)
+		}
+	}
+	return regular, removals
+}
+
+func splitIngestGroupByImportMode(group []IngestDelivery) [][]IngestDelivery {
+	segments := make([][]IngestDelivery, 0, 2)
+	start := 0
+	for index := 1; index <= len(group); index++ {
+		if index < len(group) && group[index].ImportOnly == group[start].ImportOnly {
+			continue
+		}
+		segments = append(segments, group[start:index])
+		start = index
+	}
+
+	return segments
 }
 
 func (c *IngestConsumer) absorbTailGroup(ctx context.Context, group []IngestDelivery) {
@@ -341,7 +369,7 @@ func (c *IngestConsumer) storeReservedDocumentGroup(
 
 		return false
 	}
-	projection, err := c.prepareDocumentClusters(ctx, canonical)
+	projection, err := c.prepareIngestDocumentClusters(ctx, deliveries, canonical)
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "content cluster", err)
 

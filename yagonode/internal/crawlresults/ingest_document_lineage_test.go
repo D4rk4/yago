@@ -3,6 +3,7 @@ package crawlresults
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
@@ -186,6 +187,26 @@ func TestIngestDocumentLineageHelpersCoverOptionalAndFailurePaths(t *testing.T) 
 		}}},
 	); err == nil {
 		t.Fatal("cancelled ingest lineage reservation succeeded")
+	}
+}
+
+func TestImportOnlyDocumentsBypassCrawlLineageReservation(t *testing.T) {
+	lineages := &failingIngestDocumentLineages{}
+	consumer := &IngestConsumer{lineages: lineages}
+	reservation, err := consumer.reserveIngestDocumentLineages(t.Context(), []IngestDelivery{{
+		ImportOnly: true,
+		Batch: yagocrawlcontract.IngestBatch{
+			SourceURL: "https://archive.example.test/" + strings.Repeat("a", 2200),
+		},
+	}})
+	if err != nil || reservation != nil || lineages.reserves != 0 {
+		t.Fatalf("import-only lineage reservation = %#v, %v; reserve calls=%d",
+			reservation, err, lineages.reserves)
+	}
+	if _, err := consumer.reserveIngestDocumentLineages(t.Context(), []IngestDelivery{{
+		Batch: yagocrawlcontract.IngestBatch{SourceURL: "https://ordinary.example.test/"},
+	}}); err != nil || lineages.reserves != 1 {
+		t.Fatalf("ordinary crawl lineage reservation calls=%d, error=%v", lineages.reserves, err)
 	}
 }
 

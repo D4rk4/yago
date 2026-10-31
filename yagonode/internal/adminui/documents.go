@@ -3,6 +3,9 @@ package adminui
 import (
 	"context"
 	"io"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagonode/internal/documentimport"
 )
 
 // DocumentSummary is one indexed document as shown in the Index document browser.
@@ -98,4 +101,22 @@ type IndexExportRequest struct {
 // the export controls.
 type IndexExporter interface {
 	ExportDocuments(ctx context.Context, req IndexExportRequest, w io.Writer) error
+}
+
+type (
+	IndexImportRecord     = documentimport.Record
+	IndexImportResult     = documentimport.Result
+	IndexImportRequest    = documentimport.Request
+	IndexImporter         = documentimport.Importer
+	CrawlOrderImportBatch = yagocrawlcontract.CrawlOrderImportBatch
+)
+
+type CrawlOrderImportResult struct {
+	EnqueuedRequests int  `json:"enqueuedRequests"`
+	AlreadyIndexed   int  `json:"alreadyIndexed"`
+	DuplicateBatch   bool `json:"duplicateBatch,omitempty"`
+}
+
+type CrawlOrderImporter interface {
+	ImportCrawlOrder(context.Context, CrawlOrderImportBatch) (CrawlOrderImportResult, error)
 }

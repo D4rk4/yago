@@ -64,7 +64,7 @@ func assembleCrawlerExecution(start crawlerExecutionStart) (crawlerExecution, er
 		Session:         fetchStartSession,
 		PagesPerSecond:  fetchBudget.PagesPerSecond,
 		PermitCapacity:  workerConcurrency.Current,
-		UpstreamDemand:  func() int { return fetchBudget.Waiting() + 1 },
+		UpstreamDemand:  fetchBudget.UpstreamDemand,
 	})
 	activeRuns := crawlorder.NewActiveRunAdmission(crawl.MaxActiveRuns)
 	execution := crawlerExecution{

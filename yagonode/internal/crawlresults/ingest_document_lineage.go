@@ -38,6 +38,9 @@ func (c *IngestConsumer) reserveIngestDocumentLineages(
 	if c.lineages == nil {
 		return nil, nil
 	}
+	if len(deliveries) > 0 && allImportOnly(deliveries) {
+		return nil, nil
+	}
 	urls := make([]string, 0, len(deliveries)*3)
 	for _, delivery := range deliveries {
 		urls = append(urls, delivery.Batch.SourceURL)
@@ -56,6 +59,16 @@ func (c *IngestConsumer) reserveIngestDocumentLineages(
 	}
 
 	return reservation, nil
+}
+
+func allImportOnly(deliveries []IngestDelivery) bool {
+	for _, delivery := range deliveries {
+		if !delivery.ImportOnly {
+			return false
+		}
+	}
+
+	return len(deliveries) > 0
 }
 
 func (c *IngestConsumer) releaseIngestDocumentLineages(

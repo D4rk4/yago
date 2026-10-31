@@ -103,3 +103,14 @@ func TestProcessBudgetReportsContextLiveWaitingDemand(t *testing.T) {
 		t.Fatalf("released waiting demand = %d", budget.Waiting())
 	}
 }
+
+func TestUpstreamDemandIncludesCurrentWaiter(t *testing.T) {
+	budget := NewProcessBudget(0)
+	if got := budget.UpstreamDemand(); got != 1 {
+		t.Fatalf("upstream demand without queued waiters = %d, want 1", got)
+	}
+	budget.waiting.Store(3)
+	if got := budget.UpstreamDemand(); got != 4 {
+		t.Fatalf("upstream demand with queued waiters = %d, want 4", got)
+	}
+}
