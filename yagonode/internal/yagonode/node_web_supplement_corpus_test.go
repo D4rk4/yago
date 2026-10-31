@@ -144,12 +144,88 @@ func supplementWebCallExpected(
 	webCalled bool,
 	elapsed time.Duration,
 ) bool {
+	if response.LostSourceFailures() > 0 ||
+		elapsed >= interactiveSearchBudget-interactiveSearchCancellationGrace {
+		return true
+	}
 	if primarySize < 100 {
 		return webCalled
 	}
 	primaryMissedDecision := elapsed >= webFallbackSupplementDecisionCeiling
 
 	return !webCalled || response.LostSourceFailures() > 0 || primaryMissedDecision
+}
+
+func TestSupplementWebCallExpectationAllowsReportedIncompleteSearch(t *testing.T) {
+	localFailure := searchcore.Response{PartialFailures: []searchcore.PartialFailure{{
+		Source: searchcore.PartialFailureSourceLocalSearch,
+	}}}
+	tests := []struct {
+		name        string
+		response    searchcore.Response
+		primarySize int
+		webCalled   bool
+		elapsed     time.Duration
+		want        bool
+	}{
+		{
+			name: "small complete corpus requires web call",
+			response: searchcore.Response{Results: []searchcore.Result{{
+				URL: "https://local.example/result",
+			}}},
+			primarySize: 1,
+			webCalled:   true,
+			want:        true,
+		},
+		{
+			name:        "small corpus can report local-source loss",
+			response:    localFailure,
+			primarySize: 1,
+			want:        true,
+		},
+		{
+			name:        "small corpus can exhaust interactive budget",
+			primarySize: 1,
+			elapsed:     interactiveSearchBudget,
+			want:        true,
+		},
+		{
+			name:        "small complete corpus without web call fails expectation",
+			primarySize: 1,
+			want:        false,
+		},
+		{
+			name:        "large corpus needs no web call",
+			primarySize: 100,
+			want:        true,
+		},
+		{
+			name:        "large corpus rejects unnecessary web call",
+			primarySize: 100,
+			webCalled:   true,
+			want:        false,
+		},
+		{
+			name:        "large corpus accepts web call after missed decision",
+			primarySize: 100,
+			webCalled:   true,
+			elapsed:     webFallbackSupplementDecisionCeiling,
+			want:        true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := supplementWebCallExpected(
+				test.response,
+				test.primarySize,
+				test.webCalled,
+				test.elapsed,
+			)
+			if got != test.want {
+				t.Fatalf("supplementWebCallExpected() = %t, want %t", got, test.want)
+			}
+		})
+	}
 }
 
 func supplementationTestClient(webCalls *atomic.Int32) *http.Client {
