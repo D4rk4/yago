@@ -33,8 +33,6 @@ type ParsedPage struct {
 }
 
 type PageStats struct {
-	Tokens        []string
-	TitleTokens   []string
 	LocalLinks    []string
 	ExternalLinks []string
 }

@@ -264,6 +264,7 @@ func restoreAssemblySeams(t *testing.T) {
 	oldAssembleRuntimePeerExchange := assembleRuntimePeerExchange
 	oldBuildRuntimeDHTOutbound := buildRuntimeDHTOutbound
 	oldBuildRuntimeCrawl := buildRuntimeCrawl
+	oldOpenRuntimeNodeRWIBackfill := openRuntimeNodeRWIBackfill
 	t.Cleanup(func() {
 		openRuntimeNodeStorage = oldOpenRuntimeNodeStorage
 		openRuntimePeerBirthDate = oldOpenRuntimePeerBirthDate
@@ -272,6 +273,7 @@ func restoreAssemblySeams(t *testing.T) {
 		assembleRuntimePeerExchange = oldAssembleRuntimePeerExchange
 		buildRuntimeDHTOutbound = oldBuildRuntimeDHTOutbound
 		buildRuntimeCrawl = oldBuildRuntimeCrawl
+		openRuntimeNodeRWIBackfill = oldOpenRuntimeNodeRWIBackfill
 	})
 }
 

@@ -86,6 +86,8 @@ components:
     in: internal/landing/**
   adminui:
     in: internal/adminui/**
+  documentimport:
+    in: internal/documentimport/**
   publicportal:
     in: internal/publicportal/**
   portaltheme:
@@ -112,6 +114,8 @@ components:
     in: internal/urlreferences/**
   rwi:
     in: internal/rwi/**
+  rwibackfill:
+    in: internal/rwibackfill/**
   documentstore:
     in: internal/documentstore/**
   documentsearch:
@@ -226,6 +230,8 @@ components:
     in:
       - cmd/yago-peer-hash/**
       - cmd/yago-node/**
+  yacy-migrate:
+    in: cmd/yacy-migrate/**
 
 vendors:
   yagomodel:
@@ -472,6 +478,12 @@ deps:
       - adminui
       - adminauth
       - httproute
+      - documentimport
+    canUse:
+      - yagocrawlcontract
+  documentimport:
+    mayDependOn:
+      - documentimport
     canUse:
       - yagocrawlcontract
   publicportal:
@@ -555,6 +567,19 @@ deps:
     canUse:
       - yagomodel
       - yagoproto
+  rwibackfill:
+    mayDependOn:
+      - rwibackfill
+      - documentstore
+      - rwi
+      - urlmeta
+      - stopwords
+      - vault
+      - memvault
+      - shardvault
+    canUse:
+      - yagomodel
+      - yagocrawlcontract
   documentstore:
     mayDependOn:
       - documentstore
@@ -1014,6 +1039,7 @@ deps:
       - urlmeta
       - documentstore
       - rwi
+      - rwibackfill
       - documentsearch
       - eviction
       - metrics
@@ -1075,7 +1101,14 @@ deps:
       - yagonode
     canUse:
       - yagomodel
+  yacy-migrate:
+    mayDependOn:
+      - yacy-migrate
+      - documentimport
+    canUse:
+      - yagocrawlcontract
 
 excludeFiles:
   - "test/e2e"
   - "test/fixtures"
+  - "internal/documentstore/stored_document_key_test.go"

@@ -74,8 +74,11 @@ func startYaCyWithObserverNetwork(
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:          image,
-			ExposedPorts:   []string{httpPort},
+			Image:        image,
+			ExposedPorts: []string{httpPort},
+			Tmpfs: map[string]string{
+				"/opt/yacy_search_server/DATA": "rw,size=6g,mode=1777",
+			},
 			Networks:       networks,
 			NetworkAliases: networkAliases,
 			WaitingFor:     wait.ForExec([]string{"true"}).WithStartupTimeout(2 * time.Minute),

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -16,7 +15,7 @@ const MaximumStoredDocumentBatchSize = 100
 
 const (
 	storedDocumentBatchContinuationVersion = 1
-	maximumStoredDocumentContinuationBytes = 16 << 10
+	maximumStoredDocumentContinuationBytes = 32 << 10
 )
 
 type StoredDocumentBatchReader interface {
@@ -251,7 +250,7 @@ func parseStoredDocumentBatchPosition(
 }
 
 func validateStoredDocumentBatchPosition(position storedDocumentBatchPosition) error {
-	maximumKeyBytes := yagomodel.MaximumURLIdentityBytes + orderedDocumentAdmissionSize
+	maximumKeyBytes := maximumStoredDocumentURLIdentityBytes + orderedDocumentAdmissionSize
 	for name, key := range map[string]vault.Key{
 		"after":       position.After,
 		"legacy end":  position.LegacyEnd,

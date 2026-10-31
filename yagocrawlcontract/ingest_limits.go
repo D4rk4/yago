@@ -3,6 +3,7 @@ package yagocrawlcontract
 import "github.com/D4rk4/yago/yagomodel"
 
 const (
+	MaximumIngestBatchRecords    = 64
 	MaximumIngestBatchBytes      = (4 << 20) - (64 << 10)
 	MaximumIngestMessageBytes    = MaximumIngestBatchBytes + (64 << 10)
 	MaximumIngestPostings        = 8192
