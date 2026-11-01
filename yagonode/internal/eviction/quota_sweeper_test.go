@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -604,6 +605,40 @@ func TestEvictURLsDropsResolvedDocuments(t *testing.T) {
 	}
 	if result.DocumentsDeleted != 1 {
 		t.Fatalf("documents deleted = %d, want 1 (the present one)", result.DocumentsDeleted)
+	}
+}
+
+func TestEvictURLsSkipsOverlongStoredIdentityDuringDocumentReservation(t *testing.T) {
+	v := openVault(t, 1024)
+	overlongURL := "https://overlong.example/" + strings.Repeat("x", yagomodel.MaximumURLIdentityBytes)
+	validURL := "https://valid.example/"
+	reservation := &fakeReservedDocumentEviction{}
+	documents := &fakeDocumentEvictionReserver{reservation: reservation}
+	urls := &fakeURLs{remaining: hashes(2)}
+	evictor := eviction.NewEvictor(
+		v,
+		&fakePostings{},
+		fakeReferences{word: yagomodel.WordHash("w")},
+		urls,
+		documents,
+		fakeResolver{rows: []yagomodel.URIMetadataRow{
+			urlMetaRow(overlongURL),
+			urlMetaRow(validURL),
+		}},
+	)
+
+	result, err := evictor.EvictURLs(t.Context(), hashes(2))
+	if err != nil {
+		t.Fatalf("EvictURLs with an overlong stored identity: %v", err)
+	}
+	if len(documents.reserved) != 1 || documents.reserved[0] != validURL {
+		t.Fatalf("reserved document URLs = %v, want only %q", documents.reserved, validURL)
+	}
+	if len(reservation.deleted) != 1 || reservation.deleted[0] != validURL {
+		t.Fatalf("deleted document URLs = %v, want only %q", reservation.deleted, validURL)
+	}
+	if len(urls.remaining) != 0 || result.URLsDeleted != 2 || result.DocumentsDeleted != 1 {
+		t.Fatalf("purge result = %+v, remaining URL hashes = %v", result, urls.remaining)
 	}
 }
 
