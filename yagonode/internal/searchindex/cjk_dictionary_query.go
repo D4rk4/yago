@@ -2,7 +2,6 @@ package searchindex
 
 import (
 	"github.com/blevesearch/bleve/v2/analysis"
-	blevequery "github.com/blevesearch/bleve/v2/search/query"
 )
 
 const cjkDictionaryMatchBoost = 0.2
@@ -29,7 +28,7 @@ func fieldCJKDictionaryMatch(
 	text string,
 	boost float64,
 	analyzer string,
-) *blevequery.MatchQuery {
+) bleveFieldScoreMatchQuery {
 	query := fieldMatch(field, text, boost*cjkDictionaryMatchBoost)
 	query.Analyzer = analyzer
 

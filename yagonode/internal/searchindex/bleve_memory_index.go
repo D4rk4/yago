@@ -177,7 +177,7 @@ func (b *BleveMemoryIndex) Search(
 	searchRequest.Explain = req.Explain || req.IncludeFieldScores
 	searchRequest.IncludeLocations = false
 	searchRequest.Fields = []string{documentAnalyzerField}
-	result, err := b.index.SearchInContext(ctx, searchRequest)
+	result, err := b.index.SearchInContext(bleveFieldScoreSearchContext(ctx, req), searchRequest)
 	if err != nil {
 		return SearchResultSet{}, fmt.Errorf("search documents: %w", err)
 	}
@@ -285,13 +285,13 @@ func textFieldWeight(field string, weights RankingWeights) float64 {
 	}
 }
 
-func fieldMatch(field string, text string, boost float64) *blevequery.MatchQuery {
+func fieldMatch(field string, text string, boost float64) bleveFieldScoreMatchQuery {
 	query := bleve.NewMatchQuery(text)
 	query.SetField(field)
 	query.SetBoost(boost)
 	query.SetOperator(blevequery.MatchQueryOperatorAnd)
 
-	return query
+	return bleveFieldScoreMatchQuery{query}
 }
 
 // fieldMatchWithAnalyzer is a field match whose query text is analyzed with an
@@ -303,7 +303,7 @@ func fieldMatchWithAnalyzer(
 	text string,
 	boost float64,
 	analyzer string,
-) *blevequery.MatchQuery {
+) bleveFieldScoreMatchQuery {
 	query := fieldMatch(field, text, boost)
 	if analyzer != "" {
 		query.Analyzer = cjkQueryAnalyzer(analyzer)

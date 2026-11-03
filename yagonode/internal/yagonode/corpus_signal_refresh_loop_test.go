@@ -347,7 +347,7 @@ func TestCorpusSignalRefreshWaitHandlesTrustAndClosedSources(t *testing.T) {
 		citationsReady: true,
 	}
 	waited := make(chan bool, 1)
-	go func() { waited <- refresh.wait(t.Context()) }()
+	go func() { waited <- refresh.waitFor(t.Context(), defaultCorpusSignalRefreshInterval) }()
 	ticks := <-created
 	changes <- struct{}{}
 	deadline := time.Now().Add(time.Second)
@@ -367,7 +367,7 @@ func TestCorpusSignalRefreshWaitHandlesTrustAndClosedSources(t *testing.T) {
 	closedWait := &corpusSignalRefresh{
 		trust: &mutableHostTrustPolicy{changes: closedChanges},
 	}
-	go func() { waited <- closedWait.wait(t.Context()) }()
+	go func() { waited <- closedWait.waitFor(t.Context(), defaultCorpusSignalRefreshInterval) }()
 	closedTicks := <-created
 	closedTicks <- time.Now()
 	if didWait := <-waited; !didWait {
