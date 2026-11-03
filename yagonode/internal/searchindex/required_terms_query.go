@@ -139,7 +139,7 @@ func analyzerScopeClause(analyzer string) blevequery.Query {
 	query.SetField(documentAnalyzerField)
 	query.SetBoost(0)
 
-	return query
+	return bleveFieldScoreTermQuery{query}
 }
 
 func crossFieldTermClauseForAnalyzer(

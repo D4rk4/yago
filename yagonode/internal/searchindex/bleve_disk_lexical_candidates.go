@@ -54,7 +54,7 @@ func (b *BleveDiskIndex) executeRequestedHitPage(
 	searchRequest.Explain = req.Explain || req.IncludeFieldScores
 	searchRequest.IncludeLocations = false
 	searchRequest.Fields = storedSearchFields(req, b.storedCandidates)
-	result, err := b.readSearchPage(ctx, searchRequest)
+	result, err := b.readSearchPage(bleveFieldScoreSearchContext(ctx, req), searchRequest)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"search documents: %w",

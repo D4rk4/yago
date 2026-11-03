@@ -18,9 +18,8 @@ integer-overflow correction described in [GO-2026-5841](https://pkg.go.dev/vuln/
 The crawler container pins its existing `libblkid` and `libmount` dependencies
 to Alpine `2.42.3-r1`, addressing the util-linux advisories reported against their
 earlier package revision. It also pins the existing libexpat library to
-`2.9.0-r0`, including the integer-overflow and buffer-length corrections in
-[CVE-2026-102633 and CVE-2026-77214](https://github.com/libexpat/libexpat/releases/tag/R_2_9_0),
-and refreshes the CA certificates package to `20261020-r0`.
+`2.10.0-r0`, which corrects the NULL pointer dereference reported as
+CVE-2026-117610 and CVE-2026-118370 against `2.9.0-r0`, and refreshes the CA certificates package to `20261020-r0`.
 The crawler image pins PCRE2 to `10.49-r0`, addressing CVE-2026-103111 in
 its earlier runtime package. [PCRE2 10.49](https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.49)
 corrects an out-of-bounds write under specific JIT stack conditions; no exploit

@@ -406,6 +406,8 @@ and tested together; use matching releases when upgrading a node and crawler.
   stored in the node vault and restored before search listeners open. A fresh
   summary waits only until its original ten-minute due time; a stale summary is
   still served immediately while its replacement scan starts in the background.
+  Each later pass waits ten minutes or nine times the last scan time, whichever
+  is longer, so the pass never takes more than a tenth of wall time.
   The background pass briefly fences document admission to capture the last key
   of both the legacy and admission-ordered partitions, then reads through those
   boundaries in fixed 16-document keyset pages. Each vault view is released before

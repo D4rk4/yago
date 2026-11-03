@@ -64,15 +64,13 @@ func runCorpusSignalRefreshLoop(ctx context.Context, refresh *corpusSignalRefres
 		return
 	}
 	for ctx.Err() == nil {
+		started := refresh.currentTime()
 		refresh.scanAndPublish(ctx)
-		if !refresh.wait(ctx) {
+		rest := corpusSignalRefreshRest(refresh.currentTime().Sub(started))
+		if !refresh.waitFor(ctx, rest) {
 			return
 		}
 	}
-}
-
-func (r *corpusSignalRefresh) wait(ctx context.Context) bool {
-	return r.waitFor(ctx, defaultCorpusSignalRefreshInterval)
 }
 
 func (r *corpusSignalRefresh) waitFor(ctx context.Context, interval time.Duration) bool {

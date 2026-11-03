@@ -672,6 +672,11 @@ shared-library dependencies, so debuginfo and strip post-processing are disabled
 package installs across Fedora, RHEL/Rocky/Alma 9+, and openSUSE. Validated end
 to end on Fedora and Rocky 9.
 
+The package carries no OpenPGP signature; verify its GitHub artifact attestation
+instead. Install or upgrade it with `dnf install ./yago-X.Y.Z-1.<arch>.rpm`.
+RPM 6, as shipped by current Fedora, refuses `rpm -i` or `rpm -U` of an unsigned
+package; after verifying the attestation, add `--nosignature` to those commands.
+
 ## Releases
 
 Pushing a `v*` tag whose commit belongs to `main` runs
@@ -704,10 +709,10 @@ Linux amd64/arm64 matrix builds both product containers with
 Docker-reported architecture, OCI source and revision labels, exact binary
 versions, and bundled Firefox executable, then scans both images with Trivy
 0.72.0 for HIGH or CRITICAL vulnerabilities, secrets, and misconfigurations.
-Each product Dockerfile uses the same checksum-authenticated Go module download
-boundary. A failed download is attempted at most three times with two- and
+Each product Dockerfile and the release binary build use the same
+checksum-authenticated Go module download boundary. A failed download is attempted at most three times with two- and
 four-second pauses; checksum verification remains enabled on every attempt and
-an exhausted boundary fails the native image job.
+an exhausted boundary fails the native image or binary build job.
 Each native job exports a checksum-protected archive of its validated images as
 a short-lived workflow artifact. After every matrix member succeeds, a separate job verifies
 and reloads those archives, rechecks their release identity, publishes the two

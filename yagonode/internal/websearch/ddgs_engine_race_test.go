@@ -153,12 +153,7 @@ func TestEngineRacePreservesPerEngineBackoff(t *testing.T) {
 func TestEngineRaceReturnsDeterministicLastFailure(t *testing.T) {
 	client := &http.Client{
 		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			status := http.StatusBadGateway
-			if request.URL.Host == "last.example" {
-				status = http.StatusServiceUnavailable
-			}
-
-			return htmlResponse(status, ""), nil
+			return nil, errors.New(request.URL.Host + " unreachable")
 		}),
 	}
 	provider := NewDDGSProvider(DDGSConfig{Client: client, Now: fixedClock()})
@@ -168,7 +163,7 @@ func TestEngineRaceReturnsDeterministicLastFailure(t *testing.T) {
 	}
 
 	_, err := provider.Search(t.Context(), "failure", 10)
-	if err == nil || !strings.Contains(err.Error(), "last status 503") {
+	if err == nil || !strings.Contains(err.Error(), "last.example unreachable") {
 		t.Fatalf("error = %v, want last engine failure", err)
 	}
 }
