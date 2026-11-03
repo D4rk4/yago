@@ -100,6 +100,9 @@ jobs:
         with:
           go-version-file: yagonode/go.mod
 
+      - name: Download Go modules
+        run: sh deploy/download-go-modules.sh
+
       - name: Build binaries
         env:
           CGO_ENABLED: "0"
