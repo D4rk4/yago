@@ -175,6 +175,16 @@ func TestStorageCompactionIntervalSetting(t *testing.T) {
 	}
 }
 
+func TestTrustedProxiesSettingRequiresRestart(t *testing.T) {
+	definition, exists := indexSettingDefinitions()["security.trusted_proxies"]
+	if !exists {
+		t.Fatal("trusted-proxies setting is missing")
+	}
+	if !definition.restartRequired() {
+		t.Fatal("trusted-proxy changes must restart the request trust policy")
+	}
+}
+
 func TestParityGapNormalizersReject(t *testing.T) {
 	rejects := map[string][2]string{
 		"storage.quota":             {"", "-1B"},

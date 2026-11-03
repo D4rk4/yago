@@ -67,6 +67,7 @@ func (c *Console) registerOperatorRoutes() {
 	c.mux.HandleFunc("POST "+portalPath, c.handlePortalUpdate)
 	c.mux.HandleFunc("POST "+portalPath+"/design", c.handlePortalDesign)
 	c.mux.HandleFunc("GET "+performancePath, c.handlePerformance)
+	c.mux.HandleFunc("GET "+crawlerPulsePath, c.handleCrawlerPulse)
 	c.mux.HandleFunc("GET "+yagorankPath, c.handleYagoRank)
 	c.mux.HandleFunc("POST "+yagorankPath, c.handleYagoRankAction)
 	c.mux.HandleFunc("GET "+backupPath, c.handleBackup)

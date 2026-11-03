@@ -1036,7 +1036,9 @@ it is not an assumed deployment dependency.
   sharded vault and SHALL NOT count toward `YAGO_STORAGE_QUOTA` or participate
   in main-vault eviction or compaction. The node SHALL expose a live, separately
   configurable soft physical admission boundary for that file, defaulting to
-  4 GiB, with zero disabling the boundary. At or above the boundary, fresh order
+  10% of the effective storage quota and capped by measured free space after
+  the node reserve. An unlimited quota uses 10% of measured free space after
+  reserve; zero disables the boundary. At or above the boundary, fresh order
   enqueue SHALL fail while migration, ingest, lifecycle, recovery, and settlement
   writes remain admitted through the underlying filesystem-pressure policy.
 * Crawl-broker startup SHALL rebuild an in-memory active-lease catalog from the

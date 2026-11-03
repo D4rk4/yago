@@ -52,6 +52,11 @@ settlement, and progress; the ingest connection carries document/RWI/URL
 metadata batches. A large ingest call therefore cannot queue lease or progress
 traffic on the same transport.
 
+Each five-second worker heartbeat reports the current active fetch count and,
+when supported by the worker version, how many active jobs are waiting for a
+fetch-start permit. The node's Admin Performance page combines these readings
+with progress tallies to show measured fetched and indexed pages per minute.
+
 Multiple crawler instances can each stream orders from the node to load-balance,
 and the node's blocking ingest call applies backpressure when it
 falls behind. Each order is leased rather than handed off: the crawler acks a

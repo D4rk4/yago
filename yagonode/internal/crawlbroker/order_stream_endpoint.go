@@ -38,7 +38,7 @@ func (s *exchangeServer) StreamOrders(
 		}
 		return status.Error(codes.Internal, err.Error())
 	}
-	s.control.register(workerID)
+	s.control.register(workerID, workerSessionID)
 	defer s.releaseWorkerSession(workerID, workerSessionID, generation)
 	if err := s.streamRecoveredOrders(
 		stream,

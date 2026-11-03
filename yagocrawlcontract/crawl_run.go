@@ -23,16 +23,17 @@ type CrawlRunTally struct {
 }
 
 type CrawlRunProgress struct {
-	RunID           string
-	WorkerID        string
-	ProfileHandle   string
-	ProfileName     string
-	State           CrawlRunState
-	Tally           CrawlRunTally
-	RecentOutcomes  CrawlURLOutcomeHistory
-	PagesPerMinute  uint32
-	RateKnown       bool
-	MaxPagesPerHost int
-	MaxPagesPerRun  int
-	LimitsKnown     bool
+	RunID             string
+	WorkerID          string
+	ProcessIdentifier string
+	ProfileHandle     string
+	ProfileName       string
+	State             CrawlRunState
+	Tally             CrawlRunTally
+	RecentOutcomes    CrawlURLOutcomeHistory
+	PagesPerMinute    uint32
+	RateKnown         bool
+	MaxPagesPerHost   int
+	MaxPagesPerRun    int
+	LimitsKnown       bool
 }

@@ -64,7 +64,12 @@ The node runs four separate listeners, each with a distinct job:
   root `/` redirects to the console. Every path except `/health` and `/ready`
   requires an admin session or a scoped API key, so this listener can be bound to
   loopback (`127.0.0.1`) when the console is only reached locally or through a
-  proxy.
+  proxy. For a public HTTPS hostname, proxy `/admin/*` and `/api/admin/*` to this
+  listener and route other paths to public search. Set `YAGO_TRUSTED_PROXIES`
+  to the proxy address seen by the node and restart after changing it; only
+  those peers may supply forwarded
+  client-address and HTTPS-scheme headers for login throttling and Secure
+  cookies. Keep `/metrics`, `/health`, and `/ready` off the public proxy route.
 - **Crawler exchange** (`YAGO_CRAWL_RPC_ADDR`, default `127.0.0.1:9091`) — the
   gRPC control, order, progress, and ingest channel used by crawler processes.
   `off` starts no crawler exchange listener. Bind it beyond loopback only when a
@@ -127,12 +132,17 @@ worker heartbeats.
 
 Two independent soft physical state-file boundaries complement filesystem
 pressure. `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` and Admin key
-`crawler.node_state_max_bytes` control `crawlbroker.db` on the node.
+`crawler.node_state_max_bytes` control `crawlbroker.db` on the node. The node
+setting defaults to `auto`: 10% of the effective storage quota, capped by
+measured free space after the node reserve. When quota is unlimited, it uses
+10% of measured free space after reserve. A byte size selects a fixed limit;
+`0B` disables it. Quota and reserve changes recalculate an automatic limit live.
 `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` and Admin key
 `crawler.frontier_state_max_bytes` control `crawler/frontier-v1.db`; keep its
 bootstrap equal in both services, after which the node distributes the
-authoritative value through typed crawler policy. Both default to 4 GiB, apply
-live, and accept `0` to disable the boundary.
+authoritative value through typed crawler policy. The node boundary defaults
+to `auto`; the crawler boundary defaults to 4 GiB. Both apply live, and `0`
+disables the corresponding boundary.
 
 At or above the node boundary, fresh order enqueue is rejected while migration,
 ingest, lifecycle, recovery, and settlement writes continue. At or above the
@@ -218,7 +228,7 @@ required.
 | `YAGO_STORAGE_QUOTA` | `1GB` | Soft admission and eviction target for logical live main-vault rows, as a human-readable size. It excludes Bleve, crawl state, allocated free pages, and temporary copies. Admin key: `storage.quota`. |
 | `YAGO_STORAGE_RESERVED_FREE` | `1GB` | Filesystem free-space reserve for gate-managed node growth. Admin key: `storage.reserved_free`; applies live. |
 | `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | Additional free space above the node reserve required before gate-managed growth resumes. Admin key: `storage.pressure_hysteresis`; applies live. |
-| `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` | `4GB` | Soft physical admission boundary for `crawlbroker.db`; `0` disables it. Admin key: `crawler.node_state_max_bytes`; applies live. |
+| `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` | `auto` | 10% of effective `YAGO_STORAGE_QUOTA`, capped by measured free space after `YAGO_STORAGE_RESERVED_FREE`; when quota is unlimited, uses 10% of measured free space after reserve. A size overrides it; `0` disables it. Admin key: `crawler.node_state_max_bytes`; applies live with quota and reserve changes. |
 | `YAGO_STORAGE_COMPACTION_INTERVAL` | `1d` | Cadence for rewriting storage shards so deleted space returns to the operating system; `off` disables compaction. Admin key: `storage.compaction.interval`; applies live. |
 | `YAGO_STORAGE_AUTOSPLIT` | `true` | Allow the storage engine to grow its linear-hashing shard pool as data accumulates. Admin key: `storage.autosplit`; applies live. Turning it off freezes the current shard geometry. |
 | `YAGO_STORAGE_DEFER_FSYNC` | `false` | Skip the per-commit storage flush and use bounded periodic flushing. Admin key: `storage.defer_fsync`; takes effect after restart. Leave it off unless the host has reliable power and a bounded crash-loss window is acceptable. |

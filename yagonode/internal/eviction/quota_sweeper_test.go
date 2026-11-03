@@ -610,7 +610,10 @@ func TestEvictURLsDropsResolvedDocuments(t *testing.T) {
 
 func TestEvictURLsSkipsOverlongStoredIdentityDuringDocumentReservation(t *testing.T) {
 	v := openVault(t, 1024)
-	overlongURL := "https://overlong.example/" + strings.Repeat("x", yagomodel.MaximumURLIdentityBytes)
+	overlongURL := "https://overlong.example/" + strings.Repeat(
+		"x",
+		yagomodel.MaximumURLIdentityBytes,
+	)
 	validURL := "https://valid.example/"
 	reservation := &fakeReservedDocumentEviction{}
 	documents := &fakeDocumentEvictionReserver{reservation: reservation}

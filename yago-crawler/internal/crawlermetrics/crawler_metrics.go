@@ -31,6 +31,7 @@ type Metrics struct {
 	browserSessions                 *prometheus.GaugeVec
 	browserFailures                 *prometheus.CounterVec
 	activeFetchWorkerJobs           atomic.Uint32
+	fetchAdmissionWaiters           atomic.Uint32
 }
 
 func New() *Metrics {
@@ -188,9 +189,19 @@ func (m *Metrics) ObserveFetchAdmissionWait(elapsed time.Duration) {
 }
 
 // FetchAdmissionWaitStarted and FetchAdmissionWaitFinished bracket that wait.
-func (m *Metrics) FetchAdmissionWaitStarted() { m.fetchAdmissionWaiting.Inc() }
+func (m *Metrics) FetchAdmissionWaitStarted() {
+	m.fetchAdmissionWaiting.Inc()
+	m.fetchAdmissionWaiters.Add(1)
+}
 
-func (m *Metrics) FetchAdmissionWaitFinished() { m.fetchAdmissionWaiting.Dec() }
+func (m *Metrics) FetchAdmissionWaitFinished() {
+	m.fetchAdmissionWaiting.Dec()
+	m.fetchAdmissionWaiters.Add(^uint32(0))
+}
+
+func (m *Metrics) FetchAdmissionWaiters() uint32 {
+	return m.fetchAdmissionWaiters.Load()
+}
 
 func (m *Metrics) FetchAttempted() { m.fetches.Inc() }
 

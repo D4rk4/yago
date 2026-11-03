@@ -25,6 +25,7 @@ func provisionAdminAuth(
 	service, err := adminauth.New(storage, adminauth.Config{
 		Observer:        observer,
 		LoginNodeStatus: newLoginNodeStatusSource(config),
+		TrustedProxies:  config.TrustedProxies,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build admin auth: %w", err)

@@ -116,6 +116,12 @@ this measurement. The node counts only registered order-stream worker identities
 and removes their measurement after the last matching stream disconnects. Older
 nodes ignore this additive field.
 
+Current crawlers also report optional `fetch_admission_waiting` in the same
+heartbeat. It is present when the worker measures jobs parked on the fleet
+fetch-start or per-process rate governor, including an explicit zero. A present
+value must not exceed `active_fetches`; the node rejects an impossible pair.
+Older crawlers leave it absent and older nodes ignore the additive field.
+
 The node may also return `set_automatic_discovery_priority`. The crawler makes
 one heartbeat attempt bounded to one second before opening its order stream, so
 a successful response applies the persisted node policy before any order enters

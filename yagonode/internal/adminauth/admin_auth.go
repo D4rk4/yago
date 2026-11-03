@@ -3,6 +3,7 @@ package adminauth
 import (
 	"context"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -24,6 +25,7 @@ type Config struct {
 	APIKeyWindow       time.Duration
 	Observer           AuthObserver
 	LoginNodeStatus    LoginNodeStatusSource
+	TrustedProxies     []*net.IPNet
 	Now                func() time.Time
 }
 
@@ -62,6 +64,7 @@ type Service struct {
 	keyLimiter          *apiKeyRateLimiter
 	observer            AuthObserver
 	loginNodeStatus     LoginNodeStatusSource
+	requestTrust        trustedProxyRequestPolicy
 	now                 func() time.Time
 	wizardDefaults      SetupDefaults
 	wizardApply         SetupApplier
@@ -97,6 +100,7 @@ func New(storage *vault.Vault, cfg Config) (*Service, error) {
 		),
 		observer:        cfg.Observer,
 		loginNodeStatus: cfg.LoginNodeStatus,
+		requestTrust:    trustedProxyRequestPolicy{trustedProxies: cfg.TrustedProxies},
 		now:             cfg.Now,
 	}, nil
 }

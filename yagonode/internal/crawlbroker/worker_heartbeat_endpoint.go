@@ -21,6 +21,9 @@ func (s *exchangeServer) Heartbeat(
 	if !validCrawlerLeaseIdentity(workerID, workerSessionID) {
 		return nil, status.Error(codes.InvalidArgument, "invalid worker session identity")
 	}
+	if !validHeartbeatFetchActivity(req) {
+		return nil, status.Error(codes.InvalidArgument, "invalid worker fetch activity")
+	}
 	urlDenylist, err := s.urlDenylistForHeartbeat(req)
 	if err != nil {
 		return nil, err
@@ -59,7 +62,12 @@ func (s *exchangeServer) Heartbeat(
 		if err != nil {
 			return err
 		}
-		s.control.recordActiveFetches(workerID, req.ActiveFetches)
+		s.control.recordHeartbeatFetchActivity(
+			workerID,
+			workerSessionID,
+			req.ActiveFetches,
+			req.FetchAdmissionWaiting,
+		)
 		s.control.recordStoragePressure(workerID, req)
 		directives, err = s.control.deliverForHeartbeat(
 			ctx,
@@ -79,6 +87,18 @@ func (s *exchangeServer) Heartbeat(
 	s.confirmHeartbeatDeliveries(req, workerID, workerSessionID, renewed)
 
 	return s.heartbeatResult(directives, renewed, leaseTTL, urlDenylist)
+}
+
+func validHeartbeatFetchActivity(req *crawlrpc.WorkerHeartbeat) bool {
+	if req.ActiveFetches != nil &&
+		*req.ActiveFetches > yagocrawlcontract.MaximumFetchWorkerConcurrency {
+		return false
+	}
+	if req.FetchAdmissionWaiting == nil {
+		return true
+	}
+
+	return req.ActiveFetches != nil && *req.FetchAdmissionWaiting <= *req.ActiveFetches
 }
 
 func (s *exchangeServer) heartbeatResult(

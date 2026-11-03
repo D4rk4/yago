@@ -660,6 +660,7 @@ type WorkerHeartbeat struct {
 	ConfirmActiveLeaseDeliveries *bool                  `protobuf:"varint,9,opt,name=confirm_active_lease_deliveries,json=confirmActiveLeaseDeliveries,proto3,oneof" json:"confirm_active_lease_deliveries,omitempty"`
 	UrlDenylistRevision          []byte                 `protobuf:"bytes,10,opt,name=url_denylist_revision,json=urlDenylistRevision,proto3" json:"url_denylist_revision,omitempty"`
 	UrlDenylistBootstrap         bool                   `protobuf:"varint,11,opt,name=url_denylist_bootstrap,json=urlDenylistBootstrap,proto3" json:"url_denylist_bootstrap,omitempty"`
+	FetchAdmissionWaiting        *uint32                `protobuf:"varint,12,opt,name=fetch_admission_waiting,json=fetchAdmissionWaiting,proto3,oneof" json:"fetch_admission_waiting,omitempty"`
 	unknownFields                protoimpl.UnknownFields
 	sizeCache                    protoimpl.SizeCache
 }
@@ -769,6 +770,13 @@ func (x *WorkerHeartbeat) GetUrlDenylistBootstrap() bool {
 		return x.UrlDenylistBootstrap
 	}
 	return false
+}
+
+func (x *WorkerHeartbeat) GetFetchAdmissionWaiting() uint32 {
+	if x != nil && x.FetchAdmissionWaiting != nil {
+		return *x.FetchAdmissionWaiting
+	}
+	return 0
 }
 
 // CrawlControlDirective steers one run identified by its provenance token, or the
@@ -1864,7 +1872,7 @@ const file_crawlexchange_proto_rawDesc = "" +
 	" \x03(\v2\x1d.yacycrawl.v1.CrawlURLOutcomeR\x0erecentOutcomesB\x13\n" +
 	"\x11_pages_per_minute\"?\n" +
 	"\x0eOrderAckResult\x12-\n" +
-	"\x12confirmation_token\x18\x01 \x01(\fR\x11confirmationToken\"\xe4\x05\n" +
+	"\x12confirmation_token\x18\x01 \x01(\fR\x11confirmationToken\"\xbd\x06\n" +
 	"\x0fWorkerHeartbeat\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12*\n" +
 	"\x0eactive_fetches\x18\x02 \x01(\rH\x00R\ractiveFetches\x88\x01\x01\x12<\n" +
@@ -1877,12 +1885,14 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x1fconfirm_active_lease_deliveries\x18\t \x01(\bH\x04R\x1cconfirmActiveLeaseDeliveries\x88\x01\x01\x122\n" +
 	"\x15url_denylist_revision\x18\n" +
 	" \x01(\fR\x13urlDenylistRevision\x124\n" +
-	"\x16url_denylist_bootstrap\x18\v \x01(\bR\x14urlDenylistBootstrapB\x11\n" +
+	"\x16url_denylist_bootstrap\x18\v \x01(\bR\x14urlDenylistBootstrap\x12;\n" +
+	"\x17fetch_admission_waiting\x18\f \x01(\rH\x05R\x15fetchAdmissionWaiting\x88\x01\x01B\x11\n" +
 	"\x0f_active_fetchesB\x1a\n" +
 	"\x18_storage_available_bytesB\x13\n" +
 	"\x11_storage_pressureB \n" +
 	"\x1e_storage_measurement_availableB\"\n" +
-	" _confirm_active_lease_deliveries\"\xb0\x03\n" +
+	" _confirm_active_lease_deliveriesB\x1a\n" +
+	"\x18_fetch_admission_waiting\"\xb0\x03\n" +
 	"\x15CrawlControlDirective\x122\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1e.yacycrawl.v1.CrawlControlKindR\x04kind\x12\x15\n" +
 	"\x06run_id\x18\x02 \x01(\fR\x05runId\x12(\n" +

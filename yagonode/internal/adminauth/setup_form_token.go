@@ -36,7 +36,7 @@ func (s *Service) issueSetupFormToken(w http.ResponseWriter, r *http.Request) st
 			setupFormCookieName,
 			PathSetupPage,
 			token,
-			r.TLS != nil,
+			s.requestTrust.Secure(r),
 			expires,
 		),
 	)
@@ -77,9 +77,9 @@ func (s *Service) setupFormSignature(payload string) []byte {
 	return mac.Sum(nil)
 }
 
-func clearSetupFormToken(w http.ResponseWriter, r *http.Request) {
+func (s *Service) clearSetupFormToken(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(
 		w,
-		clearedSessionCookie(setupFormCookieName, PathSetupPage, r.TLS != nil),
+		clearedSessionCookie(setupFormCookieName, PathSetupPage, s.requestTrust.Secure(r)),
 	)
 }

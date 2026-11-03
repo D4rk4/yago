@@ -25,4 +25,18 @@ and
 [`doc/adr/0086-return-useful-shard-samples-and-cache-complete-searches.md`](doc/adr/0086-return-useful-shard-samples-and-cache-complete-searches.md)
 for the design and resource bounds.
 
+The authenticated Admin console is available at `/admin/` on the ops listener.
+The Performance page shows per-process fetched and indexed rates, current worker
+activity, fetch-admission waits, queued orders, and evidence-based signals.
+Rates include pages completed by short crawl runs during the 60-second window.
+The node keeps crawl orders in `${YAGO_DATA_DIR}/crawlbroker.db`. Its soft
+ceiling defaults to `auto`: 10% of the effective storage quota, capped by free
+space after the configured node reserve; with unlimited quota it uses 10% of
+measured free space after reserve. A byte size in `YAGO_CRAWLER_NODE_STATE_MAX_BYTES`
+or Admin setting `crawler.node_state_max_bytes` selects a fixed ceiling, while
+zero disables it.
+Through a public HTTPS hostname, route `/admin/*` and `/api/admin/*` to the ops
+listener and keep that listener private; configure the reverse proxy's address
+in `YAGO_TRUSTED_PROXIES` so login cookies receive the Secure attribute.
+
 Run the browser scenarios from [`ui-tests`](ui-tests/README.md).

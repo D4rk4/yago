@@ -359,8 +359,10 @@ and tested together; use matching releases when upgrading a node and crawler.
   copies a frozen version-1 state set from the legacy node vault without deleting
   the source, and an interrupted copy resumes before listeners open. The
   dedicated file is outside `YAGO_STORAGE_QUOTA` and main-vault compaction.
-  `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` gives its physical file a 4 GiB soft
-  admission boundary by default; `0` disables the boundary. At or above the
+  `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` defaults to `auto`: 10% of the effective
+  storage quota, capped by measured free space after the node reserve. With an
+  unlimited quota it uses 10% of measured free space after reserve. Enter a
+  size to override it or `0` to disable the boundary. At or above the
   boundary the node rejects fresh order enqueue while migration, ingest,
   lifecycle, recovery, and settlement writes continue. Startup attempts a
   copy compaction at the boundary before opening the authoritative file;
@@ -649,6 +651,15 @@ and tested together; use matching releases when upgrading a node and crawler.
   new unpredictable cookie token after the earlier of one hour or half its
   configured lifetime; rotation preserves the CSRF token and absolute expiry
   and atomically invalidates the old token.
+- The Performance page's **Crawler pulse** reports measured fetched and
+  indexed pages per minute for each connected crawler process, active fetches,
+  workers waiting for a start permit, and queued orders. Process IDs distinguish
+  crawler restarts that use the same worker identity; its 60-second rates retain
+  completed short runs. It raises only
+  evidence-based signals, refreshes every five seconds, and leaves stale
+  heartbeat data unavailable. Put `/admin/*` and
+  `/api/admin/*` through the trusted HTTPS reverse proxy to reach setup and
+  login on the public hostname.
 
 ### 📦 Operations without surprises
 
@@ -772,7 +783,7 @@ docker compose up -d
 | --- | --- | --- |
 | `8090` | Peer (P2P) | the YaCy wire protocol (`/yacy/*`) — keep reachable |
 | `8080` | Public search | portal, `yacysearch.*`, OpenSearch, Tavily `/search`, `/extract`, `/crawl`, `/map` |
-| `9090` | Admin & ops | console, `/health`, `/ready`, `/metrics` |
+| `127.0.0.1:9090` | Admin & ops | console, `/health`, `/ready`, `/metrics`; use a local reverse proxy for remote access |
 
 Open `http://localhost:9090/admin/` — the first-run **setup wizard** creates
 the administrator account and walks through the initial settings. Enable the
@@ -808,7 +819,7 @@ peer identity on first run. The variables you are most likely to touch:
 | `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before gate-managed node growth admissions resume |
 | `YAGO_CRAWLER_STORAGE_RESERVED_FREE` | `1GB` | filesystem free-space reserve sent to and bootstrapped by crawler workers |
 | `YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before crawler frontier growth and fetch admission resume |
-| `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` | `4GB` | live soft physical boundary for `crawlbroker.db`; `0` disables it |
+| `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` | `auto` | 10% of effective `YAGO_STORAGE_QUOTA`, capped by free space after `YAGO_STORAGE_RESERVED_FREE`; when quota is unlimited, uses 10% of measured free space after reserve. A size overrides it; `0` disables the boundary. Admin key: `crawler.node_state_max_bytes`; applies live. |
 | `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` | `4GB` | bootstrap in both services for the live soft physical boundary on `crawler/frontier-v1.db`; `0` disables it |
 
 The full reference — every variable and its default — is

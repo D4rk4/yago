@@ -1,0 +1,24 @@
+{{define "crawler-pulse"}}
+<section id="crawler-pulse" aria-live="polite"{{if .Refresh}} hx-get="/admin/performance/crawler-pulse" hx-trigger="every 5s" hx-swap="outerHTML"{{end}}>
+<h2 class="cds-h2">Crawler pulse</h2>
+{{if .Available}}
+<p class="cds-muted">Measured fetch and index throughput uses recent crawler progress reports over a 60-second window. Rates may take two reports to become available. Configured crawl limits are shown on the Crawler page.</p>
+<div class="cds-tile-grid">
+  <section class="cds-tile"><div class="cds-metric__label">Connected crawler processes</div><div class="cds-metric__value">{{.Workers}}</div></section>
+  <section class="cds-tile"><div class="cds-metric__label">Fetched pages per minute</div><div class="cds-metric__value">{{.Fetched}}</div></section>
+  <section class="cds-tile"><div class="cds-metric__label">Indexed pages per minute</div><div class="cds-metric__value">{{.Indexed}}</div></section>
+  <section class="cds-tile"><div class="cds-metric__label">Queued crawl orders</div><div class="cds-metric__value">{{.QueuePending}}</div></section>
+</div>
+{{if .WorkerRows}}
+<div class="cds-table-wrap"><table class="cds-table"><caption class="cds-table__caption">Crawler processes</caption><thead><tr><th scope="col">Worker</th><th scope="col">Process ID</th><th scope="col">Active fetches / limit</th><th scope="col">Waiting for permit</th><th scope="col">Fetched pages/min</th><th scope="col">Indexed pages/min</th><th scope="col">Last report</th></tr></thead><tbody>
+{{range .WorkerRows}}<tr><th scope="row">{{.WorkerID}}</th><td>{{.ProcessLabel}}</td><td>{{.Active}}</td><td>{{.Waiting}}</td><td>{{.Fetched}}</td><td>{{.Indexed}}</td><td>{{.LastReport}}</td></tr>{{end}}
+</tbody></table></div>
+{{else}}
+<p class="cds-muted">No crawler processes are connected.</p>
+{{end}}
+{{if .Hints}}<h3 class="cds-h3">Signals</h3><ul>{{range .Hints}}<li>{{.}}</li>{{end}}</ul>{{end}}
+{{else}}
+<p class="cds-muted">Crawler runtime pulse is unavailable on this node.</p>
+{{end}}
+</section>
+{{end}}

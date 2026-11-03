@@ -142,6 +142,7 @@ func applyCrawlAdminOptions(
 		options.CrawlOrderClearSource = newCrawlOrderClearSource(assembled.crawl)
 		options.CrawlRunDetails = newCrawlRunDetailSource(registry)
 		if control := crawlControlRegistry(assembled.crawl); control != nil {
+			options.CrawlerPulse = newCrawlerPulseSource(control, registry, crawlDepth.probe)
 			options.Control = newCrawlControlSource(
 				registry,
 				control,
