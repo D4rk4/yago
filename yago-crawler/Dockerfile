@@ -43,7 +43,7 @@ RUN apk add --no-cache \
     font-liberation=2.1.5-r2 \
     libblkid=2.42.3-r1 \
     libcrypto3=3.5.9-r0 \
-    libexpat=2.9.0-r0 \
+    libexpat=2.10.0-r0 \
     libmount=2.42.3-r1 \
     libssl3=3.5.9-r0 \
     pcre2=10.49-r0
