@@ -56,6 +56,7 @@ type BleveDiskIndex struct {
 	analyzerScope       bool
 	storedCandidates    bool
 	searchReadAdmission chan struct{}
+	randomIndex         func(int) (int, error)
 	now                 func() time.Time
 }
 
@@ -151,6 +152,7 @@ func NewBleveDiskIndex(
 		analyzerScope:       supportsAnalyzerScope(shards[0]),
 		storedCandidates:    supportsStoredCandidateProjection(shards[0]),
 		searchReadAdmission: newBleveDiskSearchReadAdmission(),
+		randomIndex:         cryptographicSearchRandomIndex,
 		now:                 time.Now,
 	}
 	if rebuild && stored != nil {

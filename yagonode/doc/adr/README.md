@@ -103,3 +103,6 @@ version from `PATH`.
 | [0082](0082-reject-reachable-go-vulnerabilities.md) | Reject reachable Go vulnerabilities | Accepted |
 | [0083](0083-shuffle-tests-and-smoke-fuzz-targets.md) | Shuffle tests and smoke fuzz targets | Accepted |
 | [0084](0084-supplement-incomplete-primary-search-with-bounded-web-results.md) | Supplement incomplete primary search with bounded web results | Accepted |
+| [0085](0085-randomize-deadline-bounded-shard-retrieval.md) | Randomize deadline-bounded shard retrieval | Accepted |
+| [0086](0086-return-useful-shard-samples-and-cache-complete-searches.md) | Return useful shard samples and cache complete searches | Accepted |
+| [0087](0087-use-playwright-for-browser-search-acceptance.md) | Use Playwright for browser search acceptance | Accepted |

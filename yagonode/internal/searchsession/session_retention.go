@@ -19,6 +19,7 @@ var (
 	retainedListElementWidth   = reflect.TypeOf(list.Element{}).Size()
 	retainedResultWidth        = reflect.TypeOf(searchcore.Result{}).Size()
 	retainedFailureWidth       = reflect.TypeOf(searchcore.PartialFailure{}).Size()
+	retainedCoverageWidth      = reflect.TypeOf(searchcore.SearchCoverage{}).Size()
 	retainedFacetGroupWidth    = reflect.TypeOf(searchcore.FacetGroup{}).Size()
 	retainedFacetTermWidth     = reflect.TypeOf(searchcore.FacetTerm{}).Size()
 	retainedResultImageWidth   = reflect.TypeOf(searchcore.ResultImage{}).Size()
@@ -71,6 +72,9 @@ func retainedSessionBytes(entry *session) int {
 		retained,
 		retainedProduct(cap(entry.failures), retainedFailureWidth),
 	)
+	if entry.coverage != nil {
+		retained = retainedAdd(retained, retainedProduct(1, retainedCoverageWidth))
+	}
 	for _, failure := range entry.failures {
 		retained = retainedStrings(retained, failure.Source, failure.Reason)
 	}

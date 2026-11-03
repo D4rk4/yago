@@ -65,7 +65,7 @@ func TestHTMLEndpointLinksCachedCopyAndFormats(t *testing.T) {
 	}
 	for _, want := range []string{
 		`href="#results"`, "Skip to results",
-		`<section id="results" tabindex="-1">`, `<p role="status">`,
+		`<section id="results" tabindex="-1">`, `role="status"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("a11y landmark missing %q: %s", want, body)

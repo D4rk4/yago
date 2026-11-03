@@ -94,6 +94,7 @@ func (s federatedSearcher) Search(ctx context.Context, req Request) (Response, e
 			federatedBranchTotal(remoteResp, remote.err),
 		Results:         offsetResults(merged, req.Offset, rankingResultLimit(req)),
 		PartialFailures: append(localResp.PartialFailures, remoteResp.PartialFailures...),
+		Coverage:        localResp.Coverage,
 		Facets:          localResp.Facets,
 	}
 	if len(merged) > 0 {

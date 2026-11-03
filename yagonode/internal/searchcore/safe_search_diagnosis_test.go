@@ -14,6 +14,7 @@ func (failingDiagnosticSearcher) Search(_ context.Context, _ Request) (Response,
 				{Source: "peer-a", Reason: "peer transport failed"},
 				{Source: "peer-b", Reason: "status 503"},
 			},
+			Coverage: &SearchCoverage{CompletedShards: 1, TotalShards: 8},
 		},
 		errors.New("exact search deadline exceeded")
 }
@@ -37,5 +38,8 @@ func TestSafeSearchKeepsPartialFailuresWhenTheInnerSearchFails(t *testing.T) {
 	}
 	if len(response.Results) != 0 {
 		t.Fatalf("results survived a failed search: %v", response.Results)
+	}
+	if response.Coverage == nil || response.Coverage.CompletedShards != 1 {
+		t.Fatalf("coverage was lost: %+v", response.Coverage)
 	}
 }

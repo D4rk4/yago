@@ -40,6 +40,8 @@ type htmlSearchPage struct {
 	PartialFailures    []searchcore.PartialFailure
 	ShowResults        bool
 	ShowPartialFailure bool
+	Incomplete         bool
+	Progressive        bool
 	Page               int
 	PageLinks          []htmlPageLink
 	HasPrev            bool
@@ -101,7 +103,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <body>
 <a href="#results" style="position:absolute;left:-999px;top:0;background:#00f;color:#fff;padding:0.5rem">Skip to results</a>
 <main>
-<form method="get" action="{{.SearchURL}}">
+<form class="search-form" method="get" action="{{.SearchURL}}">
 <span style="position:relative;display:inline-block">
 <input id="query" name="query" type="search" value="{{.Query}}" maxlength="200"
  role="combobox" aria-autocomplete="list" aria-expanded="false"
@@ -132,7 +134,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 <section id="results" tabindex="-1">
 <h1>Search for {{.Query}}</h1>
 {{if .Recovered}}<p role="status">No exact matches — showing close matches instead.{{if .DidYouMean}} Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?{{end}}</p>{{else if .DidYouMean}}<p role="status">No results matched. Did you mean <a href="{{.DidYouMeanURL}}">{{.DidYouMean}}</a>?</p>{{end}}
-<p role="status">{{.TotalResults}} results{{if .Elapsed}} ({{.Elapsed}}){{end}}</p>
+<p role="status" class="result-count">{{if .Progressive}}Searching the local index…{{else}}{{if and .Incomplete (eq .TotalResults "0")}}Partial search: no results found so far{{else}}{{if .Incomplete}}At least {{end}}{{.TotalResults}}{{if eq .TotalResults "1"}} result{{else}} results{{end}}{{end}}{{if .Elapsed}} ({{.Elapsed}}){{end}}{{end}}</p>
 {{if .NavGroups}}
 <nav aria-label="Refine results">
 {{range .NavGroups}}<details>
@@ -148,7 +150,7 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 {{range .PartialFailures}}<li>{{.SourceLabel}}: {{.Reason}}</li>{{end}}
 </ul>
 {{end}}
-<ol{{if .ClickCapture}} data-t="{{.ImpressionToken}}"{{end}}>
+<ol id="search-results"{{if .ClickCapture}} data-t="{{.ImpressionToken}}"{{end}}>
 {{range .Items}}
 <li>
 <h2><a href="{{.URL}}"{{if $.ClickCapture}} data-p="{{.Rank}}" data-i="{{.Identity}}"{{end}}{{if $.NewTab}} target="_blank" rel="noopener noreferrer nofollow"{{else}} rel="noreferrer nofollow"{{end}}>{{.Title}}{{if $.NewTab}}<span aria-hidden="true"> ↗</span><span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (opens in new tab)</span>{{end}}</a></h2>
@@ -158,7 +160,8 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
 </li>
 {{end}}
 </ol>
-<p>Get these results as <a href="{{.RSSURL}}">RSS</a> · <a href="{{.JSONURL}}">JSON</a></p>
+{{if and (not .Progressive) (not .Items) (not .Incomplete)}}<p id="nothing-found" role="status">Nothing found.</p>{{end}}
+<p class="result-footer">Get these results as <a href="{{.RSSURL}}">RSS</a> · <a href="{{.JSONURL}}">JSON</a></p>
 {{if or .HasPrev .HasNext .PageLinks}}
 <nav aria-label="Result pages">
 {{if .HasPrev}}<a rel="prev" href="{{.PrevURL}}">&lsaquo; Previous</a>{{end}}
@@ -228,6 +231,103 @@ var htmlSearchTemplate = template.Must(template.New("yacysearch").Parse(`<!docty
   input.addEventListener("blur", function () { setTimeout(close, 120); });
 })();
 </script>
+<script>
+(function () {
+  var form = document.querySelector(".search-form");
+  if (form && window.ReadableStream && window.fetch) {
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var values = new URLSearchParams(new FormData(form));
+      values.set("progressive", "1");
+      window.location.assign(form.action + "?" + values.toString());
+    });
+  }
+  var params = new URLSearchParams(window.location.search);
+  if (params.get("progressive") !== "1") return;
+  params.delete("progressive");
+  var status = document.querySelector(".result-count");
+  var list = document.getElementById("search-results");
+  var pending = "";
+  function render(event) {
+    if (event.type === "error") {
+      status.textContent = event.error || "Search incomplete.";
+      return;
+    }
+    if (!event.response || !event.response.channels || !event.response.channels.length) return;
+    var channel = event.response.channels[0];
+    list.replaceChildren();
+    (channel.items || []).forEach(function (item) {
+      var address;
+      try { address = new URL(item.link, window.location.href); } catch (_) { return; }
+      if (address.protocol !== "http:" && address.protocol !== "https:") return;
+      var row = document.createElement("li");
+      var heading = document.createElement("h2");
+      var link = document.createElement("a");
+      link.href = address.href;
+      link.rel = "noreferrer nofollow";
+      link.textContent = item.title || item.link;
+      heading.appendChild(link);
+      row.appendChild(heading);
+      var snippet = document.createElement("p");
+      snippet.textContent = item.description || "";
+      row.appendChild(snippet);
+      var host = document.createElement("p");
+      host.textContent = item.host || address.host;
+      row.appendChild(host);
+      list.appendChild(row);
+    });
+    var noResults = document.getElementById("nothing-found");
+    if (event.complete && Number(channel.totalResults) === 0 &&
+        !(channel.items || []).length && !(channel.partialFailures || []).length) {
+      if (!noResults) {
+        noResults = document.createElement("p");
+        noResults.id = "nothing-found";
+        noResults.setAttribute("role", "status");
+        noResults.textContent = "Nothing found.";
+        status.parentNode.insertBefore(noResults, status.nextSibling);
+      }
+    } else if (noResults) {
+      noResults.remove();
+    }
+    var partial = !event.complete || (channel.partialFailures || []).length > 0;
+    var partialStatus = partial && Number(channel.totalResults) === 0 ?
+      "Partial search: no results found so far" :
+      (partial ? "At least " : "") + channel.totalResults +
+        (channel.totalResults === "1" ? " result" : " results") +
+        (partial ? " · partial results" : "");
+    status.textContent = partialStatus +
+      (event.type === "progress" && event.total_shards ?
+        " · " + event.completed_shards + "/" + event.total_shards + " shards" : "");
+  }
+  async function readStream() {
+    try {
+      var query = new URLSearchParams(window.location.search);
+      query.delete("progressive");
+      var response = await fetch("/yacysearch.ndjson?" + query.toString(), {
+        headers: {Accept: "application/x-ndjson"}
+      });
+      if (!response.ok || !response.body) throw new Error("stream unavailable");
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder();
+      while (true) {
+        var part = await reader.read();
+        pending += decoder.decode(part.value || new Uint8Array(), {stream: !part.done});
+        var lines = pending.split("\n");
+        pending = lines.pop() || "";
+        lines.forEach(function (line) {
+          if (!line) return;
+          try { render(JSON.parse(line)); } catch (_) {}
+        });
+        if (part.done) break;
+      }
+      if (pending) render(JSON.parse(pending));
+    } catch (_) {
+      status.textContent = "Search stream interrupted. Submit the query to try again.";
+    }
+  }
+  readStream();
+})();
+</script>
 {{if .ClickCapture}}<script>
 (function () {
   var ol = document.querySelector("ol[data-t]");
@@ -261,6 +361,17 @@ func (e htmlEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	req, err := searchRequestFromValues(r.URL.Query())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if r.URL.Query().Get("progressive") == "1" {
+		page := responseHTMLWithImpression(r, searchcore.Response{Request: req}, e.clickCapture)
+		page.Progressive = true
+		page.TotalResults = ""
+		page.NewTab = e.newTab
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_ = htmlSearchTemplate.Execute(w, page)
+
 		return
 	}
 	started := htmlClock()
@@ -307,6 +418,8 @@ func responseHTML(r *http.Request, resp searchcore.Response) htmlSearchPage {
 		PartialFailures:    resp.PartialFailures,
 		ShowResults:        query != "",
 		ShowPartialFailure: len(resp.PartialFailures) > 0,
+		Incomplete: len(resp.PartialFailures) > 0 ||
+			resp.Coverage != nil && !resp.Coverage.Complete,
 	}
 	if resp.DidYouMean != "" {
 		values := url.Values{}

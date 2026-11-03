@@ -204,9 +204,9 @@ func TestWebFallbackExactStageBudgetFollowsOperatorPolicy(t *testing.T) {
 }
 
 func TestWebFallbackExactStageDeadlineContinuesTheMissCascade(t *testing.T) {
-	previous := webFallbackPrimaryStageBudget
-	webFallbackPrimaryStageBudget = 10 * time.Millisecond
-	t.Cleanup(func() { webFallbackPrimaryStageBudget = previous })
+	previous := webFallbackExactStageBudget
+	webFallbackExactStageBudget = 10 * time.Millisecond
+	t.Cleanup(func() { webFallbackExactStageBudget = previous })
 
 	searcher := withWebFallbackExactStageBudget(
 		webFallbackDeadlineProbe{},

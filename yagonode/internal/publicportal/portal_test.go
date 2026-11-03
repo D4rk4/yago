@@ -151,6 +151,54 @@ func TestPortalDistinguishesIncompleteEmptyResponse(t *testing.T) {
 	}
 }
 
+func TestPortalShowsSampledCoverageAsPartialWithoutFailureWarning(t *testing.T) {
+	t.Parallel()
+
+	status, body := get(t, New(&fakeSource{results: SearchResults{
+		Query: "sample", TotalResults: 1, CoverageIncomplete: true,
+		Results: []SearchResult{{Title: "Sampled result", URL: "https://sample.example/result"}},
+	}}, false), "/?q=sample")
+	if status != http.StatusOK {
+		t.Fatalf("status %d", status)
+	}
+	for _, want := range []string{
+		"Local shard retrieval is still refining this partial result window.",
+		"Up to 1 result(s) available in this search window",
+		"Sampled result",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("partial result page missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Some enabled search sources were unavailable") ||
+		strings.Contains(body, "Nothing found.") {
+		t.Fatalf("sampled coverage was rendered as a source failure or empty result: %s", body)
+	}
+}
+
+func TestPortalDoesNotCallAnEmptyPartialWindowACompleteMiss(t *testing.T) {
+	t.Parallel()
+
+	status, body := get(t, New(&fakeSource{results: SearchResults{
+		Query: "sample", CoverageIncomplete: true,
+	}}, false), "/?q=sample")
+	if status != http.StatusOK {
+		t.Fatalf("status %d", status)
+	}
+	for _, want := range []string{
+		"Local shard retrieval is still refining this partial result window.",
+		"No complete result set is available",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("partial empty response missing %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Nothing found.") ||
+		strings.Contains(body, "Some enabled search sources were unavailable") {
+		t.Fatalf("partial empty response was misrepresented: %s", body)
+	}
+}
+
 func TestPortalSearchErrorIsGeneric(t *testing.T) {
 	t.Parallel()
 

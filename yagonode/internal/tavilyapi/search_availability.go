@@ -4,9 +4,40 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
 var errSearchUnavailable = errors.New("search unavailable")
+
+func searchAvailabilityFailureCount(response searchcore.Response) int {
+	failures := response.LostSourceFailures()
+	if response.Coverage != nil && !response.Coverage.Complete {
+		failures++
+	}
+
+	return failures
+}
+
+func searchAvailabilityFailureCountForFirstSeen(response searchcore.Response) int {
+	failures := 0
+	for _, failure := range response.PartialFailures {
+		switch failure.Source {
+		case searchcore.PartialFailureSourceRemoteYaCy,
+			searchcore.PartialFailureSourceRemoteStage,
+			searchcore.PartialFailureSourcePeerReputation,
+			searchcore.PartialFailureSourceQueryShape:
+			continue
+		default:
+			failures++
+		}
+	}
+	if response.Coverage != nil && !response.Coverage.Complete {
+		failures++
+	}
+
+	return failures
+}
 
 // searchAvailabilityError reports that the node cannot vouch for an empty
 // answer. retrievedCount must be the number of results the search sources

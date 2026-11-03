@@ -10,7 +10,9 @@ import (
 )
 
 type jsonResponse struct {
-	Channels []jsonChannel `json:"channels"`
+	Channels []jsonChannel              `json:"channels"`
+	Complete bool                       `json:"complete"`
+	Coverage *searchcore.SearchCoverage `json:"coverage,omitempty"`
 }
 
 type jsonChannel struct {
@@ -64,27 +66,32 @@ func responseJSON(r *http.Request, resp searchcore.Response) jsonResponse {
 	link := searchLink(base, resp.Request)
 	query := resp.Request.SubmittedText()
 
-	return jsonResponse{Channels: []jsonChannel{
-		{
-			Title:       "YaCy P2P-Search for " + query,
-			Description: "Search for " + query,
-			Link:        link,
-			Image: jsonImage{
-				URL:   searchImageURL(r),
-				Title: "Search for " + query,
-				Link:  link,
+	return jsonResponse{
+		Complete: len(resp.PartialFailures) == 0 &&
+			(resp.Coverage == nil || resp.Coverage.Complete),
+		Coverage: resp.Coverage,
+		Channels: []jsonChannel{
+			{
+				Title:       "YaCy P2P-Search for " + query,
+				Description: "Search for " + query,
+				Link:        link,
+				Image: jsonImage{
+					URL:   searchImageURL(r),
+					Title: "Search for " + query,
+					Link:  link,
+				},
+				StartIndex:   strconv.Itoa(resp.Request.Offset),
+				ItemsPerPage: strconv.Itoa(resp.Request.Limit),
+				SearchTerms:  url.QueryEscape(query),
+				Items:        responseItems(resp.Results),
+				Navigation: responseJSONNavigation(
+					buildNavigation(query, resp.Facets),
+				),
+				TotalResults:    strconv.Itoa(resp.TotalResults),
+				PartialFailures: resp.PartialFailures,
 			},
-			StartIndex:   strconv.Itoa(resp.Request.Offset),
-			ItemsPerPage: strconv.Itoa(resp.Request.Limit),
-			SearchTerms:  url.QueryEscape(query),
-			Items:        responseItems(resp.Results),
-			Navigation: responseJSONNavigation(
-				buildNavigation(query, resp.Facets),
-			),
-			TotalResults:    strconv.Itoa(resp.TotalResults),
-			PartialFailures: resp.PartialFailures,
 		},
-	}}
+	}
 }
 
 func responseItems(results []searchcore.Result) []jsonItem {
