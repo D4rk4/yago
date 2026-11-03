@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminauth"
@@ -63,6 +64,7 @@ const (
 	logsEventsPath      = "/admin/logs/events"
 	securityPath        = "/admin/security"
 	performancePath     = "/admin/performance"
+	crawlerPulsePath    = "/admin/performance/crawler-pulse"
 	yagorankPath        = "/admin/yagorank"
 
 	// adminSearchPageSize is how many results one admin search page shows;
@@ -150,6 +152,7 @@ type Options struct {
 	Performance PerformanceSource
 	// PerformanceHistory feeds the Performance page's sampled history charts.
 	PerformanceHistory PerformanceHistorySource
+	CrawlerPulse       CrawlerPulseSource
 	// Backup reports storage status for the Backup & restore page.
 	Backup          BackupSource
 	PeerDetail      PeerDetailSource
@@ -392,13 +395,14 @@ type activityPageData struct {
 }
 
 type performancePageData struct {
-	AppName     string
-	ActivePath  string
-	Nav         []NavItem
-	CSRF        string
-	Section     sectionView
-	Performance PerformanceStatus
-	History     []historyView
+	AppName      string
+	ActivePath   string
+	Nav          []NavItem
+	CSRF         string
+	Section      sectionView
+	Performance  PerformanceStatus
+	History      []historyView
+	CrawlerPulse crawlerPulseView
 }
 
 type logsPageData struct {
@@ -481,6 +485,7 @@ type Console struct {
 	ranking              RankingSource
 	performance          PerformanceSource
 	perfHistory          PerformanceHistorySource
+	crawlerPulse         CrawlerPulseSource
 	backup               BackupSource
 	peerDetail           PeerDetailSource
 	peerNews             PeerNewsSource
@@ -543,6 +548,7 @@ func New(opts Options) *Console {
 		ranking:              opts.Ranking,
 		performance:          opts.Performance,
 		perfHistory:          opts.PerformanceHistory,
+		crawlerPulse:         opts.CrawlerPulse,
 		backup:               opts.Backup,
 		peerDetail:           opts.PeerDetail,
 		peerNews:             opts.PeerNews,
@@ -610,7 +616,7 @@ func buildTemplates() templates {
 		),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
-		performance: clone(nil, "templates/performance.tmpl"),
+		performance: clone(nil, "templates/performance.tmpl", "templates/crawler_pulse.tmpl"),
 		yagorank:    clone(nil, "templates/yagorank.tmpl", "templates/toasts.tmpl"),
 		restart:     clone(nil, "templates/restart.tmpl"),
 		backup:      clone(nil, "templates/backup.tmpl"),
@@ -1011,13 +1017,26 @@ func (c *Console) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pulse := crawlerPulseView{}
+	if c.crawlerPulse != nil {
+		pulse = buildCrawlerPulseView(c.crawlerPulse.CrawlerPulse(r.Context()), time.Now())
+	}
 	c.render(r.Context(), w, c.tpl.performance, "layout", performancePageData{
 		AppName: appName, ActivePath: performancePath, Nav: navItems,
-		CSRF:        csrfToken(r),
-		Section:     sectionView{Heading: "Performance", Available: true},
-		Performance: c.performance.Performance(r.Context()),
-		History:     performanceHistory(c.perfHistory),
+		CSRF:         csrfToken(r),
+		Section:      sectionView{Heading: "Performance", Available: true},
+		Performance:  c.performance.Performance(r.Context()),
+		History:      performanceHistory(c.perfHistory),
+		CrawlerPulse: pulse,
 	})
+}
+
+func (c *Console) handleCrawlerPulse(w http.ResponseWriter, r *http.Request) {
+	pulse := crawlerPulseView{}
+	if c.crawlerPulse != nil {
+		pulse = buildCrawlerPulseView(c.crawlerPulse.CrawlerPulse(r.Context()), time.Now())
+	}
+	c.render(r.Context(), w, c.tpl.performance, "crawler-pulse", pulse)
 }
 
 func (c *Console) handleLogs(w http.ResponseWriter, r *http.Request) {

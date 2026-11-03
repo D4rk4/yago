@@ -115,6 +115,7 @@ func assembleCrawlerOrderReceiver(
 		start.config.WorkerID,
 		control,
 		crawlorder.WithHeartbeatActiveFetches(start.metrics.ActiveFetchWorkerJobs),
+		crawlorder.WithHeartbeatFetchAdmissionWaiters(start.metrics.FetchAdmissionWaiters),
 		crawlorder.WithHeartbeatStoragePressure(
 			start.growthAdmission.Snapshot,
 			start.growthAdmission.SetPolicy,

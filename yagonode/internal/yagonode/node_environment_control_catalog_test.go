@@ -971,7 +971,7 @@ func addRuntimeEnvironmentFacilities(add environmentCatalogAdder) {
 	} {
 		add(environment, environmentControlCatalogEntry{
 			class: environmentDedicatedAdmin, consumers: environmentNodeConsumer,
-			targetSpecificFacility: environment == envCrawlRPCAddr,
+			targetSpecificFacility: environment == envCrawlRPCAddr || environment == envOpsAddr,
 			dedicatedAdminSurface:  surface,
 		})
 	}

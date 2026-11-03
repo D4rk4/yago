@@ -135,6 +135,30 @@ sudo systemctl enable --now yago-node
 sudo systemctl enable --now yago-crawler   # optional crawler worker
 ```
 
+## Admin through the public HTTPS hostname
+
+The systemd environment example binds the ops listener to `127.0.0.1:9090`.
+The Compose example publishes it only on host loopback. Keep the ops listener
+private and put the reverse proxy in front of it. `deploy/Caddyfile.example`
+routes `/admin/*` and `/api/admin/*` to the authenticated console and login; all
+other paths go to public search. Set `YAGO_PUBLIC_HOST` in Caddy's environment,
+then load the example as its site configuration. A host Caddy process uses the
+default loopback upstreams. A Caddy container on the same Docker network as the
+node can set `YAGO_ADMIN_UPSTREAM=yago-node:9090` and
+`YAGO_PUBLIC_UPSTREAM=yago-node:8080`.
+After loading the route, open `https://<your-public-host>/admin/`. The first
+visit goes to administrator setup when no account exists; otherwise it goes to
+the login page.
+
+Set `YAGO_TRUSTED_PROXIES` to the exact proxy address or isolated proxy subnet
+seen by the node. With a host Caddy process and systemd node, that is normally
+`127.0.0.1/32`. With Caddy in Docker, use the proxy container's address on the
+shared node network. The Caddy route adds the Secure attribute to cookies
+returned by Admin paths. The node trusts forwarded client addresses and HTTPS
+scheme only from these peers; configure them so login throttling uses the
+browser address. Leave the ops listener out of public proxy catch-all routes;
+only the Admin page and API path prefixes need it.
+
 ## Coordinated node-crawler upgrades
 
 The node and crawler control protocol requires the worker, process session, and

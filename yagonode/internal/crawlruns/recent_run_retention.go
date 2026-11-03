@@ -1,6 +1,9 @@
 package crawlruns
 
 func (r *Registry) reconcileRunActivityLocked(existed bool, previous Run, current Run) {
+	if isTerminal(current.State) {
+		delete(r.rateSamples, current.RunID)
+	}
 	wasActive := existed && !isTerminal(previous.State)
 	isActive := !isTerminal(current.State)
 	switch {

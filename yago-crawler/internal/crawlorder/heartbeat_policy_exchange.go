@@ -16,13 +16,14 @@ func (d heartbeatDelivery) leaseHeartbeat(
 	acknowledged []uint64,
 	confirmDeliveries bool,
 ) *crawlrpc.WorkerHeartbeat {
-	heartbeat := workerSessionHeartbeat(
-		d.workerID,
-		d.workerSessionID,
-		d.activeFetches,
-		activeLeaseIDs,
-		acknowledged...,
-	)
+	heartbeat := workerSessionHeartbeat(workerSessionHeartbeatReport{
+		workerID:                 d.workerID,
+		workerSessionID:          d.workerSessionID,
+		activeFetches:            d.activeFetches,
+		fetchAdmissionWaiters:    d.fetchAdmissionWaiters,
+		activeLeaseIDs:           activeLeaseIDs,
+		acknowledgedDirectiveIDs: acknowledged,
+	})
 	heartbeat.ConfirmActiveLeaseDeliveries = &confirmDeliveries
 	if d.urlDenylist != nil {
 		heartbeat.UrlDenylistRevision = d.urlDenylist.Revision()

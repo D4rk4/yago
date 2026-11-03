@@ -97,6 +97,7 @@ message WorkerHeartbeat {
   optional bool confirm_active_lease_deliveries = 9;
   bytes url_denylist_revision = 10;
   bool url_denylist_bootstrap = 11;
+  optional uint32 fetch_admission_waiting = 12;
 }
 
 // CrawlControlKind is a directive the node pushes to a worker to steer a run it is

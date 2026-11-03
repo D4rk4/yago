@@ -64,7 +64,12 @@ The node runs four separate listeners, each with a distinct job:
   root `/` redirects to the console. Every path except `/health` and `/ready`
   requires an admin session or a scoped API key, so this listener can be bound to
   loopback (`127.0.0.1`) when the console is only reached locally or through a
-  proxy.
+  proxy. For a public HTTPS hostname, proxy `/admin/*` and `/api/admin/*` to this
+  listener and route other paths to public search. Set `YAGO_TRUSTED_PROXIES`
+  to the proxy address seen by the node and restart after changing it; only
+  those peers may supply forwarded
+  client-address and HTTPS-scheme headers for login throttling and Secure
+  cookies. Keep `/metrics`, `/health`, and `/ready` off the public proxy route.
 - **Crawler exchange** (`YAGO_CRAWL_RPC_ADDR`, default `127.0.0.1:9091`) — the
   gRPC control, order, progress, and ingest channel used by crawler processes.
   `off` starts no crawler exchange listener. Bind it beyond loopback only when a
