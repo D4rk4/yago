@@ -162,11 +162,8 @@ func (p *DDGSProvider) fetch(
 		return nil, false, fmt.Errorf("%s request: %w", backend.name, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusTooManyRequests {
-		return nil, true, nil
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, false, fmt.Errorf("%s status %d", backend.name, resp.StatusCode)
+		return nil, true, nil
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResultBytes))
 	if err != nil {
@@ -175,6 +172,9 @@ func (p *DDGSProvider) fetch(
 	results, err := backend.parse(body)
 	if err != nil {
 		return nil, false, err
+	}
+	if len(results) == 0 {
+		return nil, true, nil
 	}
 	results = markAdultContentFiltered(results, backend, safeSearch)
 

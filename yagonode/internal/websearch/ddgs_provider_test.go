@@ -117,13 +117,14 @@ func TestDDGSProviderDoesNotCacheEmptyAnswers(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		attempts++
 
-		return htmlResponse(http.StatusOK, "<html><body>no results</body></html>"), nil
+		return htmlResponse(http.StatusOK, listFixture), nil
 	})}
 	provider := NewDDGSProvider(DDGSConfig{
 		Client:   client,
 		Backend:  backendMojeek,
 		CacheTTL: time.Hour,
 		Now:      fixedClock(),
+		Accept:   func(string, []Result) []Result { return nil },
 	})
 
 	for range 2 {
@@ -150,7 +151,7 @@ func TestDDGSProviderAutoNeverQueriesBing(t *testing.T) {
 	provider := NewDDGSProvider(DDGSConfig{Client: client, Backend: backendAuto, Now: fixedClock()})
 
 	results, err := provider.Search(context.Background(), "example", 10)
-	if err != nil || len(results) != 0 {
+	if !errors.Is(err, errWebSearchEnginesUnavailable) || len(results) != 0 {
 		t.Fatalf("results=%#v error=%v", results, err)
 	}
 	if bingCalls.Load() != 0 {
@@ -199,41 +200,67 @@ func TestDDGSProviderCachesResponses(t *testing.T) {
 	}
 }
 
-func TestDDGSProviderBacksOffOnRateLimit(t *testing.T) {
+func TestDDGSProviderBacksOffEveryEngineThatServesNoResultsPage(t *testing.T) {
+	for _, refusal := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "anomaly page", status: http.StatusAccepted, body: ddgFixture},
+		{name: "access denied", status: http.StatusForbidden, body: listFixture},
+		{name: "too many requests", status: http.StatusTooManyRequests},
+		{name: "server failure", status: http.StatusInternalServerError},
+		{name: "challenge", status: http.StatusServiceUnavailable},
+		{name: "captcha page", status: http.StatusOK, body: "<html><body>Captcha</body></html>"},
+	} {
+		t.Run(refusal.name, func(t *testing.T) {
+			calls := 0
+			client := &http.Client{
+				Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					calls++
+
+					return htmlResponse(refusal.status, refusal.body), nil
+				}),
+			}
+			provider := NewDDGSProvider(
+				DDGSConfig{Client: client, Backend: backendMojeek, Now: fixedClock()},
+			)
+
+			for _, query := range []string{"first", "second", "third"} {
+				results, err := provider.Search(context.Background(), query, 10)
+				if !errors.Is(err, errWebSearchEnginesUnavailable) {
+					t.Fatalf("search(%q) error = %v, want engines unavailable", query, err)
+				}
+				if len(results) != 0 {
+					t.Fatalf("search(%q) results = %#v, want empty", query, results)
+				}
+			}
+			if calls != 1 {
+				t.Fatalf("transport calls = %d, want 1 (backed off)", calls)
+			}
+		})
+	}
+}
+
+func TestDDGSProviderKeepsAskingAnEngineThatServesResults(t *testing.T) {
 	calls := 0
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		calls++
 
-		return htmlResponse(http.StatusAccepted, ""), nil
+		return htmlResponse(http.StatusOK, listFixture), nil
 	})}
 	provider := NewDDGSProvider(
 		DDGSConfig{Client: client, Backend: backendMojeek, Now: fixedClock()},
 	)
 
-	for range 3 {
-		results, err := provider.Search(context.Background(), "example", 10)
-		if !errors.Is(err, errWebSearchEnginesUnavailable) {
-			t.Fatalf("rate limit error = %v", err)
-		}
-		if len(results) != 0 {
-			t.Fatalf("results = %#v, want empty", results)
+	for _, query := range []string{"first", "second", "third"} {
+		results, err := provider.Search(context.Background(), query, 10)
+		if err != nil || len(results) == 0 {
+			t.Fatalf("search(%q) results = %#v error = %v", query, results, err)
 		}
 	}
-	if calls != 1 {
-		t.Fatalf("transport calls = %d, want 1 (backed off)", calls)
-	}
-}
-
-func TestDDGSProviderErrorsOnBadStatus(t *testing.T) {
-	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return htmlResponse(http.StatusInternalServerError, ""), nil
-	})}
-	provider := NewDDGSProvider(
-		DDGSConfig{Client: client, Backend: backendMojeek, Now: fixedClock()},
-	)
-
-	if _, err := provider.Search(context.Background(), "example", 10); err == nil {
-		t.Fatal("expected error on 500 status")
+	if calls != 3 {
+		t.Fatalf("transport calls = %d, want 3 (never backed off)", calls)
 	}
 }
 
