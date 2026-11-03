@@ -28,22 +28,41 @@ func TestWorkerHeartbeatPreservesAbsentAndZeroActiveFetches(t *testing.T) {
 	}
 }
 
+func TestWorkerHeartbeatPreservesAbsentAndZeroAdmissionWaiters(t *testing.T) {
+	absent := workerHeartbeat("legacy", nil)
+	if absent.FetchAdmissionWaiting != nil {
+		t.Fatalf("absent admission waiters = %v, want nil", absent.FetchAdmissionWaiting)
+	}
+	zero := workerHeartbeatWithWaiters(
+		"current",
+		func() uint32 { return 0 },
+		func() uint32 { return 0 },
+	)
+	if zero.FetchAdmissionWaiting == nil || zero.GetFetchAdmissionWaiting() != 0 {
+		t.Fatalf("zero admission waiters = %v, want present zero", zero.FetchAdmissionWaiting)
+	}
+}
+
 func TestGRPCOrderReceiverReportsLiveActiveFetches(t *testing.T) {
 	fastHeartbeat(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &fakeStreamer{ctx: ctx}
 	var active atomic.Uint32
+	var waiting atomic.Uint32
 	active.Store(3)
+	waiting.Store(2)
 	receiver := NewGRPCOrderReceiver(
 		ctx,
 		client,
 		"worker-active",
 		nil,
 		WithHeartbeatActiveFetches(active.Load),
+		WithHeartbeatFetchAdmissionWaiters(waiting.Load),
 	)
 	requests := client.heartbeatRequests()
 	if len(requests) < 1 || requests[0].ActiveFetches == nil ||
-		requests[0].GetActiveFetches() != 3 {
+		requests[0].GetActiveFetches() != 3 || requests[0].FetchAdmissionWaiting == nil ||
+		requests[0].GetFetchAdmissionWaiting() != 2 {
 		t.Fatalf("startup heartbeats = %+v, want present active count 3", requests)
 	}
 

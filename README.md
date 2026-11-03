@@ -649,6 +649,14 @@ and tested together; use matching releases when upgrading a node and crawler.
   new unpredictable cookie token after the earlier of one hour or half its
   configured lifetime; rotation preserves the CSRF token and absolute expiry
   and atomically invalidates the old token.
+- The Performance page's **Crawler pulse** reports measured fetched and
+  indexed pages per minute for each connected crawler process, active fetches,
+  workers waiting for a start permit, and queued orders. Process IDs distinguish
+  crawler restarts that use the same worker identity. It raises only
+  evidence-based signals, refreshes every five seconds, and leaves stale
+  heartbeat data unavailable. Put `/admin/*` and
+  `/api/admin/*` through the trusted HTTPS reverse proxy to reach setup and
+  login on the public hostname.
 
 ### 📦 Operations without surprises
 
@@ -772,7 +780,7 @@ docker compose up -d
 | --- | --- | --- |
 | `8090` | Peer (P2P) | the YaCy wire protocol (`/yacy/*`) — keep reachable |
 | `8080` | Public search | portal, `yacysearch.*`, OpenSearch, Tavily `/search`, `/extract`, `/crawl`, `/map` |
-| `9090` | Admin & ops | console, `/health`, `/ready`, `/metrics` |
+| `127.0.0.1:9090` | Admin & ops | console, `/health`, `/ready`, `/metrics`; use a local reverse proxy for remote access |
 
 Open `http://localhost:9090/admin/` — the first-run **setup wizard** creates
 the administrator account and walks through the initial settings. Enable the

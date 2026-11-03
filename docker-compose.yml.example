@@ -12,7 +12,7 @@ services:
     ports:
       - "8090:8090"   # peer protocol (P2P /yacy/*) — keep reachable from the network
       - "8080:8080"   # public search (portal, OpenSearch, Tavily API, /yacysearch.*)
-      - "9090:9090"   # admin and ops (console, /health, /ready, /metrics)
+      - "127.0.0.1:9090:9090"
     environment:
       YAGO_DATA_DIR: ${YAGO_DATA_DIR:-/opt/yago/data}
       YAGO_PEER_HASH: ${YAGO_PEER_HASH:-}
@@ -192,23 +192,10 @@ services:
     volumes:
       - yago-crawler-data:/opt/yago/data
 
-# Optional TLS-terminating reverse proxy in front of the public and admin
-# listeners (pairs with YAGO_HTTPS_REDIRECT=true). Uncomment and provide the
-# proxy config; Caddy shown as the smallest example.
-#  proxy:
-#    image: caddy:2
-#    restart: unless-stopped
-#    ports:
-#      - "80:80"
-#      - "443:443"
-#    volumes:
-#      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-#      - caddy-data:/data
-#    depends_on:
-#      - yago-node
+# A host reverse proxy can use deploy/Caddyfile.example. Route the admin paths
+# to the loopback ops port and all other paths to the public search port.
 
 volumes:
   yago-data:
   yago-crawler-data:
   yago-etc:
-#  caddy-data:

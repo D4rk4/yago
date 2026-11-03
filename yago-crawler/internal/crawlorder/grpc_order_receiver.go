@@ -100,20 +100,21 @@ func NewGRPCOrderReceiver(
 		apply(&config)
 	}
 	heartbeat := heartbeatDelivery{
-		requestTimeout:      orderHeartbeatRequestTimeout,
-		client:              client,
-		workerID:            workerID,
-		workerSessionID:     config.workerSessionID,
-		control:             control,
-		activeFetches:       config.activeFetches,
-		acknowledgments:     &controlAcknowledgments{},
-		leaseGrants:         config.leaseGrants,
-		operation:           &sync.Mutex{},
-		storageSnapshot:     config.storageSnapshot,
-		storagePolicy:       config.storagePolicy,
-		urlDenylist:         config.urlDenylist,
-		runtimePolicy:       config.runtimePolicy,
-		runtimePolicySource: config.runtimePolicySource,
+		requestTimeout:        orderHeartbeatRequestTimeout,
+		client:                client,
+		workerID:              workerID,
+		workerSessionID:       config.workerSessionID,
+		control:               control,
+		activeFetches:         config.activeFetches,
+		fetchAdmissionWaiters: config.fetchAdmissionWaiters,
+		acknowledgments:       &controlAcknowledgments{},
+		leaseGrants:           config.leaseGrants,
+		operation:             &sync.Mutex{},
+		storageSnapshot:       config.storageSnapshot,
+		storagePolicy:         config.storagePolicy,
+		urlDenylist:           config.urlDenylist,
+		runtimePolicy:         config.runtimePolicy,
+		runtimePolicySource:   config.runtimePolicySource,
 	}
 	out := make(chan CrawlOrderDelivery)
 	if config.leaseGrants == nil || config.urlDenylist != nil {

@@ -75,6 +75,9 @@ func assembleTestNode(t *testing.T, config nodeConfig, vault *vault.Vault) node 
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
+	if closer, ok := assembled.index.(interface{ Close() error }); ok {
+		t.Cleanup(func() { _ = closer.Close() })
+	}
 
 	return assembled
 }

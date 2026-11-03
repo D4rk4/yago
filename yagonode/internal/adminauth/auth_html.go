@@ -80,7 +80,7 @@ func (s *Service) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleLoginForm(w http.ResponseWriter, r *http.Request) {
-	caller := clientIP(r)
+	caller := s.requestTrust.ClientAddress(r)
 	if !s.limiter.allow(caller) {
 		s.observer.LoginThrottled()
 		redirectAuth(w, r, PathLoginPage+"?error=throttled")
@@ -147,7 +147,13 @@ func (s *Service) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	s.observer.LoginSucceeded()
 	http.SetCookie(
 		w,
-		sessionCookie(sessionCookieName, "/", created.Token, r.TLS != nil, created.ExpiresAt),
+		sessionCookie(
+			sessionCookieName,
+			"/",
+			created.Token,
+			s.requestTrust.Secure(r),
+			created.ExpiresAt,
+		),
 	)
 	redirectAuth(w, r, overviewRedirect)
 }
@@ -233,7 +239,7 @@ func (s *Service) handleLogoutForm(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
 		_ = s.sessions.delete(r.Context(), cookie.Value)
 	}
-	http.SetCookie(w, clearedSessionCookie(sessionCookieName, "/", r.TLS != nil))
+	http.SetCookie(w, clearedSessionCookie(sessionCookieName, "/", s.requestTrust.Secure(r)))
 	redirectAuth(w, r, PathLoginPage)
 }
 

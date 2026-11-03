@@ -47,7 +47,7 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !requireAuthJSONMediaType(w, r) {
 		return
 	}
-	caller := clientIP(r)
+	caller := s.requestTrust.ClientAddress(r)
 	if !s.limiter.allow(caller) {
 		s.observer.LoginThrottled()
 		writeError(w, http.StatusTooManyRequests, "too many login attempts, try again later")
@@ -102,7 +102,13 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.observer.LoginSucceeded()
 	http.SetCookie(
 		w,
-		sessionCookie(sessionCookieName, "/", created.Token, r.TLS != nil, created.ExpiresAt),
+		sessionCookie(
+			sessionCookieName,
+			"/",
+			created.Token,
+			s.requestTrust.Secure(r),
+			created.ExpiresAt,
+		),
 	)
 	writeJSON(w, http.StatusOK, loginResponse{
 		Username:  created.Username,
@@ -182,7 +188,7 @@ func (s *Service) handleLogout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.SetCookie(w, clearedSessionCookie(sessionCookieName, "/", r.TLS != nil))
+	http.SetCookie(w, clearedSessionCookie(sessionCookieName, "/", s.requestTrust.Secure(r)))
 	w.WriteHeader(http.StatusNoContent)
 }
 
