@@ -214,7 +214,7 @@ jobs:
                 touch /opt/yago/bin/yagocrawler /etc/systemd/system/yagocrawler.service
                 ln -s ../yagocrawler.service \
                   /etc/systemd/system/multi-user.target.wants/yagocrawler.service
-                rpm -U --replacepkgs "$1" >/dev/null
+                rpm -U --replacepkgs --nosignature "$1" >/dev/null
                 grep -qx "YAGO_CRAWLER_WORKERS=17" /opt/yago/etc/yago-crawler.env
                 test ! -e /opt/yago/etc/yagocrawler.env
                 test ! -e /opt/yago/bin/yagocrawler
@@ -222,7 +222,7 @@ jobs:
                 test ! -L /etc/systemd/system/multi-user.target.wants/yagocrawler.service
                 printf "%s\n" "YAGO_CRAWLER_WORKERS=31" > /opt/yago/etc/yago-crawler.env
                 printf "%s\n" "YAGOCRAWLER_WORKERS=99" > /opt/yago/etc/yagocrawler.env
-                rpm -U --replacepkgs "$1" >/dev/null
+                rpm -U --replacepkgs --nosignature "$1" >/dev/null
                 grep -qx "YAGO_CRAWLER_WORKERS=31" /opt/yago/etc/yago-crawler.env
                 test ! -e /opt/yago/etc/yagocrawler.env
                 test -s /usr/share/doc/yago/CJK_DICTIONARY_NOTICES.txt

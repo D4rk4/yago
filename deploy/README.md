@@ -644,6 +644,11 @@ shared-library dependencies, so debuginfo and strip post-processing are disabled
 package installs across Fedora, RHEL/Rocky/Alma 9+, and openSUSE. Validated end
 to end on Fedora and Rocky 9.
 
+The package carries no OpenPGP signature; verify its GitHub artifact attestation
+instead. Install or upgrade it with `dnf install ./yago-X.Y.Z-1.<arch>.rpm`.
+RPM 6, as shipped by current Fedora, refuses `rpm -i` or `rpm -U` of an unsigned
+package; after verifying the attestation, add `--nosignature` to those commands.
+
 ## Releases
 
 Pushing a `v*` tag whose commit belongs to `main` runs
