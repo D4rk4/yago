@@ -42,6 +42,21 @@ func TestDefaultCrawlerRuntimePolicyKeepsPerRunRate(t *testing.T) {
 	}
 }
 
+func TestCrawlerRunPagesPerMinuteConstantsRemainCompatible(t *testing.T) {
+	if yagocrawlcontract.DefaultCrawlerRunPagesPerMinute != 30 {
+		t.Fatalf(
+			"compatibility default per-run rate = %d, want 30",
+			yagocrawlcontract.DefaultCrawlerRunPagesPerMinute,
+		)
+	}
+	if yagocrawlcontract.UnlimitedCrawlerRunPagesPerMinute != 0 {
+		t.Fatalf(
+			"unlimited per-run rate = %d, want 0",
+			yagocrawlcontract.UnlimitedCrawlerRunPagesPerMinute,
+		)
+	}
+}
+
 func TestCrawlerRuntimePolicyLegacySandboxPresenceKeepsFallback(t *testing.T) {
 	message, err := yagocrawlcontract.CrawlerRuntimePolicyToProto(
 		yagocrawlcontract.DefaultCrawlerRuntimePolicy(),

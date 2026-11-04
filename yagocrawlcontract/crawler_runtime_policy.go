@@ -14,7 +14,7 @@ const (
 	DefaultCrawlerFrontierStateMaximumBytes = uint64(4) << 30
 	DefaultCrawlerMaximumDepth              = 5
 	DefaultCrawlerMaximumHostConcurrency    = 2
-	DefaultCrawlerRunPagesPerMinute         = 0
+	DefaultCrawlerRunPagesPerMinute         = 30
 	DefaultCrawlerSitemapURLLimit           = 10_000
 	MaximumCrawlerAllowedPrivateCIDRs       = 64
 	MaximumCrawlerBrowserFailureThreshold   = 1_000
@@ -26,6 +26,8 @@ const (
 	MaximumCrawlerBrowserPathBytes          = 4_096
 	MaximumCrawlerMetricsAddressBytes       = 261
 )
+
+const UnlimitedCrawlerRunPagesPerMinute uint32 = 0
 
 const (
 	DefaultCrawlerConnectTimeout  = 5 * time.Second
@@ -80,7 +82,7 @@ func DefaultCrawlerRuntimePolicy() CrawlerRuntimePolicy {
 		MaximumDepth:              DefaultCrawlerMaximumDepth,
 		MaximumHostConcurrency:    DefaultCrawlerMaximumHostConcurrency,
 		RequestTimeout:            DefaultCrawlerRequestTimeout,
-		RunPagesPerMinute:         DefaultCrawlerRunPagesPerMinute,
+		RunPagesPerMinute:         UnlimitedCrawlerRunPagesPerMinute,
 		SitemapURLLimit:           DefaultCrawlerSitemapURLLimit,
 		TLSTimeout:                DefaultCrawlerTLSTimeout,
 		ShutdownGrace:             DefaultCrawlerShutdownGrace,
