@@ -22,17 +22,26 @@ func TestBuildPageStatsBoundsIndexingWork(t *testing.T) {
 	for position := range links {
 		links[position] = fmt.Sprintf("/page/%d", position)
 	}
-	stats := pageindex.BuildPageStats(pageparse.ParsedPage{
+	page := pageparse.ParsedPage{
 		URL:   "https://example.org/",
 		Title: strings.Repeat("title ", 300),
 		Text:  strings.Join(words, " "),
 		Links: links,
-	})
-	if len(stats.Tokens) != yagocrawlcontract.MaximumDocumentWords {
-		t.Fatalf("tokens = %d", len(stats.Tokens))
 	}
-	if len(stats.TitleTokens) != 255 {
-		t.Fatalf("title tokens = %d", len(stats.TitleTokens))
+	stats := pageindex.BuildPageStats(page)
+	artifacts := pageindex.BuildRWIPageArtifacts(page, stats, time.Time{})
+	if got := artifacts.Metadata.Properties["wc"]; got != fmt.Sprint(
+		yagocrawlcontract.MaximumDocumentWords,
+	) {
+		t.Fatalf("word count = %s", got)
+	}
+	if len(artifacts.Postings) == 0 {
+		t.Fatal("expected bounded text to produce postings")
+	}
+	if got := artifacts.Postings[0].Properties[yagomodel.ColTitleWordCount]; got != yagomodel.FormatRWICardinal(
+		255,
+	) {
+		t.Fatalf("title word count = %s", got)
 	}
 	if len(stats.LocalLinks)+len(stats.ExternalLinks) !=
 		yagocrawlcontract.MaximumDocumentOutlinks {
@@ -131,8 +140,12 @@ func TestBuildPostingsBoundsTermsAndSetsDocumentType(t *testing.T) {
 		tokens[position] = fmt.Sprintf("term%d", position)
 	}
 	postings := pageindex.BuildPostings(
-		pageparse.ParsedPage{URL: "https://example.org/", Language: "en"},
-		pageparse.PageStats{Tokens: tokens},
+		pageparse.ParsedPage{
+			URL:      "https://example.org/",
+			Language: "en",
+			Text:     strings.Join(tokens, " "),
+		},
+		pageparse.PageStats{},
 	)
 	if len(postings) != yagocrawlcontract.MaximumIngestPostings {
 		t.Fatalf("postings = %d", len(postings))

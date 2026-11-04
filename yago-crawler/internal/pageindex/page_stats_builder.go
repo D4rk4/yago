@@ -8,8 +8,6 @@ import (
 func BuildPageStats(page pageparse.ParsedPage) pageparse.PageStats {
 	return pageparse.BuildBoundedPageStats(
 		page,
-		yagocrawlcontract.MaximumDocumentWords,
-		255,
 		yagocrawlcontract.MaximumDocumentOutlinks,
 	)
 }

@@ -110,8 +110,8 @@ func TestReleaseNilAwayBaselineContainsOnlyExactSortedLocations(t *testing.T) {
 		t.Fatalf("read NilAway baseline: %v", err)
 	}
 	locations := strings.Fields(string(contents))
-	if len(locations) != 82 {
-		t.Fatalf("NilAway baseline locations = %d, want 82", len(locations))
+	if len(locations) != 83 {
+		t.Fatalf("NilAway baseline locations = %d, want 83", len(locations))
 	}
 	if err := validateReleaseNilAwayLocations(locations); err != nil {
 		t.Fatal(err)

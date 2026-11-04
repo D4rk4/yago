@@ -151,10 +151,12 @@ func (c *IngestConsumer) passesGates(ctx context.Context, delivery IngestDeliver
 
 		return false
 	}
-	if rule := c.qualityRejectionRule(batch); rule != "" {
-		c.rejectLowQuality(ctx, delivery, rule)
+	if !delivery.ImportOnly {
+		if rule := c.qualityRejectionRule(batch); rule != "" {
+			c.rejectLowQuality(ctx, delivery, rule)
 
-		return false
+			return false
+		}
 	}
 
 	return true
@@ -255,7 +257,11 @@ func (c *IngestConsumer) storeReservedDocument(
 
 		return true
 	}
-	projection, err := c.prepareDocumentClusters(ctx, docs)
+	projection, err := c.prepareIngestDocumentClusters(
+		ctx,
+		[]IngestDelivery{delivery},
+		docs,
+	)
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster", err)
 
@@ -289,6 +295,23 @@ func (c *IngestConsumer) storeReservedDocument(
 	}
 
 	return false
+}
+
+func (c *IngestConsumer) prepareIngestDocumentClusters(
+	ctx context.Context,
+	deliveries []IngestDelivery,
+	docs []documentstore.Document,
+) (documentClusterProjection, error) {
+	if len(deliveries) == 0 {
+		return c.prepareDocumentClusters(ctx, docs)
+	}
+	for _, delivery := range deliveries {
+		if !delivery.ImportOnly {
+			return c.prepareDocumentClusters(ctx, docs)
+		}
+	}
+
+	return documentClusterProjection{documents: docs}, nil
 }
 
 // qualityRejectionRule names the quality rule the batch's document text
@@ -364,7 +387,7 @@ func rejectIngestDelivery(
 // (a document with a source URL and a fetch time) are recorded.
 func (c *IngestConsumer) recordFetch(ctx context.Context, delivery IngestDelivery) {
 	batch := delivery.Batch
-	if batch.SourceURL == "" ||
+	if delivery.ImportOnly || batch.SourceURL == "" ||
 		!hasDocument(batch.Document) ||
 		batch.Document.FetchedAt.IsZero() {
 		return

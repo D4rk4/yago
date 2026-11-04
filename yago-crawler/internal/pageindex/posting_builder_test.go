@@ -33,8 +33,21 @@ func TestBuildPostingsUsesYaCyWordHash(t *testing.T) {
 	if !ok {
 		t.Fatalf("no posting for word hash %q", want)
 	}
+	if _, ok := byHash[yagomodel.WordHash("the")]; ok {
+		t.Fatal("stopword unexpectedly has an RWI posting")
+	}
 	if got := entry.Properties[yagomodel.ColHitCount]; got == "" {
 		t.Errorf("missing hit count on kangaroo posting")
+	}
+}
+
+func TestBuildPostingsPreservesRelativeURLCompatibility(t *testing.T) {
+	page := pageparse.ParsedPage{
+		URL:  "relative/path",
+		Text: "indexable words",
+	}
+	if postings := buildPostings(t, page); len(postings) == 0 {
+		t.Fatal("relative URL unexpectedly dropped its postings")
 	}
 }
 

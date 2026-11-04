@@ -71,9 +71,10 @@ func (s queryLoggingSearcher) Search(
 		Terms:       len(req.Terms),
 		Results:     resp.TotalResults,
 		Failed:      err != nil,
-		Incomplete:  err == nil && len(resp.PartialFailures) > 0,
-		Duration:    time.Since(started),
-		Source:      string(req.Source),
+		Incomplete: err == nil && (len(resp.PartialFailures) > 0 ||
+			resp.Coverage != nil && !resp.Coverage.Complete),
+		Duration: time.Since(started),
+		Source:   string(req.Source),
 	})
 
 	return resp, err //nolint:wrapcheck // pass the wrapped searcher's error through unchanged.

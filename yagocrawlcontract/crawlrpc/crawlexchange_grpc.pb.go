@@ -25,6 +25,7 @@ const (
 	CrawlExchange_ReadRuntimePolicy_FullMethodName = "/yacycrawl.v1.CrawlExchange/ReadRuntimePolicy"
 	CrawlExchange_LeaseFetchStarts_FullMethodName  = "/yacycrawl.v1.CrawlExchange/LeaseFetchStarts"
 	CrawlExchange_SubmitIngest_FullMethodName      = "/yacycrawl.v1.CrawlExchange/SubmitIngest"
+	CrawlExchange_StreamIngest_FullMethodName      = "/yacycrawl.v1.CrawlExchange/StreamIngest"
 	CrawlExchange_ReportProgress_FullMethodName    = "/yacycrawl.v1.CrawlExchange/ReportProgress"
 )
 
@@ -51,6 +52,7 @@ type CrawlExchangeClient interface {
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
 	SubmitIngest(ctx context.Context, in *IngestBatchMessage, opts ...grpc.CallOption) (*IngestAck, error)
+	StreamIngest(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[IngestBatchMessage, IngestAck], error)
 	ReportProgress(ctx context.Context, in *CrawlProgressReport, opts ...grpc.CallOption) (*CrawlProgressAck, error)
 }
 
@@ -131,6 +133,19 @@ func (c *crawlExchangeClient) SubmitIngest(ctx context.Context, in *IngestBatchM
 	return out, nil
 }
 
+func (c *crawlExchangeClient) StreamIngest(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[IngestBatchMessage, IngestAck], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &CrawlExchange_ServiceDesc.Streams[1], CrawlExchange_StreamIngest_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[IngestBatchMessage, IngestAck]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type CrawlExchange_StreamIngestClient = grpc.BidiStreamingClient[IngestBatchMessage, IngestAck]
+
 func (c *crawlExchangeClient) ReportProgress(ctx context.Context, in *CrawlProgressReport, opts ...grpc.CallOption) (*CrawlProgressAck, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CrawlProgressAck)
@@ -164,6 +179,7 @@ type CrawlExchangeServer interface {
 	// absorbs it. The node returns an error when its ingest pipeline is saturated
 	// so the crawler retries, which is the backpressure signal.
 	SubmitIngest(context.Context, *IngestBatchMessage) (*IngestAck, error)
+	StreamIngest(grpc.BidiStreamingServer[IngestBatchMessage, IngestAck]) error
 	ReportProgress(context.Context, *CrawlProgressReport) (*CrawlProgressAck, error)
 	mustEmbedUnimplementedCrawlExchangeServer()
 }
@@ -192,6 +208,9 @@ func (UnimplementedCrawlExchangeServer) LeaseFetchStarts(context.Context, *Fetch
 }
 func (UnimplementedCrawlExchangeServer) SubmitIngest(context.Context, *IngestBatchMessage) (*IngestAck, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitIngest not implemented")
+}
+func (UnimplementedCrawlExchangeServer) StreamIngest(grpc.BidiStreamingServer[IngestBatchMessage, IngestAck]) error {
+	return status.Errorf(codes.Unimplemented, "method StreamIngest not implemented")
 }
 func (UnimplementedCrawlExchangeServer) ReportProgress(context.Context, *CrawlProgressReport) (*CrawlProgressAck, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReportProgress not implemented")
@@ -318,6 +337,13 @@ func _CrawlExchange_SubmitIngest_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CrawlExchange_StreamIngest_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(CrawlExchangeServer).StreamIngest(&grpc.GenericServerStream[IngestBatchMessage, IngestAck]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type CrawlExchange_StreamIngestServer = grpc.BidiStreamingServer[IngestBatchMessage, IngestAck]
+
 func _CrawlExchange_ReportProgress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CrawlProgressReport)
 	if err := dec(in); err != nil {
@@ -373,6 +399,12 @@ var CrawlExchange_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "StreamOrders",
 			Handler:       _CrawlExchange_StreamOrders_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "StreamIngest",
+			Handler:       _CrawlExchange_StreamIngest_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "crawlexchange.proto",

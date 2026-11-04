@@ -65,3 +65,31 @@ func TestReturnedHostPagesPrecedeQueuedPages(t *testing.T) {
 		t.Fatalf("second pending page = %q, %v", page.normURL, ok)
 	}
 }
+
+func TestReturnedFirstPassPagesStayAheadOfRetries(t *testing.T) {
+	run := &crawlRun{pendingByHost: make(map[string]*pendingHostPages)}
+	run.appendPending(frontierCandidate{normURL: "https://example.org/queued", host: "example.org"})
+	run.prependReturned("example.org", []pendingPage{
+		{normURL: "https://example.org/returned-first-pass"},
+		{normURL: "https://example.org/returned-retry", retryAttempt: 1},
+	})
+
+	for _, want := range []string{
+		"https://example.org/returned-first-pass",
+		"https://example.org/queued",
+		"https://example.org/returned-retry",
+	} {
+		_, page, ok := run.popPending(nil)
+		if !ok || page.normURL != want {
+			t.Fatalf("next pending page = %q/%v, want %q", page.normURL, ok, want)
+		}
+	}
+}
+
+func TestRemovingExcessFirstPassPagesDoesNotUnderflow(t *testing.T) {
+	run := &crawlRun{firstPassPending: 2}
+	run.removeFirstPassPending(3)
+	if run.firstPassPending != 0 {
+		t.Fatalf("first-pass pages after over-removal = %d, want zero", run.firstPassPending)
+	}
+}

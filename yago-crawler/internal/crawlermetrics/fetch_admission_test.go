@@ -16,7 +16,13 @@ func TestMetricsExposeFetchAdmissionWaits(t *testing.T) {
 	metrics := crawlermetrics.New()
 	metrics.FetchAdmissionWaitStarted()
 	metrics.FetchAdmissionWaitStarted()
+	if got := metrics.FetchAdmissionWaiters(); got != 2 {
+		t.Fatalf("active admission waiters = %d, want 2", got)
+	}
 	metrics.FetchAdmissionWaitFinished()
+	if got := metrics.FetchAdmissionWaiters(); got != 1 {
+		t.Fatalf("active admission waiters after finish = %d, want 1", got)
+	}
 	metrics.ObserveFetchAdmissionWait(250 * time.Millisecond)
 
 	body := scrapeMetrics(t, metrics)
@@ -29,5 +35,9 @@ func TestMetricsExposeFetchAdmissionWaits(t *testing.T) {
 	}
 	if !strings.Contains(body, "yacy_crawler_fetch_admission_seconds_sum 0.25") {
 		t.Fatalf("admission wait histogram did not record the elapsed time:\n%s", body)
+	}
+	metrics.FetchAdmissionWaitFinished()
+	if got := metrics.FetchAdmissionWaiters(); got != 0 {
+		t.Fatalf("active admission waiters after all finishes = %d, want 0", got)
 	}
 }

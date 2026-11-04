@@ -188,12 +188,12 @@ func productionShapeSearchAssembly(client *http.Client) publicSearchAssembly {
 }
 
 func TestPublicSearchReservesUsableWebWindowAfterSlowSwarmAndFuzzyMiss(t *testing.T) {
-	previousExact := webFallbackPrimaryStageBudget
+	previousExact := webFallbackExactStageBudget
 	previousRecovery := recoverySearchBudget
-	webFallbackPrimaryStageBudget = 60 * time.Millisecond
+	webFallbackExactStageBudget = 60 * time.Millisecond
 	recoverySearchBudget = 15 * time.Millisecond
 	t.Cleanup(func() {
-		webFallbackPrimaryStageBudget = previousExact
+		webFallbackExactStageBudget = previousExact
 		recoverySearchBudget = previousRecovery
 	})
 
@@ -234,9 +234,9 @@ func TestPublicSearchReservesUsableWebWindowAfterSlowSwarmAndFuzzyMiss(t *testin
 }
 
 func TestPublicSearchParallelModeIncludesWebBesidePrimaryHit(t *testing.T) {
-	previousExact := webFallbackPrimaryStageBudget
-	webFallbackPrimaryStageBudget = 60 * time.Millisecond
-	t.Cleanup(func() { webFallbackPrimaryStageBudget = previousExact })
+	previousExact := webFallbackParallelExactStageBudget
+	webFallbackParallelExactStageBudget = 60 * time.Millisecond
+	t.Cleanup(func() { webFallbackParallelExactStageBudget = previousExact })
 
 	attempts := &productionShapeWebAttempts{}
 	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
@@ -321,15 +321,19 @@ func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
 	if webFallbackSupplementDecisionCeiling+webFallbackMinimumWindow+webFallbackAssemblyReserve > interactiveSearchBudget {
 		t.Fatal("supplement decision leaves no reserved web and assembly time")
 	}
-	if webFallbackPrimaryStageBudget+webFallbackAssemblyReserve > interactiveSearchBudget {
-		t.Fatal("primary stage leaves no assembly time")
+	if webFallbackExactStageBudget+webFallbackMinimumWindow+
+		webFallbackAssemblyReserve+interactiveSearchCancellationGrace > interactiveSearchBudget {
+		t.Fatal("supplement exact stage leaves no web and assembly window")
+	}
+	if webFallbackParallelExactStageBudget+webFallbackAssemblyReserve > interactiveSearchBudget {
+		t.Fatal("parallel primary stage leaves no assembly time")
 	}
 }
 
 func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
-	previous := webFallbackPrimaryStageBudget
-	webFallbackPrimaryStageBudget = 20 * time.Millisecond
-	t.Cleanup(func() { webFallbackPrimaryStageBudget = previous })
+	previous := webFallbackExactStageBudget
+	webFallbackExactStageBudget = 20 * time.Millisecond
+	t.Cleanup(func() { webFallbackExactStageBudget = previous })
 
 	release := make(chan struct{})
 	finished := make(chan struct{}, 1)
@@ -363,12 +367,12 @@ func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
 }
 
 func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testing.T) {
-	previous := webFallbackPrimaryStageBudget
+	previous := webFallbackExactStageBudget
 	previousRemoteAdmission := processRemoteSearchAdmission
-	webFallbackPrimaryStageBudget = 20 * time.Millisecond
+	webFallbackExactStageBudget = 20 * time.Millisecond
 	processRemoteSearchAdmission = make(chan struct{}, interactiveSearchConcurrentWork)
 	t.Cleanup(func() {
-		webFallbackPrimaryStageBudget = previous
+		webFallbackExactStageBudget = previous
 		processRemoteSearchAdmission = previousRemoteAdmission
 	})
 

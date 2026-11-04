@@ -492,7 +492,7 @@ func perimeterDefinitions() []settingDefinition {
 		{
 			key:          "security.trusted_proxies",
 			title:        "Trusted proxies",
-			description:  "Comma-separated CIDRs whose X-Forwarded-For headers are believed (your reverse proxy).",
+			description:  "Comma-separated proxy CIDRs trusted for forwarded client addresses and HTTPS scheme.",
 			defaultValue: func(config nodeConfig) string { return formatIPNets(config.TrustedProxies) },
 			normalize:    normalizeCIDRList,
 			apply: func(config nodeConfig, value string) nodeConfig {

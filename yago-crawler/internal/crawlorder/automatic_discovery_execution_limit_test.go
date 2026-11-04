@@ -1,6 +1,7 @@
 package crawlorder
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/boundedqueue"
@@ -110,7 +111,7 @@ func TestAutomaticDiscoveryExecutionLimitDoesNotWidenOrAffectOtherOrders(t *test
 		Priority: yagocrawlcontract.CrawlOrderPriorityAutomaticDiscovery,
 		Profile:  profile,
 	})
-	if limited != profile {
+	if !reflect.DeepEqual(limited, profile) {
 		t.Fatalf("already-correct profile changed: %+v", limited)
 	}
 	manual := consumer.executionLimitedProfile(

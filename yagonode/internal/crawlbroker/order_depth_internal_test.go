@@ -58,3 +58,40 @@ func TestDurableOrderQueueDepthCountsPendingAndLeased(t *testing.T) {
 		t.Fatalf("leased depth = %+v, want 2 pending / 1 leased", depth)
 	}
 }
+
+func TestPendingURLSampleIsBoundedAndUsesOldestPendingOrders(t *testing.T) {
+	queue := memQueue(t)
+	ctx := context.Background()
+	for _, name := range []string{"first", "second", "third", "fourth", "fifth"} {
+		if err := queue.Publish(ctx, testOrder(name)); err != nil {
+			t.Fatalf("publish %s: %v", name, err)
+		}
+	}
+
+	got, err := queue.PendingURLSample(ctx)
+	if err != nil {
+		t.Fatalf("sample pending URLs: %v", err)
+	}
+	want := []string{
+		"https://example.org/first",
+		"https://example.org/second",
+		"https://example.org/third",
+		"https://example.org/fourth",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("sample length = %d, want %d", len(got), len(want))
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("sample[%d] = %q, want %q", index, got[index], want[index])
+		}
+	}
+}
+
+func TestPendingURLSampleReturnsEmptyWhenNoPendingOrders(t *testing.T) {
+	queue := memQueue(t)
+	got, err := queue.PendingURLSample(context.Background())
+	if err != nil || len(got) != 0 {
+		t.Fatalf("empty queue sample = %v, %v; want empty success", got, err)
+	}
+}

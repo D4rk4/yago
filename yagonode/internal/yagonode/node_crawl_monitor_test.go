@@ -49,15 +49,26 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 		RunID:       "r2",
 		ProfileName: "docs",
 		State:       yagocrawlcontract.CrawlRunFinished,
-		Tally:       yagocrawlcontract.CrawlRunTally{Fetched: 10, Indexed: 6, Duplicates: 2},
+		Tally: yagocrawlcontract.CrawlRunTally{
+			Fetched:    10,
+			Indexed:    6,
+			Duplicates: 2,
+			Pending:    100,
+		},
+	})
+	recordRun(reg, yagocrawlcontract.CrawlRunProgress{
+		RunID:       "r3",
+		ProfileName: "manual",
+		State:       yagocrawlcontract.CrawlRunRunning,
+		Tally:       yagocrawlcontract.CrawlRunTally{Pending: 7},
 	})
 	source := newCrawlMonitorSource(reg, func(context.Context) (crawlbroker.QueueDepth, error) {
 		return crawlbroker.QueueDepth{Pending: 3, Leased: 1}, nil
 	})
 
 	monitor := source.Monitor(context.Background())
-	if len(monitor.Runs) != 2 {
-		t.Fatalf("runs = %d, want 2", len(monitor.Runs))
+	if len(monitor.Runs) != 3 {
+		t.Fatalf("runs = %d, want 3", len(monitor.Runs))
 	}
 	if monitor.Totals.Fetched != 15 || monitor.Totals.Indexed != 10 ||
 		monitor.Totals.Failed != 1 || monitor.Totals.RobotsDenied != 2 ||
@@ -81,6 +92,12 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 	if !monitor.QueueAvailable || monitor.QueuePending != 3 || monitor.QueueLeased != 1 {
 		t.Fatalf("queue = %d/%d, want 3/1", monitor.QueuePending, monitor.QueueLeased)
 	}
+	if monitor.PendingFrontierURLs != 13 {
+		t.Fatalf(
+			"pending frontier URLs = %d, want 13 from running runs only",
+			monitor.PendingFrontierURLs,
+		)
+	}
 }
 
 func TestCrawlRunViewFormatsUnlimitedAndUnavailableLimits(t *testing.T) {
@@ -93,6 +110,15 @@ func TestCrawlRunViewFormatsUnlimitedAndUnavailableLimits(t *testing.T) {
 	unknown := crawlRunView(crawlruns.Run{}, time.Now())
 	if unknown.MaxPagesPerHost != "Unavailable" || unknown.MaxPagesPerRun != "Unavailable" {
 		t.Fatalf("unknown limits = %q/%q", unknown.MaxPagesPerHost, unknown.MaxPagesPerRun)
+	}
+	if unknown.ReportAge != "Unavailable" {
+		t.Fatalf("unknown report age = %q, want Unavailable", unknown.ReportAge)
+	}
+
+	now := time.Now()
+	recent := crawlRunView(crawlruns.Run{Updated: now.Add(-15 * time.Second)}, now)
+	if recent.ReportAge != "15s ago" {
+		t.Fatalf("report age = %q, want 15s ago", recent.ReportAge)
 	}
 }
 
@@ -121,6 +147,37 @@ func TestCrawlMonitorSourceNilProbe(t *testing.T) {
 	monitor := source.Monitor(context.Background())
 	if monitor.QueueAvailable || monitor.QueuePending != 0 || len(monitor.Runs) != 0 {
 		t.Fatalf("nil-probe monitor = %+v, want empty", monitor)
+	}
+}
+
+func TestCrawlMonitorSourceReadsPendingOrderURLs(t *testing.T) {
+	urls := []string{"https://example.org/queued"}
+	source := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
+		func(context.Context) ([]string, error) { return urls, nil },
+	)
+	monitor := source.Monitor(context.Background())
+	if !monitor.PendingOrderURLsKnown || len(monitor.PendingOrderURLs) != 1 ||
+		monitor.PendingOrderURLs[0] != urls[0] {
+		t.Fatalf("pending URL sample = %+v/%v, want known sample %v",
+			monitor.PendingOrderURLs, monitor.PendingOrderURLsKnown, urls)
+	}
+}
+
+func TestCrawlMonitorSourceKeepsEmptyAndUnavailablePendingURLSamplesDistinct(t *testing.T) {
+	empty := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
+		func(context.Context) ([]string, error) { return []string{}, nil },
+	).Monitor(context.Background())
+	if !empty.PendingOrderURLsKnown || len(empty.PendingOrderURLs) != 0 {
+		t.Fatalf("empty pending URL sample = %+v/%v, want known empty",
+			empty.PendingOrderURLs, empty.PendingOrderURLsKnown)
+	}
+
+	unavailable := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
+		func(context.Context) ([]string, error) { return nil, errMonitorProbe },
+	).Monitor(context.Background())
+	if unavailable.PendingOrderURLsKnown || len(unavailable.PendingOrderURLs) != 0 {
+		t.Fatalf("failed pending URL sample = %+v/%v, want unavailable",
+			unavailable.PendingOrderURLs, unavailable.PendingOrderURLsKnown)
 	}
 }
 
@@ -161,20 +218,21 @@ func TestCrawlMonitorTotalsSaturateInsteadOfWrapping(t *testing.T) {
 		RunID: "large", State: yagocrawlcontract.CrawlRunRunning,
 		Tally: yagocrawlcontract.CrawlRunTally{
 			Fetched: math.MaxUint64, Indexed: math.MaxUint64, Failed: math.MaxUint64,
-			RobotsDenied: math.MaxUint64, Duplicates: math.MaxUint64,
+			RobotsDenied: math.MaxUint64, Duplicates: math.MaxUint64, Pending: math.MaxUint64,
 		},
 	})
 	recordRun(reg, yagocrawlcontract.CrawlRunProgress{
 		RunID: "one", State: yagocrawlcontract.CrawlRunRunning,
 		Tally: yagocrawlcontract.CrawlRunTally{
-			Fetched: 1, Indexed: 1, Failed: 1, RobotsDenied: 1, Duplicates: 1,
+			Fetched: 1, Indexed: 1, Failed: 1, RobotsDenied: 1, Duplicates: 1, Pending: 1,
 		},
 	})
 
 	totals := newCrawlMonitorSource(reg, nil).Monitor(t.Context()).Totals
 	if totals.Fetched != math.MaxUint64 || totals.Indexed != math.MaxUint64 ||
 		totals.Failed != math.MaxUint64 || totals.RobotsDenied != math.MaxUint64 ||
-		totals.Duplicates != math.MaxUint64 {
+		totals.Duplicates != math.MaxUint64 ||
+		newCrawlMonitorSource(reg, nil).Monitor(t.Context()).PendingFrontierURLs != math.MaxUint64 {
 		t.Fatalf("saturated totals = %+v", totals)
 	}
 }

@@ -7,6 +7,15 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
+func cloneSessionCoverage(coverage *searchcore.SearchCoverage) *searchcore.SearchCoverage {
+	if coverage == nil {
+		return nil
+	}
+	cloned := *coverage
+
+	return &cloned
+}
+
 func cloneSessionResults(results []searchcore.Result) []searchcore.Result {
 	if results == nil {
 		return nil

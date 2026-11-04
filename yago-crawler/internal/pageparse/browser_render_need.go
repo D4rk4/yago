@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	minimumStaticContentTerms = 4
 	minimumStaticContentRunes = 16
 )
 
@@ -93,9 +92,6 @@ func executableScriptType(value string) bool {
 }
 
 func staticContentUsable(text string) bool {
-	if len(tokenize(text, minimumStaticContentTerms)) >= minimumStaticContentTerms {
-		return true
-	}
 	meaningfulRunes := 0
 	for _, character := range text {
 		if unicode.IsLetter(character) || unicode.IsDigit(character) {

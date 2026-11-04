@@ -626,7 +626,7 @@ func newRestartAdaptivePace(t *testing.T, phase string) *crawldelay.AdaptivePace
 	if err != nil {
 		t.Fatalf("create %s host pace: %v", phase, err)
 	}
-	pace, err := crawldelay.NewAdaptivePace(hostPace, 8, nil)
+	pace, err := crawldelay.NewAdaptivePace(hostPace, 8, 15*time.Minute, nil)
 	if err != nil {
 		t.Fatalf("create %s adaptive pace: %v", phase, err)
 	}

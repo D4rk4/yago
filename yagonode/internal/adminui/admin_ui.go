@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminauth"
@@ -54,6 +55,8 @@ const (
 	blacklistExportPath = "/admin/index/blacklist/export"
 	blacklistImportPath = "/admin/index/blacklist/import"
 	indexExportPath     = "/admin/index/export"
+	indexImportPath     = "/admin/index/import"
+	rwiBackfillPath     = "/admin/index/rwi-backfill"
 	networkPath         = "/admin/network"
 	networkSelfTestPath = "/admin/network/public-endpoint/test"
 	networkPeerPath     = "/admin/network/peer"
@@ -63,6 +66,7 @@ const (
 	logsEventsPath      = "/admin/logs/events"
 	securityPath        = "/admin/security"
 	performancePath     = "/admin/performance"
+	crawlerPulsePath    = "/admin/performance/crawler-pulse"
 	yagorankPath        = "/admin/yagorank"
 
 	// adminSearchPageSize is how many results one admin search page shows;
@@ -131,6 +135,9 @@ type Options struct {
 	ExtractionRecrawl    ExtractionRecrawlSource
 	Blacklist            BlacklistSource
 	IndexExport          IndexExporter
+	IndexImport          IndexImporter
+	RWIBackfill          RWIBackfillController
+	CrawlOrderImport     CrawlOrderImporter
 	Compactor            Compactor
 	Network              NetworkSource
 	NetworkSelfTest      NetworkSelfTester
@@ -150,6 +157,7 @@ type Options struct {
 	Performance PerformanceSource
 	// PerformanceHistory feeds the Performance page's sampled history charts.
 	PerformanceHistory PerformanceHistorySource
+	CrawlerPulse       CrawlerPulseSource
 	// Backup reports storage status for the Backup & restore page.
 	Backup          BackupSource
 	PeerDetail      PeerDetailSource
@@ -302,7 +310,9 @@ type crawlRunPageData struct {
 // control buttons need: the CSRF token and whether control actions are wired.
 type crawlMonitorView struct {
 	Monitor            CrawlMonitor
-	Pagination         CrawlRunPagination
+	ActiveRuns         []CrawlRunView
+	RecentRuns         []CrawlRunView
+	RefreshURL         string
 	Health             CrawlHealth
 	CrawlerConnection  crawlConnectionView
 	CSRF               string
@@ -392,13 +402,14 @@ type activityPageData struct {
 }
 
 type performancePageData struct {
-	AppName     string
-	ActivePath  string
-	Nav         []NavItem
-	CSRF        string
-	Section     sectionView
-	Performance PerformanceStatus
-	History     []historyView
+	AppName      string
+	ActivePath   string
+	Nav          []NavItem
+	CSRF         string
+	Section      sectionView
+	Performance  PerformanceStatus
+	History      []historyView
+	CrawlerPulse crawlerPulseView
 }
 
 type logsPageData struct {
@@ -466,6 +477,9 @@ type Console struct {
 	extractionRecrawl    ExtractionRecrawlSource
 	blacklist            BlacklistSource
 	indexExport          IndexExporter
+	indexImport          IndexImporter
+	rwiBackfill          RWIBackfillController
+	crawlOrderImport     CrawlOrderImporter
 	compactor            Compactor
 	network              NetworkSource
 	networkSelfTest      NetworkSelfTester
@@ -481,6 +495,7 @@ type Console struct {
 	ranking              RankingSource
 	performance          PerformanceSource
 	perfHistory          PerformanceHistorySource
+	crawlerPulse         CrawlerPulseSource
 	backup               BackupSource
 	peerDetail           PeerDetailSource
 	peerNews             PeerNewsSource
@@ -528,6 +543,9 @@ func New(opts Options) *Console {
 		extractionRecrawl:    opts.ExtractionRecrawl,
 		blacklist:            opts.Blacklist,
 		indexExport:          opts.IndexExport,
+		indexImport:          opts.IndexImport,
+		rwiBackfill:          opts.RWIBackfill,
+		crawlOrderImport:     opts.CrawlOrderImport,
 		compactor:            opts.Compactor,
 		network:              opts.Network,
 		networkSelfTest:      opts.NetworkSelfTest,
@@ -543,6 +561,7 @@ func New(opts Options) *Console {
 		ranking:              opts.Ranking,
 		performance:          opts.Performance,
 		perfHistory:          opts.PerformanceHistory,
+		crawlerPulse:         opts.CrawlerPulse,
 		backup:               opts.Backup,
 		peerDetail:           opts.PeerDetail,
 		peerNews:             opts.PeerNews,
@@ -610,7 +629,7 @@ func buildTemplates() templates {
 		),
 		logs:        clone(nil, "templates/logs.tmpl", "templates/logs_table.tmpl"),
 		security:    clone(nil, "templates/security.tmpl", "templates/toasts.tmpl"),
-		performance: clone(nil, "templates/performance.tmpl"),
+		performance: clone(nil, "templates/performance.tmpl", "templates/crawler_pulse.tmpl"),
 		yagorank:    clone(nil, "templates/yagorank.tmpl", "templates/toasts.tmpl"),
 		restart:     clone(nil, "templates/restart.tmpl"),
 		backup:      clone(nil, "templates/backup.tmpl"),
@@ -1011,13 +1030,26 @@ func (c *Console) handlePerformance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pulse := crawlerPulseView{}
+	if c.crawlerPulse != nil {
+		pulse = buildCrawlerPulseView(c.crawlerPulse.CrawlerPulse(r.Context()), time.Now())
+	}
 	c.render(r.Context(), w, c.tpl.performance, "layout", performancePageData{
 		AppName: appName, ActivePath: performancePath, Nav: navItems,
-		CSRF:        csrfToken(r),
-		Section:     sectionView{Heading: "Performance", Available: true},
-		Performance: c.performance.Performance(r.Context()),
-		History:     performanceHistory(c.perfHistory),
+		CSRF:         csrfToken(r),
+		Section:      sectionView{Heading: "Performance", Available: true},
+		Performance:  c.performance.Performance(r.Context()),
+		History:      performanceHistory(c.perfHistory),
+		CrawlerPulse: pulse,
 	})
+}
+
+func (c *Console) handleCrawlerPulse(w http.ResponseWriter, r *http.Request) {
+	pulse := crawlerPulseView{}
+	if c.crawlerPulse != nil {
+		pulse = buildCrawlerPulseView(c.crawlerPulse.CrawlerPulse(r.Context()), time.Now())
+	}
+	c.render(r.Context(), w, c.tpl.performance, "crawler-pulse", pulse)
 }
 
 func (c *Console) handleLogs(w http.ResponseWriter, r *http.Request) {
@@ -1796,11 +1828,20 @@ func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 	}
 
 	monitor := c.monitor.Monitor(r.Context())
-	pagination := buildCrawlRunPagination(monitor.Runs, r.FormValue("cpage"))
+	runSections := buildCrawlRunSections(monitor.Runs)
+	if c.crawlerPulse != nil {
+		attachCrawlerRunActivity(
+			runSections.Active,
+			c.crawlerPulse.CrawlerPulse(r.Context()),
+			time.Now(),
+		)
+	}
 
 	return &crawlMonitorView{
 		Monitor:           monitor,
-		Pagination:        pagination,
+		ActiveRuns:        runSections.Active,
+		RecentRuns:        runSections.Recent,
+		RefreshURL:        crawlMonitorPath,
 		Health:            crawlHealth(monitor),
 		CrawlerConnection: buildCrawlConnectionView(c.crawlerFetchActivity),
 		CSRF:              csrfToken(r),
@@ -1818,7 +1859,7 @@ func (c *Console) handleCrawlMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.crawl, "crawl-monitor", c.crawlMonitorView(r))
+	c.renderCrawlMonitor(w, r)
 }
 
 func (c *Console) handleCrawlControl(w http.ResponseWriter, r *http.Request) {
@@ -1849,12 +1890,12 @@ func (c *Console) handleCrawlControl(w http.ResponseWriter, r *http.Request) {
 	// An htmx-issued control (the confirm-guarded Cancel button) swaps the refreshed
 	// monitor in place; a plain form post falls back to a full-page reload.
 	if r.Header.Get("HX-Request") == "true" && c.monitor != nil {
-		c.render(r.Context(), w, c.tpl.crawl, "crawl-monitor", c.crawlMonitorView(r))
+		c.renderCrawlMonitor(w, r)
 
 		return
 	}
 
-	redirectCrawlRunPage(w, requestedCrawlRunPage(r.FormValue("cpage")))
+	redirectCrawlRunPage(w)
 }
 
 func parsePagesPerMinute(raw string) (uint32, error) {

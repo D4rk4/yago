@@ -92,7 +92,7 @@ func crawlerRuntimePolicyParityEntries() []crawlerRuntimePolicyParityEntry {
 		{envCrawlerMaximumHostFetches, settingKeyCrawlerMaximumHostFetches, "2"},
 		{envCrawlerMetricsAddress, settingKeyCrawlerMetricsAddress, ""},
 		{envCrawlerRequestTimeout, settingKeyCrawlerRequestTimeout, "15s"},
-		{envCrawlerRunPagesPerMinute, settingKeyCrawlerRunPagesPerMinute, "30"},
+		{envCrawlerRunPagesPerMinute, settingKeyCrawlerRunPagesPerMinute, "0"},
 		{envCrawlerSitemapURLLimit, settingKeyCrawlerSitemapURLLimit, "10000"},
 		{envCrawlerTLSTimeout, settingKeyCrawlerTLSTimeout, "5s"},
 		{envCrawlerShutdownGrace, settingKeyCrawlerShutdownGrace, "10s"},

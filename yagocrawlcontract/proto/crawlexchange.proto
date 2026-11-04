@@ -29,6 +29,8 @@ service CrawlExchange {
   // so the crawler retries, which is the backpressure signal.
   rpc SubmitIngest(IngestBatchMessage) returns (IngestAck);
 
+  rpc StreamIngest(stream IngestBatchMessage) returns (stream IngestAck);
+
   rpc ReportProgress(CrawlProgressReport) returns (CrawlProgressAck);
 }
 
@@ -79,6 +81,7 @@ message OrderAck {
   string worker_session_id = 8;
   bytes confirmation_token = 9;
   repeated CrawlURLOutcome recent_outcomes = 10;
+  int64 retry_after_nanoseconds = 11;
 }
 
 message OrderAckResult {
@@ -97,6 +100,24 @@ message WorkerHeartbeat {
   optional bool confirm_active_lease_deliveries = 9;
   bytes url_denylist_revision = 10;
   bool url_denylist_bootstrap = 11;
+  optional uint32 fetch_admission_waiting = 12;
+  repeated ActiveCrawlPage active_pages = 13;
+  repeated WaitingCrawlPage waiting_pages = 14;
+}
+
+message ActiveCrawlPage {
+  string url = 1;
+  string stage = 2;
+  uint64 elapsed_milliseconds = 3;
+  string run_id = 4;
+}
+
+message WaitingCrawlPage {
+  string run_id = 1;
+  string url = 2;
+  string state = 3;
+  string reason = 4;
+  int64 available_after_unix_milliseconds = 5;
 }
 
 // CrawlControlKind is a directive the node pushes to a worker to steer a run it is
@@ -189,6 +210,7 @@ message IngestBatchMessage {
   string lease_id = 2;
   string worker_id = 3;
   string worker_session_id = 4;
+  string submission_id = 5;
 }
 
 // IngestAck confirms that the node consumed the batch. Absorbing a batch and
@@ -203,6 +225,8 @@ message IngestAck {
   // rejection_rule names the gate rule the page violated, for the crawler's
   // per-URL outcome and logs. Empty when the page was stored.
   string rejection_rule = 2;
+  string submission_id = 3;
+  int32 error_code = 4;
 }
 
 enum CrawlRunState {

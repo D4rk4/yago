@@ -126,10 +126,22 @@ func TestNodeAndCrawlerRestartResumeUnfinishedFrontier(t *testing.T) {
 	}
 	if !waitFor(30*time.Second, func() bool {
 		monitor, ok := crawlMonitorBody(ctx, node.opsURL, session)
+		normalized := strings.Join(strings.Fields(monitor), " ")
+		waitingOrdersMetric := strings.Join([]string{
+			`<div class="cds-metric__label">Orders waiting for a crawler</div>`,
+			`<div class="cds-metric__value">0</div>`,
+		}, " ")
+		leasedOrdersMetric := strings.Join([]string{
+			`<div class="cds-metric__label">Orders leased to crawlers</div>`,
+			`<div class="cds-metric__value">0</div>`,
+		}, " ")
 
-		return ok && strings.Contains(monitor, "0 pending orders, 0 leased orders") &&
-			strings.Contains(monitor, ">"+combinedCrawlName+"<") &&
-			strings.Contains(monitor, ">finished<")
+		return ok &&
+			strings.Contains(normalized, waitingOrdersMetric) &&
+			strings.Contains(normalized, leasedOrdersMetric) &&
+			strings.Contains(normalized, ">"+combinedCrawlName+"</a>") &&
+			strings.Contains(normalized, ">finished</span>") &&
+			strings.Contains(normalized, "No active crawls reported.")
 	}) {
 		monitor, _ := crawlMonitorBody(ctx, node.opsURL, session)
 		t.Fatalf("terminal crawl state was not reconciled: %s", monitor)

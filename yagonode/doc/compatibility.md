@@ -84,6 +84,15 @@ equivalent host with one leading `www.` label. Other subdomains are excluded. A
 modifier-only request remains keyword-seeded and returns the existing add-word
 hint rather than scanning the corpus.
 
+The public search form can progressively render results when browser streaming
+is available. `/yacysearch.ndjson` accepts the same query parameters as
+`/yacysearch.json` and emits `started`, cumulative `progress`, and `final`
+events. Its progress events carry the current YaCy-shaped response and shard
+coverage. YaCy JSON may include its documented `complete` and `coverage`
+extensions. Tavily-compatible `POST /search` retains its Tavily response shape:
+incomplete zero-result searches use the existing retryable availability error,
+while an honest complete miss remains an empty success.
+
 | Surface | Path | Methods | Status | Behavior |
 | --- | --- | --- | --- | --- |
 | YaCy search JSON | `/yacysearch.json` | GET | implemented | Serves local full-text and DHT-selected reachable-peer search results in an upstream-like JSON shape (channel `image`/opensearch fields and the full item shape `title`/`link`/`code`/`description`/`pubDate`/`size`/`sizename`/`guid`/`host`/`path`/`file`/`urlhash`/`ranking`); multi-term remote search uses YaCy index abstracts before secondary URL retrieval, and remote results are ranked with the local ranking profile before the calibrated federated merge (YaCy 1.4 harmonization). An unknown publication date remains an empty `pubDate`; fetch and index time are never substituted. Operational search failures preserve any completed rows as a partial response instead of turning the surface unavailable. A swarm deadline preserves a completed local branch. A classified outer, exact, local-recovery, or provider-incomplete refresh cannot replace an unexpired nonempty search session or extend its TTL; an incomplete global request may use equivalent unexpired local coverage without storing a synthetic global session, while a genuine local miss carrying only peer failures remains an honest empty answer. A `nav=` request returns the `navigation` array (hosts/authors/filetypes/languages/protocols/dates with per-value counts and refine `modifier`/`url`); the filetype navigator and the `filetype:` operator classify a document from its Content-Type with the URL extension as a fallback, so an extension-less PDF or office document (an arxiv `/pdf/<id>`) is matched, not only a `.pdf` URL (ADR-0042); the `author:` operator and the `author=` param steer the author filter; `count` is honored as the OpenSearch alias for `maximumRecords`. Query suggestions are served by the dedicated `/suggest.json` and `/suggest.xml` endpoints rather than embedded in the response, matching upstream; the YaCy-internal `faviconCode` favicon-hash is omitted (this node proxies favicons by host URL). |
@@ -96,6 +105,13 @@ hint rather than scanning the corpus.
 | GSA search compatibility | `/gsa/searchresult` | GET | unsupported | Not mounted, and no longer a target: upstream removed GSA support on 2020-12-12 ("dropped GSA support"; the servlet survives only in the separate YaCy Grid project), so there is no live surface to be compatible with. |
 | MCP and OpenAI-compatible AI surfaces | `/tools*`, `/v1/*`, `/api/tags` | — | unsupported | Deliberate non-goal (operator decision, 2026-07): upstream grew an MCP JSON-RPC search server and OpenAI/Ollama proxy endpoints, but this node's agent surface is the Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map` API — one agent protocol, kept simple. |
 | Full embedded Solr API | `/solr/*` | GET, POST | unsupported | Full Solr server compatibility is not a Go peer target. No Solr subset is planned. |
+
+The YaCy-compatible HTML and JSON search surfaces and the public portal display
+a valid JSON array of title strings as its first nonempty title. A description
+array is normalized only when its first nonempty string matches that displayed
+title. This presentation-only handling applies to existing stored documents
+without changing the index; unrelated descriptions, malformed values, and
+ordinary title strings remain unchanged.
 
 ### Swarm remote-search interop (no-Solr divergence)
 

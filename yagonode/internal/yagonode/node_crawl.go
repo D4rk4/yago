@@ -10,6 +10,7 @@ import (
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/crawlformats"
@@ -28,18 +29,20 @@ type crawlProcess interface {
 }
 
 type crawlRuntime struct {
-	broker      *crawlbroker.CrawlBroker
-	state       *vault.Vault
-	ownsState   bool
-	statePath   string
-	consumer    *crawlresults.IngestConsumer
-	runs        *crawlruns.Registry
-	frontier    *recrawlfrontier.Frontier
-	formats     *crawlformats.Store
-	profiles    *crawlProfileDispatchRegistry
-	initiator   yagomodel.Hash
-	pageBudget  *crawlRunPageBudget
-	remoteCrawl remoteCrawlOrderObserver
+	broker         *crawlbroker.CrawlBroker
+	state          *vault.Vault
+	ownsState      bool
+	statePath      string
+	consumer       *crawlresults.IngestConsumer
+	runs           *crawlruns.Registry
+	frontier       *recrawlfrontier.Frontier
+	formats        *crawlformats.Store
+	profiles       *crawlProfileDispatchRegistry
+	initiator      yagomodel.Hash
+	pageBudget     *crawlRunPageBudget
+	remoteCrawl    remoteCrawlOrderObserver
+	indexImport    adminui.IndexImporter
+	frontierImport adminui.CrawlOrderImporter
 }
 
 const msgCrawlRuntimeStateCloseFailed = "crawl runtime state close failed"
@@ -70,7 +73,7 @@ func buildCrawlRuntime(
 		return nil, coordination.openFailure(err)
 	}
 
-	return &crawlRuntime{
+	runtime := &crawlRuntime{
 		broker:     coordination.broker,
 		state:      coordination.state,
 		ownsState:  coordination.ownsState,
@@ -82,7 +85,45 @@ func buildCrawlRuntime(
 		profiles:   newCrawlProfileDispatchRegistry(ingest.frontier),
 		initiator:  identity.Hash,
 		pageBudget: newCrawlRunPageBudget(config.MaxPagesPerRun),
-	}, nil
+	}
+	importer := newDocumentImportService(
+		storage.documentDirectory,
+		coordination.broker.Ingest,
+		ingest.frontier,
+	)
+	runtime.indexImport = importer
+	runtime.frontierImport = newCrawlOrderImportService(
+		storage.documentDirectory,
+		coordination.broker.Orders,
+		ingest.frontier,
+	)
+
+	return runtime, nil
+}
+
+func (r *crawlRuntime) ImportDocuments(
+	ctx context.Context,
+	records []adminui.IndexImportRecord,
+) ([]adminui.IndexImportResult, error) {
+	results, err := r.indexImport.ImportDocuments(ctx, records)
+	if err != nil {
+		return nil, fmt.Errorf("import documents through crawl runtime: %w", err)
+	}
+	return results, nil
+}
+
+func (r *crawlRuntime) ImportCrawlOrder(
+	ctx context.Context,
+	batch yagocrawlcontract.CrawlOrderImportBatch,
+) (adminui.CrawlOrderImportResult, error) {
+	result, err := r.frontierImport.ImportCrawlOrder(ctx, batch)
+	if err != nil {
+		return adminui.CrawlOrderImportResult{}, fmt.Errorf(
+			"import crawl order through crawl runtime: %w",
+			err,
+		)
+	}
+	return result, nil
 }
 
 func (r *crawlRuntime) dispatchQueue() crawldispatch.CrawlOrderQueue {

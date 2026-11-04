@@ -25,6 +25,7 @@
   </section>
 </div>
 <p class="cds-muted">The crawl queue is the broker's outstanding order backlog, waiting or in flight. The index queue, peer count and storage headroom are read from the DHT gate snapshot. Backup and restore live on the <a href="/admin/backup">Backup &amp; restore</a> page.</p>
+{{template "crawler-pulse" .CrawlerPulse}}
 {{if .History}}
 <h2 class="cds-h2">Recent history</h2>
 <div class="cds-tile-grid">

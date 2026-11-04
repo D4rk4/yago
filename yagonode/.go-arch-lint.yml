@@ -1081,3 +1081,4 @@ excludeFiles:
   - "test/fixtures"
   - "^.*internal/shardvault/anchor_publication_failure_test\\.go$"
   - "^.*internal/shardvault/inbound_anchor_refresh_commit_test\\.go$"
+  - "internal/documentstore/stored_document_key_test.go"

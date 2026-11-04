@@ -46,6 +46,26 @@ type peerExchangeRuntime struct {
 	externalReachabilityEvidence *peerannouncement.ExternalReachabilityEvidence
 }
 
+type nodePeerExchangeInput struct {
+	config    nodeConfig
+	vault     *vault.Vault
+	client    *http.Client
+	identity  nodeidentity.Identity
+	telemetry nodeTelemetry
+	peerWire  nodePeerWire
+	host      hostlinks.IncomingHostLinks
+}
+
+func assembleNodePeerExchange(in nodePeerExchangeInput) (peerExchangeRuntime, error) {
+	return assembleRuntimePeerExchange(peerExchange{
+		router: in.peerWire.router, identity: in.identity,
+		report: in.peerWire.report, config: in.config, vault: in.vault,
+		client: in.client, peer: in.telemetry.peer, host: in.host,
+		roster: in.peerWire.roster, news: in.peerWire.news,
+		externalReachabilityEvidence: in.peerWire.reachability,
+	})
+}
+
 var (
 	openPeerRoster  = peerroster.Open
 	openPeerMailbox = peermessage.OpenMailbox

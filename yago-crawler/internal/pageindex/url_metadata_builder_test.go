@@ -45,3 +45,21 @@ func TestBuildMetadataRoundTrips(t *testing.T) {
 		t.Errorf("decoded url = %q, want %q", decodedURL, page.URL)
 	}
 }
+
+func TestBuildMetadataPreservesZeroTimestampAndRelativeURL(t *testing.T) {
+	page := pageparse.ParsedPage{
+		URL:   "relative/path",
+		Text:  "indexable words",
+		Title: "Relative page",
+	}
+	row := pageindex.BuildMetadata(page, pageparse.BuildPageStats(page), time.Time{})
+	parsed, err := yagomodel.ParseURIMetadataRow(row.String())
+	if err != nil {
+		t.Fatalf("ParseURIMetadataRow: %v", err)
+	}
+	for _, key := range []string{"mod", "load", "fresh"} {
+		if parsed.Properties[key] != "00010101" {
+			t.Errorf("metadata %s = %q, want 00010101", key, parsed.Properties[key])
+		}
+	}
+}

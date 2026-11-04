@@ -52,6 +52,7 @@ type crawlConfig struct {
 	StorageReservedFreeBytes     int64
 	StoragePressureRecoveryBytes int64
 	StateMaximumBytes            int64
+	StateMaximumAutomatic        bool
 	RuntimePolicy                yagocrawlcontract.CrawlerRuntimePolicy
 	StatePath                    string
 	// QualityGate rejects crawled pages that fail the deterministic Gopher/C4
@@ -146,7 +147,8 @@ func loadCrawlConfig(getenv func(string) string) (crawlConfig, error) {
 		PrioritizeAutomaticDiscovery: scheduling.prioritizeAutomaticDiscovery,
 		StorageReservedFreeBytes:     storagePressure.reservedFreeBytes,
 		StoragePressureRecoveryBytes: storagePressure.recoveryBytes,
-		StateMaximumBytes:            stateMaximumBytes,
+		StateMaximumBytes:            stateMaximumBytes.MaximumBytes,
+		StateMaximumAutomatic:        stateMaximumBytes.Automatic,
 		RuntimePolicy:                runtimePolicy,
 		QualityGate:                  qualityGate,
 	}, nil

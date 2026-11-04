@@ -110,7 +110,8 @@ func validateCheckpointSnapshot(
 func validateOutstandingCheckpointPage(page frontiercheckpoint.Page) error {
 	normalized, ok := weburl.Normalize(page.URL)
 	if !ok || normalized != page.URL || weburl.Host(page.URL) != page.Host ||
-		page.ProfileHandle == "" || page.ObservationID == "" || page.ObservedAt.IsZero() {
+		page.ProfileHandle == "" || page.ObservationID == "" || page.ObservedAt.IsZero() ||
+		(page.RetryAttempt == 0) != page.RetryAfter.IsZero() {
 		return fmt.Errorf(
 			"%w: outstanding page is invalid",
 			frontiercheckpoint.ErrCorruptCheckpoint,
@@ -140,7 +141,8 @@ func validateCheckpointPage(page frontiercheckpoint.Page, expectedProfile string
 	if !ok || normalized != page.URL || weburl.Host(page.URL) != page.Host ||
 		page.ProfileHandle == "" || page.ObservationID == "" || page.ObservedAt.IsZero() ||
 		page.ProfileHandle != expectedProfile || page.RedirectURL != "" ||
-		page.RedirectHost != "" || page.RedirectHostBump {
+		page.RedirectHost != "" || page.RedirectHostBump || page.RetryAttempt != 0 ||
+		!page.RetryAfter.IsZero() {
 		return fmt.Errorf(
 			"%w: seed manifest page is invalid",
 			frontiercheckpoint.ErrCorruptCheckpoint,
@@ -195,8 +197,13 @@ func (f *Frontier) restoreCheckpointRunLocked(
 			indexAllowed:     page.Index,
 			observationID:    page.ObservationID,
 			observedAt:       page.ObservedAt,
+			retryAttempt:     page.RetryAttempt,
+			retryAfter:       page.RetryAfter,
 		}
 		run.appendPending(candidate)
+		if page.RetryAttempt == 0 {
+			run.firstPassPending++
+		}
 		run.retainBoundedResidentPage(page.URL)
 		if _, restored := restoredHosts[page.Host]; !restored {
 			f.pace.Visited(candidateJob(runID, candidate, profile, run.leaseID), restoredAt)
@@ -306,6 +313,8 @@ func checkpointPage(candidate frontierCandidate) frontiercheckpoint.Page {
 		ObservedAt:       candidate.observedAt,
 		SourceModifiedAt: candidate.sourceModifiedAt,
 		Index:            candidate.indexAllowed,
+		RetryAttempt:     candidate.retryAttempt,
+		RetryAfter:       candidate.retryAfter,
 	}
 }
 

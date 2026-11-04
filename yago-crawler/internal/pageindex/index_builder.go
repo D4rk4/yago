@@ -44,10 +44,13 @@ func (b *contentIndexBuilder) Build(
 	}
 	indexedAt := b.clock()
 	page.Language = resolveContentLanguage(page.Text, page.Language)
-	postings := BuildPostings(page, stats)
-	metadata := BuildMetadata(page, stats, indexedAt)
-	document := BuildDocument(page, stats, metadata, indexedAt)
-	return Artifacts{Postings: postings, Metadata: metadata, Document: document}, nil
+	indexArtifacts := BuildRWIPageArtifacts(page, stats, indexedAt)
+	document := BuildDocument(page, stats, indexArtifacts.Metadata, indexedAt)
+	return Artifacts{
+		Postings: indexArtifacts.Postings,
+		Metadata: indexArtifacts.Metadata,
+		Document: document,
+	}, nil
 }
 
 func BuildDocument(

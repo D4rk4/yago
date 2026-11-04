@@ -16,7 +16,11 @@ func TestCrawlOrderRoundTrip(t *testing.T) {
 		Provenance: []byte{0x00, 0x01, 0xff, 0x7f, 0x80},
 		Priority:   CrawlOrderPriorityAutomaticDiscovery,
 		Profile: NewCrawlProfile(CrawlProfile{
-			Name:                     "deep",
+			Name: "deep",
+			SourceMetadata: NewCrawlSourceMetadata(map[string]string{
+				"yacy.name":  "source profile",
+				"yacy.depth": "4",
+			}),
 			Scope:                    ScopeSubpath,
 			URLMustMatch:             MatchAll,
 			URLMustNotMatch:          ".*\\.pdf",
@@ -40,6 +44,10 @@ func TestCrawlOrderRoundTrip(t *testing.T) {
 				Initiator:     yagomodel.Hash("0123456789AB"),
 				AppDate:       time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC),
 				LastModified:  time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC),
+				SourceMetadata: NewCrawlSourceMetadata(map[string]string{
+					"yacy.stack":        "LOCAL",
+					"yacy.initiatorHex": "303132",
+				}),
 			},
 		},
 	}

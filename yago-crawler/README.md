@@ -52,6 +52,11 @@ settlement, and progress; the ingest connection carries document/RWI/URL
 metadata batches. A large ingest call therefore cannot queue lease or progress
 traffic on the same transport.
 
+Each five-second worker heartbeat reports the current active fetch count and,
+when supported by the worker version, how many active jobs are waiting for a
+fetch-start permit. The node's Admin Performance page combines these readings
+with progress tallies to show measured fetched and indexed pages per minute.
+
 Multiple crawler instances can each stream orders from the node to load-balance,
 and the node's blocking ingest call applies backpressure when it
 falls behind. Each order is leased rather than handed off: the crawler acks a
@@ -230,6 +235,11 @@ uncertain text, and English is used only when neither source identifies a
 language. This includes legacy pages served as Windows-1251 without a `lang`
 attribute.
 
+Crawler RWI postings and URL metadata use the same YaCy-compatible artifact
+builder as the optional migration backfill. Both paths use the single tokenizer
+implementation in `yagomodel`. Imported text is not fetched again to produce
+peer-index records.
+
 PDF extraction follows the document structure rather than scanning every decoded
 stream. When Page objects are available, it selects their referenced `/Contents`
 streams, including indirect arrays, and only Form XObjects reachable from page
@@ -323,9 +333,14 @@ distinct crawl tasks whose prepared orders, frontiers, and progress reporters
 may remain active in each process, independently of page-fetch concurrency. The
 same bootstrap value belongs in the node environment, and the live
 `crawler.max_active_runs` Admin setting becomes authoritative after heartbeat;
-`YAGO_CRAWLER_RUN_PAGES_PER_MINUTE` defaults to 30 and limits each active run
-independently, with per-host crawl delay and concurrency applying additional
-politeness;
+`YAGO_CRAWLER_RUN_PAGES_PER_MINUTE` defaults to 0 (unlimited per run). Host
+crawl delay, per-host concurrency, worker capacity, fleet admission, and storage
+pressure continue to bound work;
+temporary connection, DNS, timeout, truncated-response, 408, 425, 429, and 5xx
+fetch failures remain in the durable frontier for up to three retries. Retry
+deadlines use capped exponential backoff with jitter and honor a longer
+`Retry-After`. The scheduler serves eligible first-pass pages before retrying
+deferred pages, while continuing to dispatch other origins when one host waits;
 `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY` defaults to `true` in both service
 environments and gives explicit discovery work at most three due page dispatches
 before waiting normal work; a successful startup heartbeat applies the node's
@@ -560,8 +575,12 @@ served representation accepted for parsing resets the consecutive-failure
 evidence. Five consecutive
 availability failures retire the remaining URLs for that host in that run and
 emit one warning with the run, host, and dropped-page total. A single-host run
-then finishes normally, while a multi-host run continues its healthy hosts. A
-404/410 page, unsupported media type, ordinary client rejection, robots denial,
+then finishes normally, while a multi-host run continues its healthy hosts. If
+every queued page in a run is waiting for host backoff, the crawler releases the
+run slot and retains its checkpoint until the earliest host deadline. A run with
+any ready page continues without being deferred. The crawler increments
+`yacy_crawler_backoff_run_deferrals_total` for each released run.
+A 404/410 page, unsupported media type, ordinary client rejection, robots denial,
 operator cancellation, or permanent egress-policy rejection never retires a
 healthy host. Expected URL-specific, robots, and unsupported-format outcomes log
 at debug; actionable failures remain warnings.
@@ -570,9 +589,11 @@ When `YAGO_CRAWLER_METRICS_ADDR` is set to a loopback IP-literal listener (for
 example `127.0.0.1:9101` or `[::1]:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,
 `yacy_crawler_fetches_total`, `yacy_crawler_fetch_failures_total`,
+`yacy_crawler_page_retries_total`,
 `yacy_crawler_parse_failures_total`, `yacy_crawler_bytes_total`,
 `yacy_crawler_robots_denied_total`,
 `yacy_crawler_ingest_batches_total`, `yacy_crawler_host_backoffs_total`, and
+`yacy_crawler_backoff_run_deferrals_total`,
 `yacy_crawler_browser_slot_acquisition_deadlines_total`, plus filesystem
 availability, reserve, hysteresis, pressure, measurement availability, rejected
 growth, and measurement-failure storage series under

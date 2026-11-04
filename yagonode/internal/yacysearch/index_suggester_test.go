@@ -50,6 +50,18 @@ func TestIndexSuggesterSkipsBlankAndEchoTitles(t *testing.T) {
 	}
 }
 
+func TestIndexSuggesterDisplaysImportedTitleArrays(t *testing.T) {
+	search := titledSearch(
+		`["Sample Guide", "Alternate title"]`,
+		`["", "Sample Reference"]`,
+	)
+	got := indexSuggester{search: search}.Suggest(t.Context(), "sample", publicSuggestionLimit)
+	want := []string{"Sample Guide", "Sample Reference"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("suggestions = %v, want %v", got, want)
+	}
+}
+
 func TestIndexSuggesterCapsAtLimit(t *testing.T) {
 	search := titledSearch("alpha one", "beta two", "gamma three", "delta four")
 	got := indexSuggester{search: search}.Suggest(t.Context(), "a", 2)

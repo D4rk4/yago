@@ -16,7 +16,7 @@ type countingObserver struct {
 }
 
 func TestNoopAuthObserverAcceptsEveryOutcome(t *testing.T) {
-	observer := noopAuthObserver{}
+	observer := observerService(t, nil).observer
 	observer.LoginSucceeded()
 	observer.LoginFailed()
 	observer.LoginThrottled()

@@ -32,6 +32,9 @@ func TestDefaultCrawlConfig(t *testing.T) {
 		t.Errorf("process pages per second = %d, want %d", cfg.ProcessPagesPerSecond,
 			yagocrawlcontract.DefaultProcessPagesPerSecond)
 	}
+	if cfg.RunPagesPerMinute != 0 {
+		t.Errorf("default pages per minute per run = %d, want unlimited (0)", cfg.RunPagesPerMinute)
+	}
 	if cfg.MaxRedirects != DefaultMaxRedirects {
 		t.Errorf("redirects = %d", cfg.MaxRedirects)
 	}

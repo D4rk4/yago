@@ -56,6 +56,128 @@ func discoveredLinks(urls ...string) crawljob.DiscoveredLinks {
 	return crawljob.DiscoveredLinks{Followable: urls}
 }
 
+type scriptedBackoffPace struct {
+	deadlines map[string]time.Time
+}
+
+func (p scriptedBackoffPace) DueAt(job crawljob.CrawlJob, now time.Time) time.Time {
+	if due := p.deadlines[job.URL]; due.After(now) {
+		return due
+	}
+
+	return now
+}
+
+func (scriptedBackoffPace) Visited(crawljob.CrawlJob, time.Time) {}
+
+func (p scriptedBackoffPace) BackoffUntil(rawURL string) time.Time {
+	return p.deadlines[rawURL]
+}
+
+func TestDeferBackedOffRunsReleasesOnlyWhenEveryPageIsDueLater(t *testing.T) {
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	base := time.Now()
+	retryAt := base.Add(12 * time.Minute)
+	urls := []string{"https://example.com/", "https://example.com/next"}
+	pace := scriptedBackoffPace{deadlines: map[string]time.Time{
+		urls[0]: retryAt,
+		urls[1]: retryAt.Add(2 * time.Minute),
+	}}
+	f := frontier.NewFrontier(8, pace)
+	finished := make(chan struct{}, 1)
+	provenance := []byte("backoff-run")
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, urls...),
+		provenance,
+		profile,
+		func(bool) {
+			finished <- struct{}{}
+		},
+	)
+
+	deferred := f.DeferBackedOffRuns(base)
+	if len(deferred) != 1 || string(deferred[0].Provenance) != string(provenance) ||
+		!deferred[0].RetryAt.Equal(retryAt) {
+		t.Fatalf("deferred runs = %#v", deferred)
+	}
+	if due, found := f.DeferredUntil(provenance); !found || !due.Equal(retryAt) {
+		t.Fatalf("deferred deadline = %v/%v", due, found)
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("deferred run did not release its completion slot")
+	}
+}
+
+func TestDeferBackedOffRunsKeepsMixedReadyRunActive(t *testing.T) {
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	base := time.Now()
+	backedOffURL := "https://example.com/slow"
+	readyURL := "https://example.com/ready"
+	f := frontier.NewFrontier(8, scriptedBackoffPace{deadlines: map[string]time.Time{
+		backedOffURL: base.Add(time.Minute),
+	}})
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, backedOffURL, readyURL),
+		[]byte("mixed-run"),
+		profile,
+		nil,
+	)
+	if deferred := f.DeferBackedOffRuns(base); len(deferred) != 0 {
+		t.Fatalf("mixed run deferred = %#v", deferred)
+	}
+	if job := receiveJob(t, f); job.URL != readyURL {
+		t.Fatalf("ready URL = %q, want %q", job.URL, readyURL)
+	}
+}
+
+func TestDeferBackedOffRunsChecksPendingHostPages(t *testing.T) {
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	base := time.Now()
+	firstURL := "https://example.com/first"
+	secondURL := "https://other.example/second"
+	retryAt := base.Add(12 * time.Minute)
+	pace := scriptedBackoffPace{deadlines: map[string]time.Time{
+		firstURL:  retryAt,
+		secondURL: retryAt.Add(time.Minute),
+	}}
+	frontier := frontier.NewFrontier(1, pace)
+	finished := make(chan struct{}, 1)
+	provenance := []byte("pending-backoff-run")
+	frontier.SeedRun(
+		t.Context(),
+		requestsFor(profile.Profile.Handle, firstURL, secondURL),
+		provenance,
+		profile,
+		func(bool) { finished <- struct{}{} },
+	)
+
+	deferred := frontier.DeferBackedOffRuns(base)
+	if len(deferred) != 1 || !deferred[0].RetryAt.Equal(retryAt) {
+		t.Fatalf("deferred pending run = %#v, want retry at %v", deferred, retryAt)
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("pending backoff run did not release its completion slot")
+	}
+}
+
 func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yagocrawlcontract.CrawlProfile{
@@ -86,6 +208,41 @@ func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("run finish callback never fired")
 	}
+}
+
+func TestDeferredRetryWaitsForFirstPassWork(t *testing.T) {
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxDepth:        1,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	f := frontier.NewFrontier(8, nil)
+	f.SeedRun(
+		t.Context(),
+		requestsFor(profile.Profile.Handle,
+			"https://example.com/first",
+			"https://example.com/second",
+		),
+		[]byte("retry-order"),
+		profile,
+		nil,
+	)
+	first := receiveJob(t, f)
+	consumed, scheduled := f.Defer(t.Context(), first, time.Now())
+	if !consumed || !scheduled {
+		t.Fatal("first pass page was not deferred")
+	}
+	second := receiveJob(t, f)
+	if second.RetryAttempt != 0 || second.URL == first.URL {
+		t.Fatalf("next page = %+v, want remaining first-pass page", second)
+	}
+	f.Done(second, successfulPageOutcome())
+	retried := receiveJob(t, f)
+	if retried.URL != first.URL || retried.RetryAttempt != 1 {
+		t.Fatalf("retried page = %+v, want first page on attempt 1", retried)
+	}
+	f.Done(retried, successfulPageOutcome())
 }
 
 func TestSeedRunPreservesSourceModificationDate(t *testing.T) {
