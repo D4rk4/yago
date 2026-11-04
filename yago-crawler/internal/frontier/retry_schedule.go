@@ -32,7 +32,7 @@ func (f *Frontier) Defer(
 	if durable {
 		checkpoint, ok := f.checkpoint.(deferredPageCheckpoint)
 		if !ok {
-			f.failDeferredPage(work, run, durable, fmt.Errorf(
+			f.failDeferredPage(work, run, fmt.Errorf(
 				"defer crawl page: %w",
 				frontiercheckpoint.ErrInvalidPage,
 			))
@@ -45,7 +45,7 @@ func (f *Frontier) Defer(
 			work.RetryAttempt+1,
 			retryAfter,
 		); err != nil {
-			f.failDeferredPage(work, run, durable, fmt.Errorf("defer crawl page: %w", err))
+			f.failDeferredPage(work, run, fmt.Errorf("defer crawl page: %w", err))
 			return true, false
 		}
 	}
@@ -78,16 +78,11 @@ func (f *Frontier) Defer(
 func (f *Frontier) failDeferredPage(
 	work crawljob.CrawlJob,
 	run *crawlRun,
-	durable bool,
 	err error,
 ) {
 	f.mu.Lock()
 	f.releaseHost(work.URL)
-	if durable {
-		f.finishRunDurabilityLocked(work.RunID, run, err)
-	} else {
-		f.recordCheckpointFailureLocked(err)
-	}
+	f.finishRunDurabilityLocked(work.RunID, run, err)
 	f.mu.Unlock()
 	f.wake()
 }

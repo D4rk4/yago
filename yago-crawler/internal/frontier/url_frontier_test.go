@@ -142,6 +142,42 @@ func TestDeferBackedOffRunsKeepsMixedReadyRunActive(t *testing.T) {
 	}
 }
 
+func TestDeferBackedOffRunsChecksPendingHostPages(t *testing.T) {
+	profile := compiled(t, yagocrawlcontract.CrawlProfile{
+		Scope:           yagocrawlcontract.ScopeDomain,
+		URLMustMatch:    yagocrawlcontract.MatchAll,
+		MaxPagesPerHost: yagocrawlcontract.UnlimitedPagesPerHost,
+	})
+	base := time.Now()
+	firstURL := "https://example.com/first"
+	secondURL := "https://other.example/second"
+	retryAt := base.Add(12 * time.Minute)
+	pace := scriptedBackoffPace{deadlines: map[string]time.Time{
+		firstURL:  retryAt,
+		secondURL: retryAt.Add(time.Minute),
+	}}
+	frontier := frontier.NewFrontier(1, pace)
+	finished := make(chan struct{}, 1)
+	provenance := []byte("pending-backoff-run")
+	frontier.SeedRun(
+		t.Context(),
+		requestsFor(profile.Profile.Handle, firstURL, secondURL),
+		provenance,
+		profile,
+		func(bool) { finished <- struct{}{} },
+	)
+
+	deferred := frontier.DeferBackedOffRuns(base)
+	if len(deferred) != 1 || !deferred[0].RetryAt.Equal(retryAt) {
+		t.Fatalf("deferred pending run = %#v, want retry at %v", deferred, retryAt)
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("pending backoff run did not release its completion slot")
+	}
+}
+
 func TestSeedRunDeduplicatesAndDelivers(t *testing.T) {
 	f := frontier.NewFrontier(8, nil)
 	profile := compiled(t, yagocrawlcontract.CrawlProfile{

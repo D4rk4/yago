@@ -87,11 +87,7 @@ func (r *corpusSignalRefresh) waitFor(ctx context.Context, interval time.Duratio
 		case <-delay:
 			return true
 		case _, open := <-trustChanges:
-			if !open {
-				trustChanges = nil
-				continue
-			}
-			r.publishAuthority(ctx)
+			trustChanges = r.afterHostTrustChange(ctx, trustChanges, open)
 		}
 	}
 }

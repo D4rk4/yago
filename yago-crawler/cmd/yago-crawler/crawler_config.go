@@ -56,7 +56,7 @@ const (
 	DefaultSitemapURLLimit           = yagocrawlcontract.DefaultCrawlerSitemapURLLimit
 	DefaultHostCacheSize             = 4096
 	DefaultMaxPagesPerRun            = yagocrawlcontract.DefaultMaxPagesPerRun
-	DefaultRunPagesPerMinute  uint32 = yagocrawlcontract.DefaultCrawlerRunPagesPerMinute
+	DefaultRunPagesPerMinute  uint32 = yagocrawlcontract.UnlimitedCrawlerRunPagesPerMinute
 )
 
 // DefaultUserAgent brands crawl requests (plain HTTP and robots fetches alike)

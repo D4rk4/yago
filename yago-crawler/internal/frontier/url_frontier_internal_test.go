@@ -25,6 +25,18 @@ func TestAlwaysDuePaceVisitedNoop(t *testing.T) {
 	alwaysDuePace{}.Visited(crawljob.CrawlJob{}, time.Now())
 }
 
+func TestDispatchDueHonorsLaterRetryDeadline(t *testing.T) {
+	frontier := NewFrontier(1, alwaysDuePace{})
+	now := time.Date(2026, 7, 16, 20, 0, 0, 0, time.UTC)
+	retryAfter := now.Add(time.Minute)
+	frontier.mu.Lock()
+	due := frontier.dispatchDueLocked(crawljob.CrawlJob{RetryAfter: retryAfter}, now)
+	frontier.mu.Unlock()
+	if !due.Equal(retryAfter) {
+		t.Fatalf("dispatch due = %v, want retry deadline %v", due, retryAfter)
+	}
+}
+
 func TestFrontierStateAcceptRejectsUnknownProfile(t *testing.T) {
 	state := &frontierState{
 		runs: map[uuid.UUID]*crawlRun{},

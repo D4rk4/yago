@@ -688,6 +688,7 @@ func TestRunServiceReturnsAdaptivePaceError(t *testing.T) {
 	newCrawlerAdaptivePace = func(
 		*crawldelay.HostPace,
 		int,
+		time.Duration,
 		crawldelay.BackoffObserver,
 	) (*crawldelay.AdaptivePace, error) {
 		return nil, sentinel

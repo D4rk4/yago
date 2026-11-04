@@ -18,7 +18,7 @@ func adaptiveFixture(t *testing.T, observer BackoffObserver) *AdaptivePace {
 	if err != nil {
 		t.Fatalf("NewHostPace: %v", err)
 	}
-	pace, err := NewAdaptivePace(inner, 16, observer)
+	pace, err := NewAdaptivePace(inner, 16, 15*time.Minute, observer)
 	if err != nil {
 		t.Fatalf("NewAdaptivePace: %v", err)
 	}
@@ -43,8 +43,8 @@ func TestAdaptivePaceBacksOffExponentiallyAndParks(t *testing.T) {
 	for range 3 {
 		pace.Throttled(job.URL, 0, now)
 	}
-	if due := pace.DueAt(job, now); due.Sub(now) != maxHostBackoff {
-		t.Fatalf("parked backoff = %v, want %v", due.Sub(now), maxHostBackoff)
+	if due := pace.DueAt(job, now); due.Sub(now) != 15*time.Minute {
+		t.Fatalf("parked backoff = %v, want %v", due.Sub(now), 15*time.Minute)
 	}
 	if observer.backoffs != 5 {
 		t.Fatalf("observer backoffs = %d, want 5", observer.backoffs)
@@ -61,8 +61,8 @@ func TestAdaptivePaceHonorsAndClampsRetryAfter(t *testing.T) {
 		t.Fatalf("retry-after backoff = %v, want 1m", due.Sub(now))
 	}
 	pace.Throttled(job.URL, time.Hour, now)
-	if due := pace.DueAt(job, now); due.Sub(now) != maxHostBackoff {
-		t.Fatalf("hostile retry-after = %v, want clamp %v", due.Sub(now), maxHostBackoff)
+	if due := pace.DueAt(job, now); due.Sub(now) != 15*time.Minute {
+		t.Fatalf("hostile retry-after = %v, want clamp %v", due.Sub(now), 15*time.Minute)
 	}
 }
 
@@ -131,8 +131,11 @@ func TestNewAdaptivePaceRejectsBadCacheSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewHostPace: %v", err)
 	}
-	if _, err := NewAdaptivePace(inner, 0, nil); err == nil {
+	if _, err := NewAdaptivePace(inner, 0, 15*time.Minute, nil); err == nil {
 		t.Fatal("expected cache size error")
+	}
+	if _, err := NewAdaptivePace(inner, 16, 0, nil); err == nil {
+		t.Fatal("expected non-positive maximum host backoff error")
 	}
 }
 
@@ -145,4 +148,18 @@ func TestAdaptivePaceReportsCapacityAndEmptyHostState(t *testing.T) {
 		t.Fatalf("new host state = %+v", state)
 	}
 	pace.Succeeded("https://new.example/page", time.Now())
+}
+
+func TestAdaptivePaceReportsHostBackoffDeadline(t *testing.T) {
+	pace := adaptiveFixture(t, nil)
+	now := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
+	url := "https://busy.example/page"
+
+	if deadline := pace.BackoffUntil(url); !deadline.IsZero() {
+		t.Fatalf("untouched host backoff = %v, want zero", deadline)
+	}
+	pace.Throttled(url, 9*time.Second, now)
+	if deadline := pace.BackoffUntil(url); !deadline.Equal(now.Add(9 * time.Second)) {
+		t.Fatalf("host backoff = %v, want %v", deadline, now.Add(9*time.Second))
+	}
 }

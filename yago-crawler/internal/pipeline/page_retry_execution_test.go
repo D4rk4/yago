@@ -15,6 +15,7 @@ import (
 
 type retryExecutionFrontier struct {
 	consumed bool
+	consume  bool
 	deferred bool
 	done     bool
 	schedule bool
@@ -51,7 +52,7 @@ func (f *retryExecutionFrontier) Defer(
 	f.consumed = true
 	f.retryAt = retryAt
 	f.deferred = f.schedule
-	return true, f.schedule
+	return f.consume, f.schedule
 }
 
 type pageRetryExecutionObserver struct {
@@ -68,17 +69,22 @@ func TestProcessDefersTransientFetchAndCompletesPermanentFetch(t *testing.T) {
 		name             string
 		err              error
 		consumeRetry     bool
+		consumeResult    bool
 		scheduleRetry    bool
 		wantDone         bool
 		wantRetryCounter int
 	}{
 		{
 			name: "transient network failure", err: &net.DNSError{IsTemporary: true},
-			consumeRetry: true, scheduleRetry: true, wantRetryCounter: 1,
+			consumeRetry: true, consumeResult: true, scheduleRetry: true, wantRetryCounter: 1,
 		},
 		{
 			name: "retry persistence failure", err: &net.DNSError{IsTemporary: true},
-			consumeRetry: true,
+			consumeRetry: true, consumeResult: true,
+		},
+		{
+			name: "frontier declines retry", err: &net.DNSError{IsTemporary: true},
+			consumeRetry: true, wantDone: true,
 		},
 		{
 			name: "permanent status", err: &pagefetch.HTTPStatusError{Status: 404}, wantDone: true,
@@ -86,7 +92,9 @@ func TestProcessDefersTransientFetchAndCompletesPermanentFetch(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			frontier := &retryExecutionFrontier{schedule: test.scheduleRetry}
+			frontier := &retryExecutionFrontier{
+				consume: test.consumeResult, schedule: test.scheduleRetry,
+			}
 			observer := &pageRetryExecutionObserver{}
 			crawler := NewPipeline(
 				frontier,
