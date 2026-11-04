@@ -27,7 +27,7 @@ yago-node
 
 yago-crawler
   - persistent crawl frontier
-  - HTTP fast fetch path
+  - bounded asynchronous HTTP page workers with a five-second attempt deadline
   - optional browser slow fetch path
   - robots.txt, sitemap, canonicalization, politeness
   - content extraction and deduplication
@@ -57,7 +57,7 @@ Tavily API Agent: Owns Tavily-compatible `POST /search`, `/extract`, `/crawl`, a
 
 YaCy Search API Agent: Owns `/yacysearch.json`, `/yacysearch.rss`, OpenSearch-style compatibility, `resource=local|global`, query parameter translation, feasible filters by site/domain/filetype/protocol/language/date, and compatibility notes for unsupported YaCy-specific ranking/profile fields.
 
-Crawler Agent: Owns a production-grade crawler with persistent frontier, states `queued`, `fetching`, `fetched`, `failed`, `deferred`, `blocked`, robots.txt, crawl-delay, per-host token bucket, sitemap ingestion, URL normalization, redirects, canonical link handling, content hash deduplication, HTTP fast fetch path, browser fallback only when needed, content extraction, MIME/size/time limits, retry policy, recrawl scheduling, backpressure from index/searchd, and the node's gRPC crawl transport integration if used.
+Crawler Agent: Owns a production-grade crawler with persistent frontier, states `queued`, `fetching`, `fetched`, `failed`, `deferred`, `blocked`, robots.txt, crawl-delay, per-host token bucket, sitemap ingestion, URL normalization, redirects, canonical link handling, content hash deduplication, a globally bounded asynchronous page worker pool, a five-second wall-clock deadline per URL attempt, active URL/stage status, a durable ingest outbox dispatched outside page workers, HTTP fast fetch path, browser fallback only when needed, content extraction, MIME/size/time limits, retry policy, recrawl scheduling, backpressure from index/searchd, and the node's gRPC crawl transport integration if used. A slow ingest acknowledgment MUST NOT hold a page worker or prevent it from advancing to another frontier URL.
 
 Security Agent: Owns SSRF protection, denial of private CIDR/localhost/link-local/multicast/metadata IPs, DNS rebinding protection, crawl sandboxing, max body size, max redirects, allowed schemes, API auth, admin auth, remote crawl default-deny, peer quotas, and spam/index poisoning protections.
 
@@ -93,7 +93,7 @@ Code quality: Do not write spaghetti code. Keep control flow, state ownership, a
 
 Module boundaries: Keep YaCy value types in `yagomodel`, wire protocol DTOs and endpoint vocabulary in `yagoproto`, node runtime/storage/P2P/search/ops behavior in `yagonode`, crawler worker behavior in `yago-crawler`, and node-crawler message contracts in `yagocrawlcontract`. Do not mix crawler runtime code into the node except through the contract and narrow node-side crawl orchestration.
 
-Crawler product identity: The canonical module directory and import path, command, binary, systemd and Compose service, container image, and GHCR repository are all `yago-crawler`. Crawler environment variables use the `YAGO_CRAWLER_` prefix. The legacy `yagocrawler` and `YAGOCRAWLER_` spellings may appear only in immutable historical release facts or explicit upgrade-migration code and documentation; do not add runtime aliases or new references under those names.
+Crawler product identity: The new crawler implementation lives in the uniquely named `yago-crawler2` module and import path. Its command and binary, systemd and Compose service, container image, and GHCR repository remain `yago-crawler`. The previous implementation remains in `yago-crawler` only as a non-production reference until its removal is planned. Crawler environment variables use the `YAGO_CRAWLER_` prefix. The legacy `yagocrawler` and `YAGOCRAWLER_` spellings may appear only in immutable historical release facts or explicit upgrade-migration code and documentation; do not add runtime aliases or new references under those names.
 
 Logging: Use stable message constants; put variable data in key/value fields. Happy paths: DEBUG. Sad paths: WARN if recoverable, ERROR if action is needed.
 

@@ -99,6 +99,13 @@ message WorkerHeartbeat {
   bytes url_denylist_revision = 10;
   bool url_denylist_bootstrap = 11;
   optional uint32 fetch_admission_waiting = 12;
+  repeated ActiveCrawlPage active_pages = 13;
+}
+
+message ActiveCrawlPage {
+  string url = 1;
+  string stage = 2;
+  uint64 elapsed_milliseconds = 3;
 }
 
 // CrawlControlKind is a directive the node pushes to a worker to steer a run it is

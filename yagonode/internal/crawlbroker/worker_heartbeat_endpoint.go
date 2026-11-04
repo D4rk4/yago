@@ -24,6 +24,10 @@ func (s *exchangeServer) Heartbeat(
 	if !validHeartbeatFetchActivity(req) {
 		return nil, status.Error(codes.InvalidArgument, "invalid worker fetch activity")
 	}
+	activePages, valid := activeCrawlerPagesFromHeartbeat(req.GetActivePages())
+	if !valid {
+		return nil, status.Error(codes.InvalidArgument, "invalid active crawler pages")
+	}
 	urlDenylist, err := s.urlDenylistForHeartbeat(req)
 	if err != nil {
 		return nil, err
@@ -68,6 +72,7 @@ func (s *exchangeServer) Heartbeat(
 			req.ActiveFetches,
 			req.FetchAdmissionWaiting,
 		)
+		s.control.recordHeartbeatActivePages(workerID, workerSessionID, activePages)
 		s.control.recordStoragePressure(workerID, req)
 		directives, err = s.control.deliverForHeartbeat(
 			ctx,
@@ -87,6 +92,39 @@ func (s *exchangeServer) Heartbeat(
 	s.confirmHeartbeatDeliveries(req, workerID, workerSessionID, renewed)
 
 	return s.heartbeatResult(directives, renewed, leaseTTL, urlDenylist)
+}
+
+func activeCrawlerPagesFromHeartbeat(
+	pages []*crawlrpc.ActiveCrawlPage,
+) ([]CrawlerActivePage, bool) {
+	if len(pages) > yagocrawlcontract.MaximumFetchWorkerConcurrency {
+		return nil, false
+	}
+	activePages := make([]CrawlerActivePage, 0, len(pages))
+	for _, page := range pages {
+		if page == nil || len(page.GetUrl()) > yagocrawlcontract.MaximumCrawlURLBytes {
+			return nil, false
+		}
+		canonicalURL, valid := yagocrawlcontract.CanonicalURL(page.GetUrl())
+		if !valid || canonicalURL != page.GetUrl() || !validCrawlerPageStage(page.GetStage()) {
+			return nil, false
+		}
+		activePages = append(activePages, CrawlerActivePage{
+			URL:                 canonicalURL,
+			Stage:               page.GetStage(),
+			ElapsedMilliseconds: page.GetElapsedMilliseconds(),
+		})
+	}
+	return activePages, true
+}
+
+func validCrawlerPageStage(stage string) bool {
+	switch stage {
+	case "robots", "http_fetch", "html_parse", "frontier_enqueue", "ingest_queue", "node_ingest":
+		return true
+	default:
+		return false
+	}
 }
 
 func validHeartbeatFetchActivity(req *crawlrpc.WorkerHeartbeat) bool {

@@ -267,18 +267,17 @@ func canonicalOutboundAnchors(
 
 func canonicalAnchorTexts(anchors []AnchorText) []AnchorText {
 	canonical := make([]AnchorText, 0, min(len(anchors), maximumInboundAnchors))
-	seen := make(map[string]struct{}, len(anchors))
+	seen := make(map[anchorTextIdentity]struct{}, len(anchors))
 	for _, anchor := range anchors {
 		anchor.URL = strings.TrimSpace(anchor.URL)
 		anchor.Text = boundedAnchorText(anchor.Text)
-		key := fmt.Sprintf(
-			"%s\x00%s\x00%t\x00%t\x00%t",
-			anchor.URL,
-			anchor.Text,
-			anchor.NoFollow,
-			anchor.UserGenerated,
-			anchor.Sponsored,
-		)
+		key := anchorTextIdentity{
+			url:           anchor.URL,
+			text:          anchor.Text,
+			noFollow:      anchor.NoFollow,
+			userGenerated: anchor.UserGenerated,
+			sponsored:     anchor.Sponsored,
+		}
 		if _, duplicate := seen[key]; duplicate {
 			continue
 		}
@@ -286,24 +285,13 @@ func canonicalAnchorTexts(anchors []AnchorText) []AnchorText {
 		canonical = append(canonical, anchor)
 	}
 	sort.Slice(canonical, func(left, right int) bool {
-		return anchorTextOrder(canonical[left]) < anchorTextOrder(canonical[right])
+		return anchorTextLess(canonical[left], canonical[right])
 	})
 	if len(canonical) > maximumInboundAnchors {
 		canonical = canonical[:maximumInboundAnchors]
 	}
 
 	return canonical
-}
-
-func anchorTextOrder(anchor AnchorText) string {
-	return fmt.Sprintf(
-		"%s\x00%t\x00%t\x00%t\x00%s",
-		anchor.URL,
-		anchor.NoFollow,
-		anchor.UserGenerated,
-		anchor.Sponsored,
-		anchor.Text,
-	)
 }
 
 func boundedAnchorText(text string) string {

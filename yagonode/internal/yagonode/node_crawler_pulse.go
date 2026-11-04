@@ -52,6 +52,14 @@ func (s crawlerPulseSource) CrawlerPulse(ctx context.Context) adminui.CrawlerPul
 		Workers:   make([]adminui.CrawlerWorkerPulse, 0, len(workers)),
 	}
 	for _, worker := range workers {
+		activePages := make([]adminui.CrawlerActivePage, 0, len(worker.ActivePages))
+		for _, activePage := range worker.ActivePages {
+			activePages = append(activePages, adminui.CrawlerActivePage{
+				URL:                 activePage.URL,
+				Stage:               activePage.Stage,
+				ElapsedMilliseconds: activePage.ElapsedMilliseconds,
+			})
+		}
 		row := adminui.CrawlerWorkerPulse{
 			WorkerID:                   worker.WorkerID,
 			ProcessLabel:               crawlerProcessLabel(worker.ProcessIdentifier),
@@ -60,6 +68,7 @@ func (s crawlerPulseSource) CrawlerPulse(ctx context.Context) adminui.CrawlerPul
 			FetchLimit:                 capacity,
 			FetchAdmissionWaiting:      int(worker.FetchAdmissionWaiting),
 			FetchAdmissionWaitingKnown: worker.FetchAdmissionWaitingKnown,
+			ActivePages:                activePages,
 			ObservedAt:                 worker.ObservedAt,
 		}
 		if rate, found := rateByProcess[processIdentity{

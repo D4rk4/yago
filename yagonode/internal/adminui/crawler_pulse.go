@@ -17,7 +17,14 @@ type CrawlerWorkerPulse struct {
 	FetchedPagesPerMinute      float64
 	IndexedPagesPerMinute      float64
 	RateKnown                  bool
+	ActivePages                []CrawlerActivePage
 	ObservedAt                 time.Time
+}
+
+type CrawlerActivePage struct {
+	URL                 string
+	Stage               string
+	ElapsedMilliseconds uint64
 }
 
 type CrawlerPulse struct {
@@ -35,10 +42,16 @@ type crawlerWorkerPulseView struct {
 	WorkerID     string
 	ProcessLabel string
 	Active       string
-	Waiting      string
+	ActivePages  []crawlerActivePageView
 	Fetched      string
 	Indexed      string
 	LastReport   string
+}
+
+type crawlerActivePageView struct {
+	URL     string
+	Stage   string
+	Elapsed string
 }
 
 type crawlerPulseView struct {
@@ -105,7 +118,7 @@ func buildCrawlerWorkerPulseView(worker CrawlerWorkerPulse, now time.Time) crawl
 		WorkerID:     worker.WorkerID,
 		ProcessLabel: worker.ProcessLabel,
 		Active:       pulseActiveFetches(worker),
-		Waiting:      pulseWaitingFetches(worker),
+		ActivePages:  crawlerActivePageViews(worker.ActivePages),
 		Fetched:      pulseWorkerRate(worker, worker.FetchedPagesPerMinute),
 		Indexed:      pulseWorkerRate(worker, worker.IndexedPagesPerMinute),
 		LastReport:   "Unavailable",
@@ -118,6 +131,18 @@ func buildCrawlerWorkerPulseView(worker CrawlerWorkerPulse, now time.Time) crawl
 	}
 
 	return row
+}
+
+func crawlerActivePageViews(pages []CrawlerActivePage) []crawlerActivePageView {
+	views := make([]crawlerActivePageView, 0, len(pages))
+	for _, page := range pages {
+		views = append(views, crawlerActivePageView{
+			URL:     page.URL,
+			Stage:   page.Stage,
+			Elapsed: time.Duration(page.ElapsedMilliseconds * uint64(time.Millisecond)).Round(time.Second).String(),
+		})
+	}
+	return views
 }
 
 func (measurements *crawlerPulseMeasurements) record(worker CrawlerWorkerPulse) {

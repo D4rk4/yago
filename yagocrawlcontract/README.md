@@ -257,6 +257,13 @@ chains and terminal settlement remain ordered.
 
 `SubmitIngest` is unary, so acceptance or retryable backpressure returns directly
 to the crawler that submitted the batch. There is no shared feedback topic.
+The replacement crawler first persists each batch in its local outbox, then a
+bounded sender pool makes these requests, up to the node's 64-record batch
+ceiling. Page workers continue processing frontier URLs without waiting for
+node ingest acknowledgments. The crawl lease stays open until the senders drain
+that run's outbox, preserving ingest authorization.
+Worker heartbeats may report the bounded active URL, stage, and elapsed time
+list used by the Admin crawl pulse.
 
 `IngestBatch` JSON is limited to 4 MiB minus 64 KiB of transport headroom, and
 the enclosing gRPC message is limited to 4 MiB. The crawler bounds text, URLs,

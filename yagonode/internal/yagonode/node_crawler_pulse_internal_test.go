@@ -51,6 +51,11 @@ func TestCrawlerPulseSourceCombinesCurrentProcessRatesAndQueueDepth(t *testing.T
 				ActiveFetchesKnown:         true,
 				FetchAdmissionWaiting:      1,
 				FetchAdmissionWaitingKnown: true,
+				ActivePages: []crawlbroker.CrawlerActivePage{{
+					URL:                 "https://example.org/page",
+					Stage:               "node_ingest",
+					ElapsedMilliseconds: 6200,
+				}},
 				ObservedAt:                 now.Add(-5 * time.Second),
 			}},
 			runtime: crawlbroker.CrawlerRuntimeSnapshot{FetchLimitPerCrawler: 8},
@@ -75,7 +80,9 @@ func TestCrawlerPulseSourceCombinesCurrentProcessRatesAndQueueDepth(t *testing.T
 	if worker.WorkerID != "worker-a" || worker.ProcessLabel != "a1b2c3d4" ||
 		worker.ActiveFetches != 3 || worker.FetchAdmissionWaiting != 1 || worker.FetchLimit != 8 ||
 		!worker.RateKnown || worker.FetchedPagesPerMinute != 24.5 ||
-		worker.IndexedPagesPerMinute != 20 || !worker.ObservedAt.Equal(now) {
+		worker.IndexedPagesPerMinute != 20 || !worker.ObservedAt.Equal(now) ||
+		len(worker.ActivePages) != 1 || worker.ActivePages[0].URL != "https://example.org/page" ||
+		worker.ActivePages[0].Stage != "node_ingest" || worker.ActivePages[0].ElapsedMilliseconds != 6200 {
 		t.Fatalf("crawler process pulse = %+v, want current measured process rates", worker)
 	}
 }

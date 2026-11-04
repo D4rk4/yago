@@ -11,6 +11,18 @@ package. This directory holds the reference systemd units and environment files;
 `docker-compose.yml.example` is the equivalent reference for the container
 deployment, and the two are kept in step.
 
+## Current crawler implementation
+
+Deployment builds run the independent `yago-crawler2` source module under the
+existing `yago-crawler` product name. It supports persistent run frontiers,
+HTTP fetching, robots rules, crawl scope, document and RWI ingest, and node
+progress reporting. Its bounded worker pool follows node worker and active-run
+limits, with host politeness shared across concurrent runs. Browser fallback,
+pause/resume/cancel/restart controls, per-run pace overrides, filesystem-pressure
+admission, and a crawler-local metrics listener have not yet been ported. Sections
+below that describe those features document the previous worker and do not imply
+support in the current replacement.
+
 Web search stays disabled in the deployment examples. Setting
 `YAGO_WEB_FALLBACK_PRIVACY=enabled` now sends a search to external engines when
 fewer than 100 verified unique primary candidates remain, including nonempty
@@ -29,12 +41,14 @@ The Debian package and the systemd units share one layout:
 | `/opt/yago/data` | durable node state and crawler frontier checkpoints |
 | `/opt/yago/data/peerroster.db` | known-peer roster and peer lifecycle state |
 | `/opt/yago/data/crawlbroker.db` | atomic node-side crawl queue, lease, settlement, control, and terminal-run state |
-| `/opt/yago/data/crawler/frontier-v1.db` | crawler-side frontier, visited set, observations, stable worker identity, and terminal outbox |
+| `/opt/yago/data/yago-crawler2/frontier.db` | run-scoped frontier and page state for the independent crawler |
 
 The package creates a system `yago` user that owns `/opt/yago/data`. Removing the
 package leaves that directory intact. Both systemd services set
 `YAGO_DATA_DIR=/opt/yago/data`, so a package upgrade preserves unfinished crawl
-work together with the node's broker queue and indexes.
+work together with the node's broker queue and indexes. The independent crawler
+uses its own `yago-crawler2/frontier.db`; it does not open or migrate the older
+crawler checkpoint.
 
 The node creates `crawlbroker.db` only when its crawl runtime is enabled. It is
 a dedicated bbolt database, not part of the sharded main vault:
@@ -73,14 +87,14 @@ volume and are also sent by the node after a current crawler heartbeat. The
 defaults are 1 GB reserved and 256 MB recovery hysteresis. These controls pause
 gate-managed crawl and index ingestion; they are not a filesystem quota.
 Deleting bbolt rows can leave reusable pages inside `crawlbroker.db` or
-`frontier-v1.db` without increasing operating-system free space. If pressure
+`yago-crawler2/frontier.db` without increasing operating-system free space. If pressure
 persists, free filesystem space or lower the applicable reserve and hysteresis.
 Use a filesystem/project quota or a quota-capable volume for a hard aggregate
 boundary.
 
-The crawler creates throwaway Firefox profiles in its private process temporary
-directory. They are not durable state. Its frontier checkpoint is durable and
-lives under `YAGO_DATA_DIR`. `YAGO_CRAWLER_MAX_PAGES_PER_RUN` bootstraps a
+The replacement crawler uses HTTP only and creates no browser profiles. Its
+frontier checkpoint is durable and lives under `YAGO_DATA_DIR`. The node's
+`YAGO_CRAWLER_MAX_PAGES_PER_RUN` setting bootstraps a
 50,000-page whole-run budget in both services; the node records the current
 Admin Configuration value in each new crawl profile, while the crawler value
 remains the fallback for queued legacy profiles. `0` removes this general bound
@@ -100,19 +114,10 @@ package dependencies rather than bundled:
 
 - `ca-certificates` — trust roots for outbound TLS. The binaries read the system
   trust store; there is no baked-in certificate bundle on bare metal.
-- `firefox-esr` on Debian (or `firefox` on Ubuntu/Fedora) — the crawler's
-  slow-path browser, driven headless over Marionette. The container image
-  bundles `firefox-esr`; a host install discovers `firefox-esr` and then `firefox`
-  on `PATH`, while `YAGO_CRAWLER_BROWSER_PATH` can pin an absolute non-standard
-  location whose exact basename is `firefox-esr` or `firefox`. Keep the same
-  bootstrap in the node and crawler environments; Configuration → Crawler
-  persists and delivers the authoritative value. Before browser assembly and
-  again immediately before each spawn, the crawler requires every resolved
-  executable-chain component to be root-owned and not group- or other-writable,
-  and requires the final regular file to be executable by the crawler identity
-  without set-user-ID or set-group-ID bits. An empty setting with no discoverable
-  Firefox remains nonfatal: the crawler continues on the HTTP fast path and
-  reports browser fallback unavailable only when that slow path is needed.
+- The container image retains its pinned Firefox runtime package for parity
+  with the deployment baseline. The replacement crawler does not launch it yet;
+  `YAGO_CRAWLER_BROWSER_PATH` and browser sandbox settings therefore have no
+  effect on this implementation.
 
 ## Install and run
 

@@ -36,12 +36,22 @@ yago-node
 
 yago-crawler
   - persistent crawl frontier
-  - HTTP fast fetch path
+  - bounded asynchronous HTTP page workers with a five-second attempt deadline
   - optional browser slow fetch path
   - robots.txt, sitemap, canonicalization, politeness
   - content extraction and deduplication
   - emits DocumentIngest + RWI postings + URL metadata
 ```
+
+Crawler URL fetching and robots retrieval happen in `yago-crawler`; the node
+does not fetch crawl targets. The crawler claims pages through one global worker
+limit that is independent of the active crawl-run limit. Each URL attempt has a
+five-second wall-clock deadline. A timeout settles or retries that URL and frees
+the worker for another due page. Fetched ingest batches remain in the crawler's
+persistent outbox and a bounded sender pool, sized to the node's 64-record ingest
+batch ceiling, submits them to the node. A slow ingest acknowledgment does not occupy a page worker. Worker heartbeats report active
+URLs, stages, and elapsed time for the Admin crawl pulse. A run remains leased
+until its pending ingest batches are acknowledged.
 
 Search, document storage, peer protocol, crawler orchestration, and Admin UI
 remain narrow internal components. A future process split requires its own ADR
@@ -347,6 +357,7 @@ it is not an assumed deployment dependency.
   browser fetch, including its final redirected URL. The policy SHALL remain
   bounded to 4,096 entries and 1 MiB and SHALL NOT introduce a second operator
   setting or environment variable.
+* The crawler SHALL fetch page and robots URLs in `yago-crawler`; the node SHALL NOT fetch crawl targets. A process-wide page-worker limit SHALL bound concurrent frontier claims independently from the active-run limit, and each URL attempt SHALL have a five-second wall-clock deadline. Deadline expiration SHALL settle or retry that URL and release the worker. The crawler SHALL persist fetched batches to its outbox before settling pages and SHALL dispatch them in a separate sender so node acknowledgment latency cannot occupy page workers. The node SHALL receive bounded heartbeat reports of active URL, stage, and elapsed time. A crawl order MAY remain leased while its durable outbox drains.
 * Optional crawl seeding from web-fallback results SHALL run outside the search response path through two process-wide workers, admit at most 128 pending jobs, and give each admitted job a fresh background context that expires ten seconds after execution begins. A full pending queue SHALL warn and skip only the new optional job. URLs SHALL be normalized before admission, SHALL discard fragments, and SHALL reject credentials, missing hosts, non-HTTP schemes, and identities beyond the document URL limit. Every eligible surfaced URL SHALL receive a stored-document presence check lasting at most 50 milliseconds. An absent or lookup-indeterminate URL SHALL persist a node-internal, one-at-a-time recovery intent before automatic-discovery queue mutation. Its normalized identity SHALL coalesce only pending or leased work. Acknowledgement, terminal failure, or cancellation SHALL stage a durable settlement intent before releasing that identity; retry or startup SHALL complete a partial settlement idempotently so a later surfaced result can retry. Successful ingest SHALL be authorized against the live lease and SHALL attempt to persist that order's profile before recording the fetch. A profile or recrawl-schedule write failure SHALL be logged and SHALL NOT roll back an already indexed document. The discovery root SHALL be the warming fetch; the node SHALL NOT publish a second cache order while that work remains active.
 * Public paging SHALL cache an initial 50-result assembled window plus one materialized lookahead row and extend it on demand in 50-result blocks with the same one-row lookahead up to the 500-result safety horizon. Extensions SHALL preserve the cached prefix order, append only unseen result identities, and keep extending after a short deduplicated window while the backend reports deeper matches. A failure-free response that explicitly closes the backend total or adds no new identity MAY prove exhaustion and reduce the estimate to the materialized prefix. A classified incomplete extension, a response carrying retrieval partial failures, an operational refresh error, or merely reaching the safety horizon SHALL preserve the estimate and remain non-exhaustive. Public portal page links SHALL use only materialized availability, SHALL preserve an explicitly requested non-exhaustive page, and SHALL redirect beyond the last materialized page only after authoritative exhaustion. Each session SHALL publish an immutable visible window so recent-success recovery never waits behind an active deep-page extension. The paging cache SHALL retain at most 128 sessions and 32 MiB in byte-aware LRU order, reconcile extension growth, purge expired entries on access, deeply detach retained payloads, and serve but not retain an entry that exceeds the budget by itself.
 * Persistent full-text index search and document hydration MAY run concurrently with ingest, but index, delete, and batch mutations SHALL be serialized to bound concurrent segment memory and preserve mutation completion order. One batch mutation SHALL persist at most four Bleve shards concurrently, SHALL attempt every touched shard, SHALL wait for every attempt, and SHALL report the lowest-shard failure regardless of completion order. An empty cached-index batch SHALL be a strict no-op without backend delegation or cache invalidation. Every nonempty cached-index batch SHALL invalidate after its mutation attempt even when that attempt reports an error, because an earlier fallback document or Bleve shard can already be durable.
