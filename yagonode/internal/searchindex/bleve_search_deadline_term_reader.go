@@ -8,15 +8,20 @@ import (
 )
 
 type bleveSearchDeadlineTermReader struct {
-	inner bleveindex.TermFieldReader
-	ctx   context.Context
+	inner     bleveindex.TermFieldReader
+	ctx       context.Context
+	frequency *bleveTermDocumentFrequency
 }
 
 func newBleveSearchDeadlineTermReader(
 	ctx context.Context,
 	reader bleveindex.TermFieldReader,
 ) bleveindex.TermFieldReader {
-	bounded := bleveSearchDeadlineTermReader{inner: reader, ctx: ctx}
+	bounded := bleveSearchDeadlineTermReader{
+		inner:     reader,
+		ctx:       ctx,
+		frequency: &bleveTermDocumentFrequency{},
+	}
 	optimizable, available := reader.(bleveindex.Optimizable)
 	if !available {
 		return bounded
@@ -68,7 +73,7 @@ func (reader bleveSearchDeadlineTermReader) Count() uint64 {
 		return 0
 	}
 
-	return reader.inner.Count()
+	return reader.frequency.read(reader.inner)
 }
 
 func (reader bleveSearchDeadlineTermReader) Close() error {
