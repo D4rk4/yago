@@ -17,14 +17,18 @@ neither opened nor migrated.
 Each finished-order log includes request totals, frontier admission totals,
 filtered seed totals, page results, and elapsed time. Page workers never wait
 for a node ingest acknowledgment: each batch is persisted in the crawler's
-outbox and submitted by a bounded sender pool with retry, up to the node's
-64-record ingest batch ceiling. This lets the node coalesce page batches. The crawl order stays
+outbox and submitted over a bidirectional stream. The stream keeps up to 64
+batch submissions in flight and receives acknowledgments independently, letting
+the node coalesce page batches. The crawl order stays
 leased until those batches are acknowledged. Heartbeats report active URLs,
 stages, and elapsed time to the Admin crawl pulse. Slow or failed page-fetch
 logs separate host-admission wait and HTTP request time. Slow page-processing
 logs identify robots checks, HTML parsing, and outbox persistence. Page starts
 have no fleet-wide rate governor; robots rules, per-host politeness, worker
 concurrency, and node ingest backpressure still apply.
+
+The replacement crawler requires a node that supports the bidirectional ingest
+stream. It does not fall back to unary ingestion.
 
 The current replacement has an HTTP fetch path only. Browser rendering,
 pause/resume/cancel/restart controls, per-run pace overrides, filesystem-pressure

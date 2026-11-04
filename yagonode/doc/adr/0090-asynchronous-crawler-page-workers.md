@@ -19,11 +19,12 @@ context. The worker settles or retries the URL when that context expires and
 releases its page slot. Per-host admission and politeness continue to apply.
 
 Persist each completed ingest batch in the crawler frontier before settling the
-page. A bounded sender pool drains the durable outbox and retries node
-submissions independently from page workers. Its size is the shared 64-record
-ingest batch ceiling, allowing the node to coalesce concurrent deliveries. A
-crawl order remains leased until its outbox entries are acknowledged,
-preserving the existing live-lease authorization.
+page. A bidirectional gRPC stream sends up to 64 outstanding outbox entries and
+receives acknowledgments independently from page workers and the sending loop.
+This allows the node to coalesce concurrent deliveries. A crawl order remains
+leased until its outbox entries are acknowledged, preserving the existing
+live-lease authorization. Keep the unary `SubmitIngest` method for older crawler
+clients.
 Worker heartbeats include a bounded list of active URLs, stages, and elapsed
 times for the Admin crawl pulse.
 
@@ -35,7 +36,9 @@ configured maximum.
 
 Page work no longer waits inline for another URL's fetch or for node ingest
 acknowledgment. The shared worker count now controls page concurrency rather
-than limiting how many crawl orders can execute. Node ingest itself remains
-behind the existing unary `SubmitIngest` contract and its serial consumer. No
-new service boundary, dependency, environment variable, or deployment surface is
-introduced.
+than limiting how many crawl orders can execute. The new crawler uses
+`StreamIngest`; older clients retain unary `SubmitIngest`. Node ingest remains
+serialized through its existing consumer. The replacement crawler requires a
+node that implements `StreamIngest` and does not fall back to unary submission.
+No new service boundary, dependency, environment variable, or deployment
+surface is introduced.

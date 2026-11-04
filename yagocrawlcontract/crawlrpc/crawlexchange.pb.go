@@ -1440,6 +1440,7 @@ type IngestBatchMessage struct {
 	LeaseId         string                 `protobuf:"bytes,2,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
 	WorkerId        string                 `protobuf:"bytes,3,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	WorkerSessionId string                 `protobuf:"bytes,4,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
+	SubmissionId    string                 `protobuf:"bytes,5,opt,name=submission_id,json=submissionId,proto3" json:"submission_id,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1502,6 +1503,13 @@ func (x *IngestBatchMessage) GetWorkerSessionId() string {
 	return ""
 }
 
+func (x *IngestBatchMessage) GetSubmissionId() string {
+	if x != nil {
+		return x.SubmissionId
+	}
+	return ""
+}
+
 // IngestAck confirms that the node consumed the batch. Absorbing a batch and
 // storing its page are different outcomes: the node's content-quality gate can
 // accept delivery and still refuse to store the document. Both fields default
@@ -1515,6 +1523,8 @@ type IngestAck struct {
 	// rejection_rule names the gate rule the page violated, for the crawler's
 	// per-URL outcome and logs. Empty when the page was stored.
 	RejectionRule string `protobuf:"bytes,2,opt,name=rejection_rule,json=rejectionRule,proto3" json:"rejection_rule,omitempty"`
+	SubmissionId  string `protobuf:"bytes,3,opt,name=submission_id,json=submissionId,proto3" json:"submission_id,omitempty"`
+	ErrorCode     int32  `protobuf:"varint,4,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1561,6 +1571,20 @@ func (x *IngestAck) GetRejectionRule() string {
 		return x.RejectionRule
 	}
 	return ""
+}
+
+func (x *IngestAck) GetSubmissionId() string {
+	if x != nil {
+		return x.SubmissionId
+	}
+	return ""
+}
+
+func (x *IngestAck) GetErrorCode() int32 {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return 0
 }
 
 type CrawlRunTally struct {
@@ -2039,16 +2063,20 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\brevision\x18\x01 \x01(\fR\brevision\x12\x1d\n" +
 	"\n" +
 	"exact_urls\x18\x02 \x03(\tR\texactUrls\x12\x18\n" +
-	"\adomains\x18\x03 \x03(\tR\adomains\"\x97\x01\n" +
+	"\adomains\x18\x03 \x03(\tR\adomains\"\xbc\x01\n" +
 	"\x12IngestBatchMessage\x12\x1d\n" +
 	"\n" +
 	"batch_json\x18\x01 \x01(\fR\tbatchJson\x12\x19\n" +
 	"\blease_id\x18\x02 \x01(\tR\aleaseId\x12\x1b\n" +
 	"\tworker_id\x18\x03 \x01(\tR\bworkerId\x12*\n" +
-	"\x11worker_session_id\x18\x04 \x01(\tR\x0fworkerSessionId\"N\n" +
+	"\x11worker_session_id\x18\x04 \x01(\tR\x0fworkerSessionId\x12#\n" +
+	"\rsubmission_id\x18\x05 \x01(\tR\fsubmissionId\"\x92\x01\n" +
 	"\tIngestAck\x12\x1a\n" +
 	"\brejected\x18\x01 \x01(\bR\brejected\x12%\n" +
-	"\x0erejection_rule\x18\x02 \x01(\tR\rrejectionRule\"\xba\x01\n" +
+	"\x0erejection_rule\x18\x02 \x01(\tR\rrejectionRule\x12#\n" +
+	"\rsubmission_id\x18\x03 \x01(\tR\fsubmissionId\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x04 \x01(\x05R\terrorCode\"\xba\x01\n" +
 	"\rCrawlRunTally\x12\x18\n" +
 	"\afetched\x18\x01 \x01(\x04R\afetched\x12\x18\n" +
 	"\aindexed\x18\x02 \x01(\x04R\aindexed\x12\x16\n" +
@@ -2101,14 +2129,15 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x1bCRAWL_RUN_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17CRAWL_RUN_STATE_RUNNING\x10\x01\x12\x1c\n" +
 	"\x18CRAWL_RUN_STATE_FINISHED\x10\x02\x12\x1d\n" +
-	"\x19CRAWL_RUN_STATE_CANCELLED\x10\x032\xdc\x04\n" +
+	"\x19CRAWL_RUN_STATE_CANCELLED\x10\x032\xab\x05\n" +
 	"\rCrawlExchange\x12S\n" +
 	"\fStreamOrders\x12 .yacycrawl.v1.WorkerRegistration\x1a\x1f.yacycrawl.v1.CrawlOrderMessage0\x01\x12@\n" +
 	"\bAckOrder\x12\x16.yacycrawl.v1.OrderAck\x1a\x1c.yacycrawl.v1.OrderAckResult\x12O\n" +
 	"\tHeartbeat\x12\x1d.yacycrawl.v1.WorkerHeartbeat\x1a#.yacycrawl.v1.WorkerHeartbeatResult\x12b\n" +
 	"\x11ReadRuntimePolicy\x12).yacycrawl.v1.CrawlerRuntimePolicyRequest\x1a\".yacycrawl.v1.CrawlerRuntimePolicy\x12_\n" +
 	"\x10LeaseFetchStarts\x12$.yacycrawl.v1.FetchStartLeaseRequest\x1a%.yacycrawl.v1.FetchStartLeaseDecision\x12I\n" +
-	"\fSubmitIngest\x12 .yacycrawl.v1.IngestBatchMessage\x1a\x17.yacycrawl.v1.IngestAck\x12S\n" +
+	"\fSubmitIngest\x12 .yacycrawl.v1.IngestBatchMessage\x1a\x17.yacycrawl.v1.IngestAck\x12M\n" +
+	"\fStreamIngest\x12 .yacycrawl.v1.IngestBatchMessage\x1a\x17.yacycrawl.v1.IngestAck(\x010\x01\x12S\n" +
 	"\x0eReportProgress\x12!.yacycrawl.v1.CrawlProgressReport\x1a\x1e.yacycrawl.v1.CrawlProgressAckB2Z0github.com/D4rk4/yago/yagocrawlcontract/crawlrpcb\x06proto3"
 
 var (
@@ -2168,16 +2197,18 @@ var file_crawlexchange_proto_depIdxs = []int32{
 	12, // 15: yacycrawl.v1.CrawlExchange.ReadRuntimePolicy:input_type -> yacycrawl.v1.CrawlerRuntimePolicyRequest
 	3,  // 16: yacycrawl.v1.CrawlExchange.LeaseFetchStarts:input_type -> yacycrawl.v1.FetchStartLeaseRequest
 	16, // 17: yacycrawl.v1.CrawlExchange.SubmitIngest:input_type -> yacycrawl.v1.IngestBatchMessage
-	20, // 18: yacycrawl.v1.CrawlExchange.ReportProgress:input_type -> yacycrawl.v1.CrawlProgressReport
-	5,  // 19: yacycrawl.v1.CrawlExchange.StreamOrders:output_type -> yacycrawl.v1.CrawlOrderMessage
-	7,  // 20: yacycrawl.v1.CrawlExchange.AckOrder:output_type -> yacycrawl.v1.OrderAckResult
-	11, // 21: yacycrawl.v1.CrawlExchange.Heartbeat:output_type -> yacycrawl.v1.WorkerHeartbeatResult
-	13, // 22: yacycrawl.v1.CrawlExchange.ReadRuntimePolicy:output_type -> yacycrawl.v1.CrawlerRuntimePolicy
-	4,  // 23: yacycrawl.v1.CrawlExchange.LeaseFetchStarts:output_type -> yacycrawl.v1.FetchStartLeaseDecision
-	17, // 24: yacycrawl.v1.CrawlExchange.SubmitIngest:output_type -> yacycrawl.v1.IngestAck
-	21, // 25: yacycrawl.v1.CrawlExchange.ReportProgress:output_type -> yacycrawl.v1.CrawlProgressAck
-	19, // [19:26] is the sub-list for method output_type
-	12, // [12:19] is the sub-list for method input_type
+	16, // 18: yacycrawl.v1.CrawlExchange.StreamIngest:input_type -> yacycrawl.v1.IngestBatchMessage
+	20, // 19: yacycrawl.v1.CrawlExchange.ReportProgress:input_type -> yacycrawl.v1.CrawlProgressReport
+	5,  // 20: yacycrawl.v1.CrawlExchange.StreamOrders:output_type -> yacycrawl.v1.CrawlOrderMessage
+	7,  // 21: yacycrawl.v1.CrawlExchange.AckOrder:output_type -> yacycrawl.v1.OrderAckResult
+	11, // 22: yacycrawl.v1.CrawlExchange.Heartbeat:output_type -> yacycrawl.v1.WorkerHeartbeatResult
+	13, // 23: yacycrawl.v1.CrawlExchange.ReadRuntimePolicy:output_type -> yacycrawl.v1.CrawlerRuntimePolicy
+	4,  // 24: yacycrawl.v1.CrawlExchange.LeaseFetchStarts:output_type -> yacycrawl.v1.FetchStartLeaseDecision
+	17, // 25: yacycrawl.v1.CrawlExchange.SubmitIngest:output_type -> yacycrawl.v1.IngestAck
+	17, // 26: yacycrawl.v1.CrawlExchange.StreamIngest:output_type -> yacycrawl.v1.IngestAck
+	21, // 27: yacycrawl.v1.CrawlExchange.ReportProgress:output_type -> yacycrawl.v1.CrawlProgressAck
+	20, // [20:28] is the sub-list for method output_type
+	12, // [12:20] is the sub-list for method input_type
 	12, // [12:12] is the sub-list for extension type_name
 	12, // [12:12] is the sub-list for extension extendee
 	0,  // [0:12] is the sub-list for field type_name

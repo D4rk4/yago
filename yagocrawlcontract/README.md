@@ -17,9 +17,9 @@ The contract has a leased work flow and a feedback-bearing ingest flow:
 node --------------------------------------------------> crawler
      <---------- AckOrder (ACK/NAK/TERM) + Heartbeat + progress
 
-          SubmitIngest(IngestBatch)
+          StreamIngest(IngestBatch...)
 node <----------------------------------------------- crawler
-     -----------------------------------------------> accepted/backpressure
+     -----------------------------------------------> asynchronous per-batch acknowledgments
 ```
 
 `CrawlOrder` carries crawl work from the node to crawler instances. The order includes
@@ -255,13 +255,14 @@ terminal reports take priority, and another ready run is served before the
 replacement. Intermediate running values may therefore be omitted, while phase
 chains and terminal settlement remain ordered.
 
-`SubmitIngest` is unary, so acceptance or retryable backpressure returns directly
-to the crawler that submitted the batch. There is no shared feedback topic.
-The replacement crawler first persists each batch in its local outbox, then a
-bounded sender pool makes these requests, up to the node's 64-record batch
-ceiling. Page workers continue processing frontier URLs without waiting for
-node ingest acknowledgments. The crawl lease stays open until the senders drain
-that run's outbox, preserving ingest authorization.
+The legacy `SubmitIngest` unary method remains for older crawler clients. The
+replacement crawler uses bidirectional `StreamIngest`: it persists each batch in
+its local outbox, sends up to 64 outstanding submissions, and receives each
+acknowledgment independently while sending continues. There is no shared feedback
+topic. Page workers continue processing frontier URLs without waiting for node
+ingest acknowledgments. The crawl lease stays open until the stream drains that
+run's outbox, preserving ingest authorization. A replacement crawler requires a
+node that implements `StreamIngest`; it does not fall back to unary submission.
 Worker heartbeats may report the bounded active URL, stage, and elapsed time
 list used by the Admin crawl pulse.
 

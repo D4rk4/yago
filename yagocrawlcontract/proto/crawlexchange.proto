@@ -29,6 +29,8 @@ service CrawlExchange {
   // so the crawler retries, which is the backpressure signal.
   rpc SubmitIngest(IngestBatchMessage) returns (IngestAck);
 
+  rpc StreamIngest(stream IngestBatchMessage) returns (stream IngestAck);
+
   rpc ReportProgress(CrawlProgressReport) returns (CrawlProgressAck);
 }
 
@@ -198,6 +200,7 @@ message IngestBatchMessage {
   string lease_id = 2;
   string worker_id = 3;
   string worker_session_id = 4;
+  string submission_id = 5;
 }
 
 // IngestAck confirms that the node consumed the batch. Absorbing a batch and
@@ -212,6 +215,8 @@ message IngestAck {
   // rejection_rule names the gate rule the page violated, for the crawler's
   // per-URL outcome and logs. Empty when the page was stored.
   string rejection_rule = 2;
+  string submission_id = 3;
+  int32 error_code = 4;
 }
 
 enum CrawlRunState {

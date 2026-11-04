@@ -128,23 +128,6 @@ func (exchange *Exchange) LeaseFetchStarts(
 	return exchange.client.LeaseFetchStarts(requestContext, request)
 }
 
-func (exchange *Exchange) SubmitIngest(
-	ctx context.Context,
-	leaseID string,
-	batch yagocrawlcontract.IngestBatch,
-) (*crawlrpc.IngestAck, error) {
-	encoded, err := yagocrawlcontract.MarshalIngestBatch(batch)
-	if err != nil {
-		return nil, fmt.Errorf("encode crawl ingest batch: %w", err)
-	}
-	return exchange.client.SubmitIngest(ctx, &crawlrpc.IngestBatchMessage{
-		BatchJson:       encoded,
-		LeaseId:         leaseID,
-		WorkerId:        exchange.workerID,
-		WorkerSessionId: exchange.sessionID,
-	})
-}
-
 func (exchange *Exchange) ReportProgress(
 	ctx context.Context,
 	order yagocrawlcontract.CrawlOrder,

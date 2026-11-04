@@ -48,10 +48,12 @@ does not fetch crawl targets. The crawler claims pages through one global worker
 limit that is independent of the active crawl-run limit. Each URL attempt has a
 five-second wall-clock deadline. A timeout settles or retries that URL and frees
 the worker for another due page. Fetched ingest batches remain in the crawler's
-persistent outbox and a bounded sender pool, sized to the node's 64-record ingest
-batch ceiling, submits them to the node. A slow ingest acknowledgment does not occupy a page worker. Worker heartbeats report active
-URLs, stages, and elapsed time for the Admin crawl pulse. A run remains leased
-until its pending ingest batches are acknowledged.
+persistent outbox and travel over a bidirectional stream with up to 64
+submissions in flight. A separate receiver processes acknowledgments while the
+sender continues dispatching. A slow ingest acknowledgment does not occupy a
+page worker. Worker heartbeats report active URLs, stages, and elapsed time for
+the Admin crawl pulse. A run remains leased until its pending ingest batches are
+acknowledged.
 
 Search, document storage, peer protocol, crawler orchestration, and Admin UI
 remain narrow internal components. A future process split requires its own ADR
