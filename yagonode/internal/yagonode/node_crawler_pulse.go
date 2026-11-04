@@ -55,9 +55,20 @@ func (s crawlerPulseSource) CrawlerPulse(ctx context.Context) adminui.CrawlerPul
 		activePages := make([]adminui.CrawlerActivePage, 0, len(worker.ActivePages))
 		for _, activePage := range worker.ActivePages {
 			activePages = append(activePages, adminui.CrawlerActivePage{
+				RunID:               activePage.RunID,
 				URL:                 activePage.URL,
 				Stage:               activePage.Stage,
 				ElapsedMilliseconds: activePage.ElapsedMilliseconds,
+			})
+		}
+		waitingPages := make([]adminui.CrawlerWaitingPage, 0, len(worker.WaitingPages))
+		for _, waitingPage := range worker.WaitingPages {
+			waitingPages = append(waitingPages, adminui.CrawlerWaitingPage{
+				RunID:       waitingPage.RunID,
+				URL:         waitingPage.URL,
+				State:       waitingPage.State,
+				Reason:      waitingPage.Reason,
+				AvailableAt: waitingPage.AvailableAt,
 			})
 		}
 		row := adminui.CrawlerWorkerPulse{
@@ -69,6 +80,7 @@ func (s crawlerPulseSource) CrawlerPulse(ctx context.Context) adminui.CrawlerPul
 			FetchAdmissionWaiting:      int(worker.FetchAdmissionWaiting),
 			FetchAdmissionWaitingKnown: worker.FetchAdmissionWaitingKnown,
 			ActivePages:                activePages,
+			WaitingPages:               waitingPages,
 			ObservedAt:                 worker.ObservedAt,
 		}
 		if rate, found := rateByProcess[processIdentity{

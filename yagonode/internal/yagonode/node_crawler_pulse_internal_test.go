@@ -56,7 +56,7 @@ func TestCrawlerPulseSourceCombinesCurrentProcessRatesAndQueueDepth(t *testing.T
 					Stage:               "node_ingest",
 					ElapsedMilliseconds: 6200,
 				}},
-				ObservedAt:                 now.Add(-5 * time.Second),
+				ObservedAt: now.Add(-5 * time.Second),
 			}},
 			runtime: crawlbroker.CrawlerRuntimeSnapshot{FetchLimitPerCrawler: 8},
 		},

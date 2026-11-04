@@ -3,8 +3,8 @@
 Open **Admin → Crawler**. The monitor separates crawler page queues from node crawl orders:
 
 - **URLs waiting in active crawls** sums pending URLs from each active run's latest worker report. Workers report about every five seconds. Each active crawl shows its report age; when a worker disconnects, its last reported total may be stale.
-- **Orders waiting for a crawler** are crawl tasks waiting on the node. **Orders leased to crawlers** have already been handed to a worker.
-- **Active crawls** are listed separately with their pending URLs and per-run controls. The collapsed recent history keeps the ten latest finished or cancelled runs, including their Restart action.
+- **Orders waiting for a crawler** are crawl tasks waiting on the node. The monitor shows a bounded sample of their URLs, oldest orders first. **Orders leased to crawlers** have already been handed to a worker.
+- **Active crawls** are listed separately with their pending URLs and per-run controls. Each card shows up to eight current URLs with a readable stage and elapsed time, including when a page is waiting for the node to store and index it. Each card also shows up to four next waiting URLs with their queued or deferred state, wait reason, and eligibility time. The sample updates with the worker heartbeat, about every five seconds. The collapsed recent history keeps the ten latest finished or cancelled runs, including their Restart action.
 
 Outcome totals on the monitor cover active runs and up to 256 finished runs kept in recent history. They can decrease when an older finished run leaves that history. Use **Admin → Performance → Crawler pulse** for current fetched and indexed pages per minute and per-worker activity.
 

@@ -55,10 +55,12 @@ func sampleMonitor() CrawlMonitor {
 			RobotsDenied: 3,
 			Duplicates:   5,
 		},
-		PendingFrontierURLs: 4,
-		QueueAvailable:      true,
-		QueuePending:        7,
-		QueueLeased:         2,
+		PendingFrontierURLs:   4,
+		QueueAvailable:        true,
+		QueuePending:          7,
+		QueueLeased:           2,
+		PendingOrderURLsKnown: true,
+		PendingOrderURLs:      []string{"https://example.org/pending-one"},
 	}
 }
 
@@ -81,7 +83,7 @@ func TestConsoleCrawlRendersMonitor(t *testing.T) {
 		"Latest reported worker frontier total", ">4<", "Orders waiting for a crawler", ">7<",
 		"Orders leased to crawlers", ">2<", "Crawl results and rejections", "Robots-denied",
 		"Last report: 3s ago", "Crawler connection:", ">Connected<",
-		"1 crawler connected.",
+		"1 crawler connected.", "URLs waiting for a crawler", "https://example.org/pending-one",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("crawl page missing %q", want)
@@ -91,6 +93,35 @@ func TestConsoleCrawlRendersMonitor(t *testing.T) {
 	crawlForm := strings.Index(got.body, `id="seeds"`)
 	if monitorStart < 0 || crawlForm < 0 || monitorStart > crawlForm {
 		t.Fatal("crawler queue overview should appear before the crawl form")
+	}
+}
+
+func TestConsoleCrawlDistinguishesEmptyAndUnavailableQueueURLSamples(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		monitor CrawlMonitor
+		want    string
+	}{
+		{
+			name:    "empty queue",
+			monitor: CrawlMonitor{PendingOrderURLsKnown: true},
+			want:    "No URL was found in the pending-order sample.",
+		},
+		{
+			name:    "unavailable sample",
+			monitor: CrawlMonitor{},
+			want:    "Pending URL sample unavailable.",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: test.monitor}})
+			got := do(t, console, "/admin/crawl/monitor")
+			if !strings.Contains(got.body, test.want) {
+				t.Fatalf("crawl page missing %q", test.want)
+			}
+		})
 	}
 }
 

@@ -4,24 +4,35 @@ import (
 	"context"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/D4rk4/yago/yago-crawler2/internal/httpfetch"
 	"github.com/temoto/robotstxt"
 )
 
-const robotsCacheLifetime = 24 * time.Hour
+const (
+	robotsCacheLifetime = 24 * time.Hour
+)
 
 type originRules struct {
 	group     *robotstxt.Group
 	validTill time.Time
 }
 
+type originLoad struct {
+	done  chan struct{}
+	rules originRules
+	err   error
+}
+
 type Policy struct {
+	mutex     sync.Mutex
 	fetchPage func(context.Context, string) (httpfetch.PageResponse, error)
 	userAgent string
 	delay     time.Duration
 	cache     map[string]originRules
+	loading   map[string]*originLoad
 }
 
 func NewPolicy(
@@ -34,6 +45,7 @@ func NewPolicy(
 		userAgent: userAgent,
 		delay:     delay,
 		cache:     make(map[string]originRules),
+		loading:   make(map[string]*originLoad),
 	}
 }
 
@@ -46,13 +58,9 @@ func (policy *Policy) Allows(ctx context.Context, rawURL string, ignore bool) (b
 		return false, err
 	}
 	origin := target.Scheme + "://" + target.Host
-	rules, found := policy.cache[origin]
-	if !found || !rules.validTill.After(time.Now()) {
-		rules, err = policy.load(ctx, origin)
-		if err != nil {
-			return false, err
-		}
-		policy.cache[origin] = rules
+	rules, err := policy.rulesFor(ctx, origin)
+	if err != nil {
+		return false, err
 	}
 	requestTarget := target.EscapedPath()
 	if requestTarget == "" {
@@ -62,6 +70,38 @@ func (policy *Policy) Allows(ctx context.Context, rawURL string, ignore bool) (b
 		requestTarget += "?" + target.RawQuery
 	}
 	return rules.group.Test(requestTarget), nil
+}
+
+func (policy *Policy) rulesFor(ctx context.Context, origin string) (originRules, error) {
+	policy.mutex.Lock()
+	if rules, found := policy.cache[origin]; found && rules.validTill.After(time.Now()) {
+		policy.mutex.Unlock()
+		return rules, nil
+	}
+	if current, found := policy.loading[origin]; found {
+		policy.mutex.Unlock()
+		select {
+		case <-ctx.Done():
+			return originRules{}, ctx.Err()
+		case <-current.done:
+			return current.rules, current.err
+		}
+	}
+	current := &originLoad{done: make(chan struct{})}
+	policy.loading[origin] = current
+	policy.mutex.Unlock()
+
+	current.rules, current.err = policy.load(ctx, origin)
+
+	policy.mutex.Lock()
+	if current.err == nil {
+		policy.cache[origin] = current.rules
+	}
+	delete(policy.loading, origin)
+	close(current.done)
+	policy.mutex.Unlock()
+
+	return current.rules, current.err
 }
 
 func (policy *Policy) load(ctx context.Context, origin string) (originRules, error) {

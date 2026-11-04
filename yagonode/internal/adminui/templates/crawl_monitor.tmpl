@@ -12,7 +12,7 @@
 <div id="crawl-live" hx-get="{{.RefreshURL}}" hx-trigger="every 5s"
      hx-swap="outerHTML" role="region" aria-label="Live crawl status">
   <h2 class="cds-h2">Crawl monitor</h2>
-  <p class="cds-muted">The frontier total sums pending URLs in active crawls' latest worker reports. Workers report about every 5 seconds; each active crawl shows when it last reported. Node orders wait here until a crawler claims them. For current fetched and indexed pages per minute and per-worker activity, open <a href="/admin/performance#crawler-pulse">Crawler pulse</a>.</p>
+  <p class="cds-muted">The frontier total sums pending URLs in active crawls' latest worker reports. Workers report about every 5 seconds; each active crawl shows when it last reported. Each card lists up to eight current URLs and four next waiting URLs. Node orders wait here until a crawler claims them. For current fetched and indexed pages per minute and per-worker activity, open <a href="/admin/performance#crawler-pulse">Crawler pulse</a>.</p>
   <p role="status" aria-label="Crawler connection">
     <strong>Crawler connection:</strong>
     <span class="cds-tag cds-tag--{{.CrawlerConnection.Tag}}">{{.CrawlerConnection.State}}</span>
@@ -34,6 +34,21 @@
       <div class="cds-metric__value">{{if .Monitor.QueueAvailable}}{{.Monitor.QueueLeased}}{{else}}Unavailable{{end}}</div>
     </section>
   </div>
+  <h3 class="cds-h3">URLs waiting for a crawler</h3>
+  <p class="cds-muted">A bounded sample from the node queue, oldest orders first.</p>
+  {{if .Monitor.PendingOrderURLsKnown}}
+  {{if .Monitor.PendingOrderURLs}}
+  <ul class="cds-crawl-url-list" aria-label="URLs waiting for a crawler">
+    {{range .Monitor.PendingOrderURLs}}
+    <li><span class="cds-tag">queued</span><br><code class="cds-mono cds-crawl-url">{{.}}</code></li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="cds-muted">No URL was found in the pending-order sample.</p>
+  {{end}}
+  {{else}}
+  <p class="cds-muted">Pending URL sample unavailable.</p>
+  {{end}}
   <p class="cds-muted">Cancel removes a run's pending URLs after in-flight pages finish. Clearing pending orders leaves leased orders and active fetches alone; orders accepted afterward remain queued.</p>
   <p>
     <button class="cds-btn cds-btn--ghost" type="button"
@@ -86,7 +101,7 @@
   {{end}}
   <h2 class="cds-h2">Active crawls</h2>
   {{if .ActiveRuns}}
-  <div class="cds-tile-grid" role="group" aria-label="Active crawls">
+  <div class="cds-tile-grid cds-crawl-run-grid" role="group" aria-label="Active crawls">
     {{$root := .}}
     {{range .ActiveRuns}}
     <section class="cds-tile">
@@ -94,6 +109,21 @@
       <p><span class="cds-tag{{with stateTag .State}} cds-tag--{{.}}{{end}}">{{.State}}</span>{{if .Worker}} <span class="cds-muted">Worker {{.Worker}}</span>{{end}}</p>
       <p><strong>Waiting URLs:</strong> <span class="cds-mono">{{.Pending}}</span></p>
       <p class="cds-muted">Last report: {{.ReportAge}}</p>
+      <h3 class="cds-h3">Current and next URLs</h3>
+      {{if .URLActivityKnown}}
+      {{if .URLActivity}}
+      <ul class="cds-crawl-url-list">
+        {{range .URLActivity}}
+        <li><span class="cds-tag{{if eq .Kind "fetching"}} cds-tag--info{{end}}">{{.Kind}}</span> <span class="cds-muted">{{.Detail}}{{if .Availability}} · {{.Availability}}{{end}}</span><br><code class="cds-mono cds-crawl-url">{{.URL}}</code></li>
+        {{end}}
+      </ul>
+      {{if .URLActivityMore}}<p class="cds-muted">{{.URLActivityMore}} additional current URLs are active in this run.</p>{{end}}
+      {{else}}
+      <p class="cds-muted">No current or next URL is reported for this crawl.</p>
+      {{end}}
+      {{else}}
+      <p class="cds-muted">The crawler has not reported a URL sample for this run.</p>
+      {{end}}
       {{if $root.Controllable}}
       <div class="cds-control-row cds-control-row--crawl-actions">
         <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">

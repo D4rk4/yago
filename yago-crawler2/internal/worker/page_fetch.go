@@ -14,6 +14,7 @@ import (
 const (
 	messagePageFetchTiming        = "crawler page fetch timing"
 	slowCrawlerOperationThreshold = time.Second
+	robotsFetchTimeout            = 2 * time.Second
 	messageRuntimePolicyActivated = "crawler runtime policy activated"
 )
 
@@ -26,6 +27,21 @@ type pageFetchTiming struct {
 func (worker *Worker) fetchPage(
 	ctx context.Context,
 	pageURL string,
+) (httpfetch.PageResponse, error) {
+	return worker.fetchPageWithRequestTimeout(ctx, pageURL, 0)
+}
+
+func (worker *Worker) fetchRobotsPage(
+	ctx context.Context,
+	pageURL string,
+) (httpfetch.PageResponse, error) {
+	return worker.fetchPageWithRequestTimeout(ctx, pageURL, robotsFetchTimeout)
+}
+
+func (worker *Worker) fetchPageWithRequestTimeout(
+	ctx context.Context,
+	pageURL string,
+	requestTimeout time.Duration,
 ) (httpfetch.PageResponse, error) {
 	startedAt := time.Now()
 	timing := pageFetchTiming{}
@@ -45,8 +61,14 @@ func (worker *Worker) fetchPage(
 	defer releaseHost()
 	worker.active.Add(1)
 	defer worker.active.Add(^uint32(0))
+	requestContext := ctx
+	stopRequest := func() {}
+	if requestTimeout > 0 {
+		requestContext, stopRequest = context.WithTimeout(ctx, requestTimeout)
+	}
+	defer stopRequest()
 	httpStartedAt := time.Now()
-	response, err := worker.fetcher.Fetch(ctx, pageURL)
+	response, err := worker.fetcher.Fetch(requestContext, pageURL)
 	timing.httpRequestElapsed = time.Since(httpStartedAt)
 	logPageFetchTiming(ctx, pageURL, timing, response, startedAt, err)
 	return response, err

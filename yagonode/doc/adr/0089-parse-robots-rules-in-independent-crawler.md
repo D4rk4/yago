@@ -16,7 +16,10 @@ ad hoc would create a second parser with avoidable interoperability risk.
 Use the pinned `github.com/temoto/robotstxt` v1.1.2 parser in `yago-crawler2`.
 Apply RFC 9309 response handling in the crawler: parse successful responses,
 allow unavailable 4xx responses, and disallow access when robots is
-unreachable. Cache rules by origin for at most 24 hours.
+unreachable. Cache rules by origin for at most 24 hours. Only one concurrent
+robots request for an origin may populate that cache. Bound its network request
+to two seconds; if that request is unreachable, cache the deny-all result. A
+crawler shutdown cancellation does not populate the cache.
 
 ## Consequences
 

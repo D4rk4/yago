@@ -1829,6 +1829,13 @@ func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 
 	monitor := c.monitor.Monitor(r.Context())
 	runSections := buildCrawlRunSections(monitor.Runs)
+	if c.crawlerPulse != nil {
+		attachCrawlerRunActivity(
+			runSections.Active,
+			c.crawlerPulse.CrawlerPulse(r.Context()),
+			time.Now(),
+		)
+	}
 
 	return &crawlMonitorView{
 		Monitor:           monitor,

@@ -60,6 +60,7 @@ type Worker struct {
 	pendingDirectiveAcknowledgments []uint64
 	leases                          map[string]struct{}
 	activePages                     map[string]pageActivity
+	waitingPageReports              *waitingPageReporter
 	active                          atomic.Uint32
 }
 
@@ -130,8 +131,9 @@ func Open(ctx context.Context, configuration Configuration) (*Worker, error) {
 		pendingProgress:     make(map[string]progressUpdate),
 		pendingIngestActive: make(map[string]struct{}),
 		activePages:         make(map[string]pageActivity),
+		waitingPageReports:  newWaitingPageReporter(),
 	}
-	runner.robots = robots.NewPolicy(runner.fetchPage, policy.UserAgent, policy.CrawlDelay)
+	runner.robots = robots.NewPolicy(runner.fetchRobotsPage, policy.UserAgent, policy.CrawlDelay)
 	return runner, nil
 }
 

@@ -244,6 +244,7 @@ select:focus-visible, [tabindex]:focus-visible {
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
   gap: var(--cds-spacing-05);
 }
+.cds-crawl-run-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr)); }
 .cds-metric__label { color: var(--cds-text-secondary); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
 .cds-metric__value { font-size: 2rem; font-weight: 300; margin-top: var(--cds-spacing-03); }
 
@@ -385,6 +386,8 @@ select:focus-visible, [tabindex]:focus-visible {
 .cds-table thead th[aria-sort="ascending"] a, .cds-table thead th[aria-sort="descending"] a { color: var(--cds-text-primary); }
 .cds-table td { font-variant-numeric: tabular-nums; }
 .cds-table code, .cds-mono { font-family: var(--cds-font-mono); font-size: 0.8125rem; }
+.cds-crawl-url-list { display: grid; gap: var(--cds-spacing-03); margin: var(--cds-spacing-03) 0 var(--cds-spacing-05); padding-left: var(--cds-spacing-06); }
+.cds-crawl-url { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
 
 .cds-scroll-x { overflow-x: auto; max-width: 100%; }
 

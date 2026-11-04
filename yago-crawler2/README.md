@@ -14,6 +14,10 @@ limit across all active runs; the active-run limit is separate. Each URL attempt
 has a five-second wall-clock deadline. The previous crawler checkpoint is
 neither opened nor migrated.
 
+Robots requests are bounded to two seconds, shared across concurrent pages for
+the same origin, and cached for up to 24 hours. An unreachable robots file
+denies that origin for the cache period, following RFC 9309's fail-closed rule.
+
 Each finished-order log includes request totals, frontier admission totals,
 filtered seed totals, page results, and elapsed time. Page workers never wait
 for a node ingest acknowledgment: each batch is persisted in the crawler's
@@ -21,7 +25,9 @@ outbox and submitted over a bidirectional stream. The stream keeps up to 64
 batch submissions in flight and receives acknowledgments independently, letting
 the node coalesce page batches. The crawl order stays
 leased until those batches are acknowledged. Heartbeats report active URLs,
-stages, and elapsed time to the Admin crawl pulse. Slow or failed page-fetch
+stages, elapsed time, and up to four next waiting URLs per active run. The Admin
+Crawl page shows those URLs and their queued, retry-delay, or host-politeness
+state. Slow or failed page-fetch
 logs separate host-admission wait and HTTP request time. Slow page-processing
 logs identify robots checks, HTML parsing, and outbox persistence. Page starts
 have no fleet-wide rate governor; robots rules, per-host politeness, worker

@@ -263,8 +263,10 @@ topic. Page workers continue processing frontier URLs without waiting for node
 ingest acknowledgments. The crawl lease stays open until the stream drains that
 run's outbox, preserving ingest authorization. A replacement crawler requires a
 node that implements `StreamIngest`; it does not fall back to unary submission.
-Worker heartbeats may report the bounded active URL, stage, and elapsed time
-list used by the Admin crawl pulse.
+Worker heartbeats may report bounded active URL and stage details plus up to
+four next waiting URLs for each active run, with the frontier state, wait reason,
+and next eligible time. The node validates and shows this sample on the Admin
+Crawl page; older workers may omit the additive fields.
 
 `IngestBatch` JSON is limited to 4 MiB minus 64 KiB of transport headroom, and
 the enclosing gRPC message is limited to 4 MiB. The crawler bounds text, URLs,

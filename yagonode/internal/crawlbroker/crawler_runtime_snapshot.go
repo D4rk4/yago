@@ -14,13 +14,23 @@ type crawlerActiveFetches struct {
 	waiting           uint32
 	waitingKnown      bool
 	activePages       []CrawlerActivePage
+	waitingPages      []CrawlerWaitingPage
 	observedAt        time.Time
 }
 
 type CrawlerActivePage struct {
+	RunID               string
 	URL                 string
 	Stage               string
 	ElapsedMilliseconds uint64
+}
+
+type CrawlerWaitingPage struct {
+	RunID       string
+	URL         string
+	State       string
+	Reason      string
+	AvailableAt time.Time
 }
 
 type CrawlerWorkerSnapshot struct {
@@ -31,6 +41,7 @@ type CrawlerWorkerSnapshot struct {
 	FetchAdmissionWaiting      uint32
 	FetchAdmissionWaitingKnown bool
 	ActivePages                []CrawlerActivePage
+	WaitingPages               []CrawlerWaitingPage
 	ObservedAt                 time.Time
 }
 
@@ -113,6 +124,26 @@ func (r *ControlRegistry) recordHeartbeatActivePages(
 	r.activeFetches[workerID] = activity
 }
 
+func (r *ControlRegistry) recordHeartbeatWaitingPages(
+	workerID string,
+	processIdentifier string,
+	waitingPages []CrawlerWaitingPage,
+) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.workers[workerID] == 0 {
+		return
+	}
+	activity := r.activeFetches[workerID]
+	if processIdentifier != "" {
+		activity.processIdentifier = processIdentifier
+	}
+	activity.waitingPages = append([]CrawlerWaitingPage(nil), waitingPages...)
+	activity.observedAt = r.now()
+	r.activeFetches[workerID] = activity
+}
+
 func (r *ControlRegistry) WorkerSnapshots() []CrawlerWorkerSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -132,6 +163,7 @@ func (r *ControlRegistry) WorkerSnapshots() []CrawlerWorkerSnapshot {
 			snapshot.FetchAdmissionWaiting = activity.waiting
 			snapshot.FetchAdmissionWaitingKnown = activity.waitingKnown
 			snapshot.ActivePages = append([]CrawlerActivePage(nil), activity.activePages...)
+			snapshot.WaitingPages = append([]CrawlerWaitingPage(nil), activity.waitingPages...)
 		}
 		snapshots = append(snapshots, snapshot)
 	}

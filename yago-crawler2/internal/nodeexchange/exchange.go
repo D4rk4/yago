@@ -82,6 +82,7 @@ func (exchange *Exchange) Heartbeat(
 	leaseIDs []string,
 	activeFetches uint32,
 	activePages []*crawlrpc.ActiveCrawlPage,
+	waitingPages []*crawlrpc.WaitingCrawlPage,
 	confirmDeliveries bool,
 	acknowledgedDirectiveIDs []uint64,
 ) (*crawlrpc.WorkerHeartbeatResult, error) {
@@ -96,6 +97,7 @@ func (exchange *Exchange) Heartbeat(
 		WorkerSessionId:              exchange.sessionID,
 		ActiveFetches:                &active,
 		ActivePages:                  activePages,
+		WaitingPages:                 waitingPages,
 		ActiveLeaseIds:               append([]string(nil), leaseIDs...),
 		ConfirmActiveLeaseDeliveries: &confirm,
 		AcknowledgedDirectiveIds:     append([]uint64(nil), acknowledgedDirectiveIDs...),

@@ -97,7 +97,7 @@ func (worker *Worker) runPendingIngestStream(
 				worker.releasePendingIngest(pending.PageID)
 				continue
 			}
-			worker.setPageActivity(pending.PageID, pending.URL, "node_ingest")
+			worker.setPageActivity(pending.RunID, pending.PageID, pending.URL, "node_ingest")
 			logPageStageStarted(ctx, pending.URL, "node_ingest")
 			if err := stream.Send(message); err != nil {
 				worker.clearPageActivity(pending.PageID)

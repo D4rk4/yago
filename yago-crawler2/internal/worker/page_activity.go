@@ -9,12 +9,13 @@ import (
 )
 
 type pageActivity struct {
+	runID     string
 	url       string
 	stage     string
 	startedAt time.Time
 }
 
-func (worker *Worker) setPageActivity(pageID string, pageURL string, stage string) {
+func (worker *Worker) setPageActivity(runID string, pageID string, pageURL string, stage string) {
 	worker.mutex.Lock()
 	if worker.activePages == nil {
 		worker.activePages = make(map[string]pageActivity)
@@ -23,6 +24,7 @@ func (worker *Worker) setPageActivity(pageID string, pageURL string, stage strin
 	if !found {
 		activity.startedAt = time.Now()
 	}
+	activity.runID = runID
 	activity.url = pageURL
 	activity.stage = stage
 	worker.activePages[pageID] = activity
@@ -54,6 +56,7 @@ func (worker *Worker) activePageStatuses() []*crawlrpc.ActiveCrawlPage {
 	statuses := make([]*crawlrpc.ActiveCrawlPage, 0, len(activities))
 	for _, activity := range activities {
 		statuses = append(statuses, &crawlrpc.ActiveCrawlPage{
+			RunId:               activity.runID,
 			Url:                 activity.url,
 			Stage:               activity.stage,
 			ElapsedMilliseconds: uint64(time.Since(activity.startedAt).Milliseconds()),

@@ -150,6 +150,37 @@ func TestCrawlMonitorSourceNilProbe(t *testing.T) {
 	}
 }
 
+func TestCrawlMonitorSourceReadsPendingOrderURLs(t *testing.T) {
+	urls := []string{"https://example.org/queued"}
+	source := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
+		func(context.Context) ([]string, error) { return urls, nil },
+	)
+	monitor := source.Monitor(context.Background())
+	if !monitor.PendingOrderURLsKnown || len(monitor.PendingOrderURLs) != 1 ||
+		monitor.PendingOrderURLs[0] != urls[0] {
+		t.Fatalf("pending URL sample = %+v/%v, want known sample %v",
+			monitor.PendingOrderURLs, monitor.PendingOrderURLsKnown, urls)
+	}
+}
+
+func TestCrawlMonitorSourceKeepsEmptyAndUnavailablePendingURLSamplesDistinct(t *testing.T) {
+	empty := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
+		func(context.Context) ([]string, error) { return []string{}, nil },
+	).Monitor(context.Background())
+	if !empty.PendingOrderURLsKnown || len(empty.PendingOrderURLs) != 0 {
+		t.Fatalf("empty pending URL sample = %+v/%v, want known empty",
+			empty.PendingOrderURLs, empty.PendingOrderURLsKnown)
+	}
+
+	unavailable := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
+		func(context.Context) ([]string, error) { return nil, errMonitorProbe },
+	).Monitor(context.Background())
+	if unavailable.PendingOrderURLsKnown || len(unavailable.PendingOrderURLs) != 0 {
+		t.Fatalf("failed pending URL sample = %+v/%v, want unavailable",
+			unavailable.PendingOrderURLs, unavailable.PendingOrderURLsKnown)
+	}
+}
+
 func TestCrawlMonitorRuntimeUsesCurrentTimeOnlyForActiveRuns(t *testing.T) {
 	reg := crawlruns.New(8)
 	recordRun(reg, yagocrawlcontract.CrawlRunProgress{

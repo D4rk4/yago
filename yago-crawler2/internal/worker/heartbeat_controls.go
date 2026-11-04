@@ -8,9 +8,19 @@ import (
 )
 
 const (
-	messageWorkerCountChanged = "crawler worker count changed"
-	messageRunLimitChanged    = "crawler active run limit changed"
+	messageWorkerCountChanged      = "crawler worker count changed"
+	messageRunLimitChanged         = "crawler active run limit changed"
+	messageWaitingPageReportFailed = "crawler waiting page report failed"
 )
+
+func (worker *Worker) waitingPageStatuses(ctx context.Context) []*crawlrpc.WaitingCrawlPage {
+	statuses, err := worker.waitingPageReports.snapshot(ctx, worker.frontier)
+	if err != nil {
+		slog.WarnContext(ctx, messageWaitingPageReportFailed, slog.Any("error", err))
+		return nil
+	}
+	return statuses
+}
 
 func (worker *Worker) sendHeartbeat(
 	ctx context.Context,
@@ -26,6 +36,7 @@ func (worker *Worker) sendHeartbeat(
 		leaseIDs,
 		activeFetches,
 		worker.activePageStatuses(),
+		worker.waitingPageStatuses(ctx),
 		confirmDeliveries,
 		acknowledged,
 	)

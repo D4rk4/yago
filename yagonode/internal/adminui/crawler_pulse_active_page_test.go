@@ -21,7 +21,8 @@ func TestCrawlerPulseIncludesActiveURLStageAndElapsedTime(t *testing.T) {
 		t.Fatalf("crawler active page view = %#v", view.WorkerRows)
 	}
 	page := view.WorkerRows[0].ActivePages[0]
-	if page.URL != "https://example.org/page" || page.Stage != "node_ingest" || page.Elapsed != "6s" {
+	if page.URL != "https://example.org/page" ||
+		page.Stage != "waiting for node to store and index" || page.Elapsed != "6s" {
 		t.Fatalf("crawler active page = %#v", page)
 	}
 }

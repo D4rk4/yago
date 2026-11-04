@@ -57,10 +57,20 @@ func TestRecordHeartbeatActivePagesAppearsOnlyInCurrentWorkerSnapshot(t *testing
 		URL:   "https://example.org/page",
 		Stage: "node_ingest",
 	}})
+	waiting := []CrawlerWaitingPage{{
+		RunID: "run-a", URL: "https://example.org/next", State: "queued", Reason: "queued",
+	}}
+	registry.recordHeartbeatWaitingPages("worker-a", "session-a", waiting)
 	snapshots := registry.WorkerSnapshots()
 	if len(snapshots) != 1 || len(snapshots[0].ActivePages) != 1 ||
 		snapshots[0].ActivePages[0].URL != "https://example.org/page" ||
-		snapshots[0].ActivePages[0].Stage != "node_ingest" {
+		snapshots[0].ActivePages[0].Stage != "node_ingest" ||
+		len(snapshots[0].WaitingPages) != 1 ||
+		snapshots[0].WaitingPages[0].URL != "https://example.org/next" {
 		t.Fatalf("worker snapshot = %#v", snapshots)
+	}
+	waiting[0].URL = "https://changed.example/"
+	if snapshots[0].WaitingPages[0].URL != "https://example.org/next" {
+		t.Fatalf("waiting page snapshot aliases heartbeat input: %#v", snapshots[0].WaitingPages[0])
 	}
 }

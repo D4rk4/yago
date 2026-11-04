@@ -28,9 +28,10 @@ func crawlRunRegistry(runtime crawlProcess) *crawlruns.Registry {
 // crawlMonitorSource adapts the node's crawl run registry and order-queue probe to
 // the console's read-only crawl monitor.
 type crawlMonitorSource struct {
-	runs  *crawlruns.Registry
-	probe func(context.Context) (crawlbroker.QueueDepth, error)
-	now   func() time.Time
+	runs        *crawlruns.Registry
+	probe       func(context.Context) (crawlbroker.QueueDepth, error)
+	pendingURLs func(context.Context) ([]string, error)
+	now         func() time.Time
 }
 
 func newCrawlMonitorSource(
@@ -73,6 +74,12 @@ func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
 			monitor.QueueAvailable = true
 			monitor.QueuePending = depth.Pending
 			monitor.QueueLeased = depth.Leased
+		}
+	}
+	if s.pendingURLs != nil {
+		if urls, err := s.pendingURLs(ctx); err == nil {
+			monitor.PendingOrderURLsKnown = true
+			monitor.PendingOrderURLs = urls
 		}
 	}
 

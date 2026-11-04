@@ -108,6 +108,8 @@ func (worker *Worker) executeOrder(
 		return execution, nil
 	}
 	runID := hex.EncodeToString(order.Provenance)
+	worker.waitingPageReports.runStarted(runID)
+	defer worker.waitingPageReports.runFinished(runID)
 	if err := worker.frontier.RebindPendingIngestLease(ctx, runID, leaseID); err != nil {
 		return execution, err
 	}
@@ -186,7 +188,7 @@ func (worker *Worker) processPage(
 	page frontier.Page,
 ) (pageProcessingResult, error) {
 	defer worker.clearPageActivity(page.ID)
-	worker.setPageActivity(page.ID, page.URL, "robots")
+	worker.setPageActivity(runID, page.ID, page.URL, "robots")
 	logPageStageStarted(ctx, page.URL, "robots")
 	robotsStartedAt := time.Now()
 	allowed, err := worker.robots.Allows(ctx, page.URL, order.Profile.IgnoreRobots)
@@ -203,7 +205,7 @@ func (worker *Worker) processPage(
 			slog.String("url", page.URL), slog.String("host", page.Host))
 		return pageProcessingResult{state: frontier.StateBlocked}, nil
 	}
-	worker.setPageActivity(page.ID, page.URL, "http_fetch")
+	worker.setPageActivity(runID, page.ID, page.URL, "http_fetch")
 	logPageStageStarted(ctx, page.URL, "http_fetch")
 	response, err := worker.fetchPage(ctx, page.URL)
 	if err != nil {
@@ -241,7 +243,7 @@ func (worker *Worker) processPage(
 		return result, nil
 	}
 	parseStartedAt := time.Now()
-	worker.setPageActivity(page.ID, page.URL, "html_parse")
+	worker.setPageActivity(runID, page.ID, page.URL, "html_parse")
 	logPageStageStarted(ctx, page.URL, "html_parse")
 	parsed := pageparse.ParseHTMLPage(response.FinalURL, response.Body)
 	logPageProcessingTiming(ctx, page.URL, "html_parse", time.Since(parseStartedAt), false)
@@ -254,7 +256,7 @@ func (worker *Worker) processPage(
 	}
 	if rules.allowsIndexing(response.FinalURL, parsed.Noindex, parsed.CanonicalURL) &&
 		(strings.TrimSpace(parsed.Title) != "" || strings.TrimSpace(parsed.Text) != "") {
-		worker.setPageActivity(page.ID, page.URL, "ingest_queue")
+		worker.setPageActivity(runID, page.ID, page.URL, "ingest_queue")
 		batch := buildIngestBatch(order, page, response, parsed)
 		result.pendingIngestJSON, err = yagocrawlcontract.MarshalIngestBatch(batch)
 		if err != nil {
@@ -263,7 +265,7 @@ func (worker *Worker) processPage(
 		result.stage = "ingest_queue"
 	}
 	if page.Depth < rules.maximumDepth && !parsed.Nofollow {
-		worker.setPageActivity(page.ID, page.URL, "frontier_enqueue")
+		worker.setPageActivity(runID, page.ID, page.URL, "frontier_enqueue")
 		logPageStageStarted(ctx, page.URL, "frontier_enqueue")
 		result.stage = "frontier_enqueue"
 		for _, link := range parsed.Links {

@@ -31,8 +31,10 @@ activity, fetch-admission waits, queued orders, and evidence-based signals.
 Rates include pages completed by short crawl runs during the 60-second window.
 The Crawler page shows the latest reported pending URL total across active runs
 separately from node orders waiting for or leased to crawlers. It lists active
-crawls with their worker report age and keeps the ten most recent terminal runs
-under a collapsed history section.
+crawls with their worker report age, up to four URLs from the oldest pending
+node orders, and each worker's current and next URL sample with readable stages
+and wait reasons. It keeps the ten most recent terminal runs under a collapsed
+history section.
 The node keeps crawl orders in `${YAGO_DATA_DIR}/crawlbroker.db`. Its soft
 ceiling defaults to `auto`: 10% of the effective storage quota, capped by free
 space after the configured node reserve; with unlimited quota it uses 10% of
