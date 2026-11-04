@@ -67,7 +67,7 @@ func TestOutboundAnchorDocumentReplacementBoundsMaximumInputTransactions(t *test
 
 func TestOutboundAnchorDocumentReplacementBoundsTransactionEncodedBytes(t *testing.T) {
 	_, receiver, engine := openOutboundAnchorObservedDocuments(t)
-	targets := outboundAnchorReplacementTargets(outboundAnchorTargetPageSize)
+	targets := outboundAnchorReplacementTargets(16)
 	documents := make([]Document, 0, len(targets))
 	for _, targetURL := range targets {
 		documents = append(documents, Document{

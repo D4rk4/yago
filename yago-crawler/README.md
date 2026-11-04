@@ -207,7 +207,7 @@ persist through at most four concurrent commit lanes, so batching cannot create
 an unbounded ingest delay or an eight-shard persistence burst.
 Within that group, the node replaces outbound-anchor sources in groups of at
 most 16, aggregates their contributions once, and projects affected documents in
-pages of at most 16 exact target URLs. Target transactions retain at most 32
+pages of at most 256 exact target URLs. Target transactions retain at most 512
 physical rows and 8 MiB. After projection, sorted final source rows use
 deterministic subtransactions with a 64 MiB encoded ceiling. A page, capacity,
 index, or publication failure retries the original delivery group before

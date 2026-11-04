@@ -12,7 +12,7 @@ import (
 
 func TestInboundAnchorRefreshLocksCurrentTargetPageOnly(t *testing.T) {
 	directory, receiver, _ := openPagedDocuments(t)
-	targets := outboundAnchorReplacementTargets(34)
+	targets := outboundAnchorReplacementTargets(outboundAnchorTargetPageSize + 2)
 	unrelated := "https://target.example/unrelated"
 	documents := make([]Document, 0, len(targets)+1)
 	for _, target := range append(targets, unrelated) {
@@ -61,7 +61,7 @@ func TestInboundAnchorRefreshLocksCurrentTargetPageOnly(t *testing.T) {
 		t.Fatalf("current-page read crossed the reindex callback: %v", err)
 	case <-time.After(25 * time.Millisecond):
 	}
-	assertPromptStoredDocument(t, directory, targets[20])
+	assertPromptStoredDocument(t, directory, targets[outboundAnchorTargetPageSize+1])
 	assertPromptStoredDocument(t, directory, unrelated)
 	close(releaseFirstPage)
 	select {
@@ -85,28 +85,41 @@ func TestInboundAnchorRefreshLocksCurrentTargetPageOnly(t *testing.T) {
 func TestOutboundAnchorDocumentReplacementBoundsStorageMutationByProjectionPage(
 	t *testing.T,
 ) {
-	_, receiver, engine := openPagedDocuments(t)
-	targets := outboundAnchorReplacementTargets(34)
-	stored := make([]Document, 0, len(targets))
-	for _, target := range targets {
-		stored = append(stored, Document{NormalizedURL: target})
-	}
-	if _, err := receiver.Receive(t.Context(), stored); err != nil {
-		t.Fatal(err)
-	}
-	updates := 0
-	engine.beforeUpdate = func() { updates++ }
-	if _, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
-		t.Context(),
-		[]OutboundAnchorSet{{
-			SourceURL: "https://source.example/coalesced",
-			Anchors:   outboundAnchorReplacementEdges(targets),
-		}},
-	); err != nil {
-		t.Fatal(err)
-	}
-	if updates != 4 {
-		t.Fatalf("storage transactions = %d, want 3 mutations and one publication", updates)
+	for _, page := range []struct {
+		targets   int
+		mutations int
+	}{
+		{targets: outboundAnchorTargetPageSize, mutations: 1},
+		{targets: outboundAnchorTargetPageSize + 1, mutations: 2},
+	} {
+		_, receiver, engine := openPagedDocuments(t)
+		targets := outboundAnchorReplacementTargets(page.targets)
+		stored := make([]Document, 0, len(targets))
+		for _, target := range targets {
+			stored = append(stored, Document{NormalizedURL: target})
+		}
+		if _, err := receiver.Receive(t.Context(), stored); err != nil {
+			t.Fatal(err)
+		}
+		updates := 0
+		engine.beforeUpdate = func() { updates++ }
+		if _, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
+			t.Context(),
+			[]OutboundAnchorSet{{
+				SourceURL: "https://source.example/coalesced",
+				Anchors:   outboundAnchorReplacementEdges(targets),
+			}},
+		); err != nil {
+			t.Fatal(err)
+		}
+		if updates != page.mutations+1 {
+			t.Fatalf(
+				"%d targets: storage transactions = %d, want %d mutations and one publication",
+				page.targets,
+				updates,
+				page.mutations,
+			)
+		}
 	}
 }
 

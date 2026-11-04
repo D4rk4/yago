@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	outboundAnchorTargetPageSize              = 16
-	outboundAnchorMutationMaximumRows         = 32
+	outboundAnchorTargetPageSize              = 256
+	outboundAnchorMutationMaximumRows         = 512
 	outboundAnchorMutationMaximumEncodedBytes = 8 << 20
 )
 
