@@ -68,7 +68,9 @@ EOF
 codex exec \
 	-C "$worktree_path" \
 	--sandbox workspace-write \
-	--ask-for-approval never \
+	-c 'approval_policy="never"' \
+	-c sandbox_workspace_write.network_access=true \
+	--ephemeral \
 	--output-schema "$schema_file" \
 	--output-last-message "$result_file" \
 	- <"$prompt_file"
