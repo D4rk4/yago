@@ -75,7 +75,12 @@ func TestOwnerDeferralUsesValidatedRetryDeadline(t *testing.T) {
 		); err == nil {
 			t.Fatalf("retry delay %s was accepted", retryAfter)
 		}
-		if record, found := leaseRecordFor(t, queue, leaseID); !found || record.WorkerID != "worker" {
+		if record, found := leaseRecordFor(
+			t,
+			queue,
+			leaseID,
+		); !found ||
+			record.WorkerID != "worker" {
 			t.Fatalf("invalid retry delay changed lease: %#v/%v", record, found)
 		}
 	}

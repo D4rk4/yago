@@ -242,9 +242,8 @@ func (c *CrawlOrderConsumer) finishRun(
 			c.tally.Forget(order.Provenance)
 		}
 		disposition := crawlOrderAcknowledged
-		retainCompletion := true
-		forgetCheckpoint := true
-		retryAfter := time.Duration(0)
+		retainCompletion, forgetCheckpoint := true, true
+		var retryAfter time.Duration
 		switch {
 		case cancelled:
 			disposition = crawlOrderTerminated

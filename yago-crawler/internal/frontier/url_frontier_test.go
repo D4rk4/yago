@@ -90,9 +90,15 @@ func TestDeferBackedOffRunsReleasesOnlyWhenEveryPageIsDueLater(t *testing.T) {
 	f := frontier.NewFrontier(8, pace)
 	finished := make(chan struct{}, 1)
 	provenance := []byte("backoff-run")
-	f.SeedRun(context.Background(), requestsFor(profile.Profile.Handle, urls...), provenance, profile, func(bool) {
-		finished <- struct{}{}
-	})
+	f.SeedRun(
+		context.Background(),
+		requestsFor(profile.Profile.Handle, urls...),
+		provenance,
+		profile,
+		func(bool) {
+			finished <- struct{}{}
+		},
+	)
 
 	deferred := f.DeferBackedOffRuns(base)
 	if len(deferred) != 1 || string(deferred[0].Provenance) != string(provenance) ||

@@ -8,8 +8,6 @@ import (
 
 	grpc "google.golang.org/grpc"
 
-	"github.com/D4rk4/yago/yago-crawler/internal/crawllease"
-	"github.com/D4rk4/yago/yago-crawler/internal/crawlsettlement"
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
@@ -230,86 +228,7 @@ func deliverOrderWithLeaseSession(
 	ctx context.Context,
 	envelope crawlOrderDeliveryEnvelope,
 ) bool {
-	workerSessionID := ""
-	var leaseGrants *crawllease.GrantRegistry
-	if envelope.heartbeat != nil {
-		workerSessionID = envelope.heartbeat.workerSessionID
-		leaseGrants = envelope.heartbeat.leaseGrants
-	}
-	delivery := CrawlOrderDelivery{
-		LeaseID:       envelope.leaseID,
-		Order:         envelope.order,
-		OrderIdentity: envelope.orderIdentity,
-		Ack: settleGrantedLease(settleLeaseForSession(
-			ctx,
-			envelope.client,
-			leasedOrderAcknowledgment{
-				leaseID:         envelope.leaseID,
-				workerID:        envelope.workerID,
-				workerSessionID: workerSessionID,
-			},
-		), envelope.leaseID, leaseGrants),
-		Nak: settleGrantedLease(settleLeaseForSession(
-			ctx,
-			envelope.client,
-			leasedOrderAcknowledgment{
-				leaseID:         envelope.leaseID,
-				workerID:        envelope.workerID,
-				workerSessionID: workerSessionID,
-				requeue:         true,
-			},
-		), envelope.leaseID, leaseGrants),
-		NakAfter: func(settlementCtx context.Context, retryAfter time.Duration) error {
-			return settleGrantedLease(settleLeaseForSession(
-				ctx,
-				envelope.client,
-				leasedOrderAcknowledgment{
-					leaseID:         envelope.leaseID,
-					workerID:        envelope.workerID,
-					workerSessionID: workerSessionID,
-					requeue:         true,
-					retryAfter:      retryAfter,
-				},
-			), envelope.leaseID, leaseGrants)(settlementCtx)
-		},
-		Term: settleGrantedLease(settleLeaseForSession(
-			ctx,
-			envelope.client,
-			leasedOrderAcknowledgment{
-				leaseID:         envelope.leaseID,
-				workerID:        envelope.workerID,
-				workerSessionID: workerSessionID,
-			},
-		), envelope.leaseID, leaseGrants),
-	}
-	if envelope.terminalSettlements != nil {
-		delivery.settleTerminal = func(
-			settlementCtx context.Context,
-			terminal terminalRunSettlement,
-		) error {
-			outcome := crawlsettlement.Delete
-			if terminal.Disposition == crawlOrderRequeued {
-				outcome = crawlsettlement.Requeue
-			}
-
-			return envelope.terminalSettlements.stageAndDeliver(
-				settlementCtx,
-				crawlsettlement.Settlement{
-					LeaseID:         envelope.leaseID,
-					OrderIdentity:   append([]byte(nil), envelope.orderIdentity...),
-					Provenance:      append([]byte(nil), envelope.order.Provenance...),
-					WorkerID:        envelope.workerID,
-					WorkerSessionID: workerSessionID,
-					Outcome:         outcome,
-					State:           terminal.State,
-					Tally:           terminal.Tally,
-					RecentOutcomes:  terminal.RecentOutcomes,
-					PagesPerMinute:  terminal.PagesPerMinute,
-					RateKnown:       terminal.RateKnown,
-				},
-			)
-		}
-	}
+	delivery := leaseSessionCrawlOrderDelivery(ctx, envelope)
 	select {
 	case envelope.out <- delivery:
 		return true

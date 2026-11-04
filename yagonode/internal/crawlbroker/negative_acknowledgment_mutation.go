@@ -2,7 +2,6 @@ package crawlbroker
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -13,32 +12,11 @@ type negativeAcknowledgmentMutation struct {
 	removed bool
 }
 
-func (q *DurableOrderQueue) negativeAcknowledgmentTx(
-	tx *vault.Txn,
-	leaseID string,
-	workerID string,
-	workerSessionID string,
-	requireOwner bool,
-) (negativeAcknowledgmentMutation, error) {
-	return q.negativeAcknowledgmentTxAfter(
-		tx,
-		leaseID,
-		workerID,
-		workerSessionID,
-		requireOwner,
-		negativeAcknowledgmentRetryDelay,
-	)
-}
-
 func (q *DurableOrderQueue) negativeAcknowledgmentTxAfter(
 	tx *vault.Txn,
-	leaseID string,
-	workerID string,
-	workerSessionID string,
-	requireOwner bool,
-	retryAfter time.Duration,
+	deferral leaseDeferral,
 ) (negativeAcknowledgmentMutation, error) {
-	_, staged, err := q.discoverySettlements.Get(tx, vault.Key(leaseID))
+	_, staged, err := q.discoverySettlements.Get(tx, vault.Key(deferral.leaseID))
 	if err != nil {
 		return negativeAcknowledgmentMutation{}, fmt.Errorf(
 			"read automatic crawl discovery settlement: %w",
@@ -48,28 +26,26 @@ func (q *DurableOrderQueue) negativeAcknowledgmentTxAfter(
 	if staged {
 		return negativeAcknowledgmentMutation{staged: true}, nil
 	}
-	record, found, err := q.leases.Get(tx, vault.Key(leaseID))
+	record, found, err := q.leases.Get(tx, vault.Key(deferral.leaseID))
 	if err != nil {
 		return negativeAcknowledgmentMutation{}, fmt.Errorf("read crawl lease: %w", err)
 	}
 	record, mutable, err := negativeAcknowledgmentLease(
 		record,
 		found,
-		workerID,
-		workerSessionID,
-		requireOwner,
+		deferral,
 	)
 	if err != nil || !mutable {
 		return negativeAcknowledgmentMutation{}, err
 	}
-	if err := q.recordLeaseSettlement(tx, leaseID, leaseSettlementRequeued); err != nil {
+	if err := q.recordLeaseSettlement(tx, deferral.leaseID, leaseSettlementRequeued); err != nil {
 		return negativeAcknowledgmentMutation{}, err
 	}
 	removed := record
 	record.WorkerID = ""
 	record.Deferred = true
-	record.ExpiresAtUnixNano = nowFunc().Add(retryAfter).UnixNano()
-	if err := q.leases.Put(tx, vault.Key(leaseID), record); err != nil {
+	record.ExpiresAtUnixNano = nowFunc().Add(deferral.retryAfter).UnixNano()
+	if err := q.leases.Put(tx, vault.Key(deferral.leaseID), record); err != nil {
 		return negativeAcknowledgmentMutation{}, fmt.Errorf("defer crawl lease: %w", err)
 	}
 
@@ -79,9 +55,7 @@ func (q *DurableOrderQueue) negativeAcknowledgmentTxAfter(
 func negativeAcknowledgmentLease(
 	record leaseRecord,
 	found bool,
-	workerID string,
-	workerSessionID string,
-	requireOwner bool,
+	deferral leaseDeferral,
 ) (leaseRecord, bool, error) {
 	if !found {
 		return leaseRecord{}, false, errLeaseDispositionConflict
@@ -93,10 +67,10 @@ func negativeAcknowledgmentLease(
 
 		return leaseRecord{}, false, errLeaseDispositionConflict
 	}
-	if requireOwner && !liveLeaseOwnedBy(
+	if deferral.requireOwner && !liveLeaseOwnedBy(
 		record,
-		workerID,
-		workerSessionID,
+		deferral.workerID,
+		deferral.workerSessionID,
 		nowFunc(),
 	) {
 		return leaseRecord{}, false, errLeaseLost

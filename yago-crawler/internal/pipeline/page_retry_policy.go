@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"time"
@@ -32,7 +31,10 @@ func pageRetryDeadline(
 		delay *= 2
 	}
 	if delay < maximumPageRetryDelay {
-		delay += time.Duration(rand.Int64N(int64(delay / 2)))
+		jitter, err := securePageRetryJitter(delay / 2)
+		if err == nil {
+			delay += jitter
+		}
 	}
 	delay = max(delay, serverDelay)
 	return now.Add(delay)

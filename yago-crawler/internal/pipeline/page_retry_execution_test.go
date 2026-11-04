@@ -104,13 +104,22 @@ func TestProcessDefersTransientFetchAndCompletesPermanentFetch(t *testing.T) {
 			}
 			if frontier.consumed != test.consumeRetry || frontier.deferred != test.scheduleRetry ||
 				frontier.done != test.wantDone {
-				t.Fatalf("consumed/deferred/done = %v/%v/%v", frontier.consumed, frontier.deferred, frontier.done)
+				t.Fatalf(
+					"consumed/deferred/done = %v/%v/%v",
+					frontier.consumed,
+					frontier.deferred,
+					frontier.done,
+				)
 			}
 			if test.scheduleRetry && frontier.retryAt.IsZero() {
 				t.Fatal("transient fetch failure has no retry deadline")
 			}
 			if observer.scheduled != test.wantRetryCounter {
-				t.Fatalf("scheduled retry observations = %d, want %d", observer.scheduled, test.wantRetryCounter)
+				t.Fatalf(
+					"scheduled retry observations = %d, want %d",
+					observer.scheduled,
+					test.wantRetryCounter,
+				)
 			}
 		})
 	}
@@ -137,7 +146,13 @@ func TestProcessDoesNotRetryCanceledFetch(t *testing.T) {
 	)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := crawler.process(ctx, crawljob.CrawlJob{URL: "https://example.test/page"}); !errors.Is(err, context.Canceled) {
+	if err := crawler.process(
+		ctx,
+		crawljob.CrawlJob{URL: "https://example.test/page"},
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
 		t.Fatalf("process error = %v", err)
 	}
 	if frontier.deferred || frontier.done {

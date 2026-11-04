@@ -22,6 +22,10 @@ func (f *Frontier) Defer(
 		return false, false
 	}
 	run, durable := f.acquireRunDurability(work.RunID)
+	if run == nil {
+		f.abandonStaleLeaseJob(work, run, durable)
+		return true, false
+	}
 	if f.abandonStaleLeaseJob(work, run, durable) {
 		return true, false
 	}

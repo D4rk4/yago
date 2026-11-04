@@ -112,10 +112,14 @@ func TestConsoleCrawlMonitorShowsUnavailableQueue(t *testing.T) {
 
 	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: CrawlMonitor{}}})
 	got := do(t, console, "/admin/crawl/monitor")
-	if !strings.Contains(got.body, "Orders waiting for a crawler</div>\n      <div class=\"cds-metric__value\">Unavailable") {
+	if !strings.Contains(
+		got.body,
+		"Orders waiting for a crawler</div>\n      <div class=\"cds-metric__value\">Unavailable",
+	) {
 		t.Fatal("failed queue probe should render unavailable")
 	}
-	if strings.Contains(got.body, "0 pending orders") || strings.Contains(got.body, "0 leased orders") {
+	if strings.Contains(got.body, "0 pending orders") ||
+		strings.Contains(got.body, "0 leased orders") {
 		t.Fatal("failed queue probe rendered fabricated zero depths")
 	}
 }

@@ -49,7 +49,12 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 		RunID:       "r2",
 		ProfileName: "docs",
 		State:       yagocrawlcontract.CrawlRunFinished,
-		Tally:       yagocrawlcontract.CrawlRunTally{Fetched: 10, Indexed: 6, Duplicates: 2, Pending: 100},
+		Tally: yagocrawlcontract.CrawlRunTally{
+			Fetched:    10,
+			Indexed:    6,
+			Duplicates: 2,
+			Pending:    100,
+		},
 	})
 	recordRun(reg, yagocrawlcontract.CrawlRunProgress{
 		RunID:       "r3",
@@ -88,7 +93,10 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 		t.Fatalf("queue = %d/%d, want 3/1", monitor.QueuePending, monitor.QueueLeased)
 	}
 	if monitor.PendingFrontierURLs != 13 {
-		t.Fatalf("pending frontier URLs = %d, want 13 from running runs only", monitor.PendingFrontierURLs)
+		t.Fatalf(
+			"pending frontier URLs = %d, want 13 from running runs only",
+			monitor.PendingFrontierURLs,
+		)
 	}
 }
 

@@ -16,8 +16,16 @@ func TestCrawlMonitorReturnsOnlyRequestedRefreshFragment(t *testing.T) {
 		present string
 		absent  string
 	}{
-		{target: crawlMonitorLiveTarget, present: `id="crawl-live"`, absent: `id="crawl-history-list"`},
-		{target: crawlHistoryListTarget, present: `id="crawl-history-list"`, absent: `id="crawl-live"`},
+		{
+			target:  crawlMonitorLiveTarget,
+			present: `id="crawl-live"`,
+			absent:  `id="crawl-history-list"`,
+		},
+		{
+			target:  crawlHistoryListTarget,
+			present: `id="crawl-history-list"`,
+			absent:  `id="crawl-live"`,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.target, func(t *testing.T) {

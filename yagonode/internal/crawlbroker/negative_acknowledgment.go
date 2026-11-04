@@ -16,9 +16,10 @@ const (
 func (q *DurableOrderQueue) deferLease(ctx context.Context, leaseID string) error {
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
-	err := q.deferLeaseLocked(
-		ctx, leaseID, "", "", false, negativeAcknowledgmentRetryDelay,
-	)
+	err := q.deferLeaseLocked(ctx, leaseDeferral{
+		leaseID:    leaseID,
+		retryAfter: negativeAcknowledgmentRetryDelay,
+	})
 	if err == nil {
 		q.signal()
 	}
@@ -53,7 +54,13 @@ func (q *DurableOrderQueue) deferLeaseForOwnerAfter(
 	}
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
-	err := q.deferLeaseLocked(ctx, leaseID, workerID, workerSessionID, true, retryAfter)
+	err := q.deferLeaseLocked(ctx, leaseDeferral{
+		leaseID:         leaseID,
+		workerID:        workerID,
+		workerSessionID: workerSessionID,
+		requireOwner:    true,
+		retryAfter:      retryAfter,
+	})
 	if err == nil {
 		q.signal()
 	}
@@ -61,25 +68,11 @@ func (q *DurableOrderQueue) deferLeaseForOwnerAfter(
 	return err
 }
 
-func (q *DurableOrderQueue) deferLeaseLocked(
-	ctx context.Context,
-	leaseID string,
-	workerID string,
-	workerSessionID string,
-	requireOwner bool,
-	retryAfter time.Duration,
-) error {
+func (q *DurableOrderQueue) deferLeaseLocked(ctx context.Context, deferral leaseDeferral) error {
 	var mutation negativeAcknowledgmentMutation
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
 		var err error
-		mutation, err = q.negativeAcknowledgmentTxAfter(
-			tx,
-			leaseID,
-			workerID,
-			workerSessionID,
-			requireOwner,
-			retryAfter,
-		)
+		mutation, err = q.negativeAcknowledgmentTxAfter(tx, deferral)
 
 		return err
 	}); err != nil {
@@ -90,7 +83,7 @@ func (q *DurableOrderQueue) deferLeaseLocked(
 		defer cancel()
 		if err := q.resolveAutomaticDiscoverySettlement(
 			recoveryContext,
-			leaseID,
+			deferral.leaseID,
 		); err != nil {
 			return fmt.Errorf("nak crawl lease: %w", err)
 		}

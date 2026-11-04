@@ -718,16 +718,22 @@ func unsafeCheckpointPageMutations(validPage frontiercheckpoint.Page) []checkpoi
 			page.ObservedAt = time.Time{}
 			snapshot.Outstanding = []frontiercheckpoint.Page{page}
 		}},
-		{name: "retry attempt without deadline", mutate: func(snapshot *frontiercheckpoint.Snapshot) {
-			page := validPage
-			page.RetryAttempt = 1
-			snapshot.Outstanding = []frontiercheckpoint.Page{page}
-		}},
-		{name: "retry deadline without attempt", mutate: func(snapshot *frontiercheckpoint.Snapshot) {
-			page := validPage
-			page.RetryAfter = time.Now().Add(time.Minute)
-			snapshot.Outstanding = []frontiercheckpoint.Page{page}
-		}},
+		{
+			name: "retry attempt without deadline",
+			mutate: func(snapshot *frontiercheckpoint.Snapshot) {
+				page := validPage
+				page.RetryAttempt = 1
+				snapshot.Outstanding = []frontiercheckpoint.Page{page}
+			},
+		},
+		{
+			name: "retry deadline without attempt",
+			mutate: func(snapshot *frontiercheckpoint.Snapshot) {
+				page := validPage
+				page.RetryAfter = time.Now().Add(time.Minute)
+				snapshot.Outstanding = []frontiercheckpoint.Page{page}
+			},
+		},
 		{name: "seed manifest profile", mutate: func(snapshot *frontiercheckpoint.Snapshot) {
 			page := validPage
 			page.ProfileHandle = "different-profile"

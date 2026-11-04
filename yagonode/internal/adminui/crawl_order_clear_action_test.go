@@ -285,8 +285,14 @@ func TestCrawlOrderClearReportsZeroRemovalWithoutFailure(t *testing.T) {
 	})
 	if got.status != http.StatusOK ||
 		!strings.Contains(got.body, "No pending orders were removed.") ||
-		!strings.Contains(got.body, "Orders waiting for a crawler</div>\n      <div class=\"cds-metric__value\">0") ||
-		!strings.Contains(got.body, "Orders leased to crawlers</div>\n      <div class=\"cds-metric__value\">1") ||
+		!strings.Contains(
+			got.body,
+			"Orders waiting for a crawler</div>\n      <div class=\"cds-metric__value\">0",
+		) ||
+		!strings.Contains(
+			got.body,
+			"Orders leased to crawlers</div>\n      <div class=\"cds-metric__value\">1",
+		) ||
 		strings.Contains(got.body, "could not be cleared") {
 		t.Fatalf("empty clear result = %d %q", got.status, got.body)
 	}

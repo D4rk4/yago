@@ -35,6 +35,13 @@ func TestCrawlerRuntimePolicyProtoRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDefaultCrawlerRuntimePolicyKeepsPerRunRate(t *testing.T) {
+	policy := yagocrawlcontract.DefaultCrawlerRuntimePolicy()
+	if policy.RunPagesPerMinute != 0 {
+		t.Fatalf("default per-run rate = %d, want auto (0)", policy.RunPagesPerMinute)
+	}
+}
+
 func TestCrawlerRuntimePolicyLegacySandboxPresenceKeepsFallback(t *testing.T) {
 	message, err := yagocrawlcontract.CrawlerRuntimePolicyToProto(
 		yagocrawlcontract.DefaultCrawlerRuntimePolicy(),

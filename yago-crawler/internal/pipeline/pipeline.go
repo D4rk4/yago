@@ -239,34 +239,10 @@ func (p *Pipeline) fetchJob(
 	return fetched, nil
 }
 
-func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) (processError error) {
+func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	p.observer.JobStarted()
-	outcome := yagocrawlcontract.CrawlRunTally{}
-	outcomeReason := ""
-	outcomeHTTPStatus := uint32(0)
-	abandoned := false
-	var retryAfter time.Time
-	defer func() {
-		if abandoned {
-			p.frontier.Abandon(job)
-
-			return
-		}
-		if !retryAfter.IsZero() {
-			if retrying, ok := p.frontier.(pageRetryFrontier); ok {
-				consumed, scheduled := retrying.Defer(ctx, job, retryAfter)
-				if consumed {
-					if scheduled {
-						if observer, ok := p.observer.(pageRetryObserver); ok {
-							observer.PageRetryScheduled()
-						}
-					}
-					return
-				}
-			}
-		}
-		completePage(p.frontier, job, outcome, outcomeHTTPStatus, outcomeReason)
-	}()
+	outcome := pageProcessingOutcome{}
+	defer p.finishPage(ctx, job, &outcome)
 	defer p.observer.JobFinished()
 	slog.DebugContext(ctx, msgJobFetching,
 		slog.String("url", job.URL),
@@ -274,33 +250,12 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) (processE
 	)
 	target, ok := weburl.ParseBase(job.URL)
 	if !ok {
-		outcome.Failed++
-		outcomeReason = crawlURLInvalidReason
+		outcome.runTally.Failed++
+		outcome.reason = crawlURLInvalidReason
 
 		return fmt.Errorf("parse url: %s", job.URL)
 	}
-	fetched, err := p.fetchJob(ctx, job, target, &outcome)
-	if err != nil {
-		retryAfter, _ = retryableFetchFailure(ctx, err, job.RetryAttempt, time.Now())
-		outcomeHTTPStatus = pageOutcomeHTTPStatus(err)
-		outcomeReason = fetchOutcomeReason(err)
-		removalErr := p.emitRemovalIfGone(ctx, job, err)
-		abandoned = ctx.Err() != nil || errors.Is(removalErr, crawllease.ErrLeaseLost)
-		if removalErr != nil {
-			outcomeReason = pageProcessingFailureReason(removalErr)
-			return errors.Join(err, removalErr)
-		}
-
-		return err
-	}
-	outcomeHTTPStatus = fetched.HTTPStatus
-	outcomeReason, err = p.processFetchedPage(ctx, job, fetched, &outcome)
-	abandoned = err != nil && (ctx.Err() != nil || errors.Is(err, crawllease.ErrLeaseLost))
-	if err != nil && !abandoned {
-		outcome.Failed++
-	}
-
-	return err
+	return p.processFetchedJob(ctx, job, target, &outcome)
 }
 
 func (p *Pipeline) processFetchedPage(

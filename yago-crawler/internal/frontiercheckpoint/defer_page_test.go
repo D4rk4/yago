@@ -11,7 +11,12 @@ func TestDeferPagePersistsNextAttemptWithoutCompletingRun(t *testing.T) {
 	provenance := []byte("deferred-page")
 	beginTestRun(t, checkpoint, provenance, []byte("identity"))
 	page := testPage("https://example.test/a", "example.test", "observation", 0)
-	if admitted, err := checkpoint.Admit(testContext, provenance, []Page{page}); err != nil || admitted != 1 {
+	if admitted, err := checkpoint.Admit(
+		testContext,
+		provenance,
+		[]Page{page},
+	); err != nil ||
+		admitted != 1 {
 		t.Fatalf("admit page = %d, %v", admitted, err)
 	}
 	retryAfter := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
@@ -23,7 +28,11 @@ func TestDeferPagePersistsNextAttemptWithoutCompletingRun(t *testing.T) {
 		t.Fatalf("load deferred page: %v", err)
 	}
 	if snapshot.Counters.Pending != 1 || len(snapshot.Outstanding) != 1 {
-		t.Fatalf("deferred run state = pending %d, outstanding %d", snapshot.Counters.Pending, len(snapshot.Outstanding))
+		t.Fatalf(
+			"deferred run state = pending %d, outstanding %d",
+			snapshot.Counters.Pending,
+			len(snapshot.Outstanding),
+		)
 	}
 	got := snapshot.Outstanding[0]
 	if got.RetryAttempt != 1 || !got.RetryAfter.Equal(retryAfter) {
@@ -36,7 +45,12 @@ func TestDeferPageRejectsSkippedAttemptWithoutChangingPage(t *testing.T) {
 	provenance := []byte("invalid-deferred-page")
 	beginTestRun(t, checkpoint, provenance, []byte("identity"))
 	page := testPage("https://example.test/a", "example.test", "observation", 0)
-	if admitted, err := checkpoint.Admit(testContext, provenance, []Page{page}); err != nil || admitted != 1 {
+	if admitted, err := checkpoint.Admit(
+		testContext,
+		provenance,
+		[]Page{page},
+	); err != nil ||
+		admitted != 1 {
 		t.Fatalf("admit page = %d, %v", admitted, err)
 	}
 	if err := checkpoint.DeferPage(
@@ -64,7 +78,8 @@ func TestLegacyCheckpointPageDefaultsToFirstPass(t *testing.T) {
 	), &page); err != nil {
 		t.Fatalf("decode legacy page: %v", err)
 	}
-	if page.URL != "https://example.test/legacy" || page.RetryAttempt != 0 || !page.RetryAfter.IsZero() {
+	if page.URL != "https://example.test/legacy" || page.RetryAttempt != 0 ||
+		!page.RetryAfter.IsZero() {
 		t.Fatalf("legacy page = %+v", page)
 	}
 }
