@@ -18,20 +18,26 @@ exec 9>"$state_root/lock"
 flock -n 9 || exit 0
 
 cd "$repo_root"
-git fetch --quiet origin dev main
+origin_url=$(git remote get-url origin)
+upstream_url=$(git remote get-url upstream)
+origin_repo=$(gh repo view "$origin_url" --json nameWithOwner --jq '.nameWithOwner')
+upstream_repo=$(gh repo view "$upstream_url" --json nameWithOwner --jq '.nameWithOwner')
+origin_owner=${origin_repo%%/*}
+git fetch --quiet origin dev
+git fetch --quiet upstream main
 
 dev_sha=$(git rev-parse refs/remotes/origin/dev)
-main_sha=$(git rev-parse refs/remotes/origin/main)
+main_sha=$(git rev-parse refs/remotes/upstream/main)
 dev_pr_state=$(gh pr list \
-	--repo D4rk4/yago \
-	--head D4rk4:dev \
+	--repo "$upstream_repo" \
+	--head "$origin_owner:dev" \
 	--base main \
 	--state open \
 	--json number,headRefOid,mergeStateStatus,statusCheckRollup \
 	--jq 'sort_by(.number)')
 integration_pr_state=$(gh pr list \
-	--repo D4rk4/yago \
-	--head D4rk4:codex/dev-integration \
+	--repo "$upstream_repo" \
+	--head "$origin_owner:codex/dev-integration" \
 	--base main \
 	--state open \
 	--json number,headRefOid,mergeStateStatus,statusCheckRollup \
@@ -56,7 +62,7 @@ fi
 prompt_file="$state_root/prompt-$dev_sha.md"
 result_file="$state_root/result-$dev_sha.json"
 cat >"$prompt_file" <<EOF
-Read AGENTS.md and DEV-AGENTS.md before acting. The current development head is $dev_sha and the current main head is $main_sha. Follow the scheduled push-request agent workflow in DEV-AGENTS.md. Run make verify and the read-only Playwright live smoke scenarios against $live_base_url in Chromium and Firefox. When UI code changed, also run the corresponding local browser validation. Repair test discrepancies on dev, write or update the tests, and rerun validation before pushing a repair. For integration, update the stable codex/dev-integration branch from origin/main, merge origin/dev with a merge commit, restore main's AGENTS.md, remove DEV-AGENTS.md and dev-agent/, push the branch, and create or update its pull request to main. Merge only when all validation and GitHub checks are green and GitHub allows the merge. Do not bypass protections or deploy/restart production. Do not copy live response or corpus data into source, tests, logs, commits, or PR text. Return JSON with status processed or blocked, dev_sha exactly $dev_sha, and a concise summary.
+Read AGENTS.md and DEV-AGENTS.md before acting. The current development head is $dev_sha and the current upstream/main head is $main_sha. Follow the scheduled push-request agent workflow in DEV-AGENTS.md. Run make verify and the read-only Playwright live smoke scenarios against $live_base_url in Chromium and Firefox. When UI code changed, also run the corresponding local browser validation. Repair test discrepancies on dev, write or update the tests, and rerun validation before pushing a repair. For integration, update the stable codex/dev-integration branch from upstream/main, merge origin/dev with a merge commit, restore upstream/main's AGENTS.md, remove DEV-AGENTS.md and dev-agent/, push the branch to origin, and create or update its pull request to upstream/main. Merge only when all validation and GitHub checks are green and GitHub allows the merge. Do not bypass protections or deploy/restart production. Do not copy live response or corpus data into source, tests, logs, commits, or PR text. Return JSON with status processed or blocked, dev_sha exactly $dev_sha, and a concise summary.
 EOF
 
 codex exec \
