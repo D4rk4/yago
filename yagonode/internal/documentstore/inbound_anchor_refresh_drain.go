@@ -98,6 +98,9 @@ func (d documentVault) refreshInboundAnchorDocuments(
 	if err := d.storeOutboundAnchorTargetMutations(ctx, mutations); err != nil {
 		return 0, err
 	}
+	if err := d.clearInboundAnchorRefreshes(ctx, targetURLs); err != nil {
+		return 0, err
+	}
 
 	return len(documents), nil
 }
@@ -106,7 +109,7 @@ func (d documentVault) prepareInboundAnchorRefreshMutation(
 	tx *vault.Txn,
 	targetURL string,
 ) (outboundAnchorTargetMutation, error) {
-	mutation := outboundAnchorTargetMutation{targetURL: targetURL, clearRefresh: true}
+	mutation := outboundAnchorTargetMutation{targetURL: targetURL}
 	document, location, documentFound, err := d.readStoredDocument(tx, targetURL)
 	if err != nil {
 		return outboundAnchorTargetMutation{}, fmt.Errorf("read refreshed document: %w", err)

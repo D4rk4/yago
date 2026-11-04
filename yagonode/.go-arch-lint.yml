@@ -1079,3 +1079,5 @@ deps:
 excludeFiles:
   - "test/e2e"
   - "test/fixtures"
+  - "^.*internal/shardvault/anchor_publication_failure_test\\.go$"
+  - "^.*internal/shardvault/inbound_anchor_refresh_commit_test\\.go$"

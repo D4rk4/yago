@@ -34,15 +34,30 @@ all sources.
 
 A node background loop refreshes marked targets every ten seconds in pages of at
 most 64 targets until no mark remains. Each page locks its targets, recomputes
-their inbound anchors from the anchor store, offers changed documents to the
-search index, then stores each changed document and removes its mark under the
-existing transaction row and byte limits. A failure keeps the mark for the next
-pass. Document revision reads apply a pending mark, so lineage and replacement
-logic always see current anchors.
+their inbound anchors from the anchor store and offers changed documents to the
+search index. It commits every changed document before a separate phase removes
+the page's marks, retaining the same target locks and existing transaction row
+and byte limits throughout both phases. An index or document-commit failure
+keeps the marks for another pass. A cleanup failure may leave already-current
+targets marked; replay removes those marks without rewriting or re-indexing the
+documents. Missing targets also require only mark cleanup. Removing a mark is
+still a storage write. Document revision reads apply a pending mark.
 
-One sharded-vault update commits its changed shards concurrently and reports the
-failure of the lowest-numbered failing shard. Cross-shard atomicity is
-unchanged: shards were already committed independently.
+This ordering corrects the released v0.0.73 implementation, which stored a
+document and removed its mark in one non-atomic cross-shard update. The
+correction is unreleased as of 2026-11-04.
+
+One sharded-vault update attempts every changed shard concurrently, waits for
+all attempts and reports the lowest-numbered failing shard. Successful commits
+are not rolled back when another shard fails. Shards commit independently;
+neither one update nor the ordered refresh phases provide cross-shard atomicity.
+
+Ingest's anchor rows and refresh marks also commit independently. A failed
+target update leaves source publication unchanged but may retain partial anchor
+or mark changes. The caller must replay the original replacement; reopening the
+vault alone does not recover a missing mark or finish source publication.
+Replaying the replacement converges even if a refresh ran between attempts;
+a subsequent identical replacement leaves the completed state unchanged.
 
 No setting or environment variable is added. No third-party dependency is
 added.
@@ -53,12 +68,18 @@ Ingest writes one anchor row and at most one mark per changed target instead of
 a full document and an index update. A target linked from many pages between two
 refresh passes is rewritten and re-indexed once.
 
-Search may show a target's previous anchor text for up to one refresh pass after
-a source page changes. Anchor text is a ranking signal, so this delay does not
-remove documents from results.
+Search may show previous anchor text until a successful refresh. The ten-second
+interval is not a completion bound: a backlog or failure can extend the delay.
 
-Marks are durable, so a restart or index failure delays a refresh but does not
-lose it.
+Committed marks survive restart. Ordered cleanup retains them until document
+commits succeed, but it cannot recreate a mark already lost by v0.0.73 or replace
+replay of an interrupted ingest publication.
+
+v0.0.72 ignores the refresh collection. Pending targets can remain stale after
+rollback: an unchanged source replay skips target work, and a change from a
+different source is not guaranteed to remove superseded anchors. Successful
+drainage before rollback reduces this backlog but cannot repair marks already
+lost by v0.0.73.
 
 An update touching several shards waits for roughly the slowest shard flush
 instead of the sum of all flushes. Storage devices with a single queue may see a
