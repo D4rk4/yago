@@ -13,17 +13,17 @@ func queryWithMinimumTerms(
 	clause func(string) blevequery.Query,
 ) blevequery.Query {
 	query := bleve.NewBooleanQuery()
-	identifiers := 0
+	optional := make([]blevequery.Query, 0, len(terms))
 	for _, term := range terms {
 		termClause := clause(term)
 		if queryidentifier.MixedAlphanumeric(term) {
 			query.AddMust(termClause)
-			identifiers++
 		} else {
-			query.AddShould(termClause)
+			optional = append(optional, termClause)
 		}
 	}
-	query.SetMinShould(float64(max(0, minimum-identifiers)))
+	identifiers := len(terms) - len(optional)
+	query.Should = minimumMatchQuery(optional, max(0, minimum-identifiers))
 
 	return query
 }
