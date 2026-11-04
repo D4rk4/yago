@@ -17,11 +17,8 @@ Search API, YaCy-compatible endpoints, or a themeable public portal — all
 administered from a server-rendered console that works without JavaScript.
 
 **YagoSeek** is the product; **`yago`** is the toolkit — the Go workspace and
-its binaries (`yago-node`, `yago-crawler`).
-
-The dependency baseline includes the gRPC fragmented-stream memory correction
-and the x/crypto authentication restriction correction. Both products are built
-and tested together; use matching releases when upgrading a node and crawler.
+its binaries (`yago-node`, `yago-crawler`). Both binaries are built and tested
+together, so upgrade a node and its crawlers to the same release.
 
 - Project home: https://yagoseek.dev/ · docs: https://docs.yagoseek.dev/
 - Source: https://github.com/D4rk4/yago/ — the importable Go modules are listed
@@ -33,7 +30,7 @@ and tested together; use matching releases when upgrading a node and crawler.
 > real nodes — but the project is young and still needs broad, adversarial,
 > real-world testing before you should trust it with anything critical.
 > Expect rough edges, please report what you hit, and keep backups (there is
-> a console page for that now).
+> a console page for that).
 
 ---
 
@@ -45,691 +42,149 @@ and tested together; use matching releases when upgrading a node and crawler.
   (HTML/JSON/XML), inbound and outbound RWI/URL-metadata DHT transfers with
   sender-side gates, remote RWI search, host-link index, peer messages,
   profiles, and shared blacklists — interoperable with the Java YaCy network.
-- Stock-Java interoperability is exercised in both directions. A wire handoff
-  accepts at most 1,000 rows and returns parseable YaCy HTTP 200 overload
-  responses instead of silently acknowledging an unprocessed tail. Remote
-  result copies carry the transient `wi` WordReferenceRow evidence required by
-  current Java peers, and accepted remote-search resources contribute to the
-  advertised received-word and received-URL totals. Inbound RWI and URL
-  metadata transfers require the authenticated sender hash to exist in the
-  persistent peer roster; an inactive or junior peer remains eligible. Outbound
-  selection commits its recovery rows before a separate live-index deletion,
-  and restoration commits live rows before releasing those recovery rows.
-  A later shard failure therefore leaves a live or restart-recoverable copy
-  until every queued redundancy copy is accepted. Per-URL rejection restores
-  only the affected postings while unaffected postings complete. A rejected
-  redundancy copy is cancelled from
-  every sibling target before local restore, and a failed restore or final
-  journal confirmation is retried locally before another network handoff.
+- Interoperability with stock Java peers is tested in both directions. An
+  overloaded transfer receives a parseable YaCy overload answer instead of a
+  silent partial acknowledgement, and inbound transfers are accepted only from
+  senders already present in the peer roster.
+- Outbound DHT transfers keep a live or restart-recoverable copy of every
+  posting until all redundancy copies are accepted. Postings a target rejects
+  are restored locally before any new attempt.
 - **Swarm participation**: seedlist bootstrap, peer roster with birth-date
-  promotion, LAN discovery, peer news, per-peer blocking, and the DHT gates
-  dashboard showing exactly why a transfer would or would not fire. Authenticated
-  inbound hello callers that fail the local callback remain visible as bounded
-  `junior` potential peers, but cannot enter reachable membership, search,
-  seed-list, or DHT target selection. Callback work uses YaCy's aggregate
-  6.5-second HTTP or 13-second HTTPS-first budget across at most five unique
-  advertised hosts. Peer transport tries the primary `IP` host first and then
-  `IP6` entries in wire order, supports IPv6-only seeds, and promotes the host
-  that actually answered before storing the peer. RWI and URL transfer attempts
-  divide the existing caller/client deadline across that same bounded address
-  order instead of multiplying the timeout per address. Its bounded caller-observation
-  write survives request cancellation, so a blackholed endpoint does not erase
-  the junior row. Authentication failure and self identity receive a virgin
-  response without peer seeds; authenticated responses expose no more than 100
-  currently reachable peers in deterministic local last-seen order without a
-  persistent-roster scan, and reachable principal callers retain that type.
-  Hello keeps `iam` opaque for exact salted authentication; an absent,
-  malformed, or signed-int32-overflow `count` uses stock YaCy's zero fallback.
-  Configured seedlists share one ten-second, eight-worker refresh and one
-  4,096-seed/16-MiB aggregate, preserving completed fast sources at the deadline.
-  Served plain seed lists use YaCy's shorter compact `b|` or `z|` row form;
-  request counts and version floors follow Java integer and binary32 parsing,
-  including the stock fallback for malformed peer versions.
-  Peer membership changes use cancellation-aware serialization; transport
-  failures retain a durable cooling peer for retry, successful search or greeting
-  contact promotes it, and verified exact endpoint ownership prevents an
-  unverified duplicate from becoming routable after restart. Primary peer rows
-  remain readable by v0.0.20; additive row-and-state-bound lifecycle metadata is
-  ignored by that version and falls back conservatively after a downgrade rewrite.
-  Validated outbound hello responses retain recent external back-ping
-  evidence for truthful public-endpoint status without making inbound
-  reachability a prerequisite for outbound RWI distribution. The published
-  self type starts virgin, follows the strongest current peer evidence, and
-  retains its last value when the current evidence window becomes empty; the
-  self seed, seed lists, Admin Overview, and DHT maturity gate share that value.
-  The roster excludes the immutable local peer hash at persistence, admission,
-  selection, count, and Admin projection boundaries.
-- Peer messages enforce the advertised decoded 100-byte subject and 10,240-byte
-  body limits and retain a deterministic 1,024-record/8-MiB durable mailbox.
-  Peer-news records are limited to 1 KiB, expire after 24 or 72 hours by upstream
-  category, and use restart-safe newest-created retention bounded to 4,096 queue
-  rows/4 MiB and 4,096 duplicate identities. Startup cleanup is progress-making
-  and removes confirmed corrupt, oversized, expired, or orphaned legacy state
-  before use. An operational inspection or read failure rolls back the current
-  cleanup page instead of treating unread state as corrupt. Earlier committed
-  pages remain durable, cleanup resumes from its last durable checkpoint, and a
-  pending recovery intent remains available for idempotent reconciliation.
+  promotion, LAN discovery, peer news, per-peer blocking, IPv6-only peers, and
+  a DHT gates dashboard that shows exactly why a transfer would or would not
+  fire. Peers that fail the callback check stay visible as `junior` but are
+  never used for search, seed lists, or DHT targets.
+- Peer messages and peer news are stored durably with fixed size and age
+  limits; startup cleanup removes corrupt or expired records.
 - Deliberate divergences are documented, not hidden — see
   [compatibility.md](yagonode/doc/compatibility.md).
 
 ### 🔍 Search that ranks, not just matches
 
-- Local index (sharded [Bleve](https://blevesearch.com/)) + federated swarm
-  fan-out + optional operator-enabled web search. The provider is off by default,
-  local-only requests never reach it, and the single **Web search fallback
-  (DDGS)** selector offers `Disabled`, `Only when requested`, `Supplement below 100
-  results`, and `Always`; the last mode starts web retrieval alongside local and
-  swarm retrieval. Conditional web search counts verified unique primary
-  candidates after URL deduplication and cluster consolidation, before
-  pagination, then supplements a window below 100. It reserves one second for web retrieval
-  and 100 milliseconds for assembly inside the same 1.8-second total deadline.
-  Local recovery overlaps web work; a useful web answer can cancel an unfinished
-  optional recovery. Existing enabled installations now send sparse nonempty
-  searches externally. Human-facing surfaces call external results `web`,
-  YaCy HTML marks them `[web]`, and Tavily-compatible responses keep their
-  standard shape without a provider field. A hyphen or dash inside an ordinary query word
-  separates searchable words across local and web retrieval, while a leading
-  minus remains an exclusion operator. Web rows always satisfy authoritative URL
-  and structured constraints, and every Tavily depth requires bounded visible
-  query evidence for each web row regardless of its `verify` value.
-  A request with `safe_search=true` forces the strongest documented provider
-  filter and excludes engines that cannot enforce it. The conservative result
-  boundary admits only web rows carrying that provider-filter evidence; unknown
-  web rows remain excluded, and Tavily responses expose no new provider field.
-  When web-discovery seeding is enabled,
-  surfaced URLs are admitted to bounded background warming and rendered in the
-  crawl contract's canonical spelling — the one the crawler stores documents
-  under — before admission, so a page already indexed is not re-seeded under a
-  second spelling. A one-at-a-time recovery intent protects durable publication, which
-  coalesces a normalized URL only while its task is pending or leased.
-  Seed accounting distinguishes a new publication, an existing coalesced task,
-  and a failed publication, so a deduplicated URL is not reported as a newly
-  created task.
-  Acknowledgement, terminal failure, or cancellation first persists a settlement
-  intent; retry or startup finishes any partial lease transition and identity
-  release idempotently. A later search can then retry without delaying the
-  original response or scheduling a second root fetch while work is active.
-  Successful lease-authorized ingest attempts to persist the live lease's
-  profile before recording the fetch. A profile or schedule write failure is
-  logged and cannot reject or roll back the fetched document.
-  Results are
-  merged with **reciprocal-rank
-  fusion** and **MMR result diversity**. A slow swarm branch cannot discard a
-  completed local answer, and a transient refresh cannot replace a recent
-  nonempty search session with an infrastructure-generated zero, including when
-  the bounded remote-stage admission is full. Completed local, peer, and web
-  branches survive a sibling branch's recoverable error or cancellation race.
-  An incomplete global request may
-  reuse an unexpired equivalent local session without extending its lifetime or
-  recording a synthetic global success. Operational search-stage errors retain
-  completed rows as a partial answer, and recent paging windows remain readable
-  while a deeper page is being extended. Portal navigation links only to the
-  materialized result prefix; an explicitly requested page is preserved until
-  a complete retrieval proves that it lies beyond the final page.
-  A Tavily-compatible search that retrieved no rows and lost at least one
-  source returns HTTP 409 with `Retry-After: 1` while the original caller
-  context remains live; HTTP 503 on that surface means only a capacity or
-  admission refusal. A child or source deadline is therefore retryable while
-  that caller remains live; inherited caller cancellation or deadline retains
-  the existing infrastructure-error path. An honest complete miss remains HTTP
-  200 with an empty result list, as does a request whose own date, domain, or
-  exact-match filters retained none of the rows that were retrieved, and
-  completed partial rows remain HTTP 200.
-  Tavily, portal, YaCy and Admin searches share operational diagnostics with
-  bounded failure stages and causes. A server-generated span identifier joins
-  these records to HTTP and web-provider events. These diagnostic records do
-  not contain query text, URLs, credentials, peer identifiers or raw errors.
-  A strict non-facet candidate pass skips relaxed retrieval only when it fills
-  the requested result window and reports further strict rows (`Total > window`);
-  this preserves relaxed evidence at the exact pagination boundary.
-  Pseudo-relevance feedback skips its second pass once its bounded activation
-  window is full.
-- **[YagoRank](yagonode/doc/yagorank.md)** — strict and relaxed fielded BM25,
-  bounded lexical evidence and RM3, deterministic peer RRF, persistent date,
-  anchor, authority, quality, safety, duplicate-cluster, and reputation signals,
-  followed by a signed linear LambdaRank or bounded histogram LambdaMART model.
-  In a mixed-source result set, learned inference reorders the bounded fused
-  top window across local, peer, and web provenance. Each selected document
-  inherits its destination slot's bounded relevance scale for final diversity,
-  so raw model scores do not compete with the unscored tail.
-  Query-clustered and chronological holdouts gate atomic promotion; authenticated
-  Team Draft compares complete rankings online, while confidence-filtered
-  FairPairs outcomes provide implicit relevance evidence.
-  Its console exposes all 13 operator-safe live coefficients: five field boosts,
-  authority, freshness, quality, short-URL prior, ordered and unordered
-  proximity, lexical blend, and original-gap agreement. Latency windows,
-  evidence-confidence rules, safety gates, and learned-model weights remain
-  evaluated policy rather than unchecked runtime knobs.
-  Its Search Explain panel traces bounded local or global retrieval with
-  `local`, `peer`, and `web` provenance, reciprocal-rank contributions, partial
-  failures, field evidence, learned signals, and tree paths without adding a
-  second provider call.
-  Pure Go, CPU-only, no external API, sidecar, model runtime, or YaCy wire change.
-- **Language-aware lexical search**: documents route to bounded per-language
-  analyzers. Supported inflectional analyzers contribute lower-confidence
-  word-form proximity below exact wording; Arabic receives normalization and
-  light stemming, and Chinese/Japanese/Korean use mandatory character unigrams
-  plus overlapping bigrams. Chinese and Japanese add optional dictionary word
-  terms, while equal-length Traditional/Simplified Chinese forms share
-  canonical index terms without changing source byte offsets. Dictionary terms
-  improve ranking but never gate recall. Hebrew keeps Unicode-normalized
-  exact-word proximity without a morphology analyzer. Swarm queries can expand into
-  corpus-observed inflections plus bounded forms verified by the supported
-  Snowball-rule analyzers; multiword retrieval unions sibling forms within each term and
-  intersects across terms without Cartesian peer fan-out. A selected
-  cooperating Yago peer can also use the negotiated original requirements for one
-  strict bounded analyzer-backed candidate search inside the existing request, so
-  a remote-only sibling inflection does not require a second network round.
-  Stock YaCy peers remain exact-RWI compatible: every candidate is still an
-  ordinary surface hash. Rule-derived forms cover common regular inflections
-  absent from the local corpus; analyzer-unconnected irregular
-  forms remain outside that compatible bounded expansion.
-  Zero-result typo recovery uses bounded analyzer-consistent edit distance
-  without document-wide character grams. Disk exact and fuzzy term-reader
-  construction, enumeration, and supported Scorch optimization inspect the
-  request deadline around every active step. Fuzzy dictionary enumeration has
-  the same boundary, so a completed timeout does not continue opening postings
-  or walking vocabulary behind later reads.
+- Three sources in one answer: the local index (sharded
+  [Bleve](https://blevesearch.com/)), federated swarm fan-out, and optional web
+  search. Results are merged with **reciprocal-rank fusion** and **MMR result
+  diversity**, and a slow or failing branch never discards an answer another
+  branch already completed.
+- Web search (DDGS) is **off by default** and only an operator can enable it:
+  `Disabled`, `Only when requested`, `Supplement below 100 results`, or
+  `Always`. Local-only requests never reach it, every web row must match the
+  query and its filters, and `safe_search=true` admits only rows with
+  provider-filter evidence. Human-facing pages label these results `web`, and
+  discovered URLs can optionally seed the crawler.
+- **[YagoRank](yagonode/doc/yagorank.md)** — fielded BM25 with phrase and
+  proximity evidence, persistent date, anchor, authority, quality, safety,
+  duplicate-cluster, and peer-reputation signals, then a learned LambdaRank or
+  LambdaMART model. A new model is promoted only after held-out evaluation, the
+  console exposes 13 safe live ranking coefficients, and Search Explain traces
+  every result back to its `local`, `peer`, or `web` source. Pure Go, CPU-only,
+  no external API, sidecar, or YaCy wire change.
+- **Language-aware lexical search**: per-language analyzers rank word forms
+  below exact wording, Arabic receives normalization and light stemming, and
+  Chinese, Japanese, and Korean are indexed as character unigrams and bigrams,
+  with optional dictionary words for Chinese and Japanese.
 - YaCy query operators (`site:`, `inurl:`, `filetype:`, `language:`, `tld:`,
   `author:`, `"phrase"`, `-not`, `near`, `/date`), facet sidebar, content
   verticals (images/audio/video/apps with a lightbox grid), spell-check
   ("did you mean"), zero-result fuzzy recovery, query-term-highlighted
   snippets, anchor-text document expansion, and an explainable ranking API.
-  The `site:` operator accepts only the exact normalized host and its counterpart
-  with one leading `www.` label; it does not include other subdomains.
-  Operator-only searches stay keyword-seeded and prompt for a search word rather
-  than scanning the entire index.
-  Local snippets and stored-body passages use query-match offsets from the
-  indexed language analyzer. A local result with stored-body evidence links its
-  cached copy to the matching analyzer-backed range plus bounded surrounding
-  context through `/cached`; the
-  ordinary full cached-copy link remains available from that passage. Up to the
-  first 500 peer, web, and legacy RWI rows run the same bounded analyzer-backed
-  visible-field evidence pass while the request context remains live. Invalid
-  or empty visible text, unavailable analyzer infrastructure, and rows not
-  completed before cancellation or deadline retain bounded structural matching.
-  Disk-backed local evidence hydrates at most ten visible documents through one
-  URL-boundary scope and one logical vault snapshot. The sharded vault reads
-  their location and exact ordered or legacy rows concurrently by physical
-  shard while preserving result order, strict deadline fallback, and legacy
-  compatibility.
-  Local and swarm retrieval use parsed bare terms; eligible web search receives
-  the bounded original operator-bearing query and verifies supported structured
-  constraints again on returned rows.
-  Quoted phrases prefer locally stored candidates whose analyzer-normalized words
-  are adjacent; they do not exclude other all-term matches.
-  An unknown publication date stays empty on every result surface; fetch and
-  index time are never presented as publication time.
-- **Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map`** with API
-  keys and scopes. Raw-content work has fixed concurrency, time, fetch, and
-  response-memory budgets, while ordinary search stays on the low-cost path.
-  Admin-minted keys holding the required scope authenticate in every mode; the
-  optional `YAGO_SEARCH_REQUIRE_API_KEY` switch makes the surface scoped-only
-  by disabling the legacy static `YAGO_SEARCH_API_KEY` credential.
-  Every supported `search_depth` uses the shared global local-plus-peer
-  retrieval pipeline. `basic`, `fast`, and `ultra-fast` retain `verify=false`;
-  `advanced` uses `verify=ifexist` and shares the root portal's canonical ranking
-  for equivalent requests. Web rows use the same relevance check at every depth.
-  The operator's web-fallback policy remains
-  authoritative, and `always` starts web retrieval in parallel for every depth.
-  Domain includes narrow local Bleve candidates. DNS names and IPv4 literals are
-  sent to the web provider as bounded `site:` constraints when the complete
-  encoded expression fits the provider-query ceiling. IPv6 literals and oversized
-  expressions retain the bounded base provider query because DDGS does not define
-  an unambiguous IPv6 `site:` operand.
-  Normalized hostname-suffix filtering before fusion and response emission
-  remains authoritative for every local, peer, and web candidate. Default
-  results include `raw_content: null`, errors contain
-  only `detail.error`, and
-  raw-content requests retain YaGo's stricter 30-second and 200-page safety
-  limits. `/extract` gives each local document lookup at most 250 milliseconds;
-  an enabled guarded fetch then uses only the remaining request budget. A lookup
-  timeout without that fetch path, an exhausted request deadline, or a fetch
-  failure is reported for that URL while completed rows remain in the successful
-  HTTP 200 response. When `include_usage` is true, responses report request-local
-  Tavily-compatible usage units derived from the work that completed; these
-  units are not billing, an account balance, external-provider spend, or proof
-  that an upstream Tavily service was called.
+- **Tavily-compatible `/search`, `/extract`, `/crawl`, and `/map`** with scoped
+  API keys. Responses keep the standard Tavily shape: default results carry
+  `raw_content: null` and errors carry only `detail.error`. Raw-content work
+  runs under fixed concurrency, time, and memory budgets. A search that lost a
+  source and found nothing answers HTTP 409 with `Retry-After: 1` instead of a
+  false empty result.
+- **Bounded search memory**: authority, spelling, and morphology statistics
+  refresh in a background corpus pass that uses at most a tenth of wall time
+  and survives restarts. A missing or outdated full-text index is rebuilt from
+  the document store at startup.
+- Search diagnostics record failure stages without query text, URLs,
+  credentials, or peer identifiers.
 
 ### 🕷️ A crawler built for the hostile web
 
-- Separate `yago-crawler` worker(s) connected over dedicated control and ingest
-  gRPC channels with durable leased orders, nonblocking coalesced progress
-  reports, and backpressured at-least-once ingest. A restart on the same durable
-  data volume retains committed pages and replays only work whose outcome was
-  not committed; at-least-once delivery can repeat an in-flight page. The
-  crawler's stream-attempt cancellation extends through local run admission, so
-  a live crawler abandons an obsolete confirmed delivery and adopts its leases
-  after an independent node restart. An independently restarted crawler keeps
-  its durable worker identity, creates a replacement process session, and adopts
-  that worker's unfinished leases. Run-report
-  phases are staggered across concurrent crawls; terminal
-  snapshots admitted to the bounded queue receive delivery priority, retry, and
-  graceful-shutdown drain attempts, while admitted same-ID NAK phases retain
-  their ordered lifecycle. Saturation drops a new phase only after expendable
-  singleton running state is exhausted and never collapses a protected chain.
-  Concurrent document, anchor, URL-metadata, and RWI admission checks share one
-  live-capacity observation for at most one second instead of repeating a
-  shard-wide disk measurement for every phase; exact metrics and eviction reads
-  remain exact and refresh that observation. The node coalesces at most 64 ready
-  ingest deliveries and 64 MiB of their encoded JSON for shared vault and Bleve
-  commits, waiting no more than a cancel-aware 10 milliseconds for a partial
-  group. Each grouped index mutation persists at most four Bleve shards
-  concurrently. Outbound-anchor work divides one group into at most 16 source
-  replacements at a time, aggregates their contributions once, and projects at
-  most 16 exact target URLs per storage page. Target transactions retain at most
-  32 rows and 8 MiB; sorted final source rows use deterministic subtransactions
-  with a 64 MiB encoded ceiling. Publication starts only after every target page
-  is stored and indexed. If a later publication subtransaction fails, earlier
-  source rows may already be committed; retry recomputes the remainder and
-  converges before metadata, postings, or acknowledgements advance.
-- One live `crawler.max_pages_per_second` ceiling controls page-fetch starts
-  across every connected crawler process and active run. It defaults to 10 per
-  second; `0` is unlimited. The node leases non-bursting start windows and uses
-  the crawler's bounded measurement of the previous lease RPC delivery time to
-  keep permit windows usable across ordinary control-plane latency. The crawler
-  still enforces the configured interval between permits it consumes, so a
-  delivery spike can discard a permit window but cannot create a catch-up burst.
-  Per-process smoothing, per-run pace, worker concurrency, and per-host
-  politeness remain additional limits. A finite ceiling fails closed unless
-  both the node and crawler support fetch-start leases, so upgrade them together.
-- Configuration → Crawler is authoritative for the typed crawler runtime policy;
-  environment variables are bootstrap defaults. The policy includes the live
-  redirect limit, depth ceiling, host concurrency, crawl delay, fetch timings,
-  browser behavior, and shutdown grace. A change that cannot be applied in
-  place requests a graceful crawler restart. A browser-sandbox-only change
-  retires each Firefox session after its active render, while a frontier-state
-  ceiling change updates the live admission gate and wakes waiting orders. A configured or
-  discovered Firefox launcher must resolve through root-owned, non-writable
-  path chains to a regular non-set-ID executable available to the crawler; the
-  crawler checks this before assembly and again before every spawn. Its optional
-  unauthenticated metrics listener accepts loopback IP literals only; remote
-  scraping uses a trusted local tunnel or proxy. Fixed-cardinality browser-pool
-  metrics expose acquisition time, ready/busy/cooling session state, and
-  slot-deadline/cooldown/launch/render failures without URL or error-text labels.
-  The policy also carries current per-profile automatic-discovery limits. A
-  reduced web or swarm page cap gracefully rebuilds the crawler session and
-  recovers pending, leased, and checkpointed automatic work under the new cap
-  while preserving its durable order identity; explicit manual budgets remain
-  unchanged.
-- **Atomic node-side crawl control**: `yago-node` keeps its order queue, leases,
-  settlements, controls, and terminal-run delivery state in
-  `${YAGO_DATA_DIR}/crawlbroker.db`. One bbolt transaction can therefore move a
-  lifecycle across all of its indexes. The first enabled crawl-runtime startup
-  copies a frozen version-1 state set from the legacy node vault without deleting
-  the source, and an interrupted copy resumes before listeners open. The
-  dedicated file is outside `YAGO_STORAGE_QUOTA` and main-vault compaction.
-  `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` gives its physical file a 4 GiB soft
-  admission boundary by default; `0` disables the boundary. At or above the
-  boundary the node rejects fresh order enqueue while migration, ingest,
-  lifecycle, recovery, and settlement writes continue. Startup attempts a
-  copy compaction at the boundary before opening the authoritative file;
-  a failure before atomic replacement is logged and startup continues with the
-  original, while a directory-sync failure after replacement reports that the
-  compacted file is installed with a durability warning.
-  `/metrics` exposes live and allocated bytes. A rollback must restore one coordinated stopped node-and-crawler backup,
-  because deleting only the dedicated file or downgrading in place can resurrect
-  the retained stale cutover state. The sharded collection-length layout is also
-  forward-compatible only: after current binaries record new mutations, an older
-  binary cannot reconstruct exact lengths from the legacy counter and must not
-  open the same data directory.
+- Separate `yago-crawler` workers connect to the node over dedicated control
+  and ingest gRPC channels with durable leased orders and backpressured
+  at-least-once ingest. Either side can restart on its own: committed pages
+  stay, and the crawler adopts its unfinished leases again.
+- One live fleet-wide ceiling, `crawler.max_pages_per_second` (default 10, `0`
+  for unlimited), limits page-fetch starts across every crawler and run.
+- Configuration → Crawler owns the crawler runtime policy: redirects, depth,
+  host concurrency, crawl delay, fetch timings, browser use, and shutdown
+  grace. A change that cannot apply in place restarts the crawler gracefully.
+- The node keeps the crawl queue, leases, and run state in one transactional
+  store, `${YAGO_DATA_DIR}/crawlbroker.db`.
 - **Format coverage beyond HTML**: PDF, DOCX/XLSX/PPTX, legacy DOC/XLS/PPT,
-  ODT/ODS/ODP, RTF, EPUB, plain text/CSV, and Markdown (`.md`, `.markdown`,
-  `text/markdown`, and `text/x-markdown`) — parsed with stdlib-first
-  parsers and validated against real files. PDF extraction follows Page
-  `/Contents` and page-reachable Form streams instead of indexing decoded image,
-  font, or container payloads. Embedded `/ToUnicode` mappings take precedence;
-  a bounded simple-font fallback resolves named, inline, or indirect `/Encoding`
-  dictionaries, applies `/BaseEncoding` and single-byte `/Differences`, and maps
-  standard glyph names to Unicode. Unknown or untrusted mappings produce no text
-  instead of raw glyph-code noise. One document shares a 32 MiB decoded-stream
-  budget and a 1 MiB UTF-8 text limit, and no OCR is performed. Synthetic
-  regressions mirror malformed and custom-encoding shapes without redistributing
-  external PDFs. The live Cisco ENCS document is a verification-only case; its
-  previously stored garbage text can be queued for a normal recrawl through the
-  bounded extraction-generation action on Admin → Index.
-- **Two-tier fetching**: fast HTTP first, headless-browser fallback (headless
-  Firefox over Marionette, a lazy pool of at most two long-lived processes) for
-  browser-resolvable status or bot-wall rejections and successful HTML app shells
-  whose executable scripts are paired with insufficient extracted static text.
-  Usable static HTML is fetched once, non-HTML never opens a browser, and the
-  per-profile browser opt-out remains authoritative. Both paths stay behind the
-  dial-time SSRF egress guard.
+  ODT/ODS/ODP, RTF, EPUB, plain text/CSV, and Markdown — parsed with
+  stdlib-first parsers and validated against real files.
+- **Two-tier fetching**: fast HTTP first, with a headless Firefox fallback (at
+  most two long-lived processes) only for bot walls and JavaScript app shells
+  with too little static text. Non-HTML never opens a browser, and both paths
+  stay behind the SSRF egress guard.
 - **Legacy-web text correctness**: browser-compatible charset decoding handles
-  Windows-1251 and other WHATWG encodings, while bounded content-language
-  detection keeps documents, facets, RWI postings, and URL metadata aligned.
-- **Bounded search memory**: authority, spelling, and optional morphology refresh
-  from one completion-relative corpus pass, with fixed-size cross-domain
-  citation and frequent-term summaries. The last complete summary is atomically
-  stored in the node vault and restored before search listeners open. A fresh
-  summary waits only until its original ten-minute due time; a stale summary is
-  still served immediately while its replacement scan starts in the background.
-  Each later pass waits ten minutes or nine times the last scan time, whichever
-  is longer, so the pass never takes more than a tenth of wall time.
-  The background pass briefly fences document admission to capture the last key
-  of both the legacy and admission-ordered partitions, then reads through those
-  boundaries in fixed 16-document keyset pages. Each vault view is released before
-  document decoding and analysis, so continuous ingest cannot prolong one pass
-  indefinitely and the pass never retains one long Bolt read transaction or claims
-  interactive-read priority from ingest writes. Later admissions are included by
-  the next pass.
-  It also checkpoints and atomically publishes the bounded YaCy host-link graph,
-  so peer host-link requests never scan the document vault;
-  candidate scans avoid full document bodies; peer and
-  web responses, index results, paging sessions, background cache writes, and
-  host-link snapshots have process-wide byte or admission limits. `/metrics`
-  exposes Go heap plus process RSS for pre-OOM alerts.
-  Scorch flushes at most 32 MiB of in-memory segment input through one persister
-  worker per shard, and merged segments stop at 100,000 documents. Before the
-  index becomes available, a fragmented shard passes the existing filesystem
-  reserve check and consolidates one shard at a time toward one root segment per
-  100,000 documents; an unbounded stalled merge or changed document total
-  refuses startup, while an already bounded shard is left untouched. An existing
-  v0.0.38 full-text index advances its corrected-writer generation before Bleve
-  v2.6.1 opens it and does not rebuild. An index with missing, malformed, or
-  unknown generation evidence is rebuilt from the document store before Scorch
-  can decode it; without that rebuild source, startup refuses the index. An
-  already-present rebuild marker is accepted without reopening or rewriting it,
-  so an interrupted or operator-staged recovery remains idempotent. Stored
-  candidate identities are checked through one ordered document-vault snapshot
-  per requested result page. Each phase groups those identities by physical
-  vault shard and reads distinct shards concurrently through independently owned
-  read-only transactions while preserving exact stored-row validation and input
-  order. The first ordinary Bleve request asks for exactly the visible candidate
-  count. Only a confirmed missing stored document with an unseen Bleve tail
-  opens the established fourfold bounded retry; ordinary full-document hydration
-  remains lazy. Candidate validation, filtered or faceted scans, and visible
-  evidence hydration are observation-only: a missing stored document is omitted
-  from results but never causes a request-time Bleve mutation. Admin deletion,
-  quota eviction, redirect cleanup, and crawler tombstones own ordinary lineage
-  removal; an explicit full-index rebuild reconciles historical or crash-created
-  drift from the authoritative document store.
-  An unchanged recrawl does not rewrite the stored document or its full-text
-  entry. Changes to titles, links, metadata, or other stored evidence still
-  update the document even when its body is unchanged. Fetched and indexed
-  dates on the stored document remain those of its last substantive revision;
-  recrawl scheduling separately records every successful fetch. An absent or
-  outdated full-text entry is repaired on ingestion, including after a failed
-  index write.
-  After any startup rebuild and bounded segment consolidation, the node holds
-  one Scorch snapshot at a time and sequentially loads every active persisted
-  root into the operating-system page cache before lexical warm-up and
-  readiness. While that snapshot still owns the segment, startup verifies that
-  the active file and its live zapx mapping have equal length and touches one
-  byte per operating-system page through that mapping. This pays both physical
-  input and mapping page-table faults before serving. It never reads inactive
-  retained snapshots or changes segment bytes. Cancellation or any snapshot,
-  file, mapping, read, or close failure refuses startup instead of exposing a
-  predictably cold index. The loaded pages remain reclaimable, so a
-  latency-sensitive target must budget memory for active root bytes, page
-  tables, heap, and vault residency.
-  Ordinary analyzer-scoped disk retrieval runs one native Bleve alias query.
-  Within each child reader, an unscored disjunction of analyzer-specific
-  lexical requirement branches supplies at most 4,097 internal identities.
-  Strict and fuzzy branches require every retained term; relaxed branches keep
-  their minimum-term rule. Whole-query analyzer-token duplicates share one
-  candidate branch; unavailable analyzers and every CJK dictionary branch
-  remain independent. A child that exhausts at 4,096
-  documents or fewer reranks those identities against the unchanged scoped
-  query in the same reader. An empty set matches none; the sentinel retains the
-  exhaustive scoped query for that child. Internal identities never cross a
-  reader or request boundary, and the same alias retains scoring and result
-  merge. Explicit diagnostic explanations also retain the exhaustive path.
-  This removes avoidable analyzer, external-identity, and cross-snapshot work
-  without changing identities, ordering, BM25 scores, field scores, or totals.
-  Interactive searches have a hard 1.8-second response deadline and four
-  process-wide outer execution
-  slots. Up to 16 admitted HTTP searches wait for an outer slot only inside that
-  deadline, and an exact-stage capacity retry may wait for its rescue slot for at
-  most 500 milliseconds. Endpoint-owned deadline, capacity, and operational failures are carried
-  as partial evidence instead of replacing completed rows with an unavailable
-  page; an unexpired successful session may instead be served with the current
-  failure evidence, an outcome already queued at the hard deadline wins over a
-  synthetic timeout, and timed-out unfinished work retains its slot until it exits.
-  These limits protect one process; they do not manufacture CPU capacity. A
-  failed relaxed search preserves completed exact results and reports incomplete
-  coverage. Completed pages survive a deadline without being cached as complete;
-  a ready page does not wait behind another page's extension. Conditional web
-  search reserves its web and assembly budgets after execution-slot
-  waiting, so that waiting reduces the primary stage instead of silently consuming
-  the web window. First-seen-bounded queries retain their local retrieval budget.
-  An empty lexical candidate set skips scored analyzer work. A
-  disk index admits `max(1, GOMAXPROCS)` native Bleve pages and releases each
-  admission before document presence, projection, filtering, or evidence work.
-  A delayed native page therefore consumes only its own slot, and delayed
-  projection consumes none. Additional native pages wait only within their
-  existing stage context. Disk term-reader and fuzzy dictionary work stops
-  synchronously at cancellation after at most its current Bleve step and normal
-  close; it does not leave a detached query holding a native slot after its
-  stage has answered. A deployment that expects hundreds of simultaneous
-  searches must validate a cold synchronized full-request burst on its actual
-  corpus and CPU allocation, then provide enough independent read capacity to
-  keep every process below that measured bound. A production-copy candidate-only
-  round completed 200 synchronized requests on four processors in 1.0924
-  seconds with p99 1.0892 seconds. It does not include live document evidence
-  and cannot size the final read tier. Replicas require independent processors
-  and independently owned immutable index generations; extra processes on the
-  same four CPUs or one mutable Scorch directory do not add capacity. Each
-  replica also needs independent I/O and a query-ready document projection.
-  Routing must include queue time, freshness, readiness, and one-replica-loss
-  capacity. The current release does not add a replicated-read service boundary.
-  Conflicting vault updates serialize behind writer-only admission while read
-  snapshots remain available; served-result denylist checks use an immutable
-  in-memory snapshot even after a completed search stage's context ends,
-  and the request path waits at most 50 milliseconds for optional click-impression
-  preparation while at most four retained impression tasks remain admitted and
-  are joined before storage closes. A finished task returns its admission slot
-  before its terminal outcome becomes observable, while shutdown still joins
-  outcome delivery or abandonment. A click waits for its matching in-flight
-  impression commit, and a token whose late commit failed remains rejected until
-  it expires.
-- Politeness and defense: robots.txt with a standards-compliant 500 KiB parsing
-  limit and a sanitizer for real-world malformed files, per-host adaptive pacing
-  and crawl delays, URL canonicalization. Discovered links with an unambiguous
-  disabled or unsupported file suffix are rejected before frontier admission;
-  explicit seeds, extensionless routes, and unknown suffixes still fetch once so
-  authoritative response media types can decide. Five consecutive typed availability
-  failures retire only that host's remaining URLs in the current run; a success
-  resets the evidence, and URL-specific rejections do not penalize a healthy
-  host. A single-host run then finishes while a multi-host run continues. The
-  exact URL denylist rules match canonical aliases while retaining raw entries
-  for individual removal. New changes must fit the shared policy bounds;
-  existing oversized policies stay removable. The
-  Index URL/domain denylist is revisioned to every connected crawler and
-  enforced before frontier admission and around each fetch. Further safeguards
-  include persistent near-duplicate clustering, crawl-trap defense, per-host and
-  per-run page budgets carried by each task profile and editable live in Admin
-  Configuration (with a manual per-task override), boilerplate extraction, and a deterministic
-  content-quality gate.
-- **A living index**: a default 30-day recrawl cadence refreshes pages, and a
-  recrawl that finds a page permanently gone (404/410) tombstones it out of
-  the index — no eternal dead links. Quota eviction, crawler tombstones, Admin
-  deletion, and redirect cleanup share one complete page-lineage owner, so a
-  concurrent re-index cannot leave or erase only the document, anchors,
-  duplicate cluster, full-text row, postings, or URL metadata.
-  On the next reingest or removal, a retained duplicate fingerprint repairs or
-  clears a derived cluster row that is missing or no longer lists its URL. The
-  bounded repair touches only that URL and its affected clusters, so healthy
-  ingest performs no cluster-wide scan and one structural orphan cannot force
-  the rest of its ingest group to retry.
-  A valid, non-future sitemap `lastmod` can advance the next visit within the
-  profile cadence; stale, future, unchanged, or malformed hints cannot create a
-  recrawl loop.
-  Every newly parsed document carries extraction generation `1`; an unstamped
-  stored document is generation `0`. After a material parser or extractor
-  change advances the current generation, Admin → Index can explicitly examine
-  1–100 storage records at a time and queue only older documents through the
-  existing durable crawl dispatcher. A pass keeps bounded continuation state to
-  the captured high key of each document partition; it is not a transactional
-  snapshot. The node never starts this migration automatically and exposes no
-  environment knob for it, avoiding an upgrade-time crawl storm.
-- Automatic discovery: enabled swarm greedy-learning uses a depth-1,
-  25-page-per-task HTTP-fast-path profile; web-discovery crawling stays opt-in
-  with the same ready profile. Both defaults are sized against the crawl fleet
-  rather than one URL, because every surfaced result seeds its own whole-domain
-  task: the pages queued by one query are the page cap times the result count.
-  All six controls — each path's on/off switch, crawl depth, and page cap —
-  apply live, so enabling seeding starts publishing on the next search and
-  narrowing either bound applies to the next seeded order without a restart.
-  Reduced page caps also reconcile already outstanding automatic work through
-  the crawler runtime policy instead of leaving the stored order at its old cap.
-  Startup logs whether seeding can run and which condition blocks it. Surfaced fallback URLs use two background workers,
-  at most 128 pending warming jobs, and a ten-second deadline beginning when each
-  job starts. A full
-  queue warns and drops only new optional warming work; an admitted crawl order
-  remains durable across restarts. The same value remains the per-host ceiling,
-  and a lower positive global run cap can reduce either automatic task. Explicit
-  discovery orders receive fair priority in the durable queue, and every
-  profile and document-format control lives in Configuration → Crawler. On
-  recovery, a legacy automatic checkpoint that exceeds the visible cap drops
-  the newest excess pending pages in bounded, idempotent batches while retaining
-  completed totals, visited history, and the oldest pending work.
+  Windows-1251 and other WHATWG encodings, and language detection keeps
+  documents, facets, RWI postings, and URL metadata aligned.
+- Politeness and defense: robots.txt with the standard 500 KiB limit and a
+  sanitizer for malformed files, per-host adaptive pacing and crawl delays, URL
+  canonicalization, and early rejection of unsupported file types. A host that
+  fails five times in a row is skipped for the rest of the run.
+- **A living index**: pages are recrawled every 30 days by default, and a page
+  that is permanently gone (404/410) leaves the index — no eternal dead links.
+- Automatic discovery: swarm greedy-learning and opt-in web-discovery seeding
+  use a small depth-1, 25-page profile. Their switches, depths, and page caps
+  apply live without a restart.
 
 ### 🎨 A public portal your users can keep
 
 - Server-rendered, **works without JavaScript**, accessible (skip links, ARIA,
   keyboard navigation), mobile-friendly, with OpenSearch browser integration
-  advertised on every landing and results page so Firefox can offer it as a
-  search engine, including when an older saved default theme is active, plus
-  RSS/JSON output for every query.
-- Every portal and `/yacysearch.html` result carries up to six bounded
-  human-readable ranking reasons derived from evidence already computed for that
-  request. They do not run a second retrieval, call another provider, or alter
-  result order.
+  and RSS/JSON output for every query.
+- Every result shows up to six plain-language ranking reasons drawn from the
+  evidence already computed for that request.
 - **Operator-themeable end to end**: the search and results pages are
-  Handlebars templates editable from the console — visually with a light
-  GrapesJS editor that previews the shared portal CSS, or as code with
-  CodeMirror — with one-click return to the built-in design and a fallback
-  that keeps a broken template from ever blanking the public surface.
+  Handlebars templates editable from the console — visually with GrapesJS or
+  as code with CodeMirror — with one-click return to the built-in design and a
+  fallback that keeps a broken template from ever blanking the public surface.
 
 ### 🛠️ An admin console with everything in one place
 
 - Server-rendered (htmx-enhanced, no SPA, no CDN — every asset self-hosted),
   with one Neutrino-inspired visual system and full no-JS degradation.
-- Sections: Overview, Search (with suggestions), Activity, Public portal
-  (settings + design tabs), Crawler (dispatch, saved profiles, live monitor,
-  per-run detail with up to 64 recent URL outcomes, pause/resume/rate control,
-  health), Network (peers, seedlists, news,
-  blocking, an evidence-backed public-endpoint check whose current peer
-  classification is authoritative and whose explicitly configured direct query
-  runs only when no peer observation exists, active-crawl DHT-gate guidance
-  linking to the exact restart-required setting, and the complete sortable
-  roster paged at exactly 20 peers), Index (browse, bounded per-document stored
-  evidence including extraction generation, explicit bounded outdated-extraction
-  recrawl, node/crawler storage-reserve status, delete, blacklist, export,
-  schema, and safe next-restart rebuild scheduling with startup storage preflight
-  and bounded journal progress), Performance (live tiles **and sampled history
-  sparklines**; gauge cards are available from the startup sample, sparklines
-  appear with a second point, and rates and CPU deltas require that second
-  sample), Backup & restore,
-  Configuration (runtime settings with checkboxes, batch save, per-setting
-  reset, Crawler/Automatic discovery/Document formats fieldsets, and live
-  per-process active-task and fetch-worker limits plus the fleet-wide
-  fetch-start ceiling),
-  Security (Argon2id admin login, session management, scoped API keys), Logs
-  (filterable events with bounded UTC `from`/`to` ranges), Restart (node and
-  crawler fleet, can be disabled by config).
-- Overview and Index use the authoritative local Bleve document count. Overview
-  separately labels YaCy URL metadata records because those populations can
-  differ. Overview also refreshes a Linux process-memory diagnostic every 15
-  seconds: resident set (RSS), anonymous RSS, file-backed RSS, shared-memory
-  RSS, and Go heap objects. The heap value is a runtime allocation measure, not
-  an additional RSS component. The Crawler monitor combines every profile in
-  one 20-row-paged view and refreshes a textual Connected or Disconnected
-  crawler-fleet state with the connected-process count; a disconnected state
-  states that queued orders remain pending until a crawler connects;
-  totals and health use the complete snapshot, and each running row keeps its
-  controls plus the effective pages-per-minute value together.
-  **Clear pending orders** removes waiting node orders after confirmation;
-  already leased work and later arrivals remain. Each run's **Cancel** action
-  clears that run's pending URLs while in-flight processing finishes. Both
-  actions preserve indexed documents. See [Clearing crawl queues](yagonode/doc/crawl-queue-management.md).
-- First-run **setup wizard**, CSRF everywhere, strict CSP, login rate
-  limiting, and a config-events audit trail. The no-JavaScript login leaves the
-  account name empty and shows only bounded public node status; individual
-  unavailable system facts degrade independently. An active session receives a
-  new unpredictable cookie token after the earlier of one hour or half its
-  configured lifetime; rotation preserves the CSRF token and absolute expiry
-  and atomically invalidates the old token.
+- Sections: Overview, Search, Activity, Public portal, Crawler (dispatch, saved
+  profiles, live monitor, per-run detail, pause/resume/rate control), Network
+  (peers, seedlists, news, blocking, public-endpoint check, DHT gates), Index
+  (browse, delete, blacklist, export, rebuild scheduling), Performance (live
+  tiles and history sparklines), Backup & restore, Configuration, Security,
+  Logs, and Restart.
+- Every environment variable that controls node or crawler behavior has a
+  matching Configuration setting. The environment value is only the first
+  default; a setting saved in the console wins.
+- First-run **setup wizard**, Argon2id logins, scoped API keys, CSRF
+  everywhere, strict CSP, login rate limiting, session token rotation, and a
+  config-events audit trail.
 
 ### 📦 Operations without surprises
 
-- One static binary per role; Docker/Compose on the shared `/opt/yago`
-  layout, hardened systemd units, and tarballs plus Debian and RPM packages
-  built by a tag-driven release pipeline with a verified human-authored
-  engineering memo.
-- Docker builds pin every builder and runtime base by digest. The node and
-  crawler images carry OCI source and revision labels when the caller supplies
-  `SOURCE_REVISION`, so two images can be traced to the same source commit. The
-  crawler image also selects the fixed Alpine OpenSSL `3.5.8-r0` runtime
-  packages explicitly instead of inheriting an older base-image revision. Both
-  image builds share a checksum-authenticated Go module downloader that retries
-  two transport failures with bounded pauses and still fails closed on the
-  third failure.
-- Release tags build and smoke-test both product images natively on amd64 and
-  arm64, then reject HIGH or CRITICAL findings from the pinned Trivy image
-  scan. Their validated configuration and root-filesystem identities are
-  promoted without a rebuild into public, provenance-attested
-  multi-architecture manifest lists at `ghcr.io/d4rk4/yago-node:vX.Y.Z` and
-  `ghcr.io/d4rk4/yago-crawler:vX.Y.Z`. Releases publish no `latest` or shortened
-  version alias; deployments can pin the recorded manifest-list digest. If the
-  registry refuses a child manifest because one of its blobs is temporarily
-  unavailable, the same authenticated content-addressed push restarts at most
-  twice with bounded pauses. Other failures stop immediately, and every
-  successful child is still pulled and matched to its validated image identity.
+- One static binary per role. Run it with Docker/Compose, hardened systemd
+  units, or the tarballs, Debian, and RPM packages every release publishes —
+  all on the same `/opt/yago` layout.
+- Every release builds and smoke-tests both container images natively on amd64
+  and arm64, rejects HIGH or CRITICAL Trivy findings, and publishes public,
+  provenance-attested images. There is no `latest` tag: pin the version or its
+  digest. Every package carries a signed build attestation.
 - Prometheus `/metrics` (RED/USE + saturation), burn-rate alert rules with an
   SLO doc, health/readiness endpoints, auth-gated pprof, trace-correlated
-  structured logs (never secrets), and a durable event store fed through a
-  bounded asynchronous queue. Shutdown drains it for up to five seconds, then
-  cancels the worker and grants five more seconds for writer quiescence. A
-  writer that still ignores cancellation is reported as an error; vault close
-  is skipped so the process can exit without closing over an active transaction,
-  and the next startup uses scan-based recovery. HTTP listeners share a fixed
-  fifteen-second shutdown
-  budget: ten seconds for graceful requests and five seconds for forced close
-  and handler drain. A completed forced close is a clean stop; close or drain
-  failures remain actionable errors.
-- **Offline backup/restore scripts** for docker and systemd — covered by an
+  structured logs (never secrets), and a durable event store.
+- **Offline backup/restore scripts** for Docker and systemd — covered by an
   automated end-to-end round-trip test — plus a console page that shows
   storage usage and hands you the exact commands.
 - Storage: a sharded, compressed, quota-bounded vault (bbolt + zstd) where
-  losing one shard file loses 1/N of the keyspace, never the store; shard
-  integrity checks and full-text generation or rebuild admission run at startup.
-  The bbolt root is
-  enforced as a bucket-only structural tree before every application commit.
-  If an unclean storage event leaves ordinary values there, startup isolates
-  them durably before split or compaction, restores only exact RWI rows to their
-  current shards, never overwrites a conflicting posting, and retains unknown
-  evidence for operator inspection instead of guessing. Exact collection
-  length deltas are recorded on each record's physical shard instead of one
-  global writer hotspot, grouped crawler postings commit in retryable chunks of
-  at most 8,192, and DHT transfer tallies are coalesced before persistence. If
-  normal stale-URL eviction cannot reach the soft quota target, a bounded
-  posting scan can reclaim posting-only lineages that have no URL-metadata row
-  without selecting metadata-backed URLs through that fallback. The hot write
-  path does not persist bbolt freelists. Updates that only read records leave
-  the serving vault's shard files untouched; a mixed update commits only its
-  changed shards. Read-modify-write operations retain their writer lock, and
-  clean shutdown still checkpoints every shard
-  durably so planned restarts load them directly, while an unclean stop retains
-  bbolt's full recovery scan. Stable INFO records show each sequential shard
-  open as structured JSON on standard output, captured by the systemd or
-  container service log. Startup installs conservative RWI word filters without
-  scanning their buckets, so optional acceleration cannot delay listeners. One
-  owned worker builds one shard at a time from snapshots of at most 4,096
-  records and yields to live reads and writes between pages. Successful worker
-  progress is DEBUG; a failed shard stays conservative and produces WARN
-  evidence. Node shutdown gives event persistence a bounded drain and
-  cancellation grace before the checkpoint. If a writer still remains active,
-  it reports an error and skips vault close so the next start follows bbolt's
-  scan-based recovery path. The shipped supervisors allow a successful clean
-  close up to 15 minutes.
+  losing one shard file loses 1/N of the keyspace, never the store. Integrity
+  checks run at startup, and a free-space reserve pauses growth before the
+  disk fills.
 - Outbound traffic is screened in-process at dial time: private networks,
   loopback, link-local, and the cloud metadata range are blocked by default,
-  with explicit CIDR allowlists (`YAGO_EGRESS_ALLOW_CIDRS`) when you need
-  them. Each guard keeps a fixed snapshot of its configured CIDR allowances.
-
----
+  with explicit CIDR allowlists (`YAGO_EGRESS_ALLOW_CIDRS`) when you need them.
 
 ## 🧭 YaCy parity at a glance
 
@@ -747,15 +202,11 @@ seed lists, `idx.json`, `list.html`, `message.html`, `profile.html`,
 `urls.xml`, `crawlReceipt`, and the `yacysearch.{json,rss,html}` +
 `suggest.{json,xml}` + OpenSearch client surfaces all interoperate with Java
 peers. The admin plane is deliberately different (Argon2id sessions plus
-scoped API keys instead of digest auth) — plain YaCy *search* clients are
-unaffected. Remote crawl for the swarm is answered but disabled by default
-and can be enabled only on a controlled network using Java-compatible
-`salted-magic-sim` authentication, a nonempty shared secret, and exact
-trusted-peer and destination allowlists. It delegates bounded URL-only work,
-not bodies, profiles, redirects, or follow-up depth, so it remains deliberately
-partial rather than full remote-crawler parity
-([policy](yagonode/doc/remote-crawl-policy.md)). The public `freeworld` mode
-remains the default.
+scoped API keys instead of digest auth); plain YaCy *search* clients are
+unaffected. Remote crawl for the swarm is disabled by default and can be
+enabled only on a controlled network with a shared secret and exact peer and
+destination allowlists ([policy](yagonode/doc/remote-crawl-policy.md)). The
+public `freeworld` network is the default.
 
 ---
 
@@ -791,31 +242,41 @@ curl -fsS -H 'content-type: application/json' \
 ```
 
 A bare node needs **no configuration** to start: it generates and persists its
-peer identity on first run. The variables you are most likely to touch:
+peer identity on first run. The variables you are most likely to touch are
+below; a value saved in the console overrides its environment default.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `YAGO_DATA_DIR` | `/opt/yago/data` (container) | all persistent state — index, vault, identity |
-| `YAGO_SEEDLIST_URLS` | _(empty)_ | YaCy seedlists to bootstrap the swarm from; the setup wizard can offer public seeds |
-| `YAGO_NETWORK_NAME` | `freeworld` | restart-required YaCy network unit; Configuration → Network & peers persists the operator override |
+| `YAGO_SEEDLIST_URLS` | _(empty)_ | YaCy seedlists to join the swarm from; the setup wizard can offer public ones |
+| `YAGO_NETWORK_NAME` | `freeworld` | YaCy network to join; takes effect after restart |
 | `YAGO_PUBLIC_ADDR` | `:8080` | public listener; `off` runs a pure peer node |
 | `YAGO_PUBLIC_SEARCH_UI_ENABLED` | `false` | serve the portal at the public root |
-| `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | crawler integration listener; `off` disables it and `:9091` admits remote workers |
-| `YAGO_CRAWLER_MAX_PAGES_PER_SECOND` | `10` | bootstrap in both services for one page-fetch start ceiling across the complete connected crawler fleet; `0` is unlimited, finite operation requires current node and crawler versions, and the Admin value becomes authoritative |
-| `YAGO_CRAWLER_MAX_REDIRECTS` | `10` | bootstrap in both services for the live HTTP and browser redirect-hop ceiling; `0` rejects the first redirect, and the Admin value becomes authoritative |
-| `YAGO_CRAWLER_BROWSER_PATH` | _(PATH discovery)_ | bootstrap in both services for an optional absolute `firefox` or `firefox-esr` launcher; the persisted Crawler policy is delivered before assembly, and the crawler rechecks its trusted path before every spawn |
-| `YAGO_CRAWLER_METRICS_ADDR` | _(disabled)_ | bootstrap in both services for an optional loopback-only crawler metrics listener; the persisted Crawler value is delivered before listener assembly, and remote scraping requires a trusted local tunnel or proxy |
-| `YAGO_STORAGE_QUOTA` | `1GB` | soft admission and eviction target for logical live main-vault data; it excludes Bleve, crawl state, allocated free pages, and temporary copies |
-| `YAGO_STORAGE_RESERVED_FREE` | `1GB` | filesystem free-space reserve for gate-managed node growth admissions |
-| `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before gate-managed node growth admissions resume |
-| `YAGO_CRAWLER_STORAGE_RESERVED_FREE` | `1GB` | filesystem free-space reserve sent to and bootstrapped by crawler workers |
-| `YAGO_CRAWLER_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | additional free space required before crawler frontier growth and fetch admission resume |
-| `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` | `4GB` | live soft physical boundary for `crawlbroker.db`; `0` disables it |
-| `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` | `4GB` | bootstrap in both services for the live soft physical boundary on `crawler/frontier-v1.db`; `0` disables it |
+| `YAGO_SEARCH_API_KEY` | _(empty)_ | optional static bearer token for the Tavily-compatible API; scoped keys are minted in the console |
+| `YAGO_CRAWL_RPC_ADDR` | `127.0.0.1:9091` | crawler listener; `off` disables it and `:9091` admits remote workers |
+| `YAGO_CRAWLER_MAX_PAGES_PER_SECOND` | `10` | page-fetch starts per second across all crawlers; `0` is unlimited |
+| `YAGO_CRAWLER_MAX_REDIRECTS` | `10` | redirect hops per fetch; `0` rejects the first redirect |
+| `YAGO_CRAWLER_BROWSER_PATH` | _(PATH discovery)_ | optional absolute path to `firefox` or `firefox-esr` |
+| `YAGO_CRAWLER_METRICS_ADDR` | _(disabled)_ | optional loopback-only crawler metrics listener |
+| `YAGO_STORAGE_QUOTA` | `1GB` | soft size target for live vault data; excludes the full-text index and crawl state |
+| `YAGO_STORAGE_RESERVED_FREE` | `1GB` | free disk space the node keeps before it pauses growth |
+| `YAGO_CRAWLER_STORAGE_RESERVED_FREE` | `1GB` | free disk space each crawler keeps before it pauses growth |
+| `YAGO_CRAWLER_NODE_STATE_MAX_BYTES` | `4GB` | soft size limit for the node's `crawlbroker.db`; `0` disables it |
+| `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES` | `4GB` | soft size limit for the crawler frontier database; `0` disables it |
 
 The full reference — every variable and its default — is
-[doc/configuration.md](yagonode/doc/configuration.md). Bare-metal installs get
-hardened systemd units and Debian packages under [deploy/](deploy/).
+[configuration.md](yagonode/doc/configuration.md).
+
+### Other ways to install
+
+- **Published images** — every release publishes
+  `ghcr.io/d4rk4/yago-node:vX.Y.Z` and `ghcr.io/d4rk4/yago-crawler:vX.Y.Z` for
+  amd64 and arm64. Set the two `image:` lines in `docker-compose.yml` to those
+  tags and remove the `build:` blocks to run a release instead of a local build.
+- **Packages** — `.deb`, `.rpm`, and tarballs for amd64 and arm64 are attached
+  to every [GitHub Release](https://github.com/D4rk4/yago/releases).
+  [deploy/README.md](deploy/README.md) covers verification, installation,
+  hardened systemd units, and upgrades.
 
 ---
 
@@ -850,8 +311,8 @@ flowchart LR
 | `yagoegress` | the shared dial-time SSRF egress guard |
 
 Architecture decisions live in [ADRs](yagonode/doc/adr/README.md), including
-the deliberate no-gos; the full feature ledger with
-per-feature test pointers is [FEATURES.md](FEATURES.md).
+the deliberate no-gos; the full feature ledger with per-feature test pointers
+is [FEATURES.md](FEATURES.md).
 
 ## 🛠️ Development
 
@@ -860,38 +321,30 @@ make verify   # static analysis · API/vulnerability gates · shuffled/race/fuzz
 make e2e      # build current images, then run containerized node/crawler suites
 ```
 
-Every feature lands with tests; new third-party dependencies require an ADR
-first; `make verify` plus Semgrep and Trivy scans gate every commit. Build,
-lint, gosec, NilAway, apidiff, and govulncheck tools are pinned and installed
-under `.toolchain/` by `make tools`. NilAway uses an exact finding ratchet;
-analyzer color output is explicitly disabled, and full diagnostic paths keep
-the ratchet independent of runner terminal settings. The four reusable modules
-are compared with the exact previous published release, and symbol-level
-vulnerability analysis runs across all six modules. Tests also run with the
-race detector and one recorded shuffled order; every discovered fuzz target
-receives a bounded one-worker smoke run.
-Coverage is checked from raw statement totals across all six Go modules; a
-self-test proves the checker rejects a profile that display rounding would call
-100%. The two isolated testcontainers modules cover the node and crawler. The
-crawler suite also exercises the complete YagoRank promotion path with 66
-documents across 22 query clusters, split into 1 training, 1 development, and
-20 test clusters, and verifies that the promoted model changes the public top
-result. The E2E targets rebuild their required product images from the current
-working tree before starting either suite, so stale local tags cannot satisfy
-the gate.
+Every feature lands with tests, every new third-party dependency needs an ADR
+first, and `make verify` plus Dockerized Semgrep and Trivy scans gate every
+commit. All build and analysis tools are pinned and installed under
+`.toolchain/` by `make tools`. `make verify` runs lint, gosec, NilAway,
+API-compatibility checks against the previous release, govulncheck,
+race-detector and shuffled tests, fuzz smoke runs, and an exact coverage check
+across all six modules. The E2E targets rebuild both images from the working
+tree, so stale local images cannot pass the gate.
 
 ## 📚 Documentation
 
 | Doc | What's inside |
 | --- | --- |
+| [deploy/README.md](deploy/README.md) | bare-metal, package, and container installation, upgrades, and releases |
+| [configuration.md](yagonode/doc/configuration.md) | every environment variable and its default |
 | [compatibility.md](yagonode/doc/compatibility.md) | the YaCy parity matrix, endpoint by endpoint |
 | [yagorank.md](yagonode/doc/yagorank.md) | the learned ranking stack: model, features, and the tuning loop |
-| [configuration.md](yagonode/doc/configuration.md) | every environment variable and its default |
 | [specification.md](yagonode/doc/specification.md) | the node's behavior specification |
+| [yago-crawler/README.md](yago-crawler/README.md) | the crawler worker and its settings |
 | [metrics.md](yagonode/doc/metrics.md) · [slo.md](doc/slo.md) | observability and alerting |
 | [backup-restore.md](doc/backup-restore.md) | the offline backup/restore procedure |
 | [yacy-dht-interop.md](yagonode/doc/yacy-dht-interop.md) | how DHT transfer selection works |
 | [remote-crawl-policy.md](yagonode/doc/remote-crawl-policy.md) | default-deny remote crawl, trust, destination, lease, and receipt policy |
+| [Release notes](doc/releases/) | what changed in each release |
 | [ADR index](yagonode/doc/adr/README.md) | every architecture decision, including the no-gos |
 
 ## 🤝 Credits
