@@ -76,6 +76,7 @@ type node struct {
 	index           searchindex.SearchIndex
 	docScan         documentstore.StoredDocuments
 	redirectPurge   redirectCorpusPurge
+	anchorRefresh   documentstore.InboundAnchorDocumentRefresher
 	activity        *searchactivity.Tracker
 	schedules       *crawlschedule.Store
 	hostRank        *hostrank.Holder
@@ -531,6 +532,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		index:         parts.storage.searchIndex,
 		docScan:       parts.storage.storedDocuments(),
 		redirectPurge: newNodeRedirectPurge(parts.storage, parts.vault),
+		anchorRefresh: inboundAnchorRefresher(parts.storage),
 		activity:      parts.activity,
 		schedules:     parts.schedules,
 		hostRank:      parts.hostRank,

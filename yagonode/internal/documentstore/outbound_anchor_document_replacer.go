@@ -12,7 +12,6 @@ type OutboundAnchorDocumentReplacer interface {
 	ReplaceOutboundAnchorDocuments(
 		context.Context,
 		[]OutboundAnchorSet,
-		func([]Document) error,
 	) (AnchorReplacementReceipt, error)
 }
 
@@ -21,14 +20,12 @@ type ReservedOutboundAnchorDocumentReplacer interface {
 		context.Context,
 		DocumentLineageReservation,
 		[]OutboundAnchorSet,
-		func([]Document) error,
 	) (AnchorReplacementReceipt, error)
 }
 
 func (d documentVault) ReplaceOutboundAnchorDocuments(
 	ctx context.Context,
 	sets []OutboundAnchorSet,
-	visit func([]Document) error,
 ) (AnchorReplacementReceipt, error) {
 	canonical, err := canonicalOutboundAnchorSets(sets)
 	if err != nil {
@@ -51,7 +48,6 @@ func (d documentVault) ReplaceOutboundAnchorDocuments(
 		ctx,
 		reservation,
 		canonical,
-		visit,
 	)
 }
 
@@ -59,7 +55,6 @@ func (d documentVault) ReplaceReservedOutboundAnchorDocuments(
 	ctx context.Context,
 	reservation DocumentLineageReservation,
 	sets []OutboundAnchorSet,
-	visit func([]Document) error,
 ) (AnchorReplacementReceipt, error) {
 	canonical, err := canonicalOutboundAnchorSets(sets)
 	if err != nil {
@@ -77,7 +72,6 @@ func (d documentVault) ReplaceReservedOutboundAnchorDocuments(
 		ctx,
 		reservation,
 		canonical,
-		visit,
 	)
 }
 
@@ -85,13 +79,11 @@ func (d documentVault) replaceReservedOutboundAnchorDocuments(
 	ctx context.Context,
 	reservation DocumentLineageReservation,
 	sets []OutboundAnchorSet,
-	visit func([]Document) error,
 ) (AnchorReplacementReceipt, error) {
 	return d.replaceReservedOutboundAnchorDocumentsWithin(
 		ctx,
 		reservation,
 		sets,
-		visit,
 		outboundAnchorPublicationMaximumEncodedBytes,
 	)
 }

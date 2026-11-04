@@ -11,7 +11,7 @@ func targetAnchorReplacements() map[string]targetAnchorReplacement {
 	return map[string]targetAnchorReplacement{
 		"document replacement": func(t *testing.T, receiver DocumentReceiver, sourceURL, targetURL string) {
 			t.Helper()
-			replaceAndRecordVisits(
+			replaceAndRefreshInboundAnchors(
 				t,
 				receiver.(OutboundAnchorDocumentReplacer),
 				sourceURL,

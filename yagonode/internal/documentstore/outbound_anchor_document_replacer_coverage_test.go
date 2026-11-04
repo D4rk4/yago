@@ -19,13 +19,11 @@ func TestOutboundAnchorDocumentReplacerValidatesPublicInputs(t *testing.T) {
 	if _, err := documents.ReplaceOutboundAnchorDocuments(
 		t.Context(),
 		tooMany,
-		nil,
 	); err == nil {
 		t.Fatal("oversized replacement was accepted")
 	}
 	if receipt, err := documents.ReplaceOutboundAnchorDocuments(
 		t.Context(),
-		nil,
 		nil,
 	); err != nil || receipt.Busy {
 		t.Fatalf("empty replacement = %#v/%v", receipt, err)
@@ -35,7 +33,6 @@ func TestOutboundAnchorDocumentReplacerValidatesPublicInputs(t *testing.T) {
 	if _, err := documents.ReplaceOutboundAnchorDocuments(
 		canceled,
 		[]OutboundAnchorSet{{SourceURL: "https://source.example/canceled"}},
-		nil,
 	); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled replacement = %v", err)
 	}
@@ -43,13 +40,11 @@ func TestOutboundAnchorDocumentReplacerValidatesPublicInputs(t *testing.T) {
 		t.Context(),
 		nil,
 		tooMany,
-		nil,
 	); err == nil {
 		t.Fatal("oversized reserved replacement was accepted")
 	}
 	if _, err := documents.ReplaceReservedOutboundAnchorDocuments(
 		t.Context(),
-		nil,
 		nil,
 		nil,
 	); err == nil {
@@ -59,7 +54,6 @@ func TestOutboundAnchorDocumentReplacerValidatesPublicInputs(t *testing.T) {
 		t.Context(),
 		nil,
 		[]OutboundAnchorSet{{SourceURL: "https://source.example/unreserved"}},
-		nil,
 	); err == nil {
 		t.Fatal("replacement accepted a nil reservation")
 	}
@@ -80,7 +74,6 @@ func TestReservedOutboundAnchorDocumentReplacementHandlesEmptyAndRepeatedSets(t 
 		t.Context(),
 		reservation,
 		nil,
-		nil,
 	); err != nil || receipt.Busy {
 		t.Fatalf("empty reserved replacement = %#v/%v", receipt, err)
 	}
@@ -93,7 +86,6 @@ func TestReservedOutboundAnchorDocumentReplacementHandlesEmptyAndRepeatedSets(t 
 			t.Context(),
 			reservation,
 			sets,
-			nil,
 		); err != nil || receipt.Busy {
 			t.Fatalf("reserved replacement %d = %#v/%v", attempt, receipt, err)
 		}
@@ -112,7 +104,6 @@ func TestOutboundAnchorDocumentReplacementSurfacesCapacityPlanningAndPublication
 		_, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorReplacementSet("capacity"),
-			nil,
 		)
 		if !errors.Is(err, want) {
 			t.Fatalf("capacity failure = %v", err)
@@ -125,7 +116,6 @@ func TestOutboundAnchorDocumentReplacementSurfacesCapacityPlanningAndPublication
 		_, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorReplacementSet("view"),
-			nil,
 		)
 		if !errors.Is(err, want) {
 			t.Fatalf("planning view failure = %v", err)
@@ -138,7 +128,6 @@ func TestOutboundAnchorDocumentReplacementSurfacesCapacityPlanningAndPublication
 		_, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			[]OutboundAnchorSet{{SourceURL: source}},
-			nil,
 		)
 		if err == nil {
 			t.Fatal("malformed source publication was accepted")
@@ -151,7 +140,6 @@ func TestOutboundAnchorDocumentReplacementSurfacesCapacityPlanningAndPublication
 		_, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorReplacementSet("publication-write"),
-			nil,
 		)
 		if !errors.Is(err, want) {
 			t.Fatalf("publication write failure = %v", err)
@@ -171,7 +159,6 @@ func TestOutboundAnchorDocumentReplacementAllowsNilVisitorForStoredDocument(t *t
 	if _, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
 		t.Context(),
 		outboundAnchorReplacementSet("nil-visitor"),
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}

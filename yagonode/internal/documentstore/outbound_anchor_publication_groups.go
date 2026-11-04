@@ -9,7 +9,6 @@ func (d documentVault) replaceReservedOutboundAnchorDocumentsWithin(
 	ctx context.Context,
 	reservation DocumentLineageReservation,
 	sets []OutboundAnchorSet,
-	visit func([]Document) error,
 	publicationMaximumEncodedBytes int,
 ) (AnchorReplacementReceipt, error) {
 	sources := make([]string, 0, len(sets))
@@ -40,7 +39,7 @@ func (d documentVault) replaceReservedOutboundAnchorDocumentsWithin(
 	if len(replacement.finalizations) == 0 {
 		return AnchorReplacementReceipt{}, nil
 	}
-	if err := d.replaceOutboundAnchorDocumentTargets(ctx, replacement, visit); err != nil {
+	if err := d.replaceOutboundAnchorDocumentTargets(ctx, replacement); err != nil {
 		return AnchorReplacementReceipt{}, err
 	}
 	if err := d.activeDocumentLineageLease(reservation, sources); err != nil {

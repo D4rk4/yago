@@ -331,10 +331,9 @@ func assertCollectionLengthAfterPartialCommitRetry(
 	}
 	originalCommit := commitTx
 	t.Cleanup(func() { commitTx = originalCommit })
-	commits := 0
+	var commits atomic.Int32
 	commitTx = func(tx *bolt.Tx) error {
-		commits++
-		if commits == 2 {
+		if commits.Add(1) == 2 {
 			return errors.New("commit interrupted")
 		}
 

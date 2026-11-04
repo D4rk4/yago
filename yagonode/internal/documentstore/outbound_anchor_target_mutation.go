@@ -16,14 +16,15 @@ const (
 
 type outboundAnchorTargetMutation struct {
 	anchors          []AnchorText
+	clearRefresh     bool
 	deleteAnchors    bool
 	document         Document
 	documentLocation storedDocumentLocation
 	encodedBytes     int
+	refresh          *inboundAnchorRefresh
 	storeAnchors     bool
 	storeDocument    bool
 	targetURL        string
-	visitDocument    bool
 }
 
 func (d documentVault) prepareOutboundAnchorTargetMutations(
@@ -59,7 +60,7 @@ func (d documentVault) prepareOutboundAnchorTargetMutation(
 	replacement outboundAnchorDocumentReplacement,
 	targetURL string,
 ) (outboundAnchorTargetMutation, error) {
-	document, location, documentFound, err := d.readStoredDocument(tx, targetURL)
+	document, _, documentFound, err := d.readStoredDocument(tx, targetURL)
 	if err != nil {
 		return outboundAnchorTargetMutation{}, fmt.Errorf(
 			"read anchor target document: %w",
@@ -70,45 +71,29 @@ func (d documentVault) prepareOutboundAnchorTargetMutation(
 	if err != nil {
 		return outboundAnchorTargetMutation{}, fmt.Errorf("read target anchors: %w", err)
 	}
-	if !anchorsFound && documentFound {
-		anchors = document.Inlinks
-	}
-	previousAnchors := append([]AnchorText(nil), anchors...)
-	kept := make([]AnchorText, 0, len(anchors))
-	for _, anchor := range anchors {
-		if _, replaced := replacement.sources[anchor.URL]; !replaced {
-			kept = append(kept, anchor)
-		}
-	}
-	anchors = canonicalAnchorTexts(append(
-		kept,
-		replacement.contributions[targetURL]...,
-	))
-	mutation := outboundAnchorTargetMutation{
-		anchors:          anchors,
-		document:         document,
-		documentLocation: location,
-		targetURL:        targetURL,
-	}
-	anchorsChanged := !anchorsFound || !slices.Equal(previousAnchors, anchors)
-	switch {
-	case len(anchors) == 0:
-		mutation.deleteAnchors = anchorsFound
-	case anchorsChanged:
-		mutation.storeAnchors = true
-	}
-	inlinks := inlinksAfterAnchorReplacement(
+	current, pending, err := d.inlinksAfterPendingRefresh(
+		tx,
+		targetURL,
 		document.Inlinks,
-		previousAnchors,
-		replacement.sources,
 		anchors,
 	)
-	if documentFound && !slices.Equal(document.Inlinks, inlinks) {
-		mutation.document.Inlinks = inlinks
-		mutation.storeDocument = true
+	if err != nil {
+		return outboundAnchorTargetMutation{}, err
 	}
-	mutation.visitDocument = documentFound &&
-		(mutation.storeDocument || replacement.affectsTargetAnchors(targetURL, anchors))
+	if !anchorsFound && documentFound {
+		anchors = current
+	}
+	mutation := replacedTargetAnchors(replacement, targetURL, anchors, anchorsFound)
+	inlinks := inlinksAfterAnchorReplacement(
+		current,
+		anchors,
+		replacement.sources,
+		mutation.anchors,
+	)
+	if documentFound && !slices.Equal(current, inlinks) {
+		refresh := pending.merged(*inboundAnchorRefreshFor(replacement.sources))
+		mutation.refresh = &refresh
+	}
 	mutation.encodedBytes = outboundAnchorTargetMutationEncodedBytes(mutation)
 
 	return mutation, nil
@@ -121,10 +106,14 @@ func outboundAnchorTargetMutationEncodedBytes(
 	if mutation.deleteAnchors {
 		encodedBytes += len(mutation.targetURL)
 	}
+	if mutation.clearRefresh {
+		encodedBytes += len(mutation.targetURL)
+	}
 	if mutation.storeAnchors {
 		raw, _ := (anchorJSONCodec[[]AnchorText]{}).Encode(mutation.anchors)
 		encodedBytes += len(mutation.targetURL) + len(raw)
 	}
+	encodedBytes += mutation.refresh.encodedBytes(mutation.targetURL)
 	if mutation.storeDocument {
 		keyBytes := len(mutation.targetURL)
 		if mutation.documentLocation.admission > 0 {
@@ -161,12 +150,20 @@ func (d documentVault) storeOutboundAnchorTargetMutation(
 			return fmt.Errorf("store anchor target document: %w", err)
 		}
 	}
+	if mutation.clearRefresh {
+		if _, err := d.inboundAnchorRefreshes.Delete(tx, key); err != nil {
+			return fmt.Errorf("clear inbound anchor refresh: %w", err)
+		}
+	}
 
-	return nil
+	return d.storeInboundAnchorRefresh(tx, mutation.targetURL, mutation.refresh)
 }
 
 func (mutation outboundAnchorTargetMutation) storageRows() int {
 	rows := 0
+	if mutation.clearRefresh {
+		rows++
+	}
 	if mutation.deleteAnchors {
 		rows++
 	}
@@ -174,6 +171,9 @@ func (mutation outboundAnchorTargetMutation) storageRows() int {
 		rows++
 	}
 	if mutation.storeDocument {
+		rows++
+	}
+	if mutation.refresh != nil {
 		rows++
 	}
 

@@ -85,7 +85,6 @@ func replaceClusterAnchor(
 					Text:      text,
 				}},
 			}},
-			nil,
 		)
 	if err != nil {
 		t.Fatal(err)

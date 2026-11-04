@@ -31,7 +31,6 @@ func TestStoredDocumentRoundTripReconcilesCurrentAnchorsAtReceive(t *testing.T) 
 				Text:      "previous",
 			}},
 		}},
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +52,6 @@ func TestStoredDocumentRoundTripReconcilesCurrentAnchorsAtReceive(t *testing.T) 
 				Text:      "current",
 			}},
 		}},
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +112,6 @@ func TestCanonicalDocumentBoundsSubmittedInlinksAfterAnchorRowDeletion(t *testin
 				Text:      "materialized",
 			}},
 		}},
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +133,6 @@ func TestCanonicalDocumentBoundsSubmittedInlinksAfterAnchorRowDeletion(t *testin
 	if _, err := replacer.ReplaceOutboundAnchorDocuments(
 		t.Context(),
 		[]OutboundAnchorSet{{SourceURL: sourceURL}},
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +165,6 @@ func testCanonicalDocumentsReconcileCurrentAnchorsAtReceive(t *testing.T, reserv
 				Text:      "previous",
 			}},
 		}},
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +206,6 @@ func testCanonicalDocumentsReconcileCurrentAnchorsAtReceive(t *testing.T, reserv
 				Text:      "current",
 			}},
 		}},
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}

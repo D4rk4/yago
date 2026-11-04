@@ -24,9 +24,9 @@ func TestOutboundAnchorReplacementKeepsLegacyInlinksOfATargetWithoutAnchorRecord
 	}
 
 	source := "https://source.example/page"
-	visited := replaceAndRecordVisits(t, replacer, source, target)
-	if len(visited) != 1 || !documentHasInboundAnchorSource(visited[0], source) {
-		t.Fatalf("legacy target visits = %#v", visited)
+	refreshed := replaceAndRefreshInboundAnchors(t, replacer, source, target)
+	if len(refreshed) != 1 || !documentHasInboundAnchorSource(refreshed[0], source) {
+		t.Fatalf("legacy target refreshes = %#v", refreshed)
 	}
 	want := []AnchorText{legacy, {URL: source, Text: "hub"}}
 	if got := storedInlinks(t, directory, target); !slices.Equal(got, want) {
@@ -47,7 +47,7 @@ func TestOutboundAnchorReplacementRecordsLegacyInlinksItConfirms(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	replaceAndRecordVisits(t, replacer, source, target)
+	replaceAndRefreshInboundAnchors(t, replacer, source, target)
 	record, found := storedInboundAnchorRecord(t, receiver.(documentVault), target)
 	if !found || !slices.Equal(record, confirmed) {
 		t.Fatalf("confirmed legacy anchor record = %#v/%t", record, found)

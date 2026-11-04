@@ -251,6 +251,13 @@ func TestIngestThenEvictionLeavesNoGhostDocumentLineage(t *testing.T) {
 	if result.err != nil || !result.removed {
 		t.Fatalf("eviction result = %t, %v", result.removed, result.err)
 	}
+	if _, err := drainInboundAnchorRefreshes(
+		t.Context(),
+		receiver.(documentstore.InboundAnchorDocumentRefresher),
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
 	assertDocumentLineageState(
 		t,
 		directory,

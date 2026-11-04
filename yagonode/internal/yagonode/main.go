@@ -405,10 +405,15 @@ func startPeerPresenceLoops(ctx context.Context, background *sync.WaitGroup, ass
 }
 
 // startMaintenanceLoops runs the background storage-maintenance passes: periodic
-// compaction (ADR-0036 C), automatic shard growth (ADR-0037), and the
-// deferred-fsync flush that backstops NoSync mode (ADR-0038).
+// compaction (ADR-0036 C), automatic shard growth (ADR-0037), the
+// deferred-fsync flush that backstops NoSync mode (ADR-0038), and the deferred
+// inbound-anchor target refresh (ADR-0085).
 func startMaintenanceLoops(ctx context.Context, background *sync.WaitGroup, assembled node) {
-	background.Add(3)
+	background.Add(4)
+	go func() {
+		defer background.Done()
+		runInboundAnchorRefreshLoop(ctx, assembled.anchorRefresh, assembled.index)
+	}()
 	go func() {
 		defer background.Done()
 		runCompactionLoop(

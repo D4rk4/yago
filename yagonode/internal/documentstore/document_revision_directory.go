@@ -34,6 +34,15 @@ func (d documentVault) DocumentRevision(
 		if err != nil {
 			return fmt.Errorf("read document revision inbound anchors: %w", err)
 		}
+		read.Inlinks, _, err = d.inlinksAfterPendingRefresh(
+			tx,
+			normalizedURL,
+			read.Inlinks,
+			materialized,
+		)
+		if err != nil {
+			return fmt.Errorf("read document revision: %w", err)
+		}
 		document = retainDocumentRevisionInlinks(read, materialized)
 		found = true
 

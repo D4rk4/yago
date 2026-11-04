@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,7 +43,6 @@ func TestOutboundAnchorDocumentReplacementBoundsMaximumInputTransactions(t *test
 	if _, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
 		t.Context(),
 		sets,
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -85,19 +85,18 @@ func TestOutboundAnchorDocumentReplacementBoundsTransactionEncodedBytes(t *testi
 			SourceURL: "https://source.example/byte-budget",
 			Anchors:   outboundAnchorReplacementEdges(targets),
 		}},
-		func(documents []Document) error {
-			if len(documents) != outboundAnchorTargetPageSize {
-				t.Fatalf("projection page = %d documents", len(documents))
-			}
-
-			return nil
-		},
 	); err != nil {
 		t.Fatal(err)
 	}
+	replacements := outboundAnchorMutationObservations(engine.observations())
+	if len(replacements) != 1 || replacements[0].puts[orderedDocumentBucketName] != 0 {
+		t.Fatalf("anchor replacement rewrote target documents: %#v", replacements)
+	}
+	engine.clearObservations()
+	drainInboundAnchorRefreshes(t, receiver)
 	mutations := outboundAnchorMutationObservations(engine.observations())
 	if len(mutations) < 2 {
-		t.Fatalf("byte-bound mutation transactions = %d, want at least 2", len(mutations))
+		t.Fatalf("byte-bound refresh transactions = %d, want at least 2", len(mutations))
 	}
 	for index, mutation := range mutations {
 		if mutation.err != nil ||
@@ -133,19 +132,20 @@ func TestOutboundAnchorDocumentReplacementAggregatesSourcesPerTarget(t *testing.
 	if _, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
 		t.Context(),
 		sets,
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
 	mutations := outboundAnchorMutationObservations(engine.observations())
 	if len(mutations) != 1 || !slices.Equal(mutations[0].targets, []string{targetURL}) ||
 		mutations[0].puts[inboundAnchorBucket] != 1 ||
-		mutations[0].puts[orderedDocumentBucketName] != 1 {
+		mutations[0].puts[inboundAnchorRefreshBucket] != 1 ||
+		mutations[0].puts[orderedDocumentBucketName] != 0 {
 		t.Fatalf("aggregated target mutations = %#v", mutations)
 	}
 	if gets := engine.getTotal(inboundAnchorBucket, targetURL); gets != 1 {
 		t.Fatalf("target inbound reads = %d, want 1", gets)
 	}
+	drainInboundAnchorRefreshes(t, receiver)
 	document, found, err := directory.Document(t.Context(), targetURL)
 	if err != nil || !found || len(document.Inlinks) != len(sets) {
 		t.Fatalf("aggregated target document = %#v/%t/%v", document, found, err)
@@ -175,7 +175,6 @@ func TestOutboundAnchorDocumentReplacementStorageFailureReplaysFromOldPublicatio
 			SourceURL: sourceURL,
 			Anchors:   outboundAnchorReplacementEdges(oldTargets),
 		}},
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +186,6 @@ func TestOutboundAnchorDocumentReplacementStorageFailureReplaysFromOldPublicatio
 			SourceURL: sourceURL,
 			Anchors:   outboundAnchorReplacementEdges(newTargets),
 		}},
-		nil,
 	)
 	if !errors.Is(err, wantFailure) {
 		t.Fatalf("storage failure = %v", err)
@@ -204,7 +202,6 @@ func TestOutboundAnchorDocumentReplacementStorageFailureReplaysFromOldPublicatio
 			SourceURL: sourceURL,
 			Anchors:   outboundAnchorReplacementEdges(newTargets),
 		}},
-		nil,
 	); err != nil {
 		t.Fatalf("storage replay: %v", err)
 	}
@@ -212,6 +209,7 @@ func TestOutboundAnchorDocumentReplacementStorageFailureReplaysFromOldPublicatio
 	if !slices.Equal(publication.Targets, newTargets) {
 		t.Fatalf("publication after storage replay = %#v", publication.Targets)
 	}
+	drainInboundAnchorRefreshes(t, receiver)
 	removed, found, err := directory.Document(t.Context(), targets[0])
 	if err != nil || !found || documentHasInboundAnchorSource(removed, sourceURL) {
 		t.Fatalf("removed storage replay target = %#v/%t/%v", removed, found, err)
@@ -223,7 +221,7 @@ func TestOutboundAnchorDocumentReplacementStorageFailureReplaysFromOldPublicatio
 }
 
 func TestOutboundAnchorDocumentReplacementSerializesOverlappingTargetWriters(t *testing.T) {
-	directory, receiver, _ := openPagedDocuments(t)
+	directory, receiver, engine := openPagedDocuments(t)
 	targetURL := "https://target.example/overlap"
 	if _, err := receiver.Receive(
 		t.Context(),
@@ -233,17 +231,18 @@ func TestOutboundAnchorDocumentReplacementSerializesOverlappingTargetWriters(t *
 	}
 	firstEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
+	var pauseFirst sync.Once
+	engine.beforeUpdate = func() {
+		pauseFirst.Do(func() {
+			close(firstEntered)
+			<-releaseFirst
+		})
+	}
 	firstDone := make(chan error, 1)
 	go func() {
 		_, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorOverlapSet("first", targetURL),
-			func([]Document) error {
-				close(firstEntered)
-				<-releaseFirst
-
-				return nil
-			},
 		)
 		firstDone <- err
 	}()
@@ -257,7 +256,6 @@ func TestOutboundAnchorDocumentReplacementSerializesOverlappingTargetWriters(t *
 		_, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorOverlapSet("second", targetURL),
-			nil,
 		)
 		secondDone <- err
 	}()
@@ -280,6 +278,7 @@ func TestOutboundAnchorDocumentReplacementSerializesOverlappingTargetWriters(t *
 			t.Fatalf("%s overlapping writer remained blocked", identity)
 		}
 	}
+	drainInboundAnchorRefreshes(t, receiver)
 	document, found, err := directory.Document(t.Context(), targetURL)
 	if err != nil || !found || len(document.Inlinks) != 2 {
 		t.Fatalf("overlapping target = %#v/%t/%v", document, found, err)
@@ -287,7 +286,7 @@ func TestOutboundAnchorDocumentReplacementSerializesOverlappingTargetWriters(t *
 }
 
 func TestOutboundAnchorDocumentReplacementRetainsSourceLineageUntilPublication(t *testing.T) {
-	_, receiver, _ := openPagedDocuments(t)
+	_, receiver, engine := openPagedDocuments(t)
 	firstTarget := "https://target.example/source-lineage/first"
 	secondTarget := "https://target.example/source-lineage/second"
 	if _, err := receiver.Receive(t.Context(), []Document{
@@ -299,6 +298,13 @@ func TestOutboundAnchorDocumentReplacementRetainsSourceLineageUntilPublication(t
 	sourceURL := "https://source.example/serialized"
 	firstEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
+	var pauseFirst sync.Once
+	engine.beforeUpdate = func() {
+		pauseFirst.Do(func() {
+			close(firstEntered)
+			<-releaseFirst
+		})
+	}
 	firstDone := make(chan error, 1)
 	go func() {
 		_, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
@@ -307,12 +313,6 @@ func TestOutboundAnchorDocumentReplacementRetainsSourceLineageUntilPublication(t
 				SourceURL: sourceURL,
 				Anchors:   outboundAnchorReplacementEdges([]string{firstTarget}),
 			}},
-			func([]Document) error {
-				close(firstEntered)
-				<-releaseFirst
-
-				return nil
-			},
 		)
 		firstDone <- err
 	}()
@@ -329,7 +329,6 @@ func TestOutboundAnchorDocumentReplacementRetainsSourceLineageUntilPublication(t
 				SourceURL: sourceURL,
 				Anchors:   outboundAnchorReplacementEdges([]string{secondTarget}),
 			}},
-			nil,
 		)
 		secondDone <- err
 	}()
@@ -411,6 +410,16 @@ func TestOutboundAnchorMutationBatchesHonorRowsBytesAndOrder(t *testing.T) {
 			t.Fatalf("invalid mutation limits = %#v", limits)
 		}
 	}
+	oversized := []outboundAnchorTargetMutation{
+		{targetURL: "a", storeAnchors: true, encodedBytes: 4},
+		{targetURL: "oversized", storeDocument: true, encodedBytes: 10},
+		{targetURL: "c", storeAnchors: true, encodedBytes: 1},
+	}
+	batches, err = outboundAnchorTargetMutationBatches(oversized, 8, 6)
+	if err != nil || len(batches) != 3 || len(batches[1]) != 1 ||
+		batches[1][0].targetURL != "oversized" {
+		t.Fatalf("oversized mutation batches = %#v/%v", batches, err)
+	}
 	mutations[1].encodedBytes = -1
 	if _, err := outboundAnchorTargetMutationBatches(mutations, 1, 1); err == nil {
 		t.Fatal("negative mutation size was accepted")
@@ -437,7 +446,7 @@ func TestOutboundAnchorMutationBatchesRejectNegativeEncodedBytes(t *testing.T) {
 		{targetURL: "b", storeAnchors: true, encodedBytes: -1},
 	}
 	if _, err := outboundAnchorTargetMutationBatches(mutations, 8, 16); err == nil ||
-		!strings.Contains(err.Error(), "byte limit exceeded") {
+		!strings.Contains(err.Error(), "must not be negative") {
 		t.Fatalf("negative mutation size error = %v", err)
 	}
 	// The same shape with a legal size batches cleanly, so the refusal above is

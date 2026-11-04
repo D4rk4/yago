@@ -115,7 +115,10 @@ content-change timestamps are stored separately. Fetch time is never presented
 as publication time, future dates are rejected, and an unchanged recrawl cannot
 refresh a page's rank.
 
-Inbound anchors are replaced atomically when a source page is recrawled. Links
+Inbound anchors are replaced atomically when a source page is recrawled. A
+target page picks up new anchor text through a background refresh that runs
+every ten seconds and re-indexes the page once for all sources that changed in
+the meantime. Links
 marked `nofollow`, `ugc`, or `sponsored` do not contribute ranking anchor text or
 authority. Domain authority uses a bounded in-process link graph with PageRank
 and TrustRank-style teleport evidence, distinct-source limits, and confidence.

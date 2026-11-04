@@ -149,6 +149,10 @@ func Open(v *vault.Vault) (DocumentDirectory, DocumentReceiver, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	inboundAnchorRefreshes, err := registerInboundAnchorRefreshes(v)
+	if err != nil {
+		return nil, nil, err
+	}
 	admissionKeys, err := openStoredDocumentAdmissionKeys(
 		v,
 		documentAdmissions,
@@ -158,18 +162,19 @@ func Open(v *vault.Vault) (DocumentDirectory, DocumentReceiver, error) {
 	}
 
 	documents := documentVault{
-		vault:                v,
-		legacyDocuments:      legacyDocuments,
-		orderedDocuments:     orderedDocuments,
-		documentLocations:    documentLocations,
-		inboundAnchors:       inboundAnchors,
-		outboundTargets:      outboundTargets,
-		outboundPublications: outboundPublications,
-		scanAdmission:        make(chan struct{}, 1),
-		writeBoundary:        newStoredDocumentWriteBoundary(),
-		admissionKeys:        admissionKeys,
-		urlBoundaries:        &storedDocumentURLBoundaries{},
-		outboundBoundaries:   &storedDocumentURLBoundaries{},
+		vault:                  v,
+		legacyDocuments:        legacyDocuments,
+		orderedDocuments:       orderedDocuments,
+		documentLocations:      documentLocations,
+		inboundAnchors:         inboundAnchors,
+		outboundTargets:        outboundTargets,
+		outboundPublications:   outboundPublications,
+		inboundAnchorRefreshes: inboundAnchorRefreshes,
+		scanAdmission:          make(chan struct{}, 1),
+		writeBoundary:          newStoredDocumentWriteBoundary(),
+		admissionKeys:          admissionKeys,
+		urlBoundaries:          &storedDocumentURLBoundaries{},
+		outboundBoundaries:     &storedDocumentURLBoundaries{},
 	}
 	return documents, documents, nil
 }

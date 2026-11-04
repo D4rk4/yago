@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 
 	bolt "go.etcd.io/bbolt"
@@ -52,10 +53,10 @@ func TestShardRWIRecoverySurvivesLaterLiveShardCommitFailureAndReopen(t *testing
 
 	realCommit := commitTx
 	t.Cleanup(func() { commitTx = realCommit })
-	commits := 0
+	var commits atomic.Int32
 	commitFailure := errors.New("injected later live-shard commit failure")
 	commitTx = func(tx *bolt.Tx) error {
-		commits++
+		commits.Add(1)
 		if tx.DB() == shards.shards[rows[1].liveShard] {
 			return commitFailure
 		}
@@ -68,8 +69,8 @@ func TestShardRWIRecoverySurvivesLaterLiveShardCommitFailureAndReopen(t *testing
 	) {
 		t.Fatalf("delete live rows error = %v, want %v", err, commitFailure)
 	}
-	if commits != 2 {
-		t.Fatalf("live deletion commits = %d, want 2", commits)
+	if commits.Load() != 2 {
+		t.Fatalf("live deletion commits = %d, want 2", commits.Load())
 	}
 	commitTx = realCommit
 	if err := storage.Close(); err != nil {
@@ -116,10 +117,10 @@ func TestShardRWIRecoverySurvivesPartialJournalCommitAndReopen(t *testing.T) {
 
 	realCommit := commitTx
 	t.Cleanup(func() { commitTx = realCommit })
-	commits := 0
+	var commits atomic.Int32
 	commitFailure := errors.New("injected later journal-shard commit failure")
 	commitTx = func(tx *bolt.Tx) error {
-		commits++
+		commits.Add(1)
 		if tx.DB() == shards.shards[rows[1].journalShard] {
 			return commitFailure
 		}
@@ -130,8 +131,8 @@ func TestShardRWIRecoverySurvivesPartialJournalCommitAndReopen(t *testing.T) {
 	if !errors.Is(err, commitFailure) {
 		t.Fatalf("journal rows error = %v, want %v", err, commitFailure)
 	}
-	if commits != 2 {
-		t.Fatalf("journal commits = %d, want 2", commits)
+	if commits.Load() != 2 {
+		t.Fatalf("journal commits = %d, want 2", commits.Load())
 	}
 	commitTx = realCommit
 	if err := storage.Close(); err != nil {

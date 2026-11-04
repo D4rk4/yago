@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -22,7 +23,6 @@ func TestOutboundAnchorPublicationGroupsAdaptMaximumLongURLReplacement(t *testin
 	if _, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
 		t.Context(),
 		sets,
-		nil,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,6 @@ func TestOutboundAnchorPublicationGroupsValidateBudgetAndPreserveOrder(t *testin
 		t.Context(),
 		reservation,
 		sets[:1],
-		nil,
 		0,
 	); err == nil {
 		t.Fatal("replacement accepted zero publication budget")
@@ -137,7 +136,6 @@ func TestOutboundAnchorPublicationGroupFailureRetainsPendingPublicationsAndRepla
 		t.Context(),
 		reservation,
 		sets,
-		nil,
 		maximumEncodedBytes,
 	)
 	if !errors.Is(err, wantFailure) {
@@ -156,7 +154,6 @@ func TestOutboundAnchorPublicationGroupFailureRetainsPendingPublicationsAndRepla
 		t.Context(),
 		reservation,
 		sets,
-		nil,
 		maximumEncodedBytes,
 	); err != nil {
 		t.Fatalf("publication group replay: %v", err)
@@ -193,7 +190,6 @@ func TestOutboundAnchorPublicationGroupsRequireLineageBetweenTransactions(t *tes
 		t.Context(),
 		reservation,
 		sets,
-		nil,
 		outboundAnchorFinalizationEncodedByteCeiling(
 			outboundAnchorPublicationGroupFinalizations(sets)[0],
 		),
@@ -222,7 +218,7 @@ func TestOutboundAnchorPublicationGroupsRequireLineageBetweenTransactions(t *tes
 }
 
 func TestOutboundAnchorPublicationGroupsRetainAllSourceLineages(t *testing.T) {
-	_, receiver := openDocuments(t)
+	_, receiver, engine := openPagedDocuments(t)
 	documents := receiver.(documentVault)
 	sets := []OutboundAnchorSet{
 		outboundAnchorPublicationGroupSet("00", "00"),
@@ -249,7 +245,8 @@ func TestOutboundAnchorPublicationGroupsRetainAllSourceLineages(t *testing.T) {
 	maximumEncodedBytes := outboundAnchorFinalizationEncodedByteCeiling(
 		outboundAnchorPublicationGroupFinalizations(sets)[0],
 	)
-	firstEntered, releaseFirst, firstDone := startPausedOutboundAnchorReplacement(
+	firstEntered, releaseFirst := pauseFirstPagedDocumentUpdate(engine)
+	firstDone := startOutboundAnchorPublicationReplacement(
 		t.Context(),
 		documents,
 		reservation,
@@ -478,7 +475,8 @@ func assertOutboundAnchorAggregatedTargetMutation(
 		mutationTransactions++
 		if !slices.Equal(observation.targets, []string{targetURL}) ||
 			observation.puts[inboundAnchorBucket] != 1 ||
-			observation.puts[orderedDocumentBucketName] != 1 {
+			observation.puts[inboundAnchorRefreshBucket] != 1 ||
+			observation.puts[orderedDocumentBucketName] != 0 {
 			t.Fatalf("aggregated target transaction = %#v", observation)
 		}
 	}
@@ -490,6 +488,7 @@ func assertOutboundAnchorAggregatedTargetMutation(
 			targetReads,
 		)
 	}
+	drainInboundAnchorRefreshes(t, directory.(DocumentReceiver))
 	document, found, err := directory.Document(t.Context(), targetURL)
 	if err != nil || !found || len(document.Inlinks) != wantInlinks {
 		t.Fatalf(
@@ -519,39 +518,48 @@ func assertOutboundAnchorPublicationReplay(
 			t.Fatalf("publication %d after replay = %#v", index, publication.Targets)
 		}
 	}
+	drainInboundAnchorRefreshes(t, directory.(DocumentReceiver))
 	document, found, err := directory.Document(t.Context(), targetURL)
 	if err != nil || !found || len(document.Inlinks) != len(sets) {
 		t.Fatalf("target after replay = %#v/%t/%v", document, found, err)
 	}
 }
 
-func startPausedOutboundAnchorReplacement(
+func pauseFirstPagedDocumentUpdate(
+	engine *pagedDocumentEngine,
+) (<-chan struct{}, chan<- struct{}) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var pauseFirst sync.Once
+	engine.beforeUpdate = func() {
+		pauseFirst.Do(func() {
+			close(entered)
+			<-release
+		})
+	}
+
+	return entered, release
+}
+
+func startOutboundAnchorPublicationReplacement(
 	ctx context.Context,
 	documents documentVault,
 	reservation DocumentLineageReservation,
 	sets []OutboundAnchorSet,
 	maximumEncodedBytes int,
-) (<-chan struct{}, chan<- struct{}, <-chan error) {
-	entered := make(chan struct{})
-	release := make(chan struct{})
+) <-chan error {
 	done := make(chan error, 1)
 	go func() {
 		_, err := documents.replaceReservedOutboundAnchorDocumentsWithin(
 			ctx,
 			reservation,
 			sets,
-			func([]Document) error {
-				close(entered)
-				<-release
-
-				return nil
-			},
 			maximumEncodedBytes,
 		)
 		done <- err
 	}()
 
-	return entered, release, done
+	return done
 }
 
 func startOutboundAnchorSourceReplacement(
@@ -571,7 +579,6 @@ func startOutboundAnchorSourceReplacement(
 					Text:      "competing",
 				}},
 			}},
-			nil,
 		)
 		done <- err
 	}()

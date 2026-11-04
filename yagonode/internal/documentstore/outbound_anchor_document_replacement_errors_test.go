@@ -30,7 +30,6 @@ func TestOutboundAnchorDocumentReplacementRejectsPublicationBudgetBeforeMutation
 		t.Context(),
 		reservation,
 		sets,
-		nil,
 		1,
 	); err == nil {
 		t.Fatal("undersized publication budget was accepted")
@@ -43,7 +42,7 @@ func TestOutboundAnchorDocumentReplacementRejectsPublicationBudgetBeforeMutation
 func TestReservedOutboundAnchorDocumentReplacementRequiresLineageThroughPublication(
 	t *testing.T,
 ) {
-	_, receiver := openDocuments(t)
+	_, receiver, engine := openOutboundAnchorObservedDocuments(t)
 	documents := receiver.(documentVault)
 	sourceURL := "https://source.example/released-before-publication"
 	targetURL := "https://target.example/released-before-publication"
@@ -57,6 +56,18 @@ func TestReservedOutboundAnchorDocumentReplacementRequiresLineageThroughPublicat
 	if err != nil {
 		t.Fatal(err)
 	}
+	released := false
+	t.Cleanup(func() {
+		if !released {
+			documents.ReleaseDocumentLineages(reservation)
+		}
+	})
+	engine.observeAfterUpdate(func(observation outboundAnchorTransactionObservation) {
+		if _, mutated := observation.buckets[inboundAnchorBucket]; mutated && !released {
+			documents.ReleaseDocumentLineages(reservation)
+			released = true
+		}
+	})
 	_, err = documents.ReplaceReservedOutboundAnchorDocuments(
 		t.Context(),
 		reservation,
@@ -64,14 +75,9 @@ func TestReservedOutboundAnchorDocumentReplacementRequiresLineageThroughPublicat
 			SourceURL: sourceURL,
 			Anchors:   outboundAnchorReplacementEdges([]string{targetURL}),
 		}},
-		func([]Document) error {
-			documents.ReleaseDocumentLineages(reservation)
-
-			return nil
-		},
 	)
-	if err == nil {
-		t.Fatal("replacement published after its source lineage was released")
+	if err == nil || !released {
+		t.Fatalf("replacement after source lineage release = %t/%v", released, err)
 	}
 	publication := readOutboundAnchorReplacementPublication(t, documents, sourceURL)
 	if len(publication.Targets) != 0 {
@@ -87,7 +93,6 @@ func TestOutboundAnchorTargetPreparationSurfacesStoredRowFailures(t *testing.T) 
 		_, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorErrorSet("location", targetURL),
-			nil,
 		)
 		if err == nil {
 			t.Fatal("corrupt document location was accepted")
@@ -100,7 +105,6 @@ func TestOutboundAnchorTargetPreparationSurfacesStoredRowFailures(t *testing.T) 
 		_, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorErrorSet("inbound", targetURL),
-			nil,
 		)
 		if err == nil {
 			t.Fatal("corrupt inbound anchors were accepted")
@@ -116,7 +120,6 @@ func TestOutboundAnchorTargetMutationSurfacesDeleteAndDocumentFailures(t *testin
 		if _, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorErrorSet("delete-failure", targetURL),
-			nil,
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -125,7 +128,6 @@ func TestOutboundAnchorTargetMutationSurfacesDeleteAndDocumentFailures(t *testin
 		_, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			[]OutboundAnchorSet{{SourceURL: sourceURL}},
-			nil,
 		)
 		if !errors.Is(err, want) {
 			t.Fatalf("target delete failure = %v", err)
@@ -140,15 +142,66 @@ func TestOutboundAnchorTargetMutationSurfacesDeleteAndDocumentFailures(t *testin
 		); err != nil {
 			t.Fatal(err)
 		}
-		want := errors.New("target document failed")
-		engine.putErrors[orderedDocumentBucketName] = want
-		_, err := documents.ReplaceOutboundAnchorDocuments(
+		if _, err := documents.ReplaceOutboundAnchorDocuments(
 			t.Context(),
 			outboundAnchorErrorSet("document-failure", targetURL),
-			nil,
-		)
-		if !errors.Is(err, want) {
+		); err != nil {
+			t.Fatal(err)
+		}
+		want := errors.New("target document failed")
+		engine.putErrors[orderedDocumentBucketName] = want
+		if _, err := documents.RefreshInboundAnchorDocuments(
+			t.Context(),
+			outboundAnchorTargetPageSize,
+			func([]Document) error { return nil },
+		); !errors.Is(err, want) {
 			t.Fatalf("target document failure = %v", err)
+		}
+	})
+}
+
+func TestInboundAnchorRefreshSurfacesMarkAndClearFailures(t *testing.T) {
+	t.Run("refresh mark", func(t *testing.T) {
+		_, documents, engine := openDocumentStorageFaultVault(t)
+		targetURL := "https://target.example/refresh-mark-failure"
+		if _, err := documents.Receive(
+			t.Context(),
+			[]Document{{NormalizedURL: targetURL}},
+		); err != nil {
+			t.Fatal(err)
+		}
+		want := errors.New("refresh mark failed")
+		engine.putErrors[inboundAnchorRefreshBucket] = want
+		if _, err := documents.ReplaceOutboundAnchorDocuments(
+			t.Context(),
+			outboundAnchorErrorSet("refresh-mark-failure", targetURL),
+		); !errors.Is(err, want) {
+			t.Fatalf("refresh mark failure = %v", err)
+		}
+	})
+	t.Run("refresh clear", func(t *testing.T) {
+		_, documents, engine := openDocumentStorageFaultVault(t)
+		targetURL := "https://target.example/refresh-clear-failure"
+		if _, err := documents.Receive(
+			t.Context(),
+			[]Document{{NormalizedURL: targetURL}},
+		); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := documents.ReplaceOutboundAnchorDocuments(
+			t.Context(),
+			outboundAnchorErrorSet("refresh-clear-failure", targetURL),
+		); err != nil {
+			t.Fatal(err)
+		}
+		want := errors.New("refresh clear failed")
+		engine.deleteErrors[inboundAnchorRefreshBucket] = want
+		if _, err := documents.RefreshInboundAnchorDocuments(
+			t.Context(),
+			outboundAnchorTargetPageSize,
+			func([]Document) error { return nil },
+		); !errors.Is(err, want) {
+			t.Fatalf("refresh clear failure = %v", err)
 		}
 	})
 }
@@ -163,7 +216,6 @@ func TestOutboundAnchorTargetPageSurfacesAdmissionAndLockFailures(t *testing.T) 
 		canceled,
 		replacement,
 		[]string{"https://target.example/canceled-write"},
-		nil,
 	); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled write admission = %v", err)
 	}
@@ -179,53 +231,40 @@ func TestOutboundAnchorTargetPageSurfacesAdmissionAndLockFailures(t *testing.T) 
 		deadline,
 		replacement,
 		[]string{targetURL},
-		nil,
 	); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("contended target page = %v", err)
 	}
 }
 
-func TestOutboundAnchorTargetPageRejectsOversizedMutation(t *testing.T) {
-	_, receiver := openDocuments(t)
-	targetURL := "https://target.example/oversized-mutation"
-	if _, err := receiver.Receive(t.Context(), []Document{{
-		NormalizedURL: targetURL,
-		Title: strings.Repeat(
-			"x",
-			outboundAnchorMutationMaximumEncodedBytes+1,
-		),
-	}}); err != nil {
+func TestInboundAnchorRefreshStoresOversizedDocumentInItsOwnTransaction(t *testing.T) {
+	directory, receiver := openDocuments(t)
+	oversized := "https://target.example/oversized-mutation"
+	ordinary := "https://target.example/ordinary-mutation"
+	if _, err := receiver.Receive(t.Context(), []Document{
+		{
+			NormalizedURL: oversized,
+			Title:         strings.Repeat("x", outboundAnchorMutationMaximumEncodedBytes+1),
+		},
+		{NormalizedURL: ordinary},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
-		t.Context(),
-		outboundAnchorErrorSet("oversized-mutation", targetURL),
-		nil,
-	)
-	if err == nil {
-		t.Fatal("oversized target mutation was accepted")
-	}
-}
-
-func TestOutboundAnchorTargetPageSkipsVisitorWithoutStoredDocuments(t *testing.T) {
-	_, receiver := openDocuments(t)
-	visits := 0
+	sourceURL := "https://source.example/oversized-mutation"
 	if _, err := receiver.(OutboundAnchorDocumentReplacer).ReplaceOutboundAnchorDocuments(
 		t.Context(),
-		outboundAnchorErrorSet(
-			"absent-target",
-			"https://target.example/absent-target",
-		),
-		func([]Document) error {
-			visits++
-
-			return nil
-		},
+		[]OutboundAnchorSet{{
+			SourceURL: sourceURL,
+			Anchors:   outboundAnchorReplacementEdges([]string{oversized, ordinary}),
+		}},
 	); err != nil {
 		t.Fatal(err)
 	}
-	if visits != 0 {
-		t.Fatalf("absent target visits = %d", visits)
+	drainInboundAnchorRefreshes(t, receiver)
+	for _, targetURL := range []string{oversized, ordinary} {
+		stored, found, err := directory.Document(t.Context(), targetURL)
+		if err != nil || !found || !documentHasInboundAnchorSource(stored, sourceURL) {
+			t.Fatalf("refreshed %s = %t/%v", targetURL, found, err)
+		}
 	}
 }
 

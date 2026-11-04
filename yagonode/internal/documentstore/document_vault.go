@@ -12,18 +12,19 @@ import (
 const maxExtractedTextBytes = 1 << 20
 
 type documentVault struct {
-	vault                *vault.Vault
-	legacyDocuments      *vault.Keyspace[Document]
-	orderedDocuments     *vault.Keyspace[Document]
-	documentLocations    *vault.Keyspace[uint64]
-	inboundAnchors       *vault.Keyspace[[]AnchorText]
-	outboundTargets      *vault.Keyspace[[]string]
-	outboundPublications *vault.Keyspace[outboundAnchorPublication]
-	scanAdmission        chan struct{}
-	writeBoundary        *storedDocumentWriteBoundary
-	admissionKeys        *storedDocumentAdmissionKeys
-	urlBoundaries        *storedDocumentURLBoundaries
-	outboundBoundaries   *storedDocumentURLBoundaries
+	vault                  *vault.Vault
+	legacyDocuments        *vault.Keyspace[Document]
+	orderedDocuments       *vault.Keyspace[Document]
+	documentLocations      *vault.Keyspace[uint64]
+	inboundAnchors         *vault.Keyspace[[]AnchorText]
+	outboundTargets        *vault.Keyspace[[]string]
+	outboundPublications   *vault.Keyspace[outboundAnchorPublication]
+	inboundAnchorRefreshes *vault.Keyspace[inboundAnchorRefresh]
+	scanAdmission          chan struct{}
+	writeBoundary          *storedDocumentWriteBoundary
+	admissionKeys          *storedDocumentAdmissionKeys
+	urlBoundaries          *storedDocumentURLBoundaries
+	outboundBoundaries     *storedDocumentURLBoundaries
 }
 
 type stagedStoredDocument struct {

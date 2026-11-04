@@ -605,23 +605,8 @@ func (t *shardTxn) commit() error {
 			return fmt.Errorf("validate shard %d before commit: %w", shard+1, err)
 		}
 	}
-	var failed error
-	for _, tx := range t.open {
-		if tx == nil {
-			continue
-		}
-		if failed != nil || !holdsPendingWrites(tx) {
-			_ = tx.Rollback()
 
-			continue
-		}
-		if err := commitTx(tx); err != nil {
-			failed = err
-			_ = tx.Rollback()
-		}
-	}
-
-	return failed
+	return commitShardTransactions(t.open)
 }
 
 func (t *shardTxn) rollback() {

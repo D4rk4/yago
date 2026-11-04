@@ -103,3 +103,4 @@ version from `PATH`.
 | [0082](0082-reject-reachable-go-vulnerabilities.md) | Reject reachable Go vulnerabilities | Accepted |
 | [0083](0083-shuffle-tests-and-smoke-fuzz-targets.md) | Shuffle tests and smoke fuzz targets | Accepted |
 | [0084](0084-supplement-incomplete-primary-search-with-bounded-web-results.md) | Supplement incomplete primary search with bounded web results | Accepted |
+| [0085](0085-defer-inbound-anchor-target-refresh-and-commit-shards-concurrently.md) | Defer inbound-anchor target refresh and commit shards concurrently | Accepted |

@@ -10,7 +10,6 @@ import (
 func (d documentVault) replaceOutboundAnchorDocumentTargets(
 	ctx context.Context,
 	replacement outboundAnchorDocumentReplacement,
-	visit func([]Document) error,
 ) error {
 	for first := 0; first < len(replacement.targets); first += outboundAnchorTargetPageSize {
 		last := min(first+outboundAnchorTargetPageSize, len(replacement.targets))
@@ -18,7 +17,6 @@ func (d documentVault) replaceOutboundAnchorDocumentTargets(
 			ctx,
 			replacement,
 			replacement.targets[first:last],
-			visit,
 		); err != nil {
 			return err
 		}
@@ -31,7 +29,6 @@ func (d documentVault) replaceOutboundAnchorDocumentTargetPage(
 	ctx context.Context,
 	replacement outboundAnchorDocumentReplacement,
 	targetURLs []string,
-	visit func([]Document) error,
 ) error {
 	releaseWrite, err := d.enterStoredDocumentWrite(ctx)
 	if err != nil {
@@ -51,6 +48,14 @@ func (d documentVault) replaceOutboundAnchorDocumentTargetPage(
 	if err != nil {
 		return err
 	}
+
+	return d.storeOutboundAnchorTargetMutations(ctx, mutations)
+}
+
+func (d documentVault) storeOutboundAnchorTargetMutations(
+	ctx context.Context,
+	mutations []outboundAnchorTargetMutation,
+) error {
 	batches, err := outboundAnchorTargetMutationBatches(
 		mutations,
 		outboundAnchorMutationMaximumRows,
@@ -63,22 +68,6 @@ func (d documentVault) replaceOutboundAnchorDocumentTargetPage(
 		if err := d.storeOutboundAnchorTargetMutationBatch(ctx, batch); err != nil {
 			return err
 		}
-	}
-	releaseWrite()
-	if visit == nil {
-		return nil
-	}
-	documents := make([]Document, 0, len(mutations))
-	for _, mutation := range mutations {
-		if mutation.visitDocument {
-			documents = append(documents, normalizedDocument(mutation.document))
-		}
-	}
-	if len(documents) == 0 {
-		return nil
-	}
-	if err := visit(documents); err != nil {
-		return fmt.Errorf("visit outbound anchor documents: %w", err)
 	}
 
 	return nil
@@ -104,8 +93,8 @@ func outboundAnchorTargetMutationBatches(
 		if mutationRows > maximumRows {
 			return nil, fmt.Errorf("outbound anchor target mutation row limit exceeded")
 		}
-		if mutation.encodedBytes < 0 || mutation.encodedBytes > maximumEncodedBytes {
-			return nil, fmt.Errorf("outbound anchor target mutation byte limit exceeded")
+		if mutation.encodedBytes < 0 {
+			return nil, fmt.Errorf("outbound anchor target mutation size must not be negative")
 		}
 		if rows+mutationRows > maximumRows ||
 			len(batch) > 0 && encodedBytes+mutation.encodedBytes > maximumEncodedBytes {

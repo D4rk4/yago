@@ -80,7 +80,6 @@ type outboundAnchorDocumentReplacementScript struct {
 	outboundAnchorChunkScript
 	groups        [][]documentstore.OutboundAnchorSet
 	reservedCalls int
-	documents     []documentstore.Document
 	receipt       documentstore.AnchorReplacementReceipt
 	err           error
 }
@@ -98,32 +97,24 @@ func (s *outboundAnchorDocumentReplacementScript) ReplaceReservedOutboundAnchors
 func (s *outboundAnchorDocumentReplacementScript) ReplaceOutboundAnchorDocuments(
 	_ context.Context,
 	sets []documentstore.OutboundAnchorSet,
-	visit func([]documentstore.Document) error,
 ) (documentstore.AnchorReplacementReceipt, error) {
-	return s.replaceDocuments(sets, visit)
+	return s.replaceDocuments(sets)
 }
 
 func (s *outboundAnchorDocumentReplacementScript) ReplaceReservedOutboundAnchorDocuments(
 	_ context.Context,
 	_ documentstore.DocumentLineageReservation,
 	sets []documentstore.OutboundAnchorSet,
-	visit func([]documentstore.Document) error,
 ) (documentstore.AnchorReplacementReceipt, error) {
-	return s.replaceDocuments(sets, visit)
+	return s.replaceDocuments(sets)
 }
 
 func (s *outboundAnchorDocumentReplacementScript) replaceDocuments(
 	sets []documentstore.OutboundAnchorSet,
-	visit func([]documentstore.Document) error,
 ) (documentstore.AnchorReplacementReceipt, error) {
 	s.groups = append(s.groups, append([]documentstore.OutboundAnchorSet(nil), sets...))
 	if s.err != nil {
 		return documentstore.AnchorReplacementReceipt{}, s.err
-	}
-	if len(s.documents) > 0 {
-		if err := visit(s.documents); err != nil {
-			return documentstore.AnchorReplacementReceipt{}, err
-		}
 	}
 
 	return s.receipt, nil
@@ -146,9 +137,7 @@ func TestReservedOutboundAnchorDocumentReplacementChunksSixtyFourSources(t *test
 		t.Fatal(err)
 	}
 	defer lineages.ReleaseDocumentLineages(reservation)
-	script := &outboundAnchorDocumentReplacementScript{documents: []documentstore.Document{{
-		NormalizedURL: "https://target.example/",
-	}}}
+	script := &outboundAnchorDocumentReplacementScript{}
 	index := &anchorIndexScript{}
 	consumer := &IngestConsumer{
 		anchors:         script,
@@ -169,8 +158,8 @@ func TestReservedOutboundAnchorDocumentReplacementChunksSixtyFourSources(t *test
 			len(script.outboundAnchorChunkScript.groups),
 		)
 	}
-	if len(index.docs) != 4 {
-		t.Fatalf("projected index documents = %d, want 4", len(index.docs))
+	if len(index.docs) != 0 {
+		t.Fatalf("anchor replacement reindexed %d target documents, want 0", len(index.docs))
 	}
 }
 
@@ -181,30 +170,20 @@ func TestOutboundAnchorDocumentReplacementRedeliversFailures(t *testing.T) {
 		"anchor",
 	)
 	tests := map[string]struct {
-		receipt   documentstore.AnchorReplacementReceipt
-		storeErr  error
-		indexErr  error
-		documents []documentstore.Document
+		receipt  documentstore.AnchorReplacementReceipt
+		storeErr error
 	}{
 		"busy":  {receipt: documentstore.AnchorReplacementReceipt{Busy: true}},
 		"store": {storeErr: errors.New("replacement failed")},
-		"index": {
-			indexErr: errors.New("index failed"),
-			documents: []documentstore.Document{{
-				NormalizedURL: "https://target.example/",
-			}},
-		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			script := &outboundAnchorDocumentReplacementScript{
-				documents: test.documents,
-				receipt:   test.receipt,
-				err:       test.storeErr,
+				receipt: test.receipt,
+				err:     test.storeErr,
 			}
 			consumer := &IngestConsumer{
 				anchors:  script,
-				index:    &anchorIndexScript{err: test.indexErr},
 				observer: noopIngestObserver{},
 			}
 			naked := false
@@ -233,7 +212,6 @@ type failingOutboundAnchorChunkReceiver struct {
 	failAt                   int
 	calls                    int
 	groupSizes               []int
-	projectionCalls          int
 }
 
 func (r *failingOutboundAnchorChunkReceiver) ReplaceOutboundAnchors(
@@ -271,10 +249,9 @@ func (r *failingOutboundAnchorChunkReceiver) replace(
 func (r *failingOutboundAnchorChunkReceiver) ReplaceOutboundAnchorDocuments(
 	ctx context.Context,
 	sets []documentstore.OutboundAnchorSet,
-	visit func([]documentstore.Document) error,
 ) (documentstore.AnchorReplacementReceipt, error) {
 	return r.replaceDocuments(sets, func() (documentstore.AnchorReplacementReceipt, error) {
-		return r.documentReplacer.ReplaceOutboundAnchorDocuments(ctx, sets, r.recordVisit(visit))
+		return r.documentReplacer.ReplaceOutboundAnchorDocuments(ctx, sets)
 	})
 }
 
@@ -282,14 +259,12 @@ func (r *failingOutboundAnchorChunkReceiver) ReplaceReservedOutboundAnchorDocume
 	ctx context.Context,
 	reservation documentstore.DocumentLineageReservation,
 	sets []documentstore.OutboundAnchorSet,
-	visit func([]documentstore.Document) error,
 ) (documentstore.AnchorReplacementReceipt, error) {
 	return r.replaceDocuments(sets, func() (documentstore.AnchorReplacementReceipt, error) {
 		return r.reservedDocumentReplacer.ReplaceReservedOutboundAnchorDocuments(
 			ctx,
 			reservation,
 			sets,
-			r.recordVisit(visit),
 		)
 	})
 }
@@ -305,16 +280,6 @@ func (r *failingOutboundAnchorChunkReceiver) replaceDocuments(
 	}
 
 	return replace()
-}
-
-func (r *failingOutboundAnchorChunkReceiver) recordVisit(
-	visit func([]documentstore.Document) error,
-) func([]documentstore.Document) error {
-	return func(documents []documentstore.Document) error {
-		r.projectionCalls++
-
-		return visit(documents)
-	}
 }
 
 func (r *failingOutboundAnchorChunkReceiver) VisitOutboundAnchorDocuments(
@@ -374,6 +339,7 @@ func (r *outboundAnchorChunkPostingReceiver) Receive(
 
 type outboundAnchorChunkReplayEvidence struct {
 	directory  documentstore.DocumentDirectory
+	refresher  documentstore.InboundAnchorDocumentRefresher
 	target     string
 	wrapper    *failingOutboundAnchorChunkReceiver
 	urls       *outboundAnchorChunkURLReceiver
@@ -421,6 +387,7 @@ func TestLaterOutboundAnchorChunkFailureRedeliversAndReplaysSixtyFourSources(t *
 	deliveries, sources := outboundAnchorChunkDeliveries(64, target, &acked, &naked)
 	evidence := outboundAnchorChunkReplayEvidence{
 		directory:  directory,
+		refresher:  documents.(documentstore.InboundAnchorDocumentRefresher),
 		target:     target,
 		wrapper:    wrapper,
 		urls:       urls,
@@ -474,7 +441,7 @@ func requirePartialOutboundAnchorChunkAttempt(
 			evidence.wrapper.groupSizes,
 		)
 	}
-	stored, found, err := evidence.directory.Document(t.Context(), evidence.target)
+	stored, found, err := refreshedOutboundAnchorChunkTarget(t, evidence)
 	if err != nil || !found || len(stored.Inlinks) != 32 {
 		t.Fatalf(
 			"partially committed target = %t/%d/%v, want true/32/nil",
@@ -522,10 +489,7 @@ func requireCompletedOutboundAnchorChunkReplay(
 			)
 		}
 	}
-	if evidence.wrapper.projectionCalls != 4 {
-		t.Fatalf("anchor projection calls = %d, want 4", evidence.wrapper.projectionCalls)
-	}
-	stored, found, err := evidence.directory.Document(t.Context(), evidence.target)
+	stored, found, err := refreshedOutboundAnchorChunkTarget(t, evidence)
 	if err != nil || !found {
 		t.Fatalf("target document found/error = %t/%v", found, err)
 	}
@@ -539,6 +503,27 @@ func requireCompletedOutboundAnchorChunkReplay(
 	if len(linkedSources) != len(evidence.sources) {
 		t.Fatalf("distinct target inlinks = %d, want %d", len(linkedSources), len(evidence.sources))
 	}
+}
+
+func refreshedOutboundAnchorChunkTarget(
+	t *testing.T,
+	evidence outboundAnchorChunkReplayEvidence,
+) (documentstore.Document, bool, error) {
+	t.Helper()
+	if _, err := evidence.refresher.RefreshInboundAnchorDocuments(
+		t.Context(),
+		len(evidence.sources),
+		func([]documentstore.Document) error { return nil },
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	document, found, err := evidence.directory.Document(t.Context(), evidence.target)
+	if err != nil {
+		return documentstore.Document{}, false, fmt.Errorf("read replayed target: %w", err)
+	}
+
+	return document, found, nil
 }
 
 func outboundAnchorChunkDeliveries(

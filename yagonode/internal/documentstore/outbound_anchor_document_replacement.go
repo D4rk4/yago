@@ -11,11 +11,10 @@ import (
 const outboundAnchorPublicationMaximumEncodedBytes = 64 << 20
 
 type outboundAnchorDocumentReplacement struct {
-	contributions           map[string][]AnchorText
-	finalizations           []OutboundAnchorFinalization
-	previouslyLinkedTargets map[string]struct{}
-	sources                 map[string]struct{}
-	targets                 []string
+	contributions map[string][]AnchorText
+	finalizations []OutboundAnchorFinalization
+	sources       map[string]struct{}
+	targets       []string
 }
 
 func (d documentVault) prepareOutboundAnchorDocumentReplacement(
@@ -23,10 +22,9 @@ func (d documentVault) prepareOutboundAnchorDocumentReplacement(
 	sets []OutboundAnchorSet,
 ) (outboundAnchorDocumentReplacement, error) {
 	replacement := outboundAnchorDocumentReplacement{
-		contributions:           make(map[string][]AnchorText),
-		finalizations:           make([]OutboundAnchorFinalization, 0, len(sets)),
-		previouslyLinkedTargets: make(map[string]struct{}),
-		sources:                 make(map[string]struct{}, len(sets)),
+		contributions: make(map[string][]AnchorText),
+		finalizations: make([]OutboundAnchorFinalization, 0, len(sets)),
+		sources:       make(map[string]struct{}, len(sets)),
 	}
 	err := d.vault.View(ctx, func(tx *vault.Txn) error {
 		for _, set := range sets {
@@ -55,9 +53,6 @@ func (d documentVault) prepareOutboundAnchorDocumentReplacement(
 				replacement.targets,
 				previous.Targets...,
 			)
-			for _, targetURL := range previous.Targets {
-				replacement.previouslyLinkedTargets[targetURL] = struct{}{}
-			}
 			replacement.targets = append(
 				replacement.targets,
 				incomingTargets...,

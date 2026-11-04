@@ -19,19 +19,10 @@ type lineageAnchorDocumentScript struct {
 func (s *lineageAnchorDocumentScript) ReplaceOutboundAnchorDocuments(
 	_ context.Context,
 	_ []documentstore.OutboundAnchorSet,
-	visit func([]documentstore.Document) error,
 ) (documentstore.AnchorReplacementReceipt, error) {
 	s.documentCalls++
-	if s.replacementErr != nil {
-		return documentstore.AnchorReplacementReceipt{}, s.replacementErr
-	}
-	if len(s.documents) > 0 {
-		if err := visit(s.documents); err != nil {
-			return documentstore.AnchorReplacementReceipt{}, err
-		}
-	}
 
-	return s.receipt, nil
+	return s.receipt, s.replacementErr
 }
 
 func (s *lineageAnchorDocumentScript) ReplaceReservedOutboundAnchors(
@@ -46,26 +37,14 @@ func (s *lineageAnchorDocumentScript) ReplaceReservedOutboundAnchorDocuments(
 	_ context.Context,
 	_ documentstore.DocumentLineageReservation,
 	_ []documentstore.OutboundAnchorSet,
-	visit func([]documentstore.Document) error,
 ) (documentstore.AnchorReplacementReceipt, error) {
 	s.reservedCalls++
-	if s.replacementErr != nil {
-		return documentstore.AnchorReplacementReceipt{}, s.replacementErr
-	}
-	if len(s.documents) > 0 {
-		if err := visit(s.documents); err != nil {
-			return documentstore.AnchorReplacementReceipt{}, err
-		}
-	}
 
-	return s.receipt, nil
+	return s.receipt, s.replacementErr
 }
 
 func TestDocumentLineageEvictionUsesPagedAnchorDocumentReplacement(t *testing.T) {
-	target := documentstore.Document{NormalizedURL: "https://target.example/"}
-	anchors := &lineageAnchorDocumentScript{
-		lineageAnchorScript: &lineageAnchorScript{documents: []documentstore.Document{target}},
-	}
+	anchors := &lineageAnchorDocumentScript{lineageAnchorScript: &lineageAnchorScript{}}
 	index := &lineageBatchIndexScript{}
 	evictor := documentLineageEvictor{anchors: anchors, index: index}
 	if err := evictor.clearOutboundAnchorContributions(
@@ -75,8 +54,7 @@ func TestDocumentLineageEvictionUsesPagedAnchorDocumentReplacement(t *testing.T)
 	); err != nil {
 		t.Fatal(err)
 	}
-	if anchors.documentCalls != 1 || anchors.finalizeCalls != 0 || index.batches != 1 ||
-		len(index.docs) != 1 || index.docs[0].NormalizedURL != target.NormalizedURL {
+	if anchors.documentCalls != 1 || anchors.finalizeCalls != 0 || index.batches != 0 {
 		t.Fatalf("replacement = %#v, index = %#v", anchors, index)
 	}
 }
@@ -103,17 +81,6 @@ func TestDocumentLineageAnchorDocumentReplacementSurfacesFailures(t *testing.T) 
 		"https://source.example/",
 	); err == nil {
 		t.Fatal("capacity result was accepted")
-	}
-	anchors.receipt.Busy = false
-	anchors.documents = []documentstore.Document{{NormalizedURL: "https://target.example/"}}
-	indexErr := errors.New("index failed")
-	evictor.index = &lineageBatchIndexScript{lineageIndexScript: lineageIndexScript{err: indexErr}}
-	if err := evictor.clearOutboundAnchorContributions(
-		t.Context(),
-		nil,
-		"https://source.example/",
-	); !errors.Is(err, indexErr) {
-		t.Fatalf("index error = %v, want %v", err, indexErr)
 	}
 }
 
