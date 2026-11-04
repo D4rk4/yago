@@ -16,6 +16,7 @@ type rarestTermsMinimumMatchSearcher struct {
 	positions []*search.DocumentMatch
 	reached   []bool
 	rarity    []int
+	frequency uint64
 	drivers   int
 	minimum   int
 	scorer    *scorer.DisjunctionQueryScorer
@@ -29,11 +30,13 @@ func newRarestTermsMinimumMatchSearcher(
 	minimum int,
 	options search.SearcherOptions,
 ) *rarestTermsMinimumMatchSearcher {
+	frequencies := clauseDocumentFrequencies(clauses)
 	searcher := &rarestTermsMinimumMatchSearcher{
 		clauses:   clauses,
 		positions: make([]*search.DocumentMatch, len(clauses)),
 		reached:   make([]bool, len(clauses)),
-		rarity:    clausesByRarity(clauses),
+		rarity:    clausesByRarity(frequencies),
+		frequency: totalDocumentFrequency(frequencies),
 		drivers:   len(clauses) - minimum + 1,
 		minimum:   minimum,
 		scorer:    scorer.NewDisjunctionQueryScorer(options),
@@ -45,13 +48,31 @@ func newRarestTermsMinimumMatchSearcher(
 	return searcher
 }
 
-func clausesByRarity(clauses []search.Searcher) []int {
-	order := make([]int, len(clauses))
+func clauseDocumentFrequencies(clauses []search.Searcher) []uint64 {
+	frequencies := make([]uint64, len(clauses))
+	for clause, searcher := range clauses {
+		frequencies[clause] = searcher.Count()
+	}
+
+	return frequencies
+}
+
+func totalDocumentFrequency(frequencies []uint64) uint64 {
+	var total uint64
+	for _, frequency := range frequencies {
+		total += frequency
+	}
+
+	return total
+}
+
+func clausesByRarity(frequencies []uint64) []int {
+	order := make([]int, len(frequencies))
 	for clause := range order {
 		order[clause] = clause
 	}
 	slices.SortStableFunc(order, func(left int, right int) int {
-		return cmp.Compare(clauses[left].Count(), clauses[right].Count())
+		return cmp.Compare(frequencies[left], frequencies[right])
 	})
 
 	return order
@@ -201,12 +222,7 @@ func (s *rarestTermsMinimumMatchSearcher) SetQueryNorm(norm float64) {
 }
 
 func (s *rarestTermsMinimumMatchSearcher) Count() uint64 {
-	var count uint64
-	for _, clause := range s.clauses {
-		count += clause.Count()
-	}
-
-	return count
+	return s.frequency
 }
 
 func (s *rarestTermsMinimumMatchSearcher) Min() int {

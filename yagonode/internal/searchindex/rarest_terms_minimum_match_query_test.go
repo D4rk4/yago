@@ -459,7 +459,18 @@ func TestRarestTermsMinimumMatchSearcherReportsClauseFailures(t *testing.T) {
 	}
 }
 
-func TestClausesByRarityOrdersLowestDocumentFrequencyFirstInQueryOrder(t *testing.T) {
+type rarestTermsFrequencyProbe struct {
+	search.Searcher
+	frequencyReads *int
+}
+
+func (probe rarestTermsFrequencyProbe) Count() uint64 {
+	*probe.frequencyReads++
+
+	return probe.Searcher.Count()
+}
+
+func TestRarestTermsMinimumMatchReadsEachClauseFrequencyOnceInRarityOrder(t *testing.T) {
 	index := rarestTermsTestIndex(t, map[string]string{
 		"one":   "common tiea tieb rare",
 		"two":   "common tiea tieb",
@@ -474,8 +485,9 @@ func TestClausesByRarityOrdersLowestDocumentFrequencyFirstInQueryOrder(t *testin
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = reader.Close() })
+	frequencyReads := make([]int, 4)
 	clauses := make([]search.Searcher, 0, 4)
-	for _, clause := range rarestTermsTestClauses([]string{"common", "tiea", "tieb", "rare"}) {
+	for position, clause := range rarestTermsTestClauses([]string{"common", "tiea", "tieb", "rare"}) {
 		opened, err := clause.Searcher(
 			t.Context(),
 			reader,
@@ -485,9 +497,24 @@ func TestClausesByRarityOrdersLowestDocumentFrequencyFirstInQueryOrder(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		clauses = append(clauses, opened)
+		clauses = append(clauses, rarestTermsFrequencyProbe{
+			Searcher:       opened,
+			frequencyReads: &frequencyReads[position],
+		})
 	}
-	if rarity := clausesByRarity(clauses); !slices.Equal(rarity, []int{3, 1, 2, 0}) {
-		t.Fatalf("clauses by rarity = %v", rarity)
+	searcher := newRarestTermsMinimumMatchSearcher(clauses, 2, search.SearcherOptions{})
+	if !slices.Equal(searcher.rarity, []int{3, 1, 2, 0}) {
+		t.Fatalf("clauses by rarity = %v", searcher.rarity)
+	}
+	for range 3 {
+		if count := searcher.Count(); count != 8 {
+			t.Fatalf("searcher count = %d, want 8", count)
+		}
+	}
+	if !slices.Equal(frequencyReads, []int{1, 1, 1, 1}) {
+		t.Fatalf("clause frequency reads = %v, want each once", frequencyReads)
+	}
+	if err := searcher.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
