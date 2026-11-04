@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
@@ -54,6 +56,70 @@ func TestDeferredLeaseKeepsOriginalRetryDeadline(t *testing.T) {
 	second, ok := leaseRecordFor(t, queue, leaseID)
 	if !ok || second.ExpiresAtUnixNano != first.ExpiresAtUnixNano {
 		t.Fatalf("duplicate defer changed deadline: %#v then %#v", first, second)
+	}
+}
+
+func TestOwnerDeferralUsesValidatedRetryDeadline(t *testing.T) {
+	set := withClock(t)
+	base := time.Unix(1_250, 0)
+	set(base)
+	queue := memQueue(t)
+	leaseID := leaseOneForSession(
+		t, queue, "custom-retry", "worker", testWorkerSessionID,
+	)
+	for _, retryAfter := range []time.Duration{
+		0, yagocrawlcontract.MaximumCrawlBackoffDelay + time.Nanosecond,
+	} {
+		if err := queue.deferLeaseForOwnerAfter(
+			t.Context(), leaseID, "worker", testWorkerSessionID, retryAfter,
+		); err == nil {
+			t.Fatalf("retry delay %s was accepted", retryAfter)
+		}
+		if record, found := leaseRecordFor(t, queue, leaseID); !found || record.WorkerID != "worker" {
+			t.Fatalf("invalid retry delay changed lease: %#v/%v", record, found)
+		}
+	}
+	retryAfter := 11 * time.Minute
+	if err := queue.deferLeaseForOwnerAfter(
+		t.Context(), leaseID, "worker", testWorkerSessionID, retryAfter,
+	); err != nil {
+		t.Fatalf("defer for requested retry: %v", err)
+	}
+	record, found := leaseRecordFor(t, queue, leaseID)
+	if !found || record.ExpiresAtUnixNano != base.Add(retryAfter).UnixNano() {
+		t.Fatalf("deferred lease deadline = %#v/%v", record, found)
+	}
+	set(base.Add(retryAfter - time.Nanosecond))
+	if err := queue.sweepExpired(t.Context()); err != nil {
+		t.Fatalf("early sweep: %v", err)
+	}
+	if got := pendingCount(t, queue); got != 0 {
+		t.Fatalf("pending before retry deadline = %d, want 0", got)
+	}
+	set(base.Add(retryAfter))
+	if err := queue.sweepExpired(t.Context()); err != nil {
+		t.Fatalf("deadline sweep: %v", err)
+	}
+	if got := pendingCount(t, queue); got != 1 {
+		t.Fatalf("pending at retry deadline = %d, want 1", got)
+	}
+}
+
+func TestAckOrderRejectsRetryDelayOutsideBound(t *testing.T) {
+	server := newExchangeServer(memQueue(t), nil)
+	for _, retryAfter := range []int64{
+		-1, int64(yagocrawlcontract.MaximumCrawlBackoffDelay + time.Nanosecond),
+	} {
+		_, err := server.AckOrder(t.Context(), &crawlrpc.OrderAck{
+			LeaseId:               "retry-boundary",
+			Requeue:               true,
+			WorkerId:              "worker",
+			WorkerSessionId:       testWorkerSessionID,
+			RetryAfterNanoseconds: retryAfter,
+		})
+		if status.Code(err) != codes.InvalidArgument {
+			t.Fatalf("retry delay %d returned %v, want InvalidArgument", retryAfter, err)
+		}
 	}
 }
 

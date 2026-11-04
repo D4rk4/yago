@@ -14,7 +14,7 @@ const (
 	DefaultCrawlerFrontierStateMaximumBytes = uint64(4) << 30
 	DefaultCrawlerMaximumDepth              = 5
 	DefaultCrawlerMaximumHostConcurrency    = 2
-	DefaultCrawlerRunPagesPerMinute         = 30
+	DefaultCrawlerRunPagesPerMinute         = 0
 	DefaultCrawlerSitemapURLLimit           = 10_000
 	MaximumCrawlerAllowedPrivateCIDRs       = 64
 	MaximumCrawlerBrowserFailureThreshold   = 1_000

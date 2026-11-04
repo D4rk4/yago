@@ -52,6 +52,7 @@ type Frontier struct {
 	inflight                     map[string]int
 	paused                       map[string]struct{}
 	suspended                    map[string]struct{}
+	deferredUntil                map[string]time.Time
 	controlSeen                  map[string]time.Time
 	pendingControl               map[string]pendingControlUpdate
 	cancelRuns                   map[string]int
@@ -146,6 +147,7 @@ type crawlRun struct {
 	pendingPages           int
 	pages                  int
 	maxPages               int
+	firstPassPending       uint64
 	budgetExceeded         bool
 	cancelled              bool
 	priority               yagocrawlcontract.CrawlOrderPriority
@@ -193,6 +195,7 @@ func NewFrontier(capacity int, pace CrawlPace, opts ...Option) *Frontier {
 		inflight:                     make(map[string]int),
 		paused:                       make(map[string]struct{}),
 		suspended:                    make(map[string]struct{}),
+		deferredUntil:                make(map[string]time.Time),
 		controlSeen:                  make(map[string]time.Time),
 		pendingControl:               make(map[string]pendingControlUpdate),
 		cancelRuns:                   make(map[string]int),
@@ -420,7 +423,8 @@ func (f *Frontier) jobDueLocked(
 	job crawljob.CrawlJob,
 	now time.Time,
 ) (time.Time, bool) {
-	if f.isPausedLocked(job.Provenance) || f.hostAtCapacity(job.URL) {
+	if f.isPausedLocked(job.Provenance) || f.hostAtCapacity(job.URL) ||
+		(job.RetryAttempt > 0 && f.hasFirstPassWorkLocked()) {
 		return time.Time{}, false
 	}
 	run := f.state.runs[job.RunID]
@@ -434,6 +438,9 @@ func (f *Frontier) jobDueLocked(
 
 func (f *Frontier) dispatchDueLocked(job crawljob.CrawlJob, now time.Time) time.Time {
 	due := f.pace.DueAt(job, now)
+	if job.RetryAfter.After(due) {
+		due = job.RetryAfter
+	}
 	if rateDue, throttled := f.rateDueLocked(job.Provenance); throttled && rateDue.After(due) {
 		due = rateDue
 	}
@@ -466,6 +473,8 @@ type frontierCandidate struct {
 	indexAllowed     bool
 	observationID    string
 	observedAt       time.Time
+	retryAttempt     uint8
+	retryAfter       time.Time
 }
 
 type pendingPage struct {
@@ -476,6 +485,8 @@ type pendingPage struct {
 	indexAllowed     bool
 	observationID    string
 	observedAt       time.Time
+	retryAttempt     uint8
+	retryAfter       time.Time
 }
 
 func (s *frontierState) accept(
@@ -530,6 +541,9 @@ func (s *frontierState) accept(
 	run.visited[candidate.normURL] = struct{}{}
 	run.hostPages[candidate.host]++
 	run.pages++
+	if candidate.retryAttempt == 0 {
+		run.firstPassPending++
+	}
 	s.completion.Track(runID)
 	s.ready = append(s.ready, candidateJob(runID, candidate, profile, run.leaseID))
 	return true, false

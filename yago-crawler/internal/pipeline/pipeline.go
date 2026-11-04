@@ -239,17 +239,31 @@ func (p *Pipeline) fetchJob(
 	return fetched, nil
 }
 
-func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
+func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) (processError error) {
 	p.observer.JobStarted()
 	outcome := yagocrawlcontract.CrawlRunTally{}
 	outcomeReason := ""
 	outcomeHTTPStatus := uint32(0)
 	abandoned := false
+	var retryAfter time.Time
 	defer func() {
 		if abandoned {
 			p.frontier.Abandon(job)
 
 			return
+		}
+		if !retryAfter.IsZero() {
+			if retrying, ok := p.frontier.(pageRetryFrontier); ok {
+				consumed, scheduled := retrying.Defer(ctx, job, retryAfter)
+				if consumed {
+					if scheduled {
+						if observer, ok := p.observer.(pageRetryObserver); ok {
+							observer.PageRetryScheduled()
+						}
+					}
+					return
+				}
+			}
 		}
 		completePage(p.frontier, job, outcome, outcomeHTTPStatus, outcomeReason)
 	}()
@@ -267,6 +281,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	}
 	fetched, err := p.fetchJob(ctx, job, target, &outcome)
 	if err != nil {
+		retryAfter, _ = retryableFetchFailure(ctx, err, job.RetryAttempt, time.Now())
 		outcomeHTTPStatus = pageOutcomeHTTPStatus(err)
 		outcomeReason = fetchOutcomeReason(err)
 		removalErr := p.emitRemovalIfGone(ctx, job, err)

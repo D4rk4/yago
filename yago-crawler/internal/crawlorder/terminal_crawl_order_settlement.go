@@ -2,6 +2,7 @@ package crawlorder
 
 import (
 	"context"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 )
@@ -14,6 +15,7 @@ type terminalCrawlOrderDisposition struct {
 	tally          yagocrawlcontract.CrawlRunTally
 	recentOutcomes yagocrawlcontract.CrawlURLOutcomeHistory
 	pagesPerMinute uint32
+	retryAfter     time.Duration
 }
 
 func settleTerminalCrawlOrder(
@@ -23,12 +25,23 @@ func settleTerminalCrawlOrder(
 	if settlement.disposition == crawlOrderRetained {
 		return true
 	}
+	if settlement.disposition == crawlOrderRequeued && settlement.retryAfter > 0 &&
+		settlement.delivery.NakAfter != nil {
+		return settleCrawlOrder(
+			ctx,
+			settlement.order,
+			settlement.delivery,
+			settlement.disposition,
+			settlement.retryAfter,
+		)
+	}
 	if settlement.delivery.settleTerminal == nil {
 		return settleCrawlOrder(
 			ctx,
 			settlement.order,
 			settlement.delivery,
 			settlement.disposition,
+			settlement.retryAfter,
 		)
 	}
 	err := settlement.delivery.settleTerminal(ctx, terminalRunSettlement{
@@ -37,6 +50,7 @@ func settleTerminalCrawlOrder(
 		Tally:          settlement.tally,
 		RecentOutcomes: settlement.recentOutcomes,
 		PagesPerMinute: settlement.pagesPerMinute,
+		RetryAfter:     settlement.retryAfter,
 		RateKnown:      true,
 	})
 	if err == nil {

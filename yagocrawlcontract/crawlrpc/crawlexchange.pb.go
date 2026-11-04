@@ -488,19 +488,20 @@ func (x *CrawlOrderMessage) GetRecoveredSessionLeaseIds() []string {
 }
 
 type OrderAck struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	LeaseId           string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
-	Requeue           bool                   `protobuf:"varint,2,opt,name=requeue,proto3" json:"requeue,omitempty"`
-	OrderIdentity     []byte                 `protobuf:"bytes,3,opt,name=order_identity,json=orderIdentity,proto3" json:"order_identity,omitempty"`
-	WorkerId          string                 `protobuf:"bytes,4,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	TerminalState     CrawlRunState          `protobuf:"varint,5,opt,name=terminal_state,json=terminalState,proto3,enum=yacycrawl.v1.CrawlRunState" json:"terminal_state,omitempty"`
-	TerminalTally     *CrawlRunTally         `protobuf:"bytes,6,opt,name=terminal_tally,json=terminalTally,proto3" json:"terminal_tally,omitempty"`
-	PagesPerMinute    *uint32                `protobuf:"varint,7,opt,name=pages_per_minute,json=pagesPerMinute,proto3,oneof" json:"pages_per_minute,omitempty"`
-	WorkerSessionId   string                 `protobuf:"bytes,8,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
-	ConfirmationToken []byte                 `protobuf:"bytes,9,opt,name=confirmation_token,json=confirmationToken,proto3" json:"confirmation_token,omitempty"`
-	RecentOutcomes    []*CrawlURLOutcome     `protobuf:"bytes,10,rep,name=recent_outcomes,json=recentOutcomes,proto3" json:"recent_outcomes,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	LeaseId               string                 `protobuf:"bytes,1,opt,name=lease_id,json=leaseId,proto3" json:"lease_id,omitempty"`
+	Requeue               bool                   `protobuf:"varint,2,opt,name=requeue,proto3" json:"requeue,omitempty"`
+	OrderIdentity         []byte                 `protobuf:"bytes,3,opt,name=order_identity,json=orderIdentity,proto3" json:"order_identity,omitempty"`
+	WorkerId              string                 `protobuf:"bytes,4,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	TerminalState         CrawlRunState          `protobuf:"varint,5,opt,name=terminal_state,json=terminalState,proto3,enum=yacycrawl.v1.CrawlRunState" json:"terminal_state,omitempty"`
+	TerminalTally         *CrawlRunTally         `protobuf:"bytes,6,opt,name=terminal_tally,json=terminalTally,proto3" json:"terminal_tally,omitempty"`
+	PagesPerMinute        *uint32                `protobuf:"varint,7,opt,name=pages_per_minute,json=pagesPerMinute,proto3,oneof" json:"pages_per_minute,omitempty"`
+	WorkerSessionId       string                 `protobuf:"bytes,8,opt,name=worker_session_id,json=workerSessionId,proto3" json:"worker_session_id,omitempty"`
+	ConfirmationToken     []byte                 `protobuf:"bytes,9,opt,name=confirmation_token,json=confirmationToken,proto3" json:"confirmation_token,omitempty"`
+	RecentOutcomes        []*CrawlURLOutcome     `protobuf:"bytes,10,rep,name=recent_outcomes,json=recentOutcomes,proto3" json:"recent_outcomes,omitempty"`
+	RetryAfterNanoseconds int64                  `protobuf:"varint,11,opt,name=retry_after_nanoseconds,json=retryAfterNanoseconds,proto3" json:"retry_after_nanoseconds,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *OrderAck) Reset() {
@@ -601,6 +602,13 @@ func (x *OrderAck) GetRecentOutcomes() []*CrawlURLOutcome {
 		return x.RecentOutcomes
 	}
 	return nil
+}
+
+func (x *OrderAck) GetRetryAfterNanoseconds() int64 {
+	if x != nil {
+		return x.RetryAfterNanoseconds
+	}
+	return 0
 }
 
 type OrderAckResult struct {
@@ -1857,7 +1865,7 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\trecovered\x18\x03 \x01(\bR\trecovered\x12.\n" +
 	"\x13recovered_batch_end\x18\x04 \x01(\bR\x11recoveredBatchEnd\x12.\n" +
 	"\x13recovered_lease_ids\x18\x05 \x03(\tR\x11recoveredLeaseIds\x12=\n" +
-	"\x1brecovered_session_lease_ids\x18\x06 \x03(\tR\x18recoveredSessionLeaseIds\"\xf2\x03\n" +
+	"\x1brecovered_session_lease_ids\x18\x06 \x03(\tR\x18recoveredSessionLeaseIds\"\xaa\x04\n" +
 	"\bOrderAck\x12\x19\n" +
 	"\blease_id\x18\x01 \x01(\tR\aleaseId\x12\x18\n" +
 	"\arequeue\x18\x02 \x01(\bR\arequeue\x12%\n" +
@@ -1869,7 +1877,8 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\x11worker_session_id\x18\b \x01(\tR\x0fworkerSessionId\x12-\n" +
 	"\x12confirmation_token\x18\t \x01(\fR\x11confirmationToken\x12F\n" +
 	"\x0frecent_outcomes\x18\n" +
-	" \x03(\v2\x1d.yacycrawl.v1.CrawlURLOutcomeR\x0erecentOutcomesB\x13\n" +
+	" \x03(\v2\x1d.yacycrawl.v1.CrawlURLOutcomeR\x0erecentOutcomes\x126\n" +
+	"\x17retry_after_nanoseconds\x18\v \x01(\x03R\x15retryAfterNanosecondsB\x13\n" +
 	"\x11_pages_per_minute\"?\n" +
 	"\x0eOrderAckResult\x12-\n" +
 	"\x12confirmation_token\x18\x01 \x01(\fR\x11confirmationToken\"\xbd\x06\n" +

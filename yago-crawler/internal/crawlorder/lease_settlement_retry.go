@@ -38,6 +38,7 @@ type leasedOrderAcknowledgment struct {
 	workerID        string
 	workerSessionID string
 	requeue         bool
+	retryAfter      time.Duration
 }
 
 func settleLeaseForSession(
@@ -49,10 +50,11 @@ func settleLeaseForSession(
 		serviceCtx,
 		client,
 		&crawlrpc.OrderAck{
-			LeaseId:         acknowledgment.leaseID,
-			Requeue:         acknowledgment.requeue,
-			WorkerId:        acknowledgment.workerID,
-			WorkerSessionId: acknowledgment.workerSessionID,
+			LeaseId:               acknowledgment.leaseID,
+			Requeue:               acknowledgment.requeue,
+			RetryAfterNanoseconds: int64(acknowledgment.retryAfter),
+			WorkerId:              acknowledgment.workerID,
+			WorkerSessionId:       acknowledgment.workerSessionID,
 		},
 		leaseSettlementPolicy{
 			retryWait:        DefaultLeaseSettlementRetryWait,

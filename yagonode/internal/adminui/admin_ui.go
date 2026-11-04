@@ -310,7 +310,9 @@ type crawlRunPageData struct {
 // control buttons need: the CSRF token and whether control actions are wired.
 type crawlMonitorView struct {
 	Monitor            CrawlMonitor
-	Pagination         CrawlRunPagination
+	ActiveRuns         []CrawlRunView
+	RecentRuns         []CrawlRunView
+	RefreshURL         string
 	Health             CrawlHealth
 	CrawlerConnection  crawlConnectionView
 	CSRF               string
@@ -1826,11 +1828,13 @@ func (c *Console) crawlMonitorView(r *http.Request) *crawlMonitorView {
 	}
 
 	monitor := c.monitor.Monitor(r.Context())
-	pagination := buildCrawlRunPagination(monitor.Runs, r.FormValue("cpage"))
+	runSections := buildCrawlRunSections(monitor.Runs)
 
 	return &crawlMonitorView{
 		Monitor:           monitor,
-		Pagination:        pagination,
+		ActiveRuns:        runSections.Active,
+		RecentRuns:        runSections.Recent,
+		RefreshURL:        crawlMonitorPath,
 		Health:            crawlHealth(monitor),
 		CrawlerConnection: buildCrawlConnectionView(c.crawlerFetchActivity),
 		CSRF:              csrfToken(r),
@@ -1848,7 +1852,7 @@ func (c *Console) handleCrawlMonitor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.render(r.Context(), w, c.tpl.crawl, "crawl-monitor", c.crawlMonitorView(r))
+	c.renderCrawlMonitor(w, r)
 }
 
 func (c *Console) handleCrawlControl(w http.ResponseWriter, r *http.Request) {
@@ -1879,12 +1883,12 @@ func (c *Console) handleCrawlControl(w http.ResponseWriter, r *http.Request) {
 	// An htmx-issued control (the confirm-guarded Cancel button) swaps the refreshed
 	// monitor in place; a plain form post falls back to a full-page reload.
 	if r.Header.Get("HX-Request") == "true" && c.monitor != nil {
-		c.render(r.Context(), w, c.tpl.crawl, "crawl-monitor", c.crawlMonitorView(r))
+		c.renderCrawlMonitor(w, r)
 
 		return
 	}
 
-	redirectCrawlRunPage(w, requestedCrawlRunPage(r.FormValue("cpage")))
+	redirectCrawlRunPage(w)
 }
 
 func parsePagesPerMinute(raw string) (uint32, error) {

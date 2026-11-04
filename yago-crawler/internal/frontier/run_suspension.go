@@ -23,6 +23,8 @@ func (f *Frontier) WasSuspended(provenance []byte) bool {
 
 func (f *Frontier) ClearSuspended(provenance []byte) {
 	f.mu.Lock()
-	delete(f.suspended, string(provenance))
+	key := string(provenance)
+	delete(f.suspended, key)
+	delete(f.deferredUntil, key)
 	f.mu.Unlock()
 }

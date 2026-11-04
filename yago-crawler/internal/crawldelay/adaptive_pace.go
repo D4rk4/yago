@@ -10,13 +10,14 @@ import (
 	"github.com/D4rk4/yago/yago-crawler/internal/crawljob"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlpace"
 	"github.com/D4rk4/yago/yago-crawler/internal/weburl"
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 const (
 	// maxHostBackoff caps how long a throttled host is set aside, Heritrix's
 	// retryDelaySeconds default (900s); Retry-After wishes are clamped to it so
 	// a hostile header cannot park a host for days.
-	maxHostBackoff = 15 * time.Minute
+	maxHostBackoff = yagocrawlcontract.MaximumCrawlBackoffDelay
 	// parkAfterFailures is how many consecutive throttles or hard fetch errors
 	// park a host at the full backoff cap, Nutch's per-host exception purge
 	// threshold.
@@ -76,6 +77,14 @@ func (p *AdaptivePace) DueAt(job crawljob.CrawlJob, now time.Time) time.Time {
 	}
 
 	return due
+}
+
+func (p *AdaptivePace) BackoffUntil(rawURL string) time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	state, _ := p.backoff.Get(weburl.Host(rawURL))
+
+	return state.until
 }
 
 // Visited delegates to the fixed pace; adaptive state changes only on explicit

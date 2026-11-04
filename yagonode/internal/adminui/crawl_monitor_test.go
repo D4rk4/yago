@@ -37,6 +37,7 @@ func sampleMonitor() CrawlMonitor {
 			RunID:           "run-abc",
 			Profile:         "news-crawl",
 			State:           "running",
+			ReportAge:       "3s ago",
 			Fetched:         12,
 			Indexed:         9,
 			Failed:          1,
@@ -54,9 +55,10 @@ func sampleMonitor() CrawlMonitor {
 			RobotsDenied: 3,
 			Duplicates:   5,
 		},
-		QueueAvailable: true,
-		QueuePending:   7,
-		QueueLeased:    2,
+		PendingFrontierURLs: 4,
+		QueueAvailable:      true,
+		QueuePending:        7,
+		QueueLeased:         2,
 	}
 }
 
@@ -75,15 +77,20 @@ func TestConsoleCrawlRendersMonitor(t *testing.T) {
 		t.Fatalf("status %d", got.status)
 	}
 	for _, want := range []string{
-		"Crawl monitor", "news-crawl", "cds-tag--info", "7 pending orders, 2 leased orders",
-		"Crawl results and rejections", "Robots-denied", "currently retained in this monitor",
-		"Whole-run max (pages)", "Per-host max (pages)", ">900<", ">250<",
-		"one page can increment both", "Crawler connection:", ">Connected<",
+		"Crawl monitor", "news-crawl", "cds-tag--info", "URLs waiting in active crawls",
+		"Latest reported worker frontier total", ">4<", "Orders waiting for a crawler", ">7<",
+		"Orders leased to crawlers", ">2<", "Crawl results and rejections", "Robots-denied",
+		"Last report: 3s ago", "Crawler connection:", ">Connected<",
 		"1 crawler connected.",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("crawl page missing %q", want)
 		}
+	}
+	monitorStart := strings.Index(got.body, `id="crawl-monitor"`)
+	crawlForm := strings.Index(got.body, `id="seeds"`)
+	if monitorStart < 0 || crawlForm < 0 || monitorStart > crawlForm {
+		t.Fatal("crawler queue overview should appear before the crawl form")
 	}
 }
 
@@ -93,7 +100,7 @@ func TestConsoleCrawlMonitorRendersResultTotals(t *testing.T) {
 	monitor := CrawlMonitor{Totals: CrawlTotals{Indexed: 42, RobotsDenied: 7}}
 	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: monitor}})
 	got := do(t, console, "/admin/crawl/monitor")
-	for _, want := range []string{"Fetched", "Indexed", "Failed", "Duplicates", ">42<", ">7<"} {
+	for _, want := range []string{"Fetched in retained runs", "Indexed in retained runs", "Failed in retained runs", "Duplicates in retained runs", ">42<", ">7<"} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("results rollup missing %q", want)
 		}
@@ -105,10 +112,10 @@ func TestConsoleCrawlMonitorShowsUnavailableQueue(t *testing.T) {
 
 	console := New(Options{Crawl: &fakeCrawl{}, Monitor: fakeMonitor{snap: CrawlMonitor{}}})
 	got := do(t, console, "/admin/crawl/monitor")
-	if !strings.Contains(got.body, "Node order queue:</strong> Unavailable") {
+	if !strings.Contains(got.body, "Orders waiting for a crawler</div>\n      <div class=\"cds-metric__value\">Unavailable") {
 		t.Fatal("failed queue probe should render unavailable")
 	}
-	if strings.Contains(got.body, "0 pending orders, 0 leased orders") {
+	if strings.Contains(got.body, "0 pending orders") || strings.Contains(got.body, "0 leased orders") {
 		t.Fatal("failed queue probe rendered fabricated zero depths")
 	}
 }
@@ -153,7 +160,7 @@ func TestConsoleCrawlMonitorPartial(t *testing.T) {
 		t.Fatalf("status %d", got.status)
 	}
 	if !strings.Contains(got.body, "news-crawl") {
-		t.Fatal("monitor partial missing run row")
+		t.Fatal("monitor partial missing active crawl")
 	}
 	if strings.Contains(got.body, "<html") {
 		t.Fatal("monitor partial should render the fragment, not the full layout")
@@ -209,7 +216,7 @@ func TestConsoleCrawlMonitorRendersControlButtons(t *testing.T) {
 	}
 }
 
-func TestConsoleCrawlMonitorLaysControlsOnOneLine(t *testing.T) {
+func TestConsoleCrawlMonitorPlacesControlsInActiveCrawl(t *testing.T) {
 	t.Parallel()
 
 	console := New(Options{
@@ -220,14 +227,14 @@ func TestConsoleCrawlMonitorLaysControlsOnOneLine(t *testing.T) {
 	got := do(t, console, "/admin/crawl/monitor")
 	for _, want := range []string{
 		`class="cds-control-row cds-control-row--crawl-actions"`,
-		`class="cds-crawl-actions-cell"`,
 		`class="cds-input cds-input--rate"`,
 		`for="crawl-rate-run-abc"`,
 		`id="crawl-rate-run-abc"`,
 		`value="30"`,
 		`title="0 means unlimited"`,
 		`aria-label="Pages per minute for news-crawl; zero means unlimited"`,
-		`class="cds-scroll-x" role="region" aria-label="Crawl tasks" tabindex="0"`,
+		`role="group" aria-label="Active crawls"`,
+		`Last report: 3s ago`,
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("monitor controls missing %q", want)
@@ -237,9 +244,8 @@ func TestConsoleCrawlMonitorLaysControlsOnOneLine(t *testing.T) {
 	css := do(t, console, "/admin/assets/carbon.css")
 	for _, want := range []string{
 		".cds-control-row {\n  display: flex;\n  flex-wrap: wrap;",
-		".cds-control-row--crawl-actions {\n  flex-wrap: nowrap;\n  min-width: max-content;\n  gap: var(--cds-spacing-03);\n}",
-		".cds-crawl-actions-cell { width: 1%; white-space: nowrap; }",
-		".cds-control-row--crawl-actions .cds-inline-form { flex: 0 0 auto; }",
+		".cds-control-row--crawl-actions {\n  flex-wrap: wrap;\n  gap: var(--cds-spacing-03);\n}",
+		".cds-control-row--crawl-actions .cds-inline-form { flex: 0 1 auto; flex-wrap: wrap; }",
 		".cds-control-row--crawl-actions .cds-btn {\n  min-height: 2rem;\n  padding: 0 var(--cds-spacing-03);\n}",
 		".cds-control-row--crawl-actions .cds-input--rate {\n  width: 4rem;\n  height: 2rem;\n  padding: 0 var(--cds-spacing-03);\n}",
 	} {
@@ -359,14 +365,16 @@ func TestConsoleCrawlControlHtmxRefreshesMonitor(t *testing.T) {
 	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", crawlMonitorLiveTarget)
 	rec := httptest.NewRecorder()
 	console.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d, want 200 for an htmx control", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `id="crawl-monitor"`) {
-		t.Fatal("htmx control response is not the refreshed monitor partial")
+	if !strings.Contains(rec.Body.String(), `id="crawl-live"`) ||
+		strings.Contains(rec.Body.String(), `id="crawl-monitor"`) {
+		t.Fatal("htmx control response is not the refreshed live fragment")
 	}
 }
 
@@ -448,7 +456,9 @@ func TestConsoleCrawlMonitorOffersRestartForFinishedRuns(t *testing.T) {
 		Control: &fakeControl{},
 	})
 	got := do(t, console, "/admin/crawl/monitor")
-	if !strings.Contains(got.body, `name="action" value="restart"`) {
+	if !strings.Contains(got.body, `<details id="crawl-history">`) ||
+		!strings.Contains(got.body, "Recent crawl history (up to 10)") ||
+		!strings.Contains(got.body, `name="action" value="restart"`) {
 		t.Fatal("finished run should offer a restart action")
 	}
 	if !strings.Contains(got.body, `value="run-done"`) {

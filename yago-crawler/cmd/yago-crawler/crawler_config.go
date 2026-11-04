@@ -46,20 +46,17 @@ const (
 	DefaultStorageReservedFree       uint64 = 1 << 30
 	DefaultStoragePressureHysteresis uint64 = 256 << 20
 
-	DefaultMaxBodyBytes       int64 = 4 << 20
-	DefaultRequestTimeout           = yagocrawlcontract.DefaultCrawlerRequestTimeout
-	DefaultConnectTimeout           = yagocrawlcontract.DefaultCrawlerConnectTimeout
-	DefaultTLSTimeout               = yagocrawlcontract.DefaultCrawlerTLSTimeout
-	DefaultHeaderTimeout            = yagocrawlcontract.DefaultCrawlerHeaderTimeout
-	DefaultMaxRedirects             = yagocrawlcontract.DefaultMaximumPageRedirects
-	DefaultMaxHostConcurrency       = yagocrawlcontract.DefaultCrawlerMaximumHostConcurrency
-	DefaultSitemapURLLimit          = yagocrawlcontract.DefaultCrawlerSitemapURLLimit
-	DefaultHostCacheSize            = 4096
-	DefaultMaxPagesPerRun           = yagocrawlcontract.DefaultMaxPagesPerRun
-	// DefaultRunPagesPerMinute paces every crawl run at a polite 30 fetches per
-	// minute unless the operator raises (or zeroes) the run's rate explicitly,
-	// so a fresh crawl cannot flatten the box or hammer the web at full speed.
-	DefaultRunPagesPerMinute uint32 = yagocrawlcontract.DefaultCrawlerRunPagesPerMinute
+	DefaultMaxBodyBytes       int64  = 4 << 20
+	DefaultRequestTimeout            = yagocrawlcontract.DefaultCrawlerRequestTimeout
+	DefaultConnectTimeout            = yagocrawlcontract.DefaultCrawlerConnectTimeout
+	DefaultTLSTimeout                = yagocrawlcontract.DefaultCrawlerTLSTimeout
+	DefaultHeaderTimeout             = yagocrawlcontract.DefaultCrawlerHeaderTimeout
+	DefaultMaxRedirects              = yagocrawlcontract.DefaultMaximumPageRedirects
+	DefaultMaxHostConcurrency        = yagocrawlcontract.DefaultCrawlerMaximumHostConcurrency
+	DefaultSitemapURLLimit           = yagocrawlcontract.DefaultCrawlerSitemapURLLimit
+	DefaultHostCacheSize             = 4096
+	DefaultMaxPagesPerRun            = yagocrawlcontract.DefaultMaxPagesPerRun
+	DefaultRunPagesPerMinute  uint32 = yagocrawlcontract.DefaultCrawlerRunPagesPerMinute
 )
 
 // DefaultUserAgent brands crawl requests (plain HTTP and robots fetches alike)

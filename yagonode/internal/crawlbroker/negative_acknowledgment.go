@@ -5,15 +5,20 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-const negativeAcknowledgmentRetryDelay = 5 * time.Second
+const (
+	negativeAcknowledgmentRetryDelay = 5 * time.Second
+)
 
 func (q *DurableOrderQueue) deferLease(ctx context.Context, leaseID string) error {
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
-	err := q.deferLeaseLocked(ctx, leaseID, "", "", false)
+	err := q.deferLeaseLocked(
+		ctx, leaseID, "", "", false, negativeAcknowledgmentRetryDelay,
+	)
 	if err == nil {
 		q.signal()
 	}
@@ -27,9 +32,28 @@ func (q *DurableOrderQueue) deferLeaseForOwner(
 	workerID string,
 	workerSessionID string,
 ) error {
+	return q.deferLeaseForOwnerAfter(
+		ctx,
+		leaseID,
+		workerID,
+		workerSessionID,
+		negativeAcknowledgmentRetryDelay,
+	)
+}
+
+func (q *DurableOrderQueue) deferLeaseForOwnerAfter(
+	ctx context.Context,
+	leaseID string,
+	workerID string,
+	workerSessionID string,
+	retryAfter time.Duration,
+) error {
+	if retryAfter <= 0 || retryAfter > yagocrawlcontract.MaximumCrawlBackoffDelay {
+		return fmt.Errorf("invalid crawl order retry delay")
+	}
 	q.leaseMutation.Lock()
 	defer q.leaseMutation.Unlock()
-	err := q.deferLeaseLocked(ctx, leaseID, workerID, workerSessionID, true)
+	err := q.deferLeaseLocked(ctx, leaseID, workerID, workerSessionID, true, retryAfter)
 	if err == nil {
 		q.signal()
 	}
@@ -43,16 +67,18 @@ func (q *DurableOrderQueue) deferLeaseLocked(
 	workerID string,
 	workerSessionID string,
 	requireOwner bool,
+	retryAfter time.Duration,
 ) error {
 	var mutation negativeAcknowledgmentMutation
 	if err := q.vault.Update(ctx, func(tx *vault.Txn) error {
 		var err error
-		mutation, err = q.negativeAcknowledgmentTx(
+		mutation, err = q.negativeAcknowledgmentTxAfter(
 			tx,
 			leaseID,
 			workerID,
 			workerSessionID,
 			requireOwner,
+			retryAfter,
 		)
 
 		return err

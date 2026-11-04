@@ -337,17 +337,15 @@ select:focus-visible, [tabindex]:focus-visible {
   gap: var(--cds-spacing-05);
 }
 .cds-control-row--crawl-actions {
-  flex-wrap: nowrap;
-  min-width: max-content;
+  flex-wrap: wrap;
   gap: var(--cds-spacing-03);
 }
-.cds-crawl-actions-cell { width: 1%; white-space: nowrap; }
 .cds-inline-form {
   display: flex;
   align-items: center;
   gap: var(--cds-spacing-03);
 }
-.cds-control-row--crawl-actions .cds-inline-form { flex: 0 0 auto; }
+.cds-control-row--crawl-actions .cds-inline-form { flex: 0 1 auto; flex-wrap: wrap; }
 .cds-control-row--crawl-actions .cds-btn {
   min-height: 2rem;
   padding: 0 var(--cds-spacing-03);

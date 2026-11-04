@@ -81,6 +81,7 @@ func (execution crawlerExecution) lifecycle(
 		newCrawlRequestExpander(client, cfg.Crawl, guard, execution.urlDenylist),
 	).WithProgressReporter(progress).
 		WithRunTally(execution.tally).
+		WithBackoffRunDeferralObserver(metrics).
 		WithMaximumDepth(cfg.Crawl.MaxDepth).
 		WithAutomaticDiscoveryExecutionLimits(
 			cfg.Crawl.AutomaticDiscoveryLimits,

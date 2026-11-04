@@ -217,7 +217,11 @@ unlimited dispatch, so the node does not infer worker configuration.
 Invalid order modes, URLs, profiles, deterministic fetch responses, and malformed
 seed documents terminate the lease. An operator cancellation is also terminal.
 Network, server, throttle, timeout, and interrupted expansion failures NAK the
-lease into a durable five-second retry delay. Legacy settlement calls are
+lease into a durable retry delay. The optional `OrderAck.retry_after_nanoseconds`
+sets that delay for a temporarily deferred run, up to the shared 15-minute
+backoff maximum; omitted or zero values retain the five-second default. The
+node persists the deadline on the lease and requeues the order when it expires.
+Legacy settlement calls are
 idempotent for a fixed 24-hour retry horizon: a duplicate terminal ACK succeeds,
 while a stale ACK after NAK or expiry is rejected. Rich terminal progress remains
 durable through delivery and run-control completion. Once finalized, it keeps the
@@ -268,10 +272,13 @@ the shared transport ceiling before either retry path can run.
 
 ## Crawl profile scope
 
-The profile carries the subset of YaCy crawl settings that affect URL selection and
-reference generation, including whether links marked `rel=nofollow` may be followed.
-Crawler process settings, such as the browser User-Agent, are not profile fields because
-an order cannot safely override process-wide browser identity.
+The crawl profile is the boundary for focused runs. It carries wide, domain, or
+subpath scope; URL include and exclude rules; indexing URL rules; depth and page
+budgets; and whether `rel=nofollow` links may be followed. Seed URLs and discovered
+links retain the profile handle and depth through frontier admission. Content-based
+filter expressions are not part of the current contract. Crawler process settings,
+such as the browser User-Agent, remain outside the profile because an order cannot
+safely override process-wide browser identity.
 
 Raw HTML bodies, binary image bodies, media indexing, snapshots, vocabulary
 scraping, country and IP filters, HTTP caching, direct document loading, and

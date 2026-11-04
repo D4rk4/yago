@@ -259,6 +259,19 @@ func deliverOrderWithLeaseSession(
 				requeue:         true,
 			},
 		), envelope.leaseID, leaseGrants),
+		NakAfter: func(settlementCtx context.Context, retryAfter time.Duration) error {
+			return settleGrantedLease(settleLeaseForSession(
+				ctx,
+				envelope.client,
+				leasedOrderAcknowledgment{
+					leaseID:         envelope.leaseID,
+					workerID:        envelope.workerID,
+					workerSessionID: workerSessionID,
+					requeue:         true,
+					retryAfter:      retryAfter,
+				},
+			), envelope.leaseID, leaseGrants)(settlementCtx)
+		},
 		Term: settleGrantedLease(settleLeaseForSession(
 			ctx,
 			envelope.client,

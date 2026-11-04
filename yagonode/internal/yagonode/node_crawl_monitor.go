@@ -48,7 +48,14 @@ func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
 	monitor := adminui.CrawlMonitor{Runs: make([]adminui.CrawlRunView, 0, len(runs))}
 	now := s.now()
 	for _, run := range runs {
-		monitor.Runs = append(monitor.Runs, crawlRunView(run, now))
+		runView := crawlRunView(run, now)
+		monitor.Runs = append(monitor.Runs, runView)
+		if run.State == yagocrawlcontract.CrawlRunRunning {
+			monitor.PendingFrontierURLs = crawlTallyTotal(
+				monitor.PendingFrontierURLs,
+				run.Tally.Pending,
+			)
+		}
 		monitor.Totals.Fetched = crawlTallyTotal(monitor.Totals.Fetched, run.Tally.Fetched)
 		monitor.Totals.Indexed = crawlTallyTotal(monitor.Totals.Indexed, run.Tally.Indexed)
 		monitor.Totals.Failed = crawlTallyTotal(monitor.Totals.Failed, run.Tally.Failed)
@@ -82,6 +89,14 @@ func crawlRunView(run crawlruns.Run, now time.Time) adminui.CrawlRunView {
 	if runtime < 0 {
 		runtime = 0
 	}
+	reportAge := "Unavailable"
+	if !run.Updated.IsZero() {
+		age := now.Sub(run.Updated)
+		if age < 0 {
+			age = 0
+		}
+		reportAge = age.Round(time.Second).String() + " ago"
+	}
 
 	return adminui.CrawlRunView{
 		RunID:           run.RunID,
@@ -99,6 +114,7 @@ func crawlRunView(run crawlruns.Run, now time.Time) adminui.CrawlRunView {
 		RateKnown:       run.RateKnown,
 		MaxPagesPerHost: crawlRunPerHostLimit(run),
 		MaxPagesPerRun:  crawlRunWholeLimit(run),
+		ReportAge:       reportAge,
 	}
 }
 

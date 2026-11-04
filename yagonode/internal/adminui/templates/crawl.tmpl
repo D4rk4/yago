@@ -2,6 +2,7 @@
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Crawler</nav>
 <h1 class="cds-h1">Crawler</h1>
 <p class="cds-muted">Start a crawl by entering one or more seed URLs. Crawls run on the local fleet and stay subject to the node's egress policy.</p>
+{{with .Monitor}}{{template "crawl-monitor" .}}{{end}}
 {{if .Error}}
 <div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>
 {{end}}
@@ -228,5 +229,4 @@
 </div>
 {{end}}
 {{end}}
-{{with .Monitor}}{{template "crawl-monitor" .}}{{end}}
 {{end}}

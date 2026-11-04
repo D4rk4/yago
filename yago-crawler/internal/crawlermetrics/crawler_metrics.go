@@ -19,10 +19,12 @@ type Metrics struct {
 	jobsActive                      prometheus.Gauge
 	fetches                         prometheus.Counter
 	fetchFailures                   prometheus.Counter
+	pageRetries                     prometheus.Counter
 	parseFailures                   prometheus.Counter
 	fetchAdmissionWaiting           prometheus.Gauge
 	fetchAdmissionWait              prometheus.Histogram
 	hostBackoffs                    prometheus.Counter
+	backoffRunDeferrals             prometheus.Counter
 	bytes                           prometheus.Counter
 	robotsDenied                    prometheus.Counter
 	ingestBatches                   prometheus.Counter
@@ -62,6 +64,10 @@ func newCrawlerActivityMetrics() *Metrics {
 			Name: "yacy_crawler_fetch_failures_total",
 			Help: "Page fetch attempts that failed for reasons other than a policy rejection.",
 		}),
+		pageRetries: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "yacy_crawler_page_retries_total",
+			Help: "Temporary page failures queued for a later retry.",
+		}),
 		parseFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "yacy_crawler_parse_failures_total",
 			Help: "Fetched page bodies that no enabled parser could decode.",
@@ -93,6 +99,10 @@ func newCrawlerActivityMetrics() *Metrics {
 			Name: "yacy_crawler_host_backoffs_total",
 			Help: "Hosts backed off after a 429/503 or Retry-After throttle signal.",
 		}),
+		backoffRunDeferrals: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "yacy_crawler_backoff_run_deferrals_total",
+			Help: "Crawl runs released while every pending page is waiting for a host backoff deadline.",
+		}),
 		browserSlotAcquisitionDeadlines: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "yacy_crawler_browser_slot_acquisition_deadlines_total",
 			Help: "Firefox browser slot acquisition waits ended by a context deadline.",
@@ -118,6 +128,7 @@ func (m *Metrics) prometheusCollectors() []prometheus.Collector {
 		m.jobsActive,
 		m.fetches,
 		m.fetchFailures,
+		m.pageRetries,
 		m.parseFailures,
 		m.bytes,
 		m.robotsDenied,
@@ -125,6 +136,7 @@ func (m *Metrics) prometheusCollectors() []prometheus.Collector {
 		m.fetchAdmissionWaiting,
 		m.fetchAdmissionWait,
 		m.hostBackoffs,
+		m.backoffRunDeferrals,
 		m.browserSlotAcquisitionDeadlines,
 		m.browserSlotWait,
 		m.browserSessions,
@@ -135,6 +147,10 @@ func (m *Metrics) prometheusCollectors() []prometheus.Collector {
 // ObserveHostBackoff counts a host backed off after a server throttle signal.
 func (m *Metrics) ObserveHostBackoff() {
 	m.hostBackoffs.Inc()
+}
+
+func (m *Metrics) ObserveBackoffRunDeferral() {
+	m.backoffRunDeferrals.Inc()
 }
 
 func (m *Metrics) ObserveBrowserSlotAcquisitionDeadline() {
@@ -208,6 +224,8 @@ func (m *Metrics) FetchAttempted() { m.fetches.Inc() }
 func (m *Metrics) FetchSucceeded(count int) { m.bytes.Add(float64(count)) }
 
 func (m *Metrics) FetchFailed() { m.fetchFailures.Inc() }
+
+func (m *Metrics) PageRetryScheduled() { m.pageRetries.Inc() }
 
 func (m *Metrics) ParseFailed() { m.parseFailures.Inc() }
 

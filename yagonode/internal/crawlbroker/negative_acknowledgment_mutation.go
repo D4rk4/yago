@@ -2,6 +2,7 @@ package crawlbroker
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -18,6 +19,24 @@ func (q *DurableOrderQueue) negativeAcknowledgmentTx(
 	workerID string,
 	workerSessionID string,
 	requireOwner bool,
+) (negativeAcknowledgmentMutation, error) {
+	return q.negativeAcknowledgmentTxAfter(
+		tx,
+		leaseID,
+		workerID,
+		workerSessionID,
+		requireOwner,
+		negativeAcknowledgmentRetryDelay,
+	)
+}
+
+func (q *DurableOrderQueue) negativeAcknowledgmentTxAfter(
+	tx *vault.Txn,
+	leaseID string,
+	workerID string,
+	workerSessionID string,
+	requireOwner bool,
+	retryAfter time.Duration,
 ) (negativeAcknowledgmentMutation, error) {
 	_, staged, err := q.discoverySettlements.Get(tx, vault.Key(leaseID))
 	if err != nil {
@@ -49,7 +68,7 @@ func (q *DurableOrderQueue) negativeAcknowledgmentTx(
 	removed := record
 	record.WorkerID = ""
 	record.Deferred = true
-	record.ExpiresAtUnixNano = nowFunc().Add(negativeAcknowledgmentRetryDelay).UnixNano()
+	record.ExpiresAtUnixNano = nowFunc().Add(retryAfter).UnixNano()
 	if err := q.leases.Put(tx, vault.Key(leaseID), record); err != nil {
 		return negativeAcknowledgmentMutation{}, fmt.Errorf("defer crawl lease: %w", err)
 	}

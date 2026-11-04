@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/boundedqueue"
 	"github.com/D4rk4/yago/yago-crawler/internal/frontier"
@@ -32,16 +33,17 @@ type RequestExpander interface {
 }
 
 type CrawlOrderConsumer struct {
-	orders          boundedqueue.Receiver[CrawlOrderDelivery]
-	frontier        *frontier.Frontier
-	expander        RequestExpander
-	progress        ProgressReporter
-	tally           RunTallySource
-	active          *activeOrders
-	growthAdmission GrowthAdmission
-	activeRuns      *ActiveRunAdmission
-	maximumDepth    int
-	limits          crawlOrderExecutionLimits
+	orders                     boundedqueue.Receiver[CrawlOrderDelivery]
+	frontier                   *frontier.Frontier
+	expander                   RequestExpander
+	progress                   ProgressReporter
+	tally                      RunTallySource
+	backoffRunDeferralObserver BackoffRunDeferralObserver
+	active                     *activeOrders
+	growthAdmission            GrowthAdmission
+	activeRuns                 *ActiveRunAdmission
+	maximumDepth               int
+	limits                     crawlOrderExecutionLimits
 }
 
 type GrowthAdmission interface {
@@ -104,10 +106,18 @@ func (c *CrawlOrderConsumer) WithRunTally(tally RunTallySource) *CrawlOrderConsu
 func (c *CrawlOrderConsumer) Run(ctx context.Context) {
 	c.frontier.Hold()
 	defer c.frontier.Release()
+	deferTimer := time.NewTicker(time.Second)
+	defer deferTimer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-deferTimer.C:
+			for range c.frontier.DeferBackedOffRuns(time.Now()) {
+				if c.backoffRunDeferralObserver != nil {
+					c.backoffRunDeferralObserver.ObserveBackoffRunDeferral()
+				}
+			}
 		case delivery, ok := <-c.orders.Receive():
 			if !ok {
 				return
@@ -209,6 +219,7 @@ func (c *CrawlOrderConsumer) finishRun(
 		reporter.Stop()
 		defer c.frontier.Release()
 		suspended := c.frontier.WasSuspended(order.Provenance)
+		deferredAt, deferred := c.frontier.DeferredUntil(order.Provenance)
 		cancelled := c.frontier.WasCancelled(order.Provenance)
 		c.frontier.ClearCancelled(order.Provenance)
 		c.frontier.ClearSuspended(order.Provenance)
@@ -233,9 +244,15 @@ func (c *CrawlOrderConsumer) finishRun(
 		disposition := crawlOrderAcknowledged
 		retainCompletion := true
 		forgetCheckpoint := true
+		retryAfter := time.Duration(0)
 		switch {
 		case cancelled:
 			disposition = crawlOrderTerminated
+		case deferred:
+			disposition = crawlOrderRequeued
+			retainCompletion = false
+			forgetCheckpoint = false
+			retryAfter = max(time.Until(deferredAt), 0)
 		case suspended || startedDuringShutdown:
 			disposition = crawlOrderRetained
 			retainCompletion = false
@@ -263,6 +280,7 @@ func (c *CrawlOrderConsumer) finishRun(
 						tally:          terminalTally,
 						recentOutcomes: terminalOutcomes,
 						pagesPerMinute: c.frontier.EffectivePagesPerMinute(order.Provenance),
+						retryAfter:     retryAfter,
 					},
 				)
 			},

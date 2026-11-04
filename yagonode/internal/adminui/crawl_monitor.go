@@ -23,6 +23,7 @@ type CrawlRunView struct {
 	RateKnown       bool
 	MaxPagesPerHost string
 	MaxPagesPerRun  string
+	ReportAge       string
 }
 
 // CrawlTotals is the crawl results/rejections rollup across the known runs: the
@@ -40,11 +41,12 @@ type CrawlTotals struct {
 // results/rejections rollup across them, and the broker's outstanding order
 // backlog.
 type CrawlMonitor struct {
-	Runs           []CrawlRunView
-	Totals         CrawlTotals
-	QueueAvailable bool
-	QueuePending   int
-	QueueLeased    int
+	Runs                []CrawlRunView
+	Totals              CrawlTotals
+	PendingFrontierURLs uint64
+	QueueAvailable      bool
+	QueuePending        int
+	QueueLeased         int
 }
 
 // CrawlMonitorSource supplies the crawl monitor snapshot on each request. A nil

@@ -49,6 +49,10 @@ func (f *Frontier) completePage(
 	}
 	f.state.tally.Commit(work.Provenance, outcome)
 	recordPageOutcome(f.state.tally, work, outcome, httpStatus, reason)
+	if (!durable || checkpointErr == nil) && work.RetryAttempt == 0 &&
+		run != nil && f.state.runs[work.RunID] == run && run.firstPassPending > 0 {
+		run.firstPassPending--
+	}
 	f.releaseHost(work.URL)
 	if durable {
 		f.finishRunDurabilityLocked(work.RunID, run, checkpointErr)

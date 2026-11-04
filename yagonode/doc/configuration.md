@@ -691,7 +691,7 @@ them in Admin → Index.
 | `YAGO_CRAWLER_MAX_DEPTH` | `5` | Hard execution ceiling for link depth in every crawl profile (1–64). The default preserves the shipped depth-five automatic-discovery profiles. Admin key: `crawler.max_depth`. |
 | `YAGO_CRAWLER_MAX_HOST_CONCURRENCY` | `2` | Maximum concurrent fetches to one host in each crawler process (1–256); crawl delay remains an additional politeness limit. Admin key: `crawler.max_host_concurrency`. |
 | `YAGO_CRAWLER_REQUEST_TIMEOUT` | `15s` | Whole-request deadline from 1 millisecond through 10 minutes, covering connection, redirects, headers, and response body. Admin key: `crawler.request_timeout`. |
-| `YAGO_CRAWLER_RUN_PAGES_PER_MINUTE` | `30` | Default fetch-start pace for each crawl run (0–1,000,000; `0` is unlimited). Admin key: `crawler.run_pages_per_minute`; an explicit per-run control still overrides the default. |
+| `YAGO_CRAWLER_RUN_PAGES_PER_MINUTE` | `0` | Default per-run fetch-start rate (0–1,000,000; `0` is unlimited). Host politeness, worker capacity, fleet admission, and storage pressure still apply. Admin key: `crawler.run_pages_per_minute`; an explicit per-run control still overrides the default. |
 | `YAGO_CRAWLER_SITEMAP_URL_LIMIT` | `10000` | Maximum URLs admitted from one sitemap, sitemap index, robots sitemap set, or sitelist expansion (1–1,000,000). Admin key: `crawler.sitemap_url_limit`. |
 | `YAGO_CRAWLER_TLS_TIMEOUT` | `5s` | Origin TLS-handshake timeout from 1 millisecond through 2 minutes. Admin key: `crawler.tls_timeout`. |
 | `YAGO_CRAWLER_SHUTDOWN_GRACE` | `10s` | Drain deadline from 1 millisecond through 5 minutes for fetch workers and final progress delivery during stop or policy restart. Admin key: `crawler.shutdown_grace`. |

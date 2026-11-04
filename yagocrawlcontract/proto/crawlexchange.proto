@@ -79,6 +79,7 @@ message OrderAck {
   string worker_session_id = 8;
   bytes confirmation_token = 9;
   repeated CrawlURLOutcome recent_outcomes = 10;
+  int64 retry_after_nanoseconds = 11;
 }
 
 message OrderAckResult {
