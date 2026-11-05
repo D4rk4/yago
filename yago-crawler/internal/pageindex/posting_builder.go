@@ -41,10 +41,12 @@ func BuildPostings(
 
 	urlHash, _ := yagomodel.HashURL(page.URL)
 	language := NormalizeLanguage(page.Language)
+	componentCount := componentCardinal(urlComponentCount(page.URL))
 
 	shared := map[string]string{
-		yagomodel.ColURLHash:  urlHash.String(),
-		yagomodel.ColLanguage: language,
+		yagomodel.ColURLHash:           urlHash.String(),
+		yagomodel.ColLanguage:          language,
+		yagomodel.ColURLComponentCount: componentCount,
 		yagomodel.ColDocType: strconv.FormatUint(
 			uint64(yagomodel.DocTypeText),
 			10,

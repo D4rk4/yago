@@ -43,6 +43,16 @@ yago-crawler
   - emits DocumentIngest + RWI postings + URL metadata
 ```
 
+Each crawler-generated RWI posting carries field `n` (the URL component count)
+once per page. The crawler splits the URL on the delimiter set
+` /()-:_.,?!'"` plus space, after stripping the scheme prefix through `//`
+only when its position is greater than zero, lowercases the remaining string,
+keeps interior empty components, drops trailing empties, and stores the count
+as a one-byte cardinal that wraps to its low byte. Other generated fields keep
+their existing saturation widths. The Java revision and the synthetic counting
+inputs are recorded in
+`yagonode/test/fixtures/yacywire/component-count-provenance.md`.
+
 Search, document storage, peer protocol, crawler orchestration, and Admin UI
 remain narrow internal components. A future process split requires its own ADR
 and synchronized Docker, systemd, package, listener, and failure-semantics work;

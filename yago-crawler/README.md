@@ -230,6 +230,20 @@ uncertain text, and English is used only when neither source identifies a
 language. This includes legacy pages served as Windows-1251 without a `lang`
 attribute.
 
+Each generated RWI posting carries the shared URL-derived fields once per page,
+not once per token. The document type, language, URL hash, text and title word
+counts, local and external link counts, and the URL component count are computed
+from the page URL and its extracted statistics before the word postings are
+built. The URL component count (field `n`) reproduces Java YaCy's
+`MultiProtocolURL.urlComps`: the URL is split on the delimiter set
+` /()-:_.,?!'"` plus space after stripping the scheme prefix through `//` only
+when its position is greater than zero, with interior empty components kept and
+trailing empties dropped. The count is stored as a one-byte cardinal that wraps
+to its low byte, so a URL with more than 255 components does not overflow. The
+other generated fields keep their existing saturation widths. The Java revision
+and the synthetic counting inputs are recorded in
+`yagonode/test/fixtures/yacywire/component-count-provenance.md`.
+
 PDF extraction follows the document structure rather than scanning every decoded
 stream. When Page objects are available, it selects their referenced `/Contents`
 streams, including indirect arrays, and only Form XObjects reachable from page
