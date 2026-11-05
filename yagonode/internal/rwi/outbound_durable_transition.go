@@ -64,31 +64,38 @@ func (d postingDirectory) restoreOutboundPostings(
 	}); err != nil {
 		return 0, fmt.Errorf("restore journaled postings: %w", err)
 	}
-	if err := d.releaseOutboundPostings(ctx, selected); err != nil {
+	released, err := d.releaseOutboundPostings(ctx, selected)
+	if err != nil {
 		return 0, err
 	}
 
-	return len(selected), nil
+	return released, nil
 }
 
 func (d postingDirectory) releaseOutboundPostings(
 	ctx context.Context,
 	selected []selectedPosting,
-) error {
+) (int, error) {
+	released := 0
 	if err := d.vault.Update(ctx, func(tx *vault.Txn) error {
+		released = 0
 		for _, posting := range selected {
 			if err := ctx.Err(); err != nil {
 				return fmt.Errorf("context: %w", err)
 			}
-			if _, err := d.outboundSelected.Delete(tx, posting.key); err != nil {
-				return fmt.Errorf("delete outbound selected rwi: %w", err)
+			owned, err := d.releaseOwnedOutboundSelection(tx, posting)
+			if err != nil {
+				return err
+			}
+			if owned {
+				released++
 			}
 		}
 
 		return nil
 	}); err != nil {
-		return fmt.Errorf("release restored postings: %w", err)
+		return 0, fmt.Errorf("release restored postings: %w", err)
 	}
 
-	return nil
+	return released, nil
 }

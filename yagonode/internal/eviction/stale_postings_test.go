@@ -40,6 +40,10 @@ type wordTrackingPostings struct {
 	err     error
 }
 
+func (f *wordTrackingPostings) DropWaitingOutboundPostings(*vault.Txn, []yagomodel.Hash) error {
+	return nil
+}
+
 func (f *wordTrackingPostings) PurgePosting(
 	_ *vault.Txn,
 	word, _ yagomodel.Hash,

@@ -382,6 +382,7 @@ func TestRestoreOutboundReadErrorFails(t *testing.T) {
 	word := yagomodel.Hash("AAAAAAAAAAAA")
 	url := yagomodel.Hash("CCCCCCCCCCCC")
 	injected := errors.New("read failed")
+	journalScriptedOutboundSelection(t, engine, postingWithHashes(word, url))
 	engine.readErrors[PostingsBucket] = injected
 	if _, err := outboundStore(t, index).RestoreOutbound(
 		ctx,

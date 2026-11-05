@@ -351,7 +351,13 @@ posting whose URL metadata is known missing is terminally removed together with
 its recovery record, matching YaCy's sender-side orphan filter. A
 metadata-backed posting with no eligible target is restored instead of being
 discarded. A restore never replaces a posting written after selection, and
-selection never removes a posting that changed after it was chosen.
+selection never removes a posting that changed after it was chosen. A restore
+or confirmation acts only on a journal entry that still holds the posting its
+own batch selected. When a later selection of the same posting has replaced
+that entry, the earlier batch leaves it in place. A purge, including URL
+deletion, also drops a posting that is waiting for transfer, so neither a later
+restore nor restart recovery brings it back. A posting already sent to a peer
+is not recalled.
 
 Once redundancy copies are queued, one accepted transfer leaves the recovery
 record intact while another in-memory copy remains. Only the final accepted copy

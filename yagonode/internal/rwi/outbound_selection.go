@@ -1,7 +1,6 @@
 package rwi
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 
@@ -103,6 +102,10 @@ func (d postingDirectory) restoreOutboundPosting(
 ) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("context: %w", err)
+	}
+	owned, err := d.ownsOutboundSelection(tx, posting)
+	if err != nil || !owned {
+		return err
 	}
 	posting.row.WordHash = posting.word
 	_, found, err := d.postings.Get(tx, posting.key)
@@ -208,10 +211,7 @@ func (d postingDirectory) deleteOutboundPosting(
 	if err != nil {
 		return fmt.Errorf("read outbound rwi posting: %w", err)
 	}
-	if !found || !bytes.Equal(
-		encodeStoredPosting(current),
-		encodeStoredPosting(posting.row),
-	) {
+	if !found || !sameStoredPosting(current, posting.row) {
 		return nil
 	}
 	if _, err := d.postings.Delete(tx, posting.key); err != nil {

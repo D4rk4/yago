@@ -38,6 +38,12 @@ func (d urlProjectionDeletion) delete(
 			}
 		}
 	}
+	if err := d.postings.DropWaitingOutboundPostings(tx, urls); err != nil {
+		return Result{}, urlmeta.PurgeResult{}, fmt.Errorf(
+			"drop waiting outbound postings: %w",
+			err,
+		)
+	}
 	metadata, err := d.metadata.Purge(ctx, tx, urls)
 	if err != nil {
 		return Result{}, urlmeta.PurgeResult{}, fmt.Errorf("purge urls: %w", err)

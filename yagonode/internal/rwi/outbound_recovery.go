@@ -23,11 +23,14 @@ func (d postingDirectory) ConfirmOutbound(
 			if err != nil {
 				return err
 			}
-			deleted, err := d.outboundSelected.Delete(tx, key)
+			released, err := d.releaseOwnedOutboundSelection(
+				tx,
+				selectedPosting{key: key, row: posting},
+			)
 			if err != nil {
-				return fmt.Errorf("delete outbound selected rwi: %w", err)
+				return err
 			}
-			if deleted {
+			if released {
 				confirmed++
 			}
 		}
