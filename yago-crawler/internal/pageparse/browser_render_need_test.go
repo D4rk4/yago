@@ -2,10 +2,10 @@ package pageparse
 
 import (
 	"errors"
-	"io"
 	"testing"
 
 	"github.com/markusmobius/go-trafilatura"
+	"golang.org/x/net/html"
 )
 
 func TestBrowserRenderNeededUsesStructuralContentEvidence(t *testing.T) {
@@ -75,7 +75,7 @@ func TestBrowserRenderNeededUsesStructuralContentEvidence(t *testing.T) {
 
 func TestBrowserRenderNeededTreatsExtractionFailureAsMissingContent(t *testing.T) {
 	restoreParserSeams(t, newHTMLCharsetReader, parseHTMLDocument, extractReadableContent)
-	extractReadableContent = func(io.Reader, trafilatura.Options) (*trafilatura.ExtractResult, error) {
+	extractReadableContent = func(*html.Node, trafilatura.Options) (*trafilatura.ExtractResult, error) {
 		return nil, errors.New("extract failed")
 	}
 	if !BrowserRenderNeeded(

@@ -41,12 +41,12 @@ func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
 	page.SafetyLabels = readSafetyLabels(root)
 	page.CanonicalURL = readCanonicalURL(root, rawURL)
 	collectText(root, &text)
-	page.Text = selectText(contentType, body, text.String())
+	page.Text = selectText(root, text.String())
 	return page
 }
 
-func selectText(contentType string, body []byte, fallback string) string {
-	if main, err := extractMainContent(contentType, body); err == nil && main != "" {
+func selectText(root *html.Node, fallback string) string {
+	if main, err := extractMainContent(root); err == nil && main != "" {
 		return main
 	}
 	return collapseSpaces(fallback)
