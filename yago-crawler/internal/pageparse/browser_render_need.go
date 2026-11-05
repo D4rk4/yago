@@ -18,7 +18,7 @@ func BrowserRenderNeeded(contentType string, body []byte) bool {
 	if !browserRenderableHTML(contentType) || !hasExecutableScript(body) {
 		return false
 	}
-	root, err := decodeAndParseHTML(contentType, body)
+	root, err := parsePageDocument(contentType, body)
 	if err != nil {
 		return true
 	}

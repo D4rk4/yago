@@ -24,7 +24,7 @@ const (
 )
 
 func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
-	root, err := decodeAndParseHTML(contentType, body)
+	root, err := parsePageDocument(contentType, body)
 	if err != nil {
 		return ParsedPage{URL: rawURL}
 	}

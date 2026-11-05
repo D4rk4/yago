@@ -84,18 +84,18 @@ func TestBrowserRenderNeededReturnsTrueWhenParseFails(t *testing.T) {
 	}
 }
 
-func TestDecodeAndParseHTMLFallsBackToRawBytesOnBadCharset(t *testing.T) {
+func TestParsePageDocumentFallsBackToRawBytesOnBadCharset(t *testing.T) {
 	original := newHTMLCharsetReader
 	t.Cleanup(func() { newHTMLCharsetReader = original })
 	newHTMLCharsetReader = func(io.Reader, string) (io.Reader, error) {
 		return nil, errors.New("charset failed")
 	}
 
-	root, err := decodeAndParseHTML("text/html", []byte("<html><body>raw</body></html>"))
+	root, err := parsePageDocument("text/html", []byte("<html><body>raw</body></html>"))
 	if err != nil {
-		t.Fatalf("decodeAndParseHTML: %v", err)
+		t.Fatalf("parsePageDocument: %v", err)
 	}
 	if root == nil {
-		t.Fatal("decodeAndParseHTML returned nil root")
+		t.Fatal("parsePageDocument returned nil root")
 	}
 }
