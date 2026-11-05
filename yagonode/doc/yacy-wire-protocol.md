@@ -55,9 +55,11 @@ it in the same atomic checkpoint, and publishes an immutable snapshot before
 listeners open. Four endpoint requests are admitted concurrently; they only
 read the snapshot and never start or wait for a document-store scan.
 The peer message endpoint `/yacy/message.html` supports permission checks and
-stores inbound peer messages; `iam` is optional, permission checks ignore
-post-only body fields, and attachments are advertised as size `0`. These match
-the public P2P surfaces exposed by original YaCy peers.
+stores inbound peer messages. Permission checks ignore post-only body fields.
+A `process=post` message is accepted only when `iam` is present and equal to the
+posted `myseed` hash; permission requests do not require `iam`. Attachments are
+advertised as size `0`. These match the public P2P surfaces exposed by original
+YaCy peers.
 
 The remote search endpoint `/yacy/search.html` returns YaCy key-value rows with
 `searchtime`, `references`, `joincount`, `count`, `resourceN`, `indexcount.*`,
