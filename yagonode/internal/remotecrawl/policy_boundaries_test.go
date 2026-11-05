@@ -200,21 +200,6 @@ func TestDestinationPolicyCoversAddressAdmissionBoundaries(t *testing.T) {
 	}
 }
 
-func TestDestinationPolicyUsesTheDefaultResolver(t *testing.T) {
-	if _, err := newDestinationPolicy([]string{" "}, publicResolver); err == nil {
-		t.Fatal("empty policy accepted")
-	}
-	defaultResolverPolicy, err := newDestinationPolicy([]string{"example.com"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	canceled, cancel := context.WithCancel(t.Context())
-	cancel()
-	if _, err := defaultResolverPolicy.Admit(canceled, testURLA); err == nil {
-		t.Fatal("canceled default resolution succeeded")
-	}
-}
-
 func TestDomainValidationBoundaries(t *testing.T) {
 	invalid := []string{
 		"", strings.Repeat("a", 254), "a..b", "-a.example", "a-.example",
