@@ -78,7 +78,8 @@ func (g RequestGuard) Parse(
 	slog.DebugContext(ctx, requestAcceptedMessage,
 		slog.String("method", r.Method),
 		slog.String("path", r.URL.Path),
-		slog.Any("form", r.Form),
+		slog.Int("formFields", len(r.Form)),
+		slog.Int64("bodyBytes", r.ContentLength),
 	)
 
 	return r.Form, ctx, cancel, true
