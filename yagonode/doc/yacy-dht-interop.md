@@ -350,7 +350,8 @@ the sender restores those rows and clears their recovery records. A selected
 posting whose URL metadata is known missing is terminally removed together with
 its recovery record, matching YaCy's sender-side orphan filter. A
 metadata-backed posting with no eligible target is restored instead of being
-discarded.
+discarded. A restore never replaces a posting written after selection, and
+selection never removes a posting that changed after it was chosen.
 
 Once redundancy copies are queued, one accepted transfer leaves the recovery
 record intact while another in-memory copy remains. Only the final accepted copy

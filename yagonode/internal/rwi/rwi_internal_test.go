@@ -26,6 +26,7 @@ type scriptedEngine struct {
 	putFailures     map[vault.Name]*scriptedMutationFailure
 	deleteErrors    map[vault.Name]error
 	deleteFailures  map[vault.Name]*scriptedMutationFailure
+	readErrors      map[vault.Name]error
 	scanErrors      map[vault.Name]error
 }
 
@@ -37,6 +38,7 @@ func newScriptedEngine() *scriptedEngine {
 		putFailures:     map[vault.Name]*scriptedMutationFailure{},
 		deleteErrors:    map[vault.Name]error{},
 		deleteFailures:  map[vault.Name]*scriptedMutationFailure{},
+		readErrors:      map[vault.Name]error{},
 		scanErrors:      map[vault.Name]error{},
 	}
 }
@@ -86,11 +88,23 @@ type scriptedBucket struct {
 }
 
 func (b scriptedBucket) Get(key vault.Key) []byte {
+	raw, _, _ := b.readValue(key)
+	return raw
+}
+
+func (b scriptedBucket) ReadValue(key vault.Key) ([]byte, bool, error) {
+	return b.readValue(key)
+}
+
+func (b scriptedBucket) readValue(key vault.Key) ([]byte, bool, error) {
+	if err := b.engine.readErrors[b.name]; err != nil {
+		return nil, false, err
+	}
 	raw := b.engine.buckets[b.name][string(key)]
 	if raw == nil {
-		return nil
+		return nil, false, nil
 	}
-	return append([]byte(nil), raw...)
+	return append([]byte(nil), raw...), true, nil
 }
 
 func (b scriptedBucket) Put(key vault.Key, raw []byte) error {
