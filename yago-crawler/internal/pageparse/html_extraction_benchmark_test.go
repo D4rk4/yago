@@ -43,7 +43,7 @@ func BenchmarkParseHTML(b *testing.B) {
 	}
 	for _, f := range fixtures {
 		b.Run(f.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				ParseHTML("https://example.org/page", f.contentType, f.body)
 			}
 		})

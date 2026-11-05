@@ -1,7 +1,6 @@
 package pageparse
 
 import (
-	"bytes"
 	"net/url"
 	"strings"
 
@@ -25,11 +24,7 @@ const (
 )
 
 func ParseHTML(rawURL, contentType string, body []byte) ParsedPage {
-	reader, err := newHTMLCharsetReader(bytes.NewReader(body), contentType)
-	if err != nil {
-		reader = bytes.NewReader(body)
-	}
-	root, err := parseHTMLDocument(reader)
+	root, err := decodeAndParseHTML(contentType, body)
 	if err != nil {
 		return ParsedPage{URL: rawURL}
 	}

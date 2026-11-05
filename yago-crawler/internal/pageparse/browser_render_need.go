@@ -18,11 +18,7 @@ func BrowserRenderNeeded(contentType string, body []byte) bool {
 	if !browserRenderableHTML(contentType) || !hasExecutableScript(body) {
 		return false
 	}
-	reader, err := newHTMLCharsetReader(bytes.NewReader(body), contentType)
-	if err != nil {
-		reader = bytes.NewReader(body)
-	}
-	root, err := parseHTMLDocument(reader)
+	root, err := decodeAndParseHTML(contentType, body)
 	if err != nil {
 		return true
 	}
