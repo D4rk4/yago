@@ -150,16 +150,15 @@ authentication failure and missing required fields before accepting RWI rows.
 returning no transferURL result fields before target handling.
 
 Outbound hello, transferRWI, and transferURL POSTs are encoded as
-`multipart/form-data` rather than `application/x-www-form-urlencoded`. Java
-YaCy's Jetty caps URL-encoded form bodies at 200,000 bytes
-(`MAX_FORM_CONTENT_SIZE`), which large RWI and URL-metadata transfers exceed;
-multipart bodies bypass that cap. Inbound intake parses both form encodings, so
-these nodes interoperate with peers that still send URL-encoded bodies.
+`multipart/form-data`. Java YaCy accepts transfers larger than 200,000 bytes in
+this encoding. Inbound intake parses both `multipart/form-data` and
+`application/x-www-form-urlencoded`, so these nodes interoperate with peers
+that still send URL-encoded bodies.
 
 Outbound peer-protocol calls refuse every 3xx redirect and return the redirect
 status to the caller instead of replaying the request at the destination. Only
-peer-protocol clients refuse redirects; the generic crawler, admin, and web-fetch
-clients keep their existing redirect behavior.
+peer-protocol clients refuse redirects; seedlist downloads and the generic
+crawler, admin, and web-fetch clients keep their existing redirect behavior.
 
 The outbound hello greeting and the hello back-ping remember the exact scheme,
 host, and port at which a peer last answered directly with its own identity. The

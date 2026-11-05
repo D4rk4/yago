@@ -184,12 +184,10 @@ func transferAttemptFields(t *testing.T, r *http.Request) url.Values {
 	return url.Values(r.MultipartForm.Value)
 }
 
-func multipartBoundaryOf(tb testing.TB, r *http.Request) string {
+func requireMultipartContentType(tb testing.TB, r *http.Request) {
 	tb.Helper()
 	mediaType, parameters, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" || parameters["boundary"] == "" {
 		tb.Fatalf("content type = %q, error = %v", r.Header.Get("Content-Type"), err)
 	}
-
-	return parameters["boundary"]
 }

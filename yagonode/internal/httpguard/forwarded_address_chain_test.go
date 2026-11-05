@@ -145,6 +145,21 @@ func TestForwardedChainIPv6MappedNormalized(t *testing.T) {
 	}
 }
 
+func TestForwardedChainResolvedMappedHopNormalized(t *testing.T) {
+	_, network, err := net.ParseCIDR("10.0.0.0/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := NewClientAddressResolver([]*net.IPNet{network})
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	request.RemoteAddr = "10.0.0.5:1234"
+	request.Header.Set(forwardedForHeader, "::ffff:198.51.100.7, 10.0.0.6")
+
+	if got := resolver.Resolve(request); got != "198.51.100.7" {
+		t.Fatalf("mapped resolved hop returned %q, want unmapped IPv4", got)
+	}
+}
+
 func TestForwardedChainZoneIdentifierRejected(t *testing.T) {
 	_, network, err := net.ParseCIDR("10.0.0.0/24")
 	if err != nil {

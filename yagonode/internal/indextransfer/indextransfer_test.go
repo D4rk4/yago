@@ -36,7 +36,7 @@ func (b failingBody) Close() error {
 
 func parseMultipartForm(tb testing.TB, req *http.Request) {
 	tb.Helper()
-	multipartBoundaryOf(tb, req)
+	requireMultipartContentType(tb, req)
 	if err := req.ParseMultipartForm(1 << 20); err != nil {
 		tb.Fatalf("parse multipart form: %v", err)
 	}

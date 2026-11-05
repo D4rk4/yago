@@ -34,6 +34,7 @@ type peerExchange struct {
 	config                       nodeConfig
 	vault                        *vault.Vault
 	client                       *http.Client
+	seedlistClient               *http.Client
 	peer                         *metrics.PeerMetrics
 	host                         hostlinks.IncomingHostLinks
 	roster                       peerroster.Roster
@@ -173,7 +174,7 @@ func (p peerExchange) assemble() (peerExchangeRuntime, error) {
 				AdmitExternalObserverAddress: yagoegress.NewGuard(false).AdmitAddr,
 			},
 			p.report,
-			bootstrap.NewObserved(p.client, p.config.SeedlistURLs, seedObserver),
+			bootstrap.NewObserved(p.seedlistClient, p.config.SeedlistURLs, seedObserver),
 			p.roster,
 		),
 		externalReachabilityEvidence: p.externalReachabilityEvidence,

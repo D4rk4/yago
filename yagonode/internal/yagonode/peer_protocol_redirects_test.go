@@ -28,7 +28,10 @@ func TestPeerClientRefusesRedirectWithoutChangingGenericClient(t *testing.T) {
 	defer server.Close()
 
 	base := server.Client()
-	peer := nodePeerClient(nodeConfig{}, base)
+	seedlist, peer := nodePeerClients(nodeConfig{}, base)
+	if seedlist != base {
+		t.Fatal("seedlist client differs from the generic client")
+	}
 
 	response := clientGet(t, context.Background(), peer, server.URL+"/from")
 	defer closeBody(response)
@@ -71,6 +74,42 @@ func TestPeerClientRefusesEveryRedirectStatus(t *testing.T) {
 				})
 			}
 		})
+	}
+	t.Run("config=https-preferred", refuseHTTPSPreferredRedirect)
+}
+
+func refuseHTTPSPreferredRedirect(t *testing.T) {
+	var destinationHits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/from" {
+			http.Redirect(w, r, "/to", http.StatusFound)
+			return
+		}
+		destinationHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	seedlist, peer := nodePeerClients(nodeConfig{PeerHTTPSPreferred: true}, server.Client())
+	if seedlist.Transport != peer.Transport {
+		t.Fatal("https-preferred seedlist client left the peer protocol transport")
+	}
+	seedlist.Transport = server.Client().Transport
+	peer.Transport = server.Client().Transport
+
+	response := clientGet(t, context.Background(), peer, server.URL+"/from")
+	defer closeBody(response)
+	if response.StatusCode != http.StatusFound {
+		t.Fatalf("https-preferred peer followed redirect: status=%d", response.StatusCode)
+	}
+	if got := destinationHits.Load(); got != 0 {
+		t.Fatalf("https-preferred peer leaked to destination: hits=%d", got)
+	}
+
+	response = clientGet(t, context.Background(), seedlist, server.URL+"/from")
+	defer closeBody(response)
+	if response.StatusCode != http.StatusOK || destinationHits.Load() != 1 {
+		t.Fatalf("https-preferred seedlist did not follow redirect: status=%d", response.StatusCode)
 	}
 }
 

@@ -242,7 +242,9 @@ it is not an assumed deployment dependency.
   deterministic order: the seed's primary `IP` host followed by `IP6` entries in
   their wire order. IPv6 literals SHALL use bracketed URI authorities, and a seed
   with only `IP6` SHALL remain addressable. Hello and callback attempts SHALL
-  share one operation deadline rather than multiplying it per host. A successful
+  first try the endpoint at which the peer last answered with its own identity,
+  while the peer still advertises it, and SHALL share one operation deadline
+  rather than multiplying it per host. A successful
   alternate host SHALL become the stored primary host only after peer-hash
   verification; DNS aliases SHALL NOT merge peer identities. Outbound RWI and
   URL metadata transfers SHALL divide the earlier caller or HTTP-client

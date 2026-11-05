@@ -193,11 +193,10 @@ func assembleNode(
 	assembledLifecycle := false
 	defer func() {
 		if !assembledLifecycle {
-			peerWire.lifecycle.Close()
-			closeVault(peerWire.rosterVault.dedicated)
+			peerWire.close()
 		}
 	}()
-	peerClient := nodePeerClient(config, client)
+	seedlistClient, peerClient := nodePeerClients(config, client)
 	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
 	exchange, err := assembleRuntimePeerExchange(peerExchange{
 		router:                       peerWire.router,
@@ -206,6 +205,7 @@ func assembleNode(
 		config:                       config,
 		vault:                        vault,
 		client:                       peerClient,
+		seedlistClient:               seedlistClient,
 		peer:                         telemetry.peer,
 		host:                         hostLinkSnapshot,
 		roster:                       peerWire.roster,
@@ -248,14 +248,6 @@ func assembleNode(
 	assembledLifecycle = true
 
 	return assembled, nil
-}
-
-func nodePeerClient(config nodeConfig, client *http.Client) *http.Client {
-	selected := client
-	if config.PeerHTTPSPreferred {
-		selected = newRuntimePeerProtocolClient(config)
-	}
-	return peerClientWithoutRedirects(selected)
 }
 
 type assembleSurfacesInput struct {

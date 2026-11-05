@@ -60,7 +60,7 @@ func (e endpoint) receive(ctx context.Context, req yagoproto.MessageRequest) (bo
 		return false, nil
 	}
 
-	if req.Iam == "" || req.Iam != seed.Hash {
+	if req.Iam != seed.Hash {
 		return false, nil
 	}
 
