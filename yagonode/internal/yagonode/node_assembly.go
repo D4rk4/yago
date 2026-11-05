@@ -250,15 +250,12 @@ func assembleNode(
 	return assembled, nil
 }
 
-// nodePeerClient picks the client for peer-protocol calls: a client tolerant
-// of the self-signed certificates YaCy peers serve when https preference is
-// on, and the plain egress client verbatim otherwise.
 func nodePeerClient(config nodeConfig, client *http.Client) *http.Client {
+	selected := client
 	if config.PeerHTTPSPreferred {
-		return newRuntimePeerProtocolClient(config)
+		selected = newRuntimePeerProtocolClient(config)
 	}
-
-	return client
+	return peerClientWithoutRedirects(selected)
 }
 
 type assembleSurfacesInput struct {

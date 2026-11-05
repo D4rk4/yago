@@ -155,3 +155,8 @@ YaCy's Jetty caps URL-encoded form bodies at 200,000 bytes
 (`MAX_FORM_CONTENT_SIZE`), which large RWI and URL-metadata transfers exceed;
 multipart bodies bypass that cap. Inbound intake parses both form encodings, so
 these nodes interoperate with peers that still send URL-encoded bodies.
+
+Outbound peer-protocol calls refuse every 3xx redirect and return the redirect
+status to the caller instead of replaying the request at the destination. Only
+peer-protocol clients refuse redirects; the generic crawler, admin, and web-fetch
+clients keep their existing redirect behavior.
