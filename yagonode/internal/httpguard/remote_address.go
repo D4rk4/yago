@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"strings"
 )
 
 const forwardedForHeader = "X-Forwarded-For"
@@ -35,32 +34,12 @@ func (c ClientAddressResolver) Resolve(r *http.Request) string {
 		host = r.RemoteAddr
 	}
 
-	peer := net.ParseIP(host)
-	if peer != nil && ipInAny(peer, c.trustedProxies) {
-		if forwarded := firstForwarded(r.Header.Get(forwardedForHeader)); forwarded != "" {
-			return forwarded
-		}
+	socket, ok := parseUnscopedAddr(host)
+	if !ok {
+		return host
 	}
 
-	return host
-}
+	current := resolveForwardedChain(socket, r.Header.Values(forwardedForHeader), c.trustedProxies)
 
-func firstForwarded(header string) string {
-	if header == "" {
-		return ""
-	}
-
-	first, _, _ := strings.Cut(header, ",")
-
-	return strings.TrimSpace(first)
-}
-
-func ipInAny(ip net.IP, nets []*net.IPNet) bool {
-	for _, n := range nets {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
+	return current.String()
 }

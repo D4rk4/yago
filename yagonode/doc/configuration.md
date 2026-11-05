@@ -214,7 +214,7 @@ required.
 | `YAGO_DHT_MINIMUM_PEER_AGE_DAYS` | `3` | Minimum peer age for DHT target eligibility. Set `-1` only for controlled tests or private networks that intentionally disable the age gate. |
 | `YAGO_DHT_MINIMUM_CONNECTED_PEERS` | `33` | Sender-side DHT gate: minimum connected peers before outbound distribution starts. Lower it only for private networks or controlled tests. |
 | `YAGO_DHT_MINIMUM_RWI_WORDS` | `100` | Sender-side DHT gate: minimum locally stored RWI words before outbound distribution starts. |
-| `YAGO_TRUSTED_PROXIES` | _(empty)_ | Comma-separated CIDRs or IPs of reverse proxies fronting the node. Set this when running behind a reverse proxy so peers are not told the proxy's address. |
+| `YAGO_TRUSTED_PROXIES` | _(empty)_ | Comma-separated CIDRs or IPs of reverse proxies fronting the node. Set this when running behind a reverse proxy so peers are not told the proxy's address. When the direct connection comes from a listed proxy, the node reads `X-Forwarded-For` from the nearest hop and uses the first address that is not itself a listed proxy; a malformed entry stops the walk at the last trusted hop. |
 | `YAGO_STORAGE_QUOTA` | `1GB` | Soft admission and eviction target for logical live main-vault rows, as a human-readable size. It excludes Bleve, crawl state, allocated free pages, and temporary copies. Admin key: `storage.quota`. |
 | `YAGO_STORAGE_RESERVED_FREE` | `1GB` | Filesystem free-space reserve for gate-managed node growth. Admin key: `storage.reserved_free`; applies live. |
 | `YAGO_STORAGE_PRESSURE_HYSTERESIS` | `256MB` | Additional free space above the node reserve required before gate-managed growth resumes. Admin key: `storage.pressure_hysteresis`; applies live. |
