@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -50,6 +51,7 @@ func TestPeerGreeterReplaysEqualHelloFormAfterTransportFailure(t *testing.T) {
 		target,
 		self,
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	); err != nil {
 		t.Fatal(err)
 	}

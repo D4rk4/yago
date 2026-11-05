@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 )
 
 type blockingBootstrapSource struct {
@@ -30,10 +31,22 @@ func (s *blockingBootstrapSource) Fetch(context.Context) []yagomodel.Seed {
 type emptyBootstrapRoster struct{}
 
 func (emptyBootstrapRoster) Discover(context.Context, ...yagomodel.Seed)         {}
-func (emptyBootstrapRoster) ObserveResponder(context.Context, yagomodel.Seed)    {}
 func (emptyBootstrapRoster) ConfirmReachable(context.Context, yagomodel.Hash)    {}
 func (emptyBootstrapRoster) ConfirmUnreachable(context.Context, yagomodel.Hash)  {}
 func (emptyBootstrapRoster) FreshestPeers(context.Context, int) []yagomodel.Seed { return nil }
+func (emptyBootstrapRoster) AnsweredEndpoint(
+	context.Context,
+	yagomodel.Hash,
+) (peerwire.Endpoint, bool, error) {
+	return peerwire.Endpoint{}, false, nil
+}
+
+func (emptyBootstrapRoster) ObserveAnsweredResponder(
+	context.Context,
+	yagomodel.Seed,
+	peerwire.Endpoint,
+) {
+}
 
 func TestEmptyRosterBootstrapRefreshIsSingleFlight(t *testing.T) {
 	source := &blockingBootstrapSource{

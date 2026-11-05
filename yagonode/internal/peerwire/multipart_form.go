@@ -1,4 +1,5 @@
-// Package peerwire encodes outbound peer-protocol POST bodies.
+// Package peerwire shapes outbound peer-protocol requests: it encodes POST bodies
+// and orders the endpoints at which a peer is contacted.
 package peerwire
 
 import (

@@ -61,7 +61,7 @@ yagonode/internal/peernews/bounded_newest_news.go:123:10
 yagonode/internal/peernews/bounded_newest_news.go:15:29
 yagonode/internal/peernews/news_retention_plan.go:68:2
 yagonode/internal/peernews/news_retention_plan.go:70:31
-yagonode/internal/peerroster/roster.go:64:40
+yagonode/internal/peerroster/roster.go:65:40
 yagonode/internal/publicratelimit/publicratelimit.go:110:3
 yagonode/internal/publicratelimit/publicratelimit.go:155:6
 yagonode/internal/publicratelimit/publicratelimit.go:80:24

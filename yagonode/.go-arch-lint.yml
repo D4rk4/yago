@@ -341,6 +341,7 @@ deps:
     mayDependOn:
       - peeradmission
       - peerroster
+      - peerwire
       - httpguard
       - nodeidentity
     canUse:
@@ -408,6 +409,7 @@ deps:
   peerroster:
     mayDependOn:
       - peerroster
+      - peerwire
       - vault
       - memvault
       - boltvault
@@ -995,6 +997,7 @@ deps:
       - peerreputation
       - peerroster
       - peerannouncement
+      - peerwire
       - hostlinks
       - hostrank
       - corpussignals

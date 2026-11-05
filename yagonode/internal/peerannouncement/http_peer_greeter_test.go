@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -80,6 +81,7 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 		serverSeed(t, server),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
@@ -128,6 +130,7 @@ func TestPeerGreeterFallsBackToAlternateAdvertisedAddress(t *testing.T) {
 		target,
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -176,6 +179,7 @@ func TestPeerGreeterRejectsWrongIdentityBeforeAlternateAddress(t *testing.T) {
 		target,
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if err != nil || result.Responder.Hash != target.Hash {
 		t.Fatalf("identity-preserving fallback = %+v, %v", result, err)
@@ -209,6 +213,7 @@ func TestPeerGreeterSharesOneTimeoutAcrossAdvertisedAddresses(t *testing.T) {
 		target,
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Greet error = %v, want deadline", err)
@@ -246,6 +251,7 @@ func TestPeerGreeterStopsAddressFallbackOnCancellation(t *testing.T) {
 		target,
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if !errors.Is(err, context.Canceled) || attempts != 1 {
 		t.Fatalf("canceled greet error/attempts = %v/%d", err, attempts)
@@ -267,6 +273,7 @@ func TestPeerGreeterDoesNotStartWithCanceledContext(t *testing.T) {
 		callerSeed(t, "target", "192.0.2.7"),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if !errors.Is(err, context.Canceled) || attempts != 0 {
 		t.Fatalf("pre-canceled greet error/attempts = %v/%d", err, attempts)
@@ -289,6 +296,7 @@ func TestPeerGreeterAcceptsAdvertisedHostnameFromBackping(t *testing.T) {
 		serverSeed(t, server),
 		callerSeed(t, "self", "yagoseek.dev"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if err != nil || result.YourType != yagomodel.PeerSenior {
 		t.Fatalf("hostname greet = %+v, %v", result, err)
@@ -330,6 +338,7 @@ func TestPeerGreeterSignsControlledNetworkRequest(t *testing.T) {
 		serverSeed(t, server),
 		self,
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if err != nil || result.YourType != yagomodel.PeerSenior {
 		t.Fatalf("controlled greet = %+v, %v", result, err)
@@ -350,6 +359,7 @@ func TestPeerGreeterSurfacesSigningFailure(t *testing.T) {
 		callerSeed(t, "target", "203.0.113.1"),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if !errors.Is(err, sentinel) || !errors.Is(err, errGreetFailed) {
 		t.Fatalf("greet signing error = %v", err)
@@ -368,6 +378,7 @@ func TestPeerGreeterRejectsNon200(t *testing.T) {
 		serverSeed(t, server),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	); err == nil {
 		t.Fatal("expected error on non-200")
 	}
@@ -387,6 +398,7 @@ func TestPeerGreeterRejectsRequestCreationError(t *testing.T) {
 		callerSeed(t, "target", "203.0.113.1"),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	); !errors.Is(err, sentinel) {
 		t.Fatalf("Greet error = %v, want %v", err, sentinel)
 	}
@@ -405,6 +417,7 @@ func TestPeerGreeterRejectsTransportError(t *testing.T) {
 		callerSeed(t, "target", "203.0.113.1"),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	); !errors.Is(err, sentinel) {
 		t.Fatalf("Greet error = %v, want %v", err, sentinel)
 	}
@@ -426,6 +439,7 @@ func TestPeerGreeterRejectsReadError(t *testing.T) {
 		callerSeed(t, "target", "203.0.113.1"),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	); !errors.Is(err, sentinel) {
 		t.Fatalf("Greet error = %v, want %v", err, sentinel)
 	}
@@ -521,6 +535,7 @@ func TestPeerGreeterRejectsMismatchedResponderIdentity(t *testing.T) {
 		serverSeed(t, server),
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	)
 	if !errors.Is(err, errGreetFailed) {
 		t.Fatalf("mismatched responder error = %v", err)
@@ -542,6 +557,7 @@ func TestPeerGreeterRejectsEmptyEndpoint(t *testing.T) {
 		yagomodel.Seed{Hash: hashFor("target")},
 		callerSeed(t, "self", "203.0.113.9"),
 		0,
+		yagomodel.None[peerwire.Endpoint](),
 	); err == nil {
 		t.Fatal("expected error for a target without a reachable address")
 	}

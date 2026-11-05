@@ -22,11 +22,12 @@ var (
 )
 
 type greetResult struct {
-	Responder     yagomodel.Seed
-	ContactedHost yagomodel.Optional[yagomodel.Host]
-	YourIP        string
-	YourType      yagomodel.PeerType
-	Known         []yagomodel.Seed
+	Responder         yagomodel.Seed
+	ContactedHost     yagomodel.Optional[yagomodel.Host]
+	ContactedEndpoint peerwire.Endpoint
+	YourIP            string
+	YourType          yagomodel.PeerType
+	Known             []yagomodel.Seed
 }
 
 type httpPeerGreeter struct {
@@ -64,8 +65,9 @@ func (g httpPeerGreeter) Greet(
 	target yagomodel.Seed,
 	self yagomodel.Seed,
 	count int,
+	answered yagomodel.Optional[peerwire.Endpoint],
 ) (greetResult, error) {
-	endpoints, err := greetEndpoints(target, g.preferHTTPS)
+	endpoints, err := greetEndpoints(target, g.preferHTTPS, answered)
 	if err != nil {
 		return greetResult{}, err
 	}
@@ -111,6 +113,7 @@ func (g httpPeerGreeter) Greet(
 			}
 			contactedHost, _ := yagomodel.ParseHost(endpoint.Hostname())
 			result.ContactedHost = yagomodel.Some(contactedHost)
+			result.ContactedEndpoint = peerwire.EndpointAt(endpoint)
 			return result, nil
 		}
 		lastErr = err
@@ -188,8 +191,12 @@ func parseGreetResponse(
 	}, nil
 }
 
-func greetEndpoints(target yagomodel.Seed, preferHTTPS bool) ([]*url.URL, error) {
-	endpoints, err := target.ProtocolEndpoints(yagoproto.PathHello, preferHTTPS)
+func greetEndpoints(
+	target yagomodel.Seed,
+	preferHTTPS bool,
+	answered yagomodel.Optional[peerwire.Endpoint],
+) ([]*url.URL, error) {
+	endpoints, err := peerwire.ContactEndpoints(target, yagoproto.PathHello, preferHTTPS, answered)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}

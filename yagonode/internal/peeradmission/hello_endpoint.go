@@ -8,6 +8,7 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -17,10 +18,12 @@ type callerReachabilityProbe interface {
 		caller yagomodel.Seed,
 		self yagomodel.Hash,
 		networkName string,
-	) (yagomodel.Seed, bool)
+		answered yagomodel.Optional[peerwire.Endpoint],
+	) (yagomodel.Seed, yagomodel.Optional[peerwire.Endpoint])
 }
 
 type ReachableRoster interface {
+	AnsweredEndpoints
 	FreshestPeers(ctx context.Context, limit int) []yagomodel.Seed
 	ObserveCaller(ctx context.Context, caller yagomodel.Seed, classification yagomodel.PeerType)
 }
@@ -61,7 +64,8 @@ func (e helloEndpoint) Serve(
 	}
 
 	caller, observable := observableHelloCaller(ctx, req.Seed)
-	caller, resp.YourType = e.classifyCaller(ctx, caller, observable)
+	var answered yagomodel.Optional[peerwire.Endpoint]
+	caller, resp.YourType, answered = e.classifyCaller(ctx, caller, observable)
 	if resp.YourType == yagomodel.PeerVirgin {
 		return resp, nil
 	}
@@ -70,7 +74,7 @@ func (e helloEndpoint) Serve(
 			context.WithoutCancel(ctx),
 			callerObservationTimeout,
 		)
-		e.reachability.ObserveCaller(observationContext, caller, resp.YourType)
+		e.observeClassifiedCaller(observationContext, caller, resp.YourType, answered)
 		cancel()
 		e.acceptCallerNews(ctx, caller, resp.YourType)
 	}
@@ -99,29 +103,31 @@ func (e helloEndpoint) classifyCaller(
 	ctx context.Context,
 	caller yagomodel.Seed,
 	observable bool,
-) (yagomodel.Seed, yagomodel.PeerType) {
+) (yagomodel.Seed, yagomodel.PeerType, yagomodel.Optional[peerwire.Endpoint]) {
+	unanswered := yagomodel.None[peerwire.Endpoint]()
 	if samePeerIdentity(caller, e.status.SelfSeed(ctx)) {
-		return caller, yagomodel.PeerVirgin
+		return caller, yagomodel.PeerVirgin, unanswered
 	}
 
 	if !observable {
-		return caller, yagomodel.PeerJunior
+		return caller, yagomodel.PeerJunior, unanswered
 	}
 
-	verifiedCaller, reachable := e.probe.ReachableCaller(
+	verifiedCaller, answered := e.probe.ReachableCaller(
 		ctx,
 		caller,
 		e.status.SelfSeed(ctx).Hash,
 		e.status.NetworkName(ctx),
+		e.answeredCallerEndpoint(ctx, caller.Hash),
 	)
-	if !reachable {
-		return caller, yagomodel.PeerJunior
+	if !answered.Present() {
+		return caller, yagomodel.PeerJunior, unanswered
 	}
 	if peerType, known := caller.PeerType.Get(); known && peerType == yagomodel.PeerPrincipal {
-		return verifiedCaller, yagomodel.PeerPrincipal
+		return verifiedCaller, yagomodel.PeerPrincipal, answered
 	}
 
-	return verifiedCaller, yagomodel.PeerSenior
+	return verifiedCaller, yagomodel.PeerSenior, answered
 }
 
 func samePeerIdentity(caller, self yagomodel.Seed) bool {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -32,9 +33,25 @@ type Inventory interface {
 	ReachablePeerCount(ctx context.Context) int
 }
 
+type AnsweredEndpoints interface {
+	AnsweredEndpoint(ctx context.Context, peer yagomodel.Hash) (peerwire.Endpoint, bool, error)
+	ObserveAnsweredCaller(
+		ctx context.Context,
+		caller yagomodel.Seed,
+		classification yagomodel.PeerType,
+		endpoint peerwire.Endpoint,
+	)
+	ObserveAnsweredResponder(
+		ctx context.Context,
+		responder yagomodel.Seed,
+		endpoint peerwire.Endpoint,
+	)
+}
+
 type Roster interface {
 	Lifecycle
 	Inventory
+	AnsweredEndpoints
 }
 
 type Directory interface {
@@ -81,12 +98,21 @@ func Open(
 	if err != nil {
 		return nil, fmt.Errorf("register peer roster lifecycle cleanup cursor: %w", err)
 	}
+	answeredEndpoints, err := vault.RegisterKeyspace(
+		storage,
+		answeredEndpointsBucket,
+		answeredEndpointCodec{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register peer roster answered endpoints: %w", err)
+	}
 
 	opened := &roster{
 		vault:                  storage,
 		peers:                  peers,
 		lifecycles:             lifecycles,
 		lifecycleCleanupCursor: cleanupCursor,
+		answeredEndpoints:      answeredEndpoints,
 		self:                   self,
 		now:                    now,
 		reservoirCap:           capacity.Reservoir,

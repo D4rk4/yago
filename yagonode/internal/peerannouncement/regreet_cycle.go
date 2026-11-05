@@ -8,6 +8,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/bootstrap"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 )
 
 const announceHelloPeerCount = 30
@@ -18,12 +19,13 @@ type peerGreeter interface {
 		target yagomodel.Seed,
 		self yagomodel.Seed,
 		count int,
+		answered yagomodel.Optional[peerwire.Endpoint],
 	) (greetResult, error)
 }
 
 type peerRoster interface {
+	answeredEndpointMemory
 	Discover(ctx context.Context, seeds ...yagomodel.Seed)
-	ObserveResponder(ctx context.Context, responder yagomodel.Seed)
 	ConfirmReachable(ctx context.Context, peer yagomodel.Hash)
 	ConfirmUnreachable(ctx context.Context, peer yagomodel.Hash)
 	FreshestPeers(ctx context.Context, limit int) []yagomodel.Seed
@@ -104,7 +106,7 @@ func (a *announcer) greetPeers(ctx context.Context) {
 			continue
 		}
 
-		result, err := a.greeter.Greet(ctx, target, self, announceHelloPeerCount)
+		result, err := a.greetAtAnsweredEndpoint(ctx, target, self)
 		if err != nil {
 			if a.observer != nil {
 				a.observer.ObservePeerProbeFailure()
@@ -134,10 +136,7 @@ func (a *announcer) greetPeers(ctx context.Context) {
 			result.YourType,
 		)
 
-		a.roster.ObserveResponder(
-			ctx,
-			responderAtTargetEndpoint(result.Responder, target, result.ContactedHost),
-		)
+		a.observeGreetedResponder(ctx, target, result)
 		a.roster.Discover(ctx, result.Known...)
 		a.acceptGreetedNews(ctx, result.Known)
 	}
@@ -173,7 +172,7 @@ func (a *announcer) acceptGreetedNews(ctx context.Context, seeds []yagomodel.See
 // roster — the discovery layer's claim is never trusted directly.
 func (a *announcer) GreetDiscovered(ctx context.Context, target yagomodel.Seed) {
 	self := a.self.SelfSeed(ctx)
-	result, err := a.greeter.Greet(ctx, target, self, announceHelloPeerCount)
+	result, err := a.greetAtAnsweredEndpoint(ctx, target, self)
 	if err != nil {
 		if a.observer != nil {
 			a.observer.ObservePeerProbeFailure()
@@ -187,10 +186,7 @@ func (a *announcer) GreetDiscovered(ctx context.Context, target yagomodel.Seed) 
 		targetAtContactedHost(target, result.ContactedHost),
 		result.YourType,
 	)
-	a.roster.ObserveResponder(
-		ctx,
-		responderAtTargetEndpoint(result.Responder, target, result.ContactedHost),
-	)
+	a.observeGreetedResponder(ctx, target, result)
 	a.roster.Discover(ctx, result.Known...)
 	a.acceptGreetedNews(ctx, result.Known)
 }

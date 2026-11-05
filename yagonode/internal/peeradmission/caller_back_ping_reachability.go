@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 )
 
 func (p callerBackPing) Reachable(
@@ -12,7 +13,9 @@ func (p callerBackPing) Reachable(
 	self yagomodel.Hash,
 	networkName string,
 ) bool {
-	_, reachable := p.ReachableCaller(ctx, caller, self, networkName)
+	_, answered := p.ReachableCaller(
+		ctx, caller, self, networkName, yagomodel.None[peerwire.Endpoint](),
+	)
 
-	return reachable
+	return answered.Present()
 }

@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 )
 
 type stubGreeter struct {
-	result greetResult
-	err    error
-	calls  int
+	result   greetResult
+	err      error
+	calls    int
+	answered []yagomodel.Optional[peerwire.Endpoint]
 }
 
 func (g *stubGreeter) Greet(
@@ -22,8 +24,10 @@ func (g *stubGreeter) Greet(
 	target yagomodel.Seed,
 	_ yagomodel.Seed,
 	_ int,
+	answered yagomodel.Optional[peerwire.Endpoint],
 ) (greetResult, error) {
 	g.calls++
+	g.answered = append(g.answered, answered)
 	result := g.result
 	if result.Responder.Hash == "" {
 		result.Responder = target
@@ -42,6 +46,7 @@ func (g *cancelingGreeter) Greet(
 	target yagomodel.Seed,
 	_ yagomodel.Seed,
 	_ int,
+	_ yagomodel.Optional[peerwire.Endpoint],
 ) (greetResult, error) {
 	g.calls++
 	if g.calls == 2 {
@@ -58,6 +63,9 @@ type stubRoster struct {
 	reachable   []yagomodel.Hash
 	unreachable []yagomodel.Hash
 	prunes      int
+	answered    map[yagomodel.Hash]peerwire.Endpoint
+	answeredErr error
+	remembered  map[yagomodel.Hash]peerwire.Endpoint
 }
 
 func (s *stubRoster) FreshestPeers(context.Context, int) []yagomodel.Seed {
@@ -74,9 +82,17 @@ func (s *stubRoster) Discover(_ context.Context, seeds ...yagomodel.Seed) {
 	s.discovered = append(s.discovered, seeds...)
 }
 
-func (s *stubRoster) ObserveResponder(_ context.Context, responder yagomodel.Seed) {
+func (s *stubRoster) ObserveAnsweredResponder(
+	_ context.Context,
+	responder yagomodel.Seed,
+	endpoint peerwire.Endpoint,
+) {
 	s.responders = append(s.responders, responder)
 	s.reachable = append(s.reachable, responder.Hash)
+	if s.remembered == nil {
+		s.remembered = map[yagomodel.Hash]peerwire.Endpoint{}
+	}
+	s.remembered[responder.Hash] = endpoint
 }
 
 func (s *stubRoster) ConfirmReachable(_ context.Context, peer yagomodel.Hash) {

@@ -160,3 +160,15 @@ Outbound peer-protocol calls refuse every 3xx redirect and return the redirect
 status to the caller instead of replaying the request at the destination. Only
 peer-protocol clients refuse redirects; the generic crawler, admin, and web-fetch
 clients keep their existing redirect behavior.
+
+The outbound hello greeting and the hello back-ping remember the exact scheme,
+host, and port at which a peer last answered directly with its own identity. The
+next greeting or back-ping tries that endpoint first, but only while the peer
+still advertises it and the current HTTPS preference and egress rules still
+allow it; otherwise the advertised order applies unchanged. Gossip, failed
+requests, redirects, malformed answers, and answers from another peer leave
+nothing behind. When HTTPS is preferred, a peer advertised by DNS name is also
+tried at `https://<name>:443` before its plain HTTP endpoints; peers advertised
+by IP address are not. All attempts share one deadline. Remote search,
+transferRWI, and transferURL keep the advertised endpoint order. Seeds sent to
+other peers are unchanged.

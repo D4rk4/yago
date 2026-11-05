@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 )
 
 const peerPotentialObservationFailedMessage = "peer potential observation failed"
@@ -52,7 +53,12 @@ func (r *roster) persistPotentialObservation(
 	ctx context.Context,
 	observation rosterEntry,
 ) (bool, error) {
-	inserted, err := r.persistObservation(ctx, observation, true)
+	inserted, err := r.persistObservation(
+		ctx,
+		observation,
+		true,
+		yagomodel.None[peerwire.Endpoint](),
+	)
 	if err != nil {
 		return false, fmt.Errorf("observe potential peer: %w", err)
 	}
