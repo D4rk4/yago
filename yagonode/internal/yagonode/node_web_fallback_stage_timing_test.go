@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -327,87 +328,91 @@ func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
 }
 
 func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
-	previous := webFallbackPrimaryStageBudget
-	webFallbackPrimaryStageBudget = 20 * time.Millisecond
-	t.Cleanup(func() { webFallbackPrimaryStageBudget = previous })
+	synctest.Test(t, func(t *testing.T) {
+		previous := webFallbackPrimaryStageBudget
+		webFallbackPrimaryStageBudget = 20 * time.Millisecond
+		t.Cleanup(func() { webFallbackPrimaryStageBudget = previous })
 
-	release := make(chan struct{})
-	finished := make(chan struct{}, 1)
-	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
-	searcher := withWebFallbackExactStageBudget(
-		searchcore.NewFederatedSearcher(
-			productionShapeLocalHit{},
-			remote,
-		),
-		webFallbackConfig{
-			Privacy:  webFallbackPrivacyEnabled,
-			Provider: webFallbackProviderDDGS,
-		},
-	)
-	response, err := searcher.Search(t.Context(), searchcore.Request{
-		Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
-	})
-	close(release)
-	select {
-	case <-finished:
-	case <-time.After(time.Second):
-		t.Fatal("remote search did not finish")
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(response.Results) != 1 ||
-		response.Results[0].URL != "https://local.example/needle" {
-		t.Fatalf("response = %#v", response)
-	}
-}
-
-func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testing.T) {
-	previous := webFallbackPrimaryStageBudget
-	previousRemoteAdmission := processRemoteSearchAdmission
-	webFallbackPrimaryStageBudget = 20 * time.Millisecond
-	processRemoteSearchAdmission = make(chan struct{}, interactiveSearchConcurrentWork)
-	t.Cleanup(func() {
-		webFallbackPrimaryStageBudget = previous
-		processRemoteSearchAdmission = previousRemoteAdmission
-	})
-
-	// Every attempt leaks one remote branch that ignores cancellation and keeps
-	// its admission slot, so the swarm must stop being reached once the slots are
-	// gone. The round count has to exceed the capacity to show that, and the
-	// capacity follows the processor count, so it cannot be a literal.
-	rounds := interactiveSearchConcurrentWork + 2
-	release := make(chan struct{})
-	finished := make(chan struct{}, rounds)
-	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
-	attempts := &productionShapeWebAttempts{}
-	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
-	searcher := assemblePublicSearcher(
-		productionShapeLocalHit{},
-		remote,
-		productionShapeSearchAssembly(client),
-	)
-	for attempt := range rounds {
+		release := make(chan struct{})
+		finished := make(chan struct{}, 1)
+		remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
+		searcher := withWebFallbackExactStageBudget(
+			searchcore.NewFederatedSearcher(
+				productionShapeLocalHit{},
+				remote,
+			),
+			webFallbackConfig{
+				Privacy:  webFallbackPrivacyEnabled,
+				Provider: webFallbackProviderDDGS,
+			},
+		)
 		response, err := searcher.Search(t.Context(), searchcore.Request{
-			Query: "drunklab", Source: searchcore.SourceGlobal, Limit: 10,
+			Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
 		})
-		if err != nil || len(response.Results) == 0 ||
-			response.Results[0].URL != "https://local.example/needle" {
-			t.Fatalf("attempt %d response = %#v, error = %v", attempt+1, response, err)
-		}
-	}
-	if hosts, _ := attempts.snapshot(); len(hosts) == 0 {
-		t.Fatalf("provider hosts = %v", hosts)
-	}
-	if int(remote.calls.Load()) != interactiveSearchConcurrentWork {
-		t.Fatalf("remote calls = %d", remote.calls.Load())
-	}
-	close(release)
-	for range interactiveSearchConcurrentWork {
+		close(release)
 		select {
 		case <-finished:
 		case <-time.After(time.Second):
 			t.Fatal("remote search did not finish")
 		}
-	}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(response.Results) != 1 ||
+			response.Results[0].URL != "https://local.example/needle" {
+			t.Fatalf("response = %#v", response)
+		}
+	})
+}
+
+func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		previous := webFallbackPrimaryStageBudget
+		previousRemoteAdmission := processRemoteSearchAdmission
+		webFallbackPrimaryStageBudget = 20 * time.Millisecond
+		processRemoteSearchAdmission = make(chan struct{}, interactiveSearchConcurrentWork)
+		t.Cleanup(func() {
+			webFallbackPrimaryStageBudget = previous
+			processRemoteSearchAdmission = previousRemoteAdmission
+		})
+
+		// Every attempt leaks one remote branch that ignores cancellation and keeps
+		// its admission slot, so the swarm must stop being reached once the slots are
+		// gone. The round count has to exceed the capacity to show that, and the
+		// capacity follows the processor count, so it cannot be a literal.
+		rounds := interactiveSearchConcurrentWork + 2
+		release := make(chan struct{})
+		finished := make(chan struct{}, rounds)
+		remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
+		attempts := &productionShapeWebAttempts{}
+		client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
+		searcher := assemblePublicSearcher(
+			productionShapeLocalHit{},
+			remote,
+			productionShapeSearchAssembly(client),
+		)
+		for attempt := range rounds {
+			response, err := searcher.Search(t.Context(), searchcore.Request{
+				Query: "drunklab", Source: searchcore.SourceGlobal, Limit: 10,
+			})
+			if err != nil || len(response.Results) == 0 ||
+				response.Results[0].URL != "https://local.example/needle" {
+				t.Fatalf("attempt %d response = %#v, error = %v", attempt+1, response, err)
+			}
+		}
+		if hosts, _ := attempts.snapshot(); len(hosts) == 0 {
+			t.Fatalf("provider hosts = %v", hosts)
+		}
+		if int(remote.calls.Load()) != interactiveSearchConcurrentWork {
+			t.Fatalf("remote calls = %d", remote.calls.Load())
+		}
+		close(release)
+		for range interactiveSearchConcurrentWork {
+			select {
+			case <-finished:
+			case <-time.After(time.Second):
+				t.Fatal("remote search did not finish")
+			}
+		}
+	})
 }
