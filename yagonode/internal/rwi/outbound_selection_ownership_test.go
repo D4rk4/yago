@@ -149,6 +149,7 @@ func TestRecoverOutboundDropsPurgedWaitingPosting(t *testing.T) {
 		postingWithHashes(ownershipWord, ownershipURL),
 		postingWithHashes(ownershipWord, ownershipOtherURL),
 	)
+	storedBefore := len(h.observer.stored)
 	purgeHarnessPosting(t, ctx, h, ownershipWord, ownershipURL)
 
 	recovered, err := outboundStore(t, h.rwi.Index).RecoverOutbound(ctx)
@@ -157,6 +158,12 @@ func TestRecoverOutboundDropsPurgedWaitingPosting(t *testing.T) {
 	}
 	if recovered != 1 {
 		t.Fatalf("recovered = %d, want 1", recovered)
+	}
+	if len(h.observer.stored) != storedBefore+1 {
+		t.Fatalf(
+			"stored observers = %v, want exactly one new notification when recovery restores the surviving posting and stays silent for the purged one",
+			h.observer.stored,
+		)
 	}
 	assertStoredHitCountAbsent(t, ctx, h.rwi.Index, ownershipWord, ownershipURL)
 	assertStoredHitCount(t, ctx, h.rwi.Index, hitExpectation{
@@ -316,55 +323,19 @@ func TestRestoreOutboundIgnoresJournalEntryOfNewerSelection(t *testing.T) {
 	assertJournalEntries(t, ctx, h, 0)
 }
 
-func TestRestoreOutboundRestoresOwnedEntryOnce(t *testing.T) {
+func TestConfirmOutboundReturnsZeroForPurgedWaitingEntry(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	h := openHarness(t, 0, 100)
-	selection := selectReceivedPostings(t, ctx, h, postingWithHashes(ownershipWord, ownershipURL))
-	storedBefore := len(h.observer.stored)
+	entry := postingWithHashes(ownershipWord, ownershipURL)
+	selectReceivedPostings(t, ctx, h, entry)
+	purgeHarnessPosting(t, ctx, h, ownershipWord, ownershipURL)
 
-	restored, err := outboundStore(t, h.rwi.Index).RestoreOutbound(ctx, selection.Words)
-	if err != nil || restored != 1 {
-		t.Fatalf("RestoreOutbound = %d, %v; want 1, nil", restored, err)
-	}
-	assertStoredHitCount(t, ctx, h.rwi.Index, hitExpectation{
-		word: ownershipWord, url: ownershipURL, want: "1",
-	})
-	if len(h.observer.stored) != storedBefore+1 {
-		t.Fatalf("stored observers = %d, want %d", len(h.observer.stored), storedBefore+1)
-	}
-	assertJournalEntries(t, ctx, h, 0)
-}
-
-func TestConfirmOutboundReleasesOwnedEntry(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	h := openHarness(t, 0, 100)
-	selection := selectReceivedPostings(t, ctx, h, postingWithHashes(ownershipWord, ownershipURL))
-
-	confirmed, err := outboundStore(t, h.rwi.Index).ConfirmOutbound(
-		ctx,
-		selection.Words[0].Postings,
-	)
-	if err != nil || confirmed != 1 {
-		t.Fatalf("ConfirmOutbound = %d, %v; want 1, nil", confirmed, err)
-	}
-	assertJournalEntries(t, ctx, h, 0)
-	assertStoredHitCountAbsent(t, ctx, h.rwi.Index, ownershipWord, ownershipURL)
-}
-
-func TestConfirmOutboundWithoutWaitingEntryReturnsZero(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	h := openHarness(t, 0, 100)
-
-	confirmed, err := outboundStore(t, h.rwi.Index).ConfirmOutbound(
-		ctx,
-		[]yagomodel.RWIPosting{postingWithHashes(ownershipWord, ownershipURL)},
-	)
+	confirmed, err := outboundStore(
+		t,
+		h.rwi.Index,
+	).ConfirmOutbound(ctx, []yagomodel.RWIPosting{entry})
 	if err != nil || confirmed != 0 {
 		t.Fatalf("ConfirmOutbound = %d, %v; want 0, nil", confirmed, err)
 	}

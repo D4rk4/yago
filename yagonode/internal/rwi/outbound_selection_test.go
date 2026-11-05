@@ -207,6 +207,7 @@ func TestConfirmOutboundClearsPendingSelection(t *testing.T) {
 	if confirmed != 1 {
 		t.Fatalf("confirmed = %d, want 1", confirmed)
 	}
+	assertJournalEntries(t, ctx, h, 0)
 	recovered, err := store.RecoverOutbound(ctx)
 	if err != nil {
 		t.Fatalf("RecoverOutbound: %v", err)

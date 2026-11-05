@@ -354,10 +354,14 @@ discarded. A restore never replaces a posting written after selection, and
 selection never removes a posting that changed after it was chosen. A restore
 or confirmation acts only on a journal entry that still holds the posting its
 own batch selected. When a later selection of the same posting has replaced
-that entry, the earlier batch leaves it in place. A purge, including URL
-deletion, also drops a posting that is waiting for transfer, so neither a later
+that entry, the earlier batch leaves it in place. A purge of a posting that is still live, including URL
+deletion, also drops a posting waiting for transfer, so neither a later
 restore nor restart recovery brings it back. A posting already sent to a peer
 is not recalled.
+
+Known limitation: a word dropped from a page by a recrawl may return after a
+failed transfer until the next recrawl of that URL, and a posting already in a
+transfer batch may still reach the peer.
 
 Once redundancy copies are queued, one accepted transfer leaves the recovery
 record intact while another in-memory copy remains. Only the final accepted copy

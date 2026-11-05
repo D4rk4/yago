@@ -193,6 +193,7 @@ func TestRestoreOutboundReinsertsAbsentRow(t *testing.T) {
 			word,
 		)
 	}
+	assertJournalEntries(t, ctx, h, 0)
 }
 
 func TestDeleteOutboundSkipsReplacedRow(t *testing.T) {
