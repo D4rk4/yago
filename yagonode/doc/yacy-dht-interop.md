@@ -322,7 +322,10 @@ live DHT traffic as stored RWI rows are fed into the outbound queue.
 YaCy sends an index handoff in two phases. The sender posts RWI rows to
 `/yacy/transferRWI.html`; when the receiver reports hashes in `unknownURL`, the
 sender loads the matching local URL metadata rows and posts them to
-`/yacy/transferURL.html`. An `ok` RWI response must contain the `unknownURL`
+`/yacy/transferURL.html`. The sender encodes these POSTs as `multipart/form-data`
+rather than `application/x-www-form-urlencoded`, so large RWI and URL-metadata
+bodies survive Java YaCy's Jetty `MAX_FORM_CONTENT_SIZE` cap.
+An `ok` RWI response must contain the `unknownURL`
 field; a present empty value completes an RWI-only handoff, while an absent
 field is a malformed response and leaves the postings recoverable. The RWI
 receiver preserves upstream preflight result

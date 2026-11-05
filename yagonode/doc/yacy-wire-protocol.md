@@ -146,3 +146,10 @@ stable YaCy wire shapes.
 authentication failure and missing required fields before accepting RWI rows.
 `/yacy/transferURL.html` preserves upstream network-auth failure behavior by
 returning no transferURL result fields before target handling.
+
+Outbound hello, transferRWI, and transferURL POSTs are encoded as
+`multipart/form-data` rather than `application/x-www-form-urlencoded`. Java
+YaCy's Jetty caps URL-encoded form bodies at 200,000 bytes
+(`MAX_FORM_CONTENT_SIZE`), which large RWI and URL-metadata transfers exceed;
+multipart bodies bypass that cap. Inbound intake parses both form encodings, so
+these nodes interoperate with peers that still send URL-encoded bodies.

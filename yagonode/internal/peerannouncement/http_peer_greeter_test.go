@@ -61,6 +61,7 @@ func TestPeerGreeterLearnsTypeAndKnownSeeds(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
+		helloAttemptFields(t, r)
 		resp := yagoproto.HelloResponse{
 			YourIP:   "203.0.113.9",
 			YourType: yagomodel.PeerSenior,
@@ -303,9 +304,10 @@ func TestPeerGreeterSignsControlledNetworkRequest(t *testing.T) {
 	}
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-			if err := request.ParseForm(); err != nil {
+			if err := request.ParseMultipartForm(1 << 20); err != nil {
 				t.Fatal(err)
 			}
+			defer func() { _ = request.MultipartForm.RemoveAll() }()
 			verifier := access
 			verifier.Self = self.Hash
 			if !verifier.Authorizes(request.PostForm) ||

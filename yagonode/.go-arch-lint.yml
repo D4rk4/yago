@@ -42,6 +42,8 @@ components:
     in: internal/peerroster/**
   peerannouncement:
     in: internal/peerannouncement/**
+  peerwire:
+    in: internal/peerwire/**
   hostlinks:
     in: internal/hostlinks/**
   hostlinkgraph:
@@ -416,6 +418,13 @@ deps:
       - peerannouncement
       - peerroster
       - bootstrap
+      - peerwire
+    canUse:
+      - yagomodel
+      - yagoproto
+  peerwire:
+    mayDependOn:
+      - peerwire
     canUse:
       - yagomodel
       - yagoproto
@@ -509,6 +518,7 @@ deps:
     mayDependOn:
       - indextransfer
       - dhttarget
+      - peerwire
     canUse:
       - yagomodel
       - yagoproto

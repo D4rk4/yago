@@ -2,15 +2,16 @@
 package indextransfer
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -41,6 +42,8 @@ type transferPost[T any] struct {
 	peer        yagomodel.Seed
 	path        string
 	form        url.Values
+	body        []byte
+	contentType string
 	parse       func(yagomodel.Message) (T, error)
 	preferHTTPS bool
 }
@@ -160,9 +163,12 @@ func postTransfer[T any](post transferPost[T]) (T, error) {
 	if err != nil {
 		return zero, fmt.Errorf("%w: target: %w", errTransferFailed, err)
 	}
+	body, contentType := peerwire.EncodeMultipartForm(post.form)
 	operationContext, cancelOperation := transferOperationContext(post.ctx, post.client)
 	defer cancelOperation()
 	post.ctx = operationContext
+	post.body = body
+	post.contentType = contentType
 
 	var lastErr error
 	for position, target := range targets {
@@ -181,7 +187,7 @@ func postTransfer[T any](post transferPost[T]) (T, error) {
 		// Retry over the next candidate scheme only when the transport
 		// failed; an HTTP status means the peer answered (YaCy retries
 		// https as http on IOException only).
-		if !errors.Is(err, errTransferTransport) {
+		if !errors.Is(err, errTransferTransport) || post.ctx.Err() != nil {
 			break
 		}
 	}
@@ -196,12 +202,13 @@ func postTransferTo[T any](post transferPost[T], target *url.URL) (T, error) {
 		post.ctx,
 		http.MethodPost,
 		target.String(),
-		strings.NewReader(post.form.Encode()),
+		bytes.NewReader(post.body),
 	)
 	if err != nil {
 		return zero, fmt.Errorf("%w: request: %w", errTransferFailed, err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", post.contentType)
+	req.ContentLength = int64(len(post.body))
 
 	resp, err := post.client.Do(req)
 	if err != nil {
