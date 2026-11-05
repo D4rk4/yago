@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/vault"
@@ -110,14 +111,20 @@ func stopImpressionPreparations(store *Store) <-chan struct{} {
 }
 
 func TestImpressionPreparationHasHardStorageWaitBound(t *testing.T) {
-	previous := impressionPreparationBudget
-	impressionPreparationBudget = 10 * time.Millisecond
-	t.Cleanup(func() { impressionPreparationBudget = previous })
-	assertBoundedImpressionPreparation(t, false)
-	assertBoundedImpressionPreparation(t, true)
+	synctest.Test(t, func(t *testing.T) {
+		previous := impressionPreparationBudget
+		impressionPreparationBudget = 10 * time.Millisecond
+		t.Cleanup(func() { impressionPreparationBudget = previous })
+		assertBoundedImpressionPreparation(t, false)
+		assertBoundedImpressionPreparation(t, true)
+	})
 }
 
 func TestRetainedImpressionPersistsAfterResponseDeadline(t *testing.T) {
+	synctest.Test(t, assertRetainedImpressionPersistsAfterResponseDeadline)
+}
+
+func assertRetainedImpressionPersistsAfterResponseDeadline(t *testing.T) {
 	previous := impressionPreparationBudget
 	impressionPreparationBudget = 5 * time.Millisecond
 	t.Cleanup(func() { impressionPreparationBudget = previous })
@@ -179,67 +186,69 @@ func TestRetainedImpressionPersistsAfterResponseDeadline(t *testing.T) {
 }
 
 func TestFailedRetainedImpressionCannotClickOlderAggregate(t *testing.T) {
-	previous := impressionPreparationBudget
-	impressionPreparationBudget = 10 * time.Millisecond
-	t.Cleanup(func() { impressionPreparationBudget = previous })
-	sentinel := errors.New("delayed impression persistence failed")
-	engine := &delayedImpressionFailureEngine{
-		evidenceFaultEngine: newEvidenceFaultEngine(),
-		started:             make(chan struct{}),
-		release:             make(chan struct{}),
-		failure:             sentinel,
-	}
-	v, err := vault.New(engine)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := OpenWithSources(v, &sequenceEntropy{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidate := Candidate{
-		URLIdentity:     "https://about.me/drunklab",
-		ClusterIdentity: "drunklab",
-		Position:        1,
-	}
-	if _, err := store.PrepareImpression(
-		t.Context(),
-		"drunklab",
-		[]Candidate{candidate},
-	); err != nil {
-		t.Fatalf("seed impression: %v", err)
-	}
-	prepared, err := store.PrepareImpression(
-		t.Context(),
-		"drunklab",
-		[]Candidate{candidate},
-	)
-	if err != nil || prepared.Token == "" {
-		t.Fatalf("failed retained impression = %#v, error = %v", prepared, err)
-	}
-	select {
-	case <-engine.started:
-	default:
-		t.Fatal("failed persistence did not start before response")
-	}
-	close(engine.release)
-	store.StopImpressionPreparations()
-	if err := store.RecordClick(
-		t.Context(),
-		prepared.Token,
-		prepared.Candidates[0].URLIdentity,
-		prepared.Candidates[0].Position,
-	); !errors.Is(err, sentinel) {
-		t.Fatalf("failed impression click error = %v", err)
-	}
-	aggregates, err := store.Aggregates(t.Context())
-	if err != nil || len(aggregates) != 1 {
-		t.Fatalf("aggregates = %#v, error = %v", aggregates, err)
-	}
-	result := aggregates[0].Models[adjacentPairModelAssignment].Results["drunklab"]
-	if result.Impressions != 1 || result.Clicks != 0 || engine.updates.Load() != 2 {
-		t.Fatalf("older aggregate changed = %#v, updates = %d", result, engine.updates.Load())
-	}
+	synctest.Test(t, func(t *testing.T) {
+		previous := impressionPreparationBudget
+		impressionPreparationBudget = 10 * time.Millisecond
+		t.Cleanup(func() { impressionPreparationBudget = previous })
+		sentinel := errors.New("delayed impression persistence failed")
+		engine := &delayedImpressionFailureEngine{
+			evidenceFaultEngine: newEvidenceFaultEngine(),
+			started:             make(chan struct{}),
+			release:             make(chan struct{}),
+			failure:             sentinel,
+		}
+		v, err := vault.New(engine)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store, err := OpenWithSources(v, &sequenceEntropy{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidate := Candidate{
+			URLIdentity:     "https://about.me/drunklab",
+			ClusterIdentity: "drunklab",
+			Position:        1,
+		}
+		if _, err := store.PrepareImpression(
+			t.Context(),
+			"drunklab",
+			[]Candidate{candidate},
+		); err != nil {
+			t.Fatalf("seed impression: %v", err)
+		}
+		prepared, err := store.PrepareImpression(
+			t.Context(),
+			"drunklab",
+			[]Candidate{candidate},
+		)
+		if err != nil || prepared.Token == "" {
+			t.Fatalf("failed retained impression = %#v, error = %v", prepared, err)
+		}
+		select {
+		case <-engine.started:
+		default:
+			t.Fatal("failed persistence did not start before response")
+		}
+		close(engine.release)
+		store.StopImpressionPreparations()
+		if err := store.RecordClick(
+			t.Context(),
+			prepared.Token,
+			prepared.Candidates[0].URLIdentity,
+			prepared.Candidates[0].Position,
+		); !errors.Is(err, sentinel) {
+			t.Fatalf("failed impression click error = %v", err)
+		}
+		aggregates, err := store.Aggregates(t.Context())
+		if err != nil || len(aggregates) != 1 {
+			t.Fatalf("aggregates = %#v, error = %v", aggregates, err)
+		}
+		result := aggregates[0].Models[adjacentPairModelAssignment].Results["drunklab"]
+		if result.Impressions != 1 || result.Clicks != 0 || engine.updates.Load() != 2 {
+			t.Fatalf("older aggregate changed = %#v, updates = %d", result, engine.updates.Load())
+		}
+	})
 }
 
 func assertBoundedImpressionPreparation(t *testing.T, teamDraft bool) {
@@ -457,32 +466,34 @@ func TestReadyImpressionOutcomeWinsDeadline(t *testing.T) {
 }
 
 func TestImpressionPlanningHasHardWaitBound(t *testing.T) {
-	previous := impressionPreparationBudget
-	impressionPreparationBudget = 5 * time.Millisecond
-	t.Cleanup(func() { impressionPreparationBudget = previous })
-	started := make(chan struct{})
-	release := make(chan struct{})
-	preparations := newImpressionPreparationLifecycle(time.Now)
-	prepared, err := preparations.prepareWithinBudget(
-		t.Context(),
-		func() (impressionPreparation, error) {
-			close(started)
-			<-release
+	synctest.Test(t, func(t *testing.T) {
+		previous := impressionPreparationBudget
+		impressionPreparationBudget = 5 * time.Millisecond
+		t.Cleanup(func() { impressionPreparationBudget = previous })
+		started := make(chan struct{})
+		release := make(chan struct{})
+		preparations := newImpressionPreparationLifecycle(time.Now)
+		prepared, err := preparations.prepareWithinBudget(
+			t.Context(),
+			func() (impressionPreparation, error) {
+				close(started)
+				<-release
 
-			return impressionPreparation{
-				prepared: PreparedImpression{Token: "late"},
-				persist:  func(context.Context) error { return nil },
-			}, nil
-		},
-	)
-	if !errors.Is(err, context.DeadlineExceeded) || prepared.Token != "" {
-		t.Fatalf("late plan = %#v, error = %v", prepared, err)
-	}
-	select {
-	case <-started:
-	default:
-		t.Fatal("impression planning did not start")
-	}
-	close(release)
-	preparations.stop()
+				return impressionPreparation{
+					prepared: PreparedImpression{Token: "late"},
+					persist:  func(context.Context) error { return nil },
+				}, nil
+			},
+		)
+		if !errors.Is(err, context.DeadlineExceeded) || prepared.Token != "" {
+			t.Fatalf("late plan = %#v, error = %v", prepared, err)
+		}
+		select {
+		case <-started:
+		default:
+			t.Fatal("impression planning did not start")
+		}
+		close(release)
+		preparations.stop()
+	})
 }

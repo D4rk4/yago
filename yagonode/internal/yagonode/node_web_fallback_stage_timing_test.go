@@ -273,46 +273,50 @@ func TestPublicSearchParallelModeIncludesWebBesidePrimaryHit(t *testing.T) {
 }
 
 func TestPublicSearchParallelModeReturnsWebWhileFuzzyIgnoresCancellation(t *testing.T) {
-	previousRecovery := recoverySearchBudget
-	recoverySearchBudget = 20 * time.Millisecond
-	t.Cleanup(func() { recoverySearchBudget = previousRecovery })
+	synctest.Test(t, func(t *testing.T) {
+		previousRecovery := recoverySearchBudget
+		recoverySearchBudget = 20 * time.Millisecond
+		t.Cleanup(func() { recoverySearchBudget = previousRecovery })
 
-	local := productionShapeUncooperativeFuzzy{
-		started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{}),
-	}
-	attempts := &productionShapeWebAttempts{}
-	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
-	assembly := productionShapeSearchAssembly(client)
-	assembly.webFallback.Privacy = webFallbackPrivacyAlways
-	searcher := assemblePublicSearcher(local, productionShapeSwarmMiss{}, assembly)
+		local := productionShapeUncooperativeFuzzy{
+			started:  make(chan struct{}),
+			release:  make(chan struct{}),
+			finished: make(chan struct{}),
+		}
+		attempts := &productionShapeWebAttempts{}
+		client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
+		assembly := productionShapeSearchAssembly(client)
+		assembly.webFallback.Privacy = webFallbackPrivacyAlways
+		searcher := assemblePublicSearcher(local, productionShapeSwarmMiss{}, assembly)
 
-	started := time.Now()
-	response, err := searcher.Search(t.Context(), searchcore.Request{
-		Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
+		started := time.Now()
+		response, err := searcher.Search(t.Context(), searchcore.Request{
+			Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Since(started) > 1500*time.Millisecond || len(response.Results) != 1 ||
+			response.Results[0].Source != searchcore.SourceWeb {
+			t.Fatalf("response = %#v", response)
+		}
+		select {
+		case <-local.started:
+		default:
+			t.Fatal("fuzzy search did not start")
+		}
+		select {
+		case <-local.finished:
+			t.Fatal("fuzzy search finished before release")
+		default:
+		}
+		close(local.release)
+		select {
+		case <-local.finished:
+		case <-time.After(time.Second):
+			t.Fatal("fuzzy search did not finish")
+		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if time.Since(started) > 1500*time.Millisecond || len(response.Results) != 1 ||
-		response.Results[0].Source != searchcore.SourceWeb {
-		t.Fatalf("response = %#v", response)
-	}
-	select {
-	case <-local.started:
-	default:
-		t.Fatal("fuzzy search did not start")
-	}
-	select {
-	case <-local.finished:
-		t.Fatal("fuzzy search finished before release")
-	default:
-	}
-	close(local.release)
-	select {
-	case <-local.finished:
-	case <-time.After(time.Second):
-		t.Fatal("fuzzy search did not finish")
-	}
 }
 
 func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {

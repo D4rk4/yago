@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -352,31 +353,33 @@ func TestCallerBackPingRejectsNegativeQueryResponse(t *testing.T) {
 }
 
 func TestCallerBackPingBoundsBlackholedCallback(t *testing.T) {
-	requestFinished := make(chan error, 1)
-	probe := newCallerBackPing(&http.Client{
-		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			<-request.Context().Done()
-			requestFinished <- request.Context().Err()
+	synctest.Test(t, func(t *testing.T) {
+		requestFinished := make(chan error, 1)
+		probe := newCallerBackPing(&http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				<-request.Context().Done()
+				requestFinished <- request.Context().Err()
 
-			return nil, request.Context().Err()
-		}),
-	}, false)
-	probe.timeout = time.Millisecond
-	started := time.Now()
-	if probe.Reachable(
-		t.Context(),
-		callerSeed(t, "peer", "203.0.113.1", 8090),
-		hashFor("self"),
-		"freeworld",
-	) {
-		t.Fatal("Reachable = true, want false for a timed-out callback")
-	}
-	if !errors.Is(<-requestFinished, context.DeadlineExceeded) {
-		t.Fatal("callback did not finish at the probe deadline")
-	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("bounded callback elapsed = %v", elapsed)
-	}
+				return nil, request.Context().Err()
+			}),
+		}, false)
+		probe.timeout = time.Millisecond
+		started := time.Now()
+		if probe.Reachable(
+			t.Context(),
+			callerSeed(t, "peer", "203.0.113.1", 8090),
+			hashFor("self"),
+			"freeworld",
+		) {
+			t.Fatal("Reachable = true, want false for a timed-out callback")
+		}
+		if !errors.Is(<-requestFinished, context.DeadlineExceeded) {
+			t.Fatal("callback did not finish at the probe deadline")
+		}
+		if elapsed := time.Since(started); elapsed >= time.Second {
+			t.Fatalf("bounded callback elapsed = %v", elapsed)
+		}
+	})
 }
 
 func TestCallerBackPingUsesCompatibilityBudgets(t *testing.T) {

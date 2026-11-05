@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -109,60 +110,62 @@ func TestPeerRankFusionIsStableAcrossDuplicatesTiesAndCompletionOrders(t *testin
 }
 
 func TestPeerSearchFailuresAndTimeoutsHaveStableOrder(t *testing.T) {
-	timedOutPeer := searchSeed(t, "APeer")
-	timedOutPeer.Port = yagomodel.Some(yagomodel.Port(8101))
-	successfulPeer := searchSeed(t, "BPeer")
-	successfulPeer.Port = yagomodel.Some(yagomodel.Port(8102))
-	failedPeer := searchSeed(t, "CPeer")
-	failedPeer.Port = yagomodel.Some(yagomodel.Port(8103))
-	successBody := yagoproto.SearchResponse{Resources: []yagomodel.URIMetadataRow{
-		metadataRow(t, hashFor("result"), "https://example.org/result", "Result"),
-	}}.Encode().Encode()
-	remote := searcher{
-		client: &http.Client{
-			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				switch req.URL.Port() {
-				case "8101":
-					<-req.Context().Done()
-					return nil, req.Context().Err()
-				case "8102":
-					return &http.Response{
-						StatusCode: http.StatusOK,
-						Body:       io.NopCloser(strings.NewReader(successBody)),
-						Header:     make(http.Header),
-					}, nil
-				default:
-					return nil, errors.New("connection refused")
-				}
-			}),
-		},
-		concurrency:    3,
-		perPeerTimeout: 10 * time.Millisecond,
-		weights:        DefaultRankingWeights,
-	}
-	completed := remote.queryPeerJobsWithinBudget(t.Context(), []peerSearchJob{
-		{peer: failedPeer},
-		{peer: successfulPeer},
-		{peer: timedOutPeer},
-	}, newRemoteQueryBudget())
-	if len(completed) != 3 || completed[0].peer.Hash != failedPeer.Hash ||
-		completed[1].peer.Hash != successfulPeer.Hash || completed[2].peer.Hash != timedOutPeer.Hash {
-		t.Fatalf("request order = %#v", completed)
-	}
-	if !errors.Is(completed[2].err, context.DeadlineExceeded) {
-		t.Fatalf("timeout error = %v", completed[2].err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		timedOutPeer := searchSeed(t, "APeer")
+		timedOutPeer.Port = yagomodel.Some(yagomodel.Port(8101))
+		successfulPeer := searchSeed(t, "BPeer")
+		successfulPeer.Port = yagomodel.Some(yagomodel.Port(8102))
+		failedPeer := searchSeed(t, "CPeer")
+		failedPeer.Port = yagomodel.Some(yagomodel.Port(8103))
+		successBody := yagoproto.SearchResponse{Resources: []yagomodel.URIMetadataRow{
+			metadataRow(t, hashFor("result"), "https://example.org/result", "Result"),
+		}}.Encode().Encode()
+		remote := searcher{
+			client: &http.Client{
+				Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					switch req.URL.Port() {
+					case "8101":
+						<-req.Context().Done()
+						return nil, req.Context().Err()
+					case "8102":
+						return &http.Response{
+							StatusCode: http.StatusOK,
+							Body:       io.NopCloser(strings.NewReader(successBody)),
+							Header:     make(http.Header),
+						}, nil
+					default:
+						return nil, errors.New("connection refused")
+					}
+				}),
+			},
+			concurrency:    3,
+			perPeerTimeout: 10 * time.Millisecond,
+			weights:        DefaultRankingWeights,
+		}
+		completed := remote.queryPeerJobsWithinBudget(t.Context(), []peerSearchJob{
+			{peer: failedPeer},
+			{peer: successfulPeer},
+			{peer: timedOutPeer},
+		}, newRemoteQueryBudget())
+		if len(completed) != 3 || completed[0].peer.Hash != failedPeer.Hash ||
+			completed[1].peer.Hash != successfulPeer.Hash || completed[2].peer.Hash != timedOutPeer.Hash {
+			t.Fatalf("request order = %#v", completed)
+		}
+		if !errors.Is(completed[2].err, context.DeadlineExceeded) {
+			t.Fatalf("timeout error = %v", completed[2].err)
+		}
 
-	resp := remote.response(t.Context(), searchcore.Request{Limit: 10}, completed, nil)
-	if len(resp.Results) != 1 || len(resp.PartialFailures) != 2 {
-		t.Fatalf("response = %#v", resp)
-	}
-	if resp.PartialFailures[0].Source != timedOutPeer.Hash.String() ||
-		!strings.Contains(resp.PartialFailures[0].Reason, context.DeadlineExceeded.Error()) ||
-		resp.PartialFailures[1].Source != failedPeer.Hash.String() ||
-		!strings.Contains(resp.PartialFailures[1].Reason, "connection refused") {
-		t.Fatalf("partial failure order = %#v", resp.PartialFailures)
-	}
+		resp := remote.response(t.Context(), searchcore.Request{Limit: 10}, completed, nil)
+		if len(resp.Results) != 1 || len(resp.PartialFailures) != 2 {
+			t.Fatalf("response = %#v", resp)
+		}
+		if resp.PartialFailures[0].Source != timedOutPeer.Hash.String() ||
+			!strings.Contains(resp.PartialFailures[0].Reason, context.DeadlineExceeded.Error()) ||
+			resp.PartialFailures[1].Source != failedPeer.Hash.String() ||
+			!strings.Contains(resp.PartialFailures[1].Reason, "connection refused") {
+			t.Fatalf("partial failure order = %#v", resp.PartialFailures)
+		}
+	})
 }
 
 func TestPeerResponseDoesNotTreatFreshnessAsPublicationDate(t *testing.T) {

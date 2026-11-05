@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -41,62 +42,64 @@ func (s coldPrimarySearch) Search(
 }
 
 func TestAlwaysWebFallbackPublishesColdPrimaryBesideWeb(t *testing.T) {
-	previousPrimary := webFallbackPrimaryStageBudget
-	previousRecovery := localExactRecoveryBudget
-	webFallbackPrimaryStageBudget = 120 * time.Millisecond
-	localExactRecoveryBudget = 15 * time.Millisecond
-	t.Cleanup(func() {
-		webFallbackPrimaryStageBudget = previousPrimary
-		localExactRecoveryBudget = previousRecovery
-	})
+	synctest.Test(t, func(t *testing.T) {
+		previousPrimary := webFallbackPrimaryStageBudget
+		previousRecovery := localExactRecoveryBudget
+		webFallbackPrimaryStageBudget = 120 * time.Millisecond
+		localExactRecoveryBudget = 15 * time.Millisecond
+		t.Cleanup(func() {
+			webFallbackPrimaryStageBudget = previousPrimary
+			localExactRecoveryBudget = previousRecovery
+		})
 
-	client := &http.Client{Transport: fallbackRoundTrip(func(request *http.Request) (
-		*http.Response,
-		error,
-	) {
-		timer := time.NewTimer(55 * time.Millisecond)
-		defer timer.Stop()
-		select {
-		case <-request.Context().Done():
-			return nil, fmt.Errorf("web provider: %w", request.Context().Err())
-		case <-timer.C:
-		}
+		client := &http.Client{Transport: fallbackRoundTrip(func(request *http.Request) (
+			*http.Response,
+			error,
+		) {
+			timer := time.NewTimer(55 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-request.Context().Done():
+				return nil, fmt.Errorf("web provider: %w", request.Context().Err())
+			case <-timer.C:
+			}
 
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(strings.NewReader(mojeekListFixture)),
-			Header:     make(http.Header),
-		}, nil
-	})}
-	searcher := assemblePublicSearcher(
-		coldPrimarySearch{delay: 45 * time.Millisecond},
-		productionShapeSwarmMiss{},
-		publicSearchAssembly{
-			client: client,
-			webFallback: webFallbackConfig{
-				Privacy:  webFallbackPrivacyAlways,
-				Provider: webFallbackProviderDDGS,
-				Backend:  "mojeek",
-				Timeout:  time.Second,
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(mojeekListFixture)),
+				Header:     make(http.Header),
+			}, nil
+		})}
+		searcher := assemblePublicSearcher(
+			coldPrimarySearch{delay: 45 * time.Millisecond},
+			productionShapeSwarmMiss{},
+			publicSearchAssembly{
+				client: client,
+				webFallback: webFallbackConfig{
+					Privacy:  webFallbackPrivacyAlways,
+					Provider: webFallbackProviderDDGS,
+					Backend:  "mojeek",
+					Timeout:  time.Second,
+				},
 			},
-		},
-	)
+		)
 
-	started := time.Now()
-	response, err := searcher.Search(t.Context(), searchcore.Request{
-		Query: "gap", Source: searchcore.SourceGlobal, Limit: 10,
+		started := time.Now()
+		response, err := searcher.Search(t.Context(), searchcore.Request{
+			Query: "gap", Source: searchcore.SourceGlobal, Limit: 10,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(started); elapsed > 200*time.Millisecond {
+			t.Fatalf("elapsed = %s", elapsed)
+		}
+		sources := map[searchcore.Source]bool{}
+		for _, result := range response.Results {
+			sources[result.Source] = true
+		}
+		if !sources[searchcore.SourceGlobal] || !sources[searchcore.SourceWeb] {
+			t.Fatalf("response = %#v", response)
+		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if elapsed := time.Since(started); elapsed > 200*time.Millisecond {
-		t.Fatalf("elapsed = %s", elapsed)
-	}
-	sources := map[searchcore.Source]bool{}
-	for _, result := range response.Results {
-		sources[result.Source] = true
-	}
-	if !sources[searchcore.SourceGlobal] || !sources[searchcore.SourceWeb] {
-		t.Fatalf("response = %#v", response)
-	}
 }
