@@ -26,6 +26,16 @@ func TestQueryBiasedSnippetCentersOnTerms(t *testing.T) {
 	}
 }
 
+func TestQueryBiasedSnippetFillsTheWindowWithEarlierContextNearTheEnd(t *testing.T) {
+	closing := "Closing needle remark."
+	long := strings.Repeat("earlier context. ", 40) + closing
+	got := queryBiasedSnippet(long, []string{"needle"}, "fallback")
+	if !strings.HasSuffix(got, closing) ||
+		len([]rune(got)) != snippetRuneCap+len([]rune("… ")) {
+		t.Fatalf("snippet runes=%d: %q", len([]rune(got)), got)
+	}
+}
+
 func TestDocumentEvidenceSnippetUsesOriginalByteOffset(t *testing.T) {
 	text := strings.Repeat("İ prefix words. ", 40) + "Needle evidence appears here."
 	got := documentEvidenceSnippet(t, text, "en", []string{"needle"})

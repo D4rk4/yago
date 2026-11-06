@@ -97,9 +97,13 @@ func strongestSnippetWitness(
 		if occurrences[left].arrayIndex != occurrences[right].arrayIndex {
 			return occurrences[left].arrayIndex < occurrences[right].arrayIndex
 		}
+		if occurrences[left].location.start != occurrences[right].location.start {
+			return occurrences[left].location.start < occurrences[right].location.start
+		}
 
-		return occurrences[left].location.start < occurrences[right].location.start
+		return occurrences[left].location.end > occurrences[right].location.end
 	})
+	counts := make([]int, requirements)
 	var strongest snippetWitness
 	for first := 0; first < len(occurrences); {
 		last := first + 1
@@ -110,7 +114,7 @@ func strongestSnippetWitness(
 		candidate := strongestValueWitness(
 			values[occurrences[first].arrayIndex],
 			occurrences[first:last],
-			requirements,
+			counts,
 		)
 		if candidate.strongerThan(strongest) {
 			strongest = candidate
@@ -124,40 +128,46 @@ func strongestSnippetWitness(
 func strongestValueWitness(
 	value string,
 	occurrences []snippetOccurrence,
-	requirements int,
+	counts []int,
 ) snippetWitness {
 	measureOccurrenceRunes(value, occurrences)
-	counts := make([]int, requirements)
 	covered := 0
 	left := 0
+	reach := newSnippetWindowReach(occurrences)
 	var strongest snippetWitness
 	for right, occurrence := range occurrences {
 		if counts[occurrence.location.requirement] == 0 {
 			covered++
 		}
 		counts[occurrence.location.requirement]++
+		reach.include(right)
 		for left < right &&
-			(occurrence.runeEnd-occurrences[left].runeStart > snippetRuneCap ||
+			(reach.furthest().runeEnd-occurrences[left].runeStart > snippetRuneCap ||
 				counts[occurrences[left].location.requirement] > 1) {
 			counts[occurrences[left].location.requirement]--
 			if counts[occurrences[left].location.requirement] == 0 {
 				covered--
 			}
 			left++
+			reach.startAt(left)
+		}
+		end := reach.furthest().location.end
+		if right+1 < len(occurrences) && occurrences[right+1].location.start < end {
+			continue
 		}
 		candidate := snippetWitness{
 			text:       value,
 			arrayIndex: occurrence.arrayIndex,
-			evidence: TextQueryEvidence{
-				Start: occurrences[left].location.start,
-				End:   occurrence.location.end,
-			},
-			coverage: covered,
-			spread:   occurrence.runeStart - occurrences[left].runeStart,
+			evidence:   TextQueryEvidence{Start: occurrences[left].location.start, End: end},
+			coverage:   covered,
+			spread:     occurrence.runeStart - occurrences[left].runeStart,
 		}
 		if candidate.strongerThan(strongest) {
 			strongest = candidate
 		}
+	}
+	for _, occurrence := range occurrences {
+		counts[occurrence.location.requirement] = 0
 	}
 
 	return strongest
