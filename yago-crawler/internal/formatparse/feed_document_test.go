@@ -181,6 +181,16 @@ func TestFeedEntriesAreDirectEntryChildren(t *testing.T) {
 			wantText:   "Outer",
 			wantLinks:  []string{"https://example.org/news/outer"},
 		},
+		{
+			name: "Atom channel child",
+			body: `<feed xmlns="http://www.w3.org/2005/Atom"><title>Harbor news</title>` +
+				`<channel><title>Stray</title><entry><title>Stray</title><link href="https://example.org/news/stray"/></entry></channel>` +
+				`<entry><title>Story</title><link href="https://example.org/news/one"/></entry></feed>`,
+			wantParsed: true,
+			wantTitle:  "Harbor news",
+			wantText:   "Story",
+			wantLinks:  []string{"https://example.org/news/one"},
+		},
 	}
 	assertFeedPages(t, cases)
 }
@@ -290,6 +300,14 @@ func TestFeedTextReadsOnlyDirectCharacterData(t *testing.T) {
 			wantParsed: true,
 			wantTitle:  "Two",
 			wantText:   "b",
+		},
+		{
+			name: "RSS title outside the channel",
+			body: `<rss version="2.0"><channel><title>Harbor news</title>` +
+				rssItem(`<title>Story</title>`) + `</channel><title>Stray</title></rss>`,
+			wantParsed: true,
+			wantTitle:  "Harbor news",
+			wantText:   "Story",
 		},
 		{
 			name:       "escaped Atom content",

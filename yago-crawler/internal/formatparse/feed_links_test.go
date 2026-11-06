@@ -175,6 +175,22 @@ func TestFeedLinkSelection(t *testing.T) {
 			body:      rssDocument(rssItem(`<link>` + overlongLink + `</link>`)),
 			wantLinks: nil,
 		},
+		{
+			name: "first usable link of two",
+			body: rssDocument(
+				rssItem(
+					`<link>https://example.org/news/first</link><link>https://example.org/news/second</link>`,
+				),
+			),
+			wantLinks: []string{"https://example.org/news/first"},
+		},
+		{
+			name: "link wrapped in whitespace",
+			body: rssDocument(
+				rssItem("<link>\n  https://example.org/news/one\n</link>"),
+			),
+			wantLinks: []string{"https://example.org/news/one"},
+		},
 	})
 }
 
@@ -228,6 +244,13 @@ func TestFeedGUIDArticleLinks(t *testing.T) {
 			name:      "GUID longer than the URL limit",
 			body:      rssDocument(rssItem(`<guid>` + overlongGUID + `</guid>`)),
 			wantLinks: nil,
+		},
+		{
+			name: "permalink GUID wrapped in whitespace",
+			body: rssDocument(
+				rssItem("<guid>\n  https://example.org/news/guid\n</guid>"),
+			),
+			wantLinks: []string{"https://example.org/news/guid"},
 		},
 	})
 }
