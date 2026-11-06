@@ -26,12 +26,13 @@ func NewAdmissionFetcher(
 
 func (f *AdmissionFetcher) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	if target == nil || f.denylist.Blocks(target.String()) {
 		return pagefetch.FetchedPage{}, deniedError{url: targetString(target)}
 	}
-	page, err := f.inner.Fetch(ctx, target)
+	page, err := f.inner.Fetch(ctx, request)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("crawl URL denylist fetch: %w", err)
 	}

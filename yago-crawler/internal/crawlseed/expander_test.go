@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -18,8 +17,9 @@ type seedSource map[string]pagefetch.FetchedPage
 
 func (s seedSource) Fetch(
 	_ context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	page, ok := s[target.String()]
 	if !ok {
 		return pagefetch.FetchedPage{}, errors.New("missing fixture")
@@ -41,7 +41,7 @@ type failingSeedSource struct {
 
 func (s failingSeedSource) Fetch(
 	context.Context,
-	*url.URL,
+	pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
 	return pagefetch.FetchedPage{}, s.err
 }
@@ -56,10 +56,11 @@ func expansionFailureIsPermanent(err error) bool {
 
 func (s *countingSeedSource) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	s.calls++
-	return s.pages.Fetch(ctx, target)
+	return s.pages.Fetch(ctx, pagefetch.FetchRequest{Target: target})
 }
 
 func TestExpanderPassesURLRequestsThrough(t *testing.T) {

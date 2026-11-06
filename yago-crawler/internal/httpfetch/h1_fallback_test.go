@@ -65,7 +65,7 @@ func TestFetcherFallsBackToHTTP1OnStreamErrors(t *testing.T) {
 		WithHTTP1Fallback(&http.Client{Transport: h1})
 	target, _ := url.Parse("https://hostile.example/page")
 
-	page, err := fetcher.Fetch(context.Background(), target)
+	page, err := fetcher.Fetch(context.Background(), pagefetch.FetchRequest{Target: target})
 	if err != nil {
 		t.Fatalf("first fetch must succeed through the fallback: %v", err)
 	}
@@ -73,7 +73,10 @@ func TestFetcherFallsBackToHTTP1OnStreamErrors(t *testing.T) {
 		t.Fatalf("first fetch: h2=%d h1=%d type=%q", h2.calls, h1.calls, page.ContentType)
 	}
 
-	if _, err := fetcher.Fetch(context.Background(), target); err != nil {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
 	if h2.calls != 1 || h1.calls != 2 {
@@ -86,8 +89,12 @@ func TestFetcherFallsBackToHTTP1OnStreamErrors(t *testing.T) {
 func TestFetcherWithoutFallbackKeepsTheError(t *testing.T) {
 	fetcher := NewPageFetcher(&http.Client{Transport: &countingTransport{fail: true}}, "", 0)
 	target, _ := url.Parse("https://hostile.example/page")
-	if _, err := fetcher.Fetch(context.Background(), target); err == nil ||
-		!errors.Is(err, err) || !strings.Contains(err.Error(), "INTERNAL_ERROR") {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); err == nil ||
+		!errors.Is(err, err) ||
+		!strings.Contains(err.Error(), "INTERNAL_ERROR") {
 		t.Fatalf("unarmed fetcher must propagate: %v", err)
 	}
 	var rejected pagefetch.FetchedPage

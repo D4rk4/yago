@@ -275,11 +275,14 @@ func TestFetchChainsLeaveBrowserFailureIsolationToThePool(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range crawl.BrowserFailureThreshold {
-		if _, err := chains.verifyingDirect.Fetch(t.Context(), target); err == nil {
+		if _, err := chains.verifyingDirect.Fetch(
+			t.Context(),
+			pagefetch.FetchRequest{Target: target},
+		); err == nil {
 			t.Fatal("browser slot failure was not returned")
 		}
 	}
-	page, err := chains.verifyingDirect.Fetch(t.Context(), target)
+	page, err := chains.verifyingDirect.Fetch(t.Context(), pagefetch.FetchRequest{Target: target})
 	if err != nil {
 		t.Fatalf("browser pool recovery: %v", err)
 	}

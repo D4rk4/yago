@@ -13,7 +13,11 @@ import (
 
 type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
-func (f pageSourceFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+func (f pageSourceFunc) Fetch(
+	ctx context.Context,
+	request pagefetch.FetchRequest,
+) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return f(ctx, target)
 }
 
@@ -64,7 +68,10 @@ func TestBotWallScreeningFetcher(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fetcher := botwall.NewBotWallScreeningFetcher(bodySource(tc.body))
-			page, err := fetcher.Fetch(context.Background(), mustParse(t, "https://example.com/"))
+			page, err := fetcher.Fetch(
+				context.Background(),
+				pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")},
+			)
 			switch {
 			case tc.rejected && !errors.Is(err, pagefetch.ErrPageRejected):
 				t.Errorf("err = %v, want ErrPageRejected", err)
@@ -82,7 +89,7 @@ func TestBotWallScreeningFetcherScansBoundedPrefix(t *testing.T) {
 	fetcher := botwall.NewBotWallScreeningFetcher(bodySource(body))
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, "https://example.com/"),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")},
 	); err != nil {
 		t.Errorf("marker beyond scan limit should not be detected: %v", err)
 	}
@@ -97,7 +104,7 @@ func TestBotWallScreeningFetcherPropagatesInnerError(t *testing.T) {
 	)
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, "https://example.com/"),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")},
 	); !errors.Is(
 		err,
 		sentinel,

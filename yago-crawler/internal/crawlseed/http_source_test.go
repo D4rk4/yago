@@ -26,7 +26,7 @@ func TestHTTPSourceFetchesBoundedBody(t *testing.T) {
 
 	page, err := crawlseed.NewHTTPSource(server.Client(), "crawler/1.0", 3).Fetch(
 		context.Background(),
-		mustParse(t, server.URL),
+		pagefetch.FetchRequest{Target: mustParse(t, server.URL)},
 	)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -49,7 +49,7 @@ func TestHTTPSourceClassifiesPermanentStatuses(t *testing.T) {
 		}))
 		_, err := crawlseed.NewHTTPSource(server.Client(), "", 0).Fetch(
 			context.Background(),
-			mustParse(t, server.URL),
+			pagefetch.FetchRequest{Target: mustParse(t, server.URL)},
 		)
 		server.Close()
 		if !errors.Is(err, pagefetch.ErrPageRejected) {
@@ -82,7 +82,7 @@ func TestHTTPSourceClassifiesRetryableStatuses(t *testing.T) {
 		client := &http.Client{Transport: transport}
 		_, err := crawlseed.NewHTTPSource(client, "", 0).Fetch(
 			context.Background(),
-			mustParse(t, "https://example.org/sitemap.xml"),
+			pagefetch.FetchRequest{Target: mustParse(t, "https://example.org/sitemap.xml")},
 		)
 		if err == nil {
 			t.Fatalf("status %d returned no error", statusCode)
@@ -118,7 +118,7 @@ func TestHTTPSourceDetectsContentTypeAndReturnsRequestErrors(t *testing.T) {
 		})},
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, "https://example.org/sitemap.xml"))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, "https://example.org/sitemap.xml")})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestHTTPSourceDetectsContentTypeAndReturnsRequestErrors(t *testing.T) {
 
 	_, err = crawlseed.NewHTTPSource(http.DefaultClient, "", 0).Fetch(
 		context.Background(),
-		&url.URL{Scheme: "http", Host: "\n"},
+		pagefetch.FetchRequest{Target: &url.URL{Scheme: "http", Host: "\n"}},
 	)
 	if err == nil {
 		t.Fatal("bad target should fail")
@@ -149,7 +149,7 @@ func TestHTTPSourceReturnsNetworkAndReadErrors(t *testing.T) {
 		})},
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, "https://example.org/sitemap.xml"))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, "https://example.org/sitemap.xml")})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("network error = %v, want %v", err, sentinel)
 	}
@@ -167,7 +167,7 @@ func TestHTTPSourceReturnsNetworkAndReadErrors(t *testing.T) {
 		})},
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, "https://example.org/sitemap.xml"))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, "https://example.org/sitemap.xml")})
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatalf("read error = %v, want %v", err, io.ErrUnexpectedEOF)
 	}
@@ -185,7 +185,7 @@ func TestHTTPSourceReturnsEmptyContentTypeForEmptyBody(t *testing.T) {
 		})},
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, "https://example.org/sitemap.xml"))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, "https://example.org/sitemap.xml")})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}

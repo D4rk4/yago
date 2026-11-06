@@ -24,8 +24,9 @@ type fetchStartPageSource func(
 
 func (source fetchStartPageSource) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return source(ctx, target)
 }
 

@@ -22,6 +22,7 @@ type crawlerExecutionStart struct {
 	checkpoint       crawlerCheckpointSession
 	nodeRPC          crawlerNodeRPC
 	emitter          ingest.BatchEmitter
+	notModified      ingest.NotModifiedEmitter
 	growthAdmission  *yagocrawlcontract.StoragePressureGate
 	restart          func()
 	shutdown         func()
@@ -78,6 +79,7 @@ func assembleCrawlerExecution(start crawlerExecutionStart) (crawlerExecution, er
 		fetchBudget:     fetchBudget,
 		fleetAdmission:  fleetAdmission,
 		emitter:         start.emitter,
+		notModified:     start.notModified,
 		growthAdmission: newGrowthAdmission,
 		urlDenylist:     urlDenylist,
 	}

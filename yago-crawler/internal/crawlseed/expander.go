@@ -220,7 +220,7 @@ func (e *Expander) fetch(
 	if !ok {
 		return pagefetch.FetchedPage{}, permanentExpansionFailuref("parse seed URL")
 	}
-	page, err := e.source.Fetch(ctx, target)
+	page, err := e.source.Fetch(ctx, pagefetch.FetchRequest{Target: target})
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("fetch seed URL: %w", err)
 	}

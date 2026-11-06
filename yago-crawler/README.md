@@ -155,6 +155,18 @@ The node leaves its stored document and full-text entry untouched when their
 content and evidence have not changed. Stored fetched/indexed dates then remain
 those of the last substantive document revision, rather than the latest recrawl.
 
+A recrawl order from the node can carry the page's last entity tag and
+modification date. The crawler then sends `If-None-Match` and, when a date is
+known, `If-Modified-Since` to the exact target URL only; every redirect hop
+drops both headers. A `304 Not Modified` answer to such a request is reported
+to the node as a not-modified observation with the merged validators: no body
+is read, nothing is parsed, and no browser render starts. A `304` the crawler
+did not ask for, or one with malformed validators, is retried once without
+validators inside the same fetch deadline and otherwise fails the fetch. When
+the node does not confirm that it recorded the observation, the crawler fetches
+the page again in full within the same lease. Every full fetch reports the
+response's entity tag and modification date to the node.
+
 Every newly parsed live document is stamped with
 `CurrentExtractionGeneration`, currently `1`, before it crosses the ingest
 boundary. Generation `0` is reserved for older unstamped payloads. A material
@@ -178,7 +190,8 @@ and extensionless responses route through `text/markdown` or
 `text/x-markdown`. Binary-looking bodies still fail closed before parsing.
 
 Concurrent runs requesting the same normalized URL share one in-flight fetch
-only when their TLS, robots, and browser-fallback policies match. Each run gets
+only when their TLS, robots, and browser-fallback policies and their recrawl
+validators match. Each run gets
 an independent page copy and still applies its own redirect, parser, directive,
 scope, indexing, tally, and delivery policy. A completed response is not cached.
 

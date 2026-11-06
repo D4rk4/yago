@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 )
 
 type FallbackPageSource struct {
@@ -19,15 +18,15 @@ func NewFallbackPageSource(primary, fallback PageSource) *FallbackPageSource {
 
 func (s *FallbackPageSource) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request FetchRequest,
 ) (FetchedPage, error) {
-	page, err := s.primary.Fetch(ctx, target)
+	page, err := s.primary.Fetch(ctx, request)
 	if err == nil {
 		if s.renderNeeded == nil || !s.renderNeeded(page) || browserFallbackDisabled(ctx) {
 			return page, nil
 		}
 		primaryHTTPStatus := page.HTTPStatus
-		page, err = s.fallback.Fetch(ctx, target)
+		page, err = s.fallback.Fetch(ctx, request)
 		if err != nil {
 			return FetchedPage{}, fmt.Errorf("fallback fetch after static HTML: %w", err)
 		}
@@ -66,7 +65,7 @@ func (s *FallbackPageSource) Fetch(
 	}
 
 	primaryError := err
-	page, err = s.fallback.Fetch(ctx, target)
+	page, err = s.fallback.Fetch(ctx, request)
 	if err != nil {
 		return FetchedPage{}, fmt.Errorf(
 			"fallback fetch: %w",

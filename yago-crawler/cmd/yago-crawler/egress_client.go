@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/D4rk4/yago/yago-crawler/internal/httpfetch"
 	"github.com/D4rk4/yago/yagoegress"
 )
 
@@ -97,7 +98,8 @@ func limitedRedirectPolicy(maxRedirects int) func(*http.Request, []*http.Request
 }
 
 func dynamicRedirectPolicy(limit *redirectLimit) func(*http.Request, []*http.Request) error {
-	return func(_ *http.Request, previous []*http.Request) error {
+	return func(next *http.Request, previous []*http.Request) error {
+		httpfetch.RemoveConditionalHeaders(next.Header)
 		maxRedirects := limit.Current()
 		if len(previous) > maxRedirects {
 			return fmt.Errorf(

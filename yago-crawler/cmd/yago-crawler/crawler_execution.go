@@ -30,6 +30,7 @@ type crawlerExecution struct {
 	fetchBudget     *fetchrate.ProcessBudget
 	fleetAdmission  *fleetfetchstart.Admission
 	emitter         ingest.BatchEmitter
+	notModified     ingest.NotModifiedEmitter
 	urlDenylist     *crawldenylist.Denylist
 	growthAdmission interface {
 		WaitForGrowth(context.Context) (bool, error)
@@ -57,6 +58,7 @@ func (execution crawlerExecution) lifecycle(
 		pageindex.NewIndexBuilder(),
 		execution.emitter,
 		pipeline.WithObserver(metrics),
+		pipeline.WithNotModifiedEmitter(execution.notModified),
 		pipeline.WithInsecureFetcher(chains.insecure),
 		pipeline.WithRobotsIgnoringFetchers(chains.verifyingDirect, chains.insecureDirect),
 		pipeline.WithHostLoadFeedback(execution.pace),

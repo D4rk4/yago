@@ -155,10 +155,14 @@ deps:
   pagefetch:
     mayDependOn:
       - pagefetch
+    canUse:
+      - yagocrawlcontract
   httpfetch:
     mayDependOn:
       - httpfetch
       - pagefetch
+    canUse:
+      - yagocrawlcontract
   firefoxfetch:
     mayDependOn:
       - browserpool
@@ -372,3 +376,4 @@ deps:
 excludeFiles:
   - "test/e2e"
   - "^.*internal/pipeline/feed_link_admission_test\\.go$"
+  - "^.*cmd/yago-crawler/conditional_recrawl_regression_test\\.go$"

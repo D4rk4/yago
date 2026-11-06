@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/url"
 	"sync"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 type DuplicatePageFetchSuppressor struct {
@@ -17,6 +18,7 @@ type DuplicatePageFetchSuppressor struct {
 type pageFetchIdentity struct {
 	target                 string
 	withoutBrowserFallback bool
+	validators             yagocrawlcontract.HTTPValidators
 }
 
 type pageFetchInFlight struct {
@@ -35,15 +37,16 @@ func NewDuplicatePageFetchSuppressor(inner PageSource) *DuplicatePageFetchSuppre
 
 func (s *DuplicatePageFetchSuppressor) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request FetchRequest,
 ) (FetchedPage, error) {
 	if err := ctx.Err(); err != nil {
 		return FetchedPage{}, fmt.Errorf("start duplicate page fetch: %w", err)
 	}
 
 	identity := pageFetchIdentity{
-		target:                 target.String(),
+		target:                 request.Target.String(),
 		withoutBrowserFallback: browserFallbackDisabled(ctx),
+		validators:             request.Validators,
 	}
 	s.mu.Lock()
 	flight := s.inflight[identity]
@@ -63,7 +66,7 @@ func (s *DuplicatePageFetchSuppressor) Fetch(
 	s.inflight[identity] = flight
 	s.mu.Unlock()
 
-	page, err := s.inner.Fetch(ctx, target)
+	page, err := s.inner.Fetch(ctx, request)
 	s.mu.Lock()
 	flight.page = page
 	flight.err = err

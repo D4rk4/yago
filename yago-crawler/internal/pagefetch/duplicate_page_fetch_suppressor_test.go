@@ -31,7 +31,7 @@ func newBlockingPageSource() *blockingPageSource {
 
 func (s *blockingPageSource) Fetch(
 	ctx context.Context,
-	_ *url.URL,
+	_ FetchRequest,
 ) (FetchedPage, error) {
 	s.calls.Add(1)
 	s.started <- struct{}{}
@@ -82,7 +82,7 @@ func fetchAsync(
 ) <-chan pageFetchResult {
 	result := make(chan pageFetchResult, 1)
 	go func() {
-		page, err := suppressor.Fetch(ctx, target)
+		page, err := suppressor.Fetch(ctx, FetchRequest{Target: target})
 		result <- pageFetchResult{page: page, err: err}
 	}()
 
@@ -275,7 +275,7 @@ func TestDuplicatePageFetchSuppressorRejectsAlreadyCancelledCall(t *testing.T) {
 	cancel()
 	if _, err := suppressor.Fetch(
 		ctx,
-		parseFetchTarget(t, "https://example.test/page"),
+		FetchRequest{Target: parseFetchTarget(t, "https://example.test/page")},
 	); !errors.Is(err, context.Canceled) {
 		t.Fatalf("fetch error = %v, want cancellation", err)
 	}
@@ -293,7 +293,10 @@ func BenchmarkDuplicatePageFetchSuppressor(b *testing.B) {
 	)
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, err := suppressor.Fetch(context.Background(), target); err != nil {
+		if _, err := suppressor.Fetch(
+			context.Background(),
+			FetchRequest{Target: target},
+		); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -303,7 +306,8 @@ type pageSourceFunction func(context.Context, *url.URL) (FetchedPage, error)
 
 func (f pageSourceFunction) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request FetchRequest,
 ) (FetchedPage, error) {
+	target := request.Target
 	return f(ctx, target)
 }

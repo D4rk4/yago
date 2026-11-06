@@ -176,6 +176,7 @@ func runServiceWithMetrics(
 		checkpoint:       checkpointSession,
 		nodeRPC:          nodeRPC,
 		emitter:          emitter,
+		notModified:      newCrawlerNotModifiedEmitter(nodeRPC, checkpointSession),
 		growthAdmission:  storagePressure,
 		restart:          restart.Trigger,
 		shutdown:         stopService,

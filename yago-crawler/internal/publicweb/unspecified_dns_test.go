@@ -30,7 +30,7 @@ func TestAdmissionFetcherIgnoresUnspecifiedDNSRecordsAlongsideRealOnes(t *testin
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, "https://anticisco.example/"),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://anticisco.example/")},
 	); err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -56,7 +56,10 @@ func TestAdmissionFetcherStillRejectsHostsWithOnlyUnspecifiedRecords(t *testing.
 			}),
 		)
 
-		_, err := fetcher.Fetch(context.Background(), mustParse(t, "https://dead.example/"))
+		_, err := fetcher.Fetch(
+			context.Background(),
+			pagefetch.FetchRequest{Target: mustParse(t, "https://dead.example/")},
+		)
 		if !errors.Is(err, pagefetch.ErrPageRejected) || innerCalls != 0 {
 			t.Fatalf(
 				"addresses = %v: err = %v innerCalls = %d, want rejected before fetch",
@@ -87,7 +90,7 @@ func TestAdmissionFetcherKeepsRebindingDefenseDespiteUnspecifiedRecords(t *testi
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, "https://rebind.example/"),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://rebind.example/")},
 	); !errors.Is(err, pagefetch.ErrPageRejected) {
 		t.Fatalf("err = %v, want page rejected", err)
 	}

@@ -69,11 +69,12 @@ func TestFetchChainsRenderOnlySuccessfulHTMLShells(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildFetchChains: %v", err)
 	}
+	fetch := chains.verifyingDirect.Fetch
 	shellURL, err := url.Parse(origin.URL + "/shell")
 	if err != nil {
 		t.Fatalf("parse shell URL: %v", err)
 	}
-	shell, err := chains.verifyingDirect.Fetch(t.Context(), shellURL)
+	shell, err := fetch(t.Context(), pagefetch.FetchRequest{Target: shellURL})
 	if err != nil {
 		t.Fatalf("fetch shell: %v", err)
 	}
@@ -84,7 +85,7 @@ func TestFetchChainsRenderOnlySuccessfulHTMLShells(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse static URL: %v", err)
 	}
-	static, err := chains.verifyingDirect.Fetch(t.Context(), staticURL)
+	static, err := fetch(t.Context(), pagefetch.FetchRequest{Target: staticURL})
 	if err != nil {
 		t.Fatalf("fetch static HTML: %v", err)
 	}

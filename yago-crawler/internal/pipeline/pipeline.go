@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"sync"
 	"time"
@@ -60,6 +61,7 @@ type Pipeline struct {
 	loadFeedback        HostLoadFeedback
 	index               pageindex.IndexBuilder
 	emitter             ingest.BatchEmitter
+	notModifiedEmitter  ingest.NotModifiedEmitter
 	observer            Observer
 	leaseGrants         *crawllease.GrantRegistry
 	fetchStartAdmission FetchStartAdmission
@@ -221,7 +223,11 @@ func (p *Pipeline) fetchJob(
 	if job.DisableBrowser {
 		ctx = pagefetch.WithoutBrowserFallback(ctx)
 	}
-	fetched, err := p.jobFetcher(job).Fetch(ctx, target)
+	fetched, err := p.jobFetcher(job).Fetch(ctx, p.fetchRequest(job, target))
+	_, notModified := pagefetch.AsNotModified(err)
+	if notModified && p.issuedConditionalFetch(job) != nil {
+		return pagefetch.FetchedPage{}, fmt.Errorf("fetch page: %w", err)
+	}
 	if err != nil {
 		// A rejected page (blocked target, bad status, wrong content type)
 		// counts as a failed fetch: without a counter a run would finish
@@ -265,7 +271,17 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 
 		return fmt.Errorf("parse url: %s", job.URL)
 	}
-	fetched, err := p.fetchJob(ctx, job, target, &outcome)
+	fetched, unchanged, err := p.fetchChangedPage(ctx, job, target, &outcome)
+	if unchanged {
+		outcomeHTTPStatus = http.StatusNotModified
+		outcomeReason = notModifiedPageReason(err)
+		abandoned = err != nil && (ctx.Err() != nil || errors.Is(err, crawllease.ErrLeaseLost))
+		if err != nil && !abandoned {
+			outcome.Failed++
+		}
+
+		return err
+	}
 	if err != nil {
 		outcomeHTTPStatus = pageOutcomeHTTPStatus(err)
 		outcomeReason = fetchOutcomeReason(err)
@@ -358,7 +374,7 @@ func (p *Pipeline) processFetchedPage(
 
 		return outcomeReason, nil
 	}
-	err := p.indexAndEmit(ctx, job, page, fetched.ContentType)
+	err := p.indexAndEmit(ctx, job, page, fetched)
 	if reason, refused := p.refusedPageOutcome(ctx, page, err); refused {
 		return reason, nil
 	}
@@ -485,14 +501,14 @@ func (p *Pipeline) indexAndEmit(
 	ctx context.Context,
 	job crawljob.CrawlJob,
 	page pageparse.ParsedPage,
-	contentType string,
+	fetched pagefetch.FetchedPage,
 ) error {
 	stats := pageindex.BuildPageStats(page)
 	artifacts, err := p.index.Build(page, stats)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errDocumentIndexFailure, err)
 	}
-	artifacts.Document.ContentType = contentType
+	artifacts.Document.ContentType = fetched.ContentType
 	artifacts.Document.FetchedAt = time.Now().UTC()
 	if err := p.emitter.Emit(
 		ctx,
@@ -500,12 +516,13 @@ func (p *Pipeline) indexAndEmit(
 		artifacts.Postings,
 		artifacts.Metadata,
 		ingest.Envelope{
-			SourceURL:        page.URL,
-			Provenance:       job.Provenance,
-			ProfileHandle:    job.ProfileHandle,
-			ObservationID:    job.ObservationID,
-			ObservedAt:       job.ObservedAt,
-			SourceModifiedAt: job.SourceModifiedAt,
+			SourceURL:          page.URL,
+			Provenance:         job.Provenance,
+			ProfileHandle:      job.ProfileHandle,
+			ObservationID:      job.ObservationID,
+			ObservedAt:         job.ObservedAt,
+			SourceModifiedAt:   job.SourceModifiedAt,
+			ResponseValidators: &fetched.Validators,
 		},
 	); err != nil {
 		// A refused document is an outcome, not a transport failure: the node

@@ -30,7 +30,7 @@ func TestBrowserFallbackPageSourceRendersSuccessfulShell(t *testing.T) {
 		}),
 		func(page pagefetch.FetchedPage) bool { return string(page.Body) == "shell" },
 	)
-	page, err := source.Fetch(t.Context(), target)
+	page, err := source.Fetch(t.Context(), pagefetch.FetchRequest{Target: target})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestBrowserFallbackPageSourceKeepsRenderedHTTPStatus(t *testing.T) {
 		}),
 		func(pagefetch.FetchedPage) bool { return true },
 	)
-	page, err := source.Fetch(t.Context(), target)
+	page, err := source.Fetch(t.Context(), pagefetch.FetchRequest{Target: target})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestBrowserFallbackPageSourceKeepsUsablePrimary(t *testing.T) {
 		}),
 		func(page pagefetch.FetchedPage) bool { return string(page.Body) == "shell" },
 	)
-	page, err := source.Fetch(t.Context(), target)
+	page, err := source.Fetch(t.Context(), pagefetch.FetchRequest{Target: target})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestBrowserFallbackPageSourceHonorsSuccessfulPageOptOut(t *testing.T) {
 	)
 	page, err := source.Fetch(
 		pagefetch.WithoutBrowserFallback(t.Context()),
-		target,
+		pagefetch.FetchRequest{Target: target},
 	)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
@@ -122,7 +122,13 @@ func TestBrowserFallbackPageSourceReturnsSuccessfulPageFallbackError(t *testing.
 		}),
 		func(pagefetch.FetchedPage) bool { return true },
 	)
-	if _, err := source.Fetch(t.Context(), target); !errors.Is(err, sentinel) {
+	if _, err := source.Fetch(
+		t.Context(),
+		pagefetch.FetchRequest{Target: target},
+	); !errors.Is(
+		err,
+		sentinel,
+	) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
 }
