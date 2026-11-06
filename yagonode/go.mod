@@ -19,7 +19,7 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/client_model v0.6.1
 	go.etcd.io/bbolt v1.4.3
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2
 	golang.org/x/net v0.62.0
 	google.golang.org/grpc v1.83.2
 )

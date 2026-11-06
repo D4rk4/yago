@@ -5,8 +5,9 @@ streams described in [the upstream gRPC advisory](https://github.com/grpc/grpc-g
 It also includes the missing-authority-header correction associated with an xDS
 routing panic in [GO-2026-6443](https://pkg.go.dev/vuln/GO-2026-6443).
 
-The node and isolated end-to-end test graphs pin x/crypto v0.58.0, which includes the authentication restriction correction
-described in [GO-2026-6303](https://pkg.go.dev/vuln/GO-2026-6303).
+The node and isolated end-to-end test graphs pin x/crypto revision v0.58.1-0.20261009181718-2f1f834330b2, which
+includes the authentication restriction correction described in [GO-2026-6303](https://pkg.go.dev/vuln/GO-2026-6303)
+and removes the unmaintained OpenPGP packages described in [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932).
 
 The node, crawler, crawl contract, and isolated end-to-end test graphs pin x/net v0.62.0. This includes the HTML
 text-node coalescing correction described in [GO-2026-6860](https://pkg.go.dev/vuln/GO-2026-6860) and the raw-text
