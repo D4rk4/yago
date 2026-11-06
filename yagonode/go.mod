@@ -14,7 +14,7 @@ require (
 	github.com/blevesearch/snowballstem v0.9.0
 	github.com/blevesearch/vellum v1.2.0
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/klauspost/compress v1.18.7
+	github.com/klauspost/compress v1.20.2
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/client_model v0.6.1

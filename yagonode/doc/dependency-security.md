@@ -12,8 +12,10 @@ The node, crawler, crawl contract, and isolated end-to-end test graphs pin x/net
 text-node coalescing correction described in [GO-2026-6860](https://pkg.go.dev/vuln/GO-2026-6860) and the raw-text
 namespace rendering correction described in [GO-2026-6866](https://pkg.go.dev/vuln/GO-2026-6866).
 
-The node, crawler, and isolated end-to-end test graphs pin klauspost/compress v1.18.7, which includes the dictionary
-integer-overflow correction described in [GO-2026-5841](https://pkg.go.dev/vuln/GO-2026-5841).
+The node, crawler, and isolated end-to-end test graphs pin klauspost/compress v1.20.2, which includes the dictionary
+integer-overflow correction described in [GO-2026-5841](https://pkg.go.dev/vuln/GO-2026-5841) and the two-block
+frame panic correction described in [GO-2026-6865](https://pkg.go.dev/vuln/GO-2026-6865). Values the node stored
+with the earlier release remain readable, and the earlier release reads values written with this one.
 
 The crawler container pins its existing `libblkid` and `libmount` dependencies
 to Alpine `2.42.3-r1`, addressing the util-linux advisories reported against their
