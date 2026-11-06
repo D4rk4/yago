@@ -50,7 +50,7 @@ func TestSubmitIngestRefusesInvalidPayloadsBeforeDelivery(t *testing.T) {
 			msg := ingestMessageForBatch(t, batch)
 			authorizeIngestMessage(t, server, msg, "ingest-invalid-payload")
 
-			_, err := server.SubmitIngest(context.Background(), msg)
+			_, err := server.SubmitIngest(boundedSubmissionContext(t), msg)
 			if status.Code(err) != codes.InvalidArgument {
 				t.Fatalf("submit ingest error = %v, want InvalidArgument", err)
 			}
@@ -68,7 +68,7 @@ func TestSubmitIngestAnswersNotModifiedWithoutRecordingIt(t *testing.T) {
 	authorizeIngestMessage(t, server, msg, "ingest-not-modified")
 
 	for delivery := range 2 {
-		ack, err := server.SubmitIngest(context.Background(), msg)
+		ack, err := server.SubmitIngest(boundedSubmissionContext(t), msg)
 		if err != nil {
 			t.Fatalf("delivery %d: submit ingest: %v", delivery, err)
 		}
@@ -108,6 +108,14 @@ func TestSubmitIngestDeliversDocumentWithResponseValidatorsUnchanged(t *testing.
 	if got := <-delivered; got == nil || *got != *batch.ResponseValidators {
 		t.Fatalf("delivered response validators = %+v, want %+v", got, batch.ResponseValidators)
 	}
+}
+
+func boundedSubmissionContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	t.Cleanup(cancel)
+
+	return ctx
 }
 
 func notModifiedIngestBatch() yagocrawlcontract.IngestBatch {

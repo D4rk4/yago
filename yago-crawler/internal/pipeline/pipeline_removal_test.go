@@ -62,14 +62,6 @@ func (e *spyEmitter) EmitRemoval(ctx context.Context, envelope ingest.Envelope) 
 	return e.removalErr
 }
 
-func (e *spyEmitter) EmitNotModified(
-	context.Context,
-	yagocrawlcontract.NotModifiedObservation,
-	ingest.Envelope,
-) error {
-	return nil
-}
-
 func (e *spyEmitter) removalEnvelopes() []ingest.Envelope {
 	e.mu.Lock()
 	defer e.mu.Unlock()

@@ -28,6 +28,7 @@ func revalidatedEnvelope(validators *yagocrawlcontract.HTTPValidators) ingest.En
 		Provenance:         []byte("run"),
 		ProfileHandle:      "handle",
 		ObservationID:      "observation-revalidated",
+		ObservedAt:         time.Date(2026, 11, 1, 7, 0, 0, 0, time.UTC),
 		ResponseValidators: validators,
 	}
 }
@@ -56,24 +57,27 @@ func TestEmittersDropInvalidResponseValidators(t *testing.T) {
 	}
 }
 
-func TestEmitNotModifiedPublishesObservation(t *testing.T) {
+func TestEmitNotModifiedPublishesObservationOrderedBeforeTheRefetch(t *testing.T) {
 	batches := emittedBatches(t, revalidatedEnvelope(nil))
-	notModified := batches[1]
+	refetch, notModified := batches[0], batches[1]
 	if notModified.NotModified == nil || *notModified.NotModified != storedRevisionObservation() {
 		t.Fatalf("not-modified observation = %+v", notModified.NotModified)
 	}
-	if notModified.SourceURL != "https://example.org/revalidated" ||
-		notModified.ObservationID != "observation-revalidated" {
-		t.Fatalf("not-modified identity = %+v", notModified)
+	if notModified.SourceURL != refetch.SourceURL ||
+		notModified.ObservationID == refetch.ObservationID ||
+		!notModified.ObservedAt.Before(refetch.ObservedAt) {
+		t.Fatalf("not-modified observation %q at %v does not precede refetch %q at %v",
+			notModified.ObservationID, notModified.ObservedAt,
+			refetch.ObservationID, refetch.ObservedAt)
 	}
-	if batches[0].NotModified != nil {
-		t.Fatalf("document batch carries a not-modified observation: %+v", batches[0].NotModified)
+	if refetch.NotModified != nil {
+		t.Fatalf("document batch carries a not-modified observation: %+v", refetch.NotModified)
 	}
 }
 
 func TestEmitNotModifiedWrapsPublishFailure(t *testing.T) {
 	publishFailure := errors.New("node unavailable")
-	emitter := ingest.NewBatchEmitter(failingPublisher{err: publishFailure})
+	emitter := ingest.NewNotModifiedEmitter(failingPublisher{err: publishFailure})
 
 	err := emitter.EmitNotModified(
 		context.Background(),
@@ -99,7 +103,7 @@ func emittedBatches(t *testing.T, envelope ingest.Envelope) []ingest.IngestBatch
 	); err != nil {
 		t.Fatalf("emit document: %v", err)
 	}
-	if err := emitter.EmitNotModified(
+	if err := ingest.NewNotModifiedEmitter(queue).EmitNotModified(
 		context.Background(),
 		storedRevisionObservation(),
 		envelope,

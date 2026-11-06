@@ -36,11 +36,6 @@ type BatchEmitter interface {
 		ctx context.Context,
 		envelope Envelope,
 	) error
-	EmitNotModified(
-		ctx context.Context,
-		observation yagocrawlcontract.NotModifiedObservation,
-		envelope Envelope,
-	) error
 }
 
 type batchEmitter struct {

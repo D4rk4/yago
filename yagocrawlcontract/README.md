@@ -231,6 +231,8 @@ rule is refused:
 - A batch carries one payload: a removal, a document (document content,
   postings, or URL metadata), or a not-modified observation. A batch that mixes
   them is refused.
+- Origin validators ride only on a document or a not-modified observation. A
+  removal or source-only batch that carries them is refused.
 - A not-modified observation carries the source URL, an observation ID, and a
   complete revision.
 
@@ -241,8 +243,17 @@ and both fetch times name the same instant.
 not-modified observation. A crawler that sent one and receives an
 acknowledgement without that flag treats the observation as not recorded,
 whatever else the acknowledgement says. It discards the validators and fetches
-the page again unconditionally within the same lease. The current node answers
-every valid not-modified observation that way and records nothing.
+the page again unconditionally within the same lease. The current node refuses
+a not-modified observation from a stale lease or a replaced worker session like
+any other ingest batch. It answers every other valid not-modified observation
+without the flag and records nothing.
+
+The full batch from that second fetch is a new observation. Its observation ID
+differs from the not-modified observation's, and its observation time orders
+after it, so a node that kept the not-modified batch as a source-only
+observation still stores the document. The crawler gives a not-modified
+observation a fresh observation ID and an observation time one nanosecond
+before the page's own, which the full batch keeps.
 
 ## Backpressure
 

@@ -46,7 +46,7 @@ func (s *exchangeServer) SubmitIngest(
 		return nil, status.Errorf(codes.InvalidArgument, "invalid ingest payload: %v", err)
 	}
 	if batch.NotModified != nil {
-		return &crawlrpc.IngestAck{}, nil
+		return s.acknowledgeUnrecordedNotModified(ctx, authorization)
 	}
 	finish := func() {}
 	if s.beginIngest != nil {

@@ -189,3 +189,20 @@ func TestIngestBatchRefusesInvalidResponseValidators(t *testing.T) {
 		}
 	}
 }
+
+func TestIngestBatchRefusesResponseValidatorsWithoutRepresentation(t *testing.T) {
+	validators := &HTTPValidators{ETag: `"v1"`}
+	for name, batch := range map[string]IngestBatch{
+		"removal":     {SourceURL: "https://example.org/a", Removed: true},
+		"source only": {SourceURL: "https://example.org/a"},
+	} {
+		batch.ResponseValidators = validators
+		if err := batch.ValidatePayload(); !errors.Is(
+			err,
+			errResponseValidatorsWithoutRepresentation,
+		) {
+			t.Errorf("%s: ValidatePayload() = %v, want %v",
+				name, err, errResponseValidatorsWithoutRepresentation)
+		}
+	}
+}

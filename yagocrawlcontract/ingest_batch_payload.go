@@ -13,6 +13,9 @@ var (
 	errNotModifiedIdentity = errors.New(
 		"not-modified observation lacks source URL or observation ID",
 	)
+	errResponseValidatorsWithoutRepresentation = errors.New(
+		"response validators require a document or a not-modified observation",
+	)
 )
 
 type NotModifiedObservation struct {
@@ -20,8 +23,9 @@ type NotModifiedObservation struct {
 }
 
 func (b IngestBatch) ValidatePayload() error {
+	carriesDocument := b.carriesDocument()
 	payloads := 0
-	for _, carried := range []bool{b.Removed, b.carriesDocument(), b.NotModified != nil} {
+	for _, carried := range []bool{b.Removed, carriesDocument, b.NotModified != nil} {
 		if carried {
 			payloads++
 		}
@@ -30,6 +34,9 @@ func (b IngestBatch) ValidatePayload() error {
 		return errIngestPayloadMixed
 	}
 	if b.ResponseValidators != nil {
+		if !carriesDocument && b.NotModified == nil {
+			return errResponseValidatorsWithoutRepresentation
+		}
 		if err := b.ResponseValidators.Validate(); err != nil {
 			return fmt.Errorf("response validators: %w", err)
 		}

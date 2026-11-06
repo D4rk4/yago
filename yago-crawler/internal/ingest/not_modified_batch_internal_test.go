@@ -60,12 +60,15 @@ func TestNotModifiedBatchCarriesObservationAndIdentity(t *testing.T) {
 		t.Fatalf("not-modified observation = %+v", batch.NotModified)
 	}
 	if batch.SourceURL != envelope.SourceURL || string(batch.Provenance) != "run" ||
-		batch.ProfileHandle != envelope.ProfileHandle ||
-		batch.ObservationID != envelope.ObservationID {
-		t.Fatalf("not-modified identity = %+v", batch)
+		batch.ProfileHandle != envelope.ProfileHandle {
+		t.Fatalf("not-modified source = %+v", batch)
 	}
-	if !batch.ObservedAt.Equal(envelope.ObservedAt) || batch.ObservedAt.Location() != time.UTC {
-		t.Fatalf("observed at = %v, want %v in UTC", batch.ObservedAt, envelope.ObservedAt)
+	if batch.ObservationID == "" || batch.ObservationID == envelope.ObservationID {
+		t.Fatalf("not-modified observation ID = %q, want its own identity", batch.ObservationID)
+	}
+	precedingInstant := envelope.ObservedAt.Add(-time.Nanosecond)
+	if !batch.ObservedAt.Equal(precedingInstant) || batch.ObservedAt.Location() != time.UTC {
+		t.Fatalf("observed at = %v, want %v in UTC", batch.ObservedAt, precedingInstant)
 	}
 	if batch.ResponseValidators != envelope.ResponseValidators {
 		t.Fatalf("response validators = %+v", batch.ResponseValidators)
@@ -139,6 +142,7 @@ func TestPublisherAcceptsRecordedNotModifiedObservationUnchanged(t *testing.T) {
 func TestPublisherKeepsDocumentAcknowledgementWithoutNotModifiedRecord(t *testing.T) {
 	client := &acknowledgingSubmitter{acknowledgement: &crawlrpc.IngestAck{}}
 	batch := testBatch()
+	batch.Document = yagocrawlcontract.DocumentIngest{NormalizedURL: batch.SourceURL}
 	batch.ResponseValidators = unchangedPageEnvelope().ResponseValidators
 
 	if err := NewGRPCIngestPublisher(client).Publish(context.Background(), batch); err != nil {
