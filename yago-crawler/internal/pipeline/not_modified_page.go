@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/crawljob"
@@ -21,6 +22,11 @@ const (
 )
 
 var errNotModifiedDeliveryFailure = errors.New(notModifiedDeliveryFailureReason)
+
+type changedPageFetch struct {
+	page      pagefetch.FetchedPage
+	unchanged bool
+}
 
 func WithNotModifiedEmitter(emitter ingest.NotModifiedEmitter) Option {
 	return func(p *Pipeline) {
@@ -52,12 +58,12 @@ func (p *Pipeline) fetchChangedPage(
 	job crawljob.CrawlJob,
 	target *url.URL,
 	outcome *yagocrawlcontract.CrawlRunTally,
-) (pagefetch.FetchedPage, bool, error) {
+) (changedPageFetch, error) {
 	fetched, err := p.fetchJob(ctx, job, target, outcome)
 	notModified, isNotModified := pagefetch.AsNotModified(err)
 	issued := p.issuedConditionalFetch(job)
 	if !isNotModified || issued == nil {
-		return fetched, false, err
+		return changedPageFetch{page: fetched}, err
 	}
 	p.recordHostFetchSuccess(ctx, job)
 	err = p.notModifiedEmitter.EmitNotModified(
@@ -77,10 +83,10 @@ func (p *Pipeline) fetchChangedPage(
 		slog.WarnContext(ctx, msgNotModifiedUnrecorded, slog.String("url", job.URL))
 		fetched, err = p.fetchJob(ctx, unconditionalCrawlJob(job), target, outcome)
 
-		return fetched, false, err
+		return changedPageFetch{page: fetched}, err
 	}
 	if err != nil {
-		return pagefetch.FetchedPage{}, true, fmt.Errorf(
+		return changedPageFetch{unchanged: true}, fmt.Errorf(
 			"%w: %w",
 			errNotModifiedDeliveryFailure,
 			err,
@@ -91,7 +97,22 @@ func (p *Pipeline) fetchChangedPage(
 	p.observer.IngestPublished()
 	slog.DebugContext(ctx, msgPageNotModified, slog.String("url", job.URL))
 
-	return pagefetch.FetchedPage{}, true, nil
+	return changedPageFetch{unchanged: true}, nil
+}
+
+func (p *Pipeline) settlePageOutcome(
+	ctx context.Context,
+	job crawljob.CrawlJob,
+	fetch changedPageFetch,
+	fetchErr error,
+	outcome *yagocrawlcontract.CrawlRunTally,
+) (uint32, string, error) {
+	if fetch.unchanged {
+		return http.StatusNotModified, notModifiedPageReason(fetchErr), fetchErr
+	}
+	reason, err := p.processFetchedPage(ctx, job, fetch.page, outcome)
+
+	return fetch.page.HTTPStatus, reason, err
 }
 
 func unconditionalCrawlJob(job crawljob.CrawlJob) crawljob.CrawlJob {

@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/httpfetch"
@@ -331,38 +334,91 @@ func TestConditionalFetchRetryHonorsCancellation(t *testing.T) {
 }
 
 func TestConditionalFetchRetryStaysWithinTheOriginalDeadline(t *testing.T) {
-	const pause = 400 * time.Millisecond
-	origin := &conditionalOrigin{
-		respond: func(w http.ResponseWriter, r *http.Request, attempt int) {
-			select {
-			case <-time.After(pause):
-			case <-r.Context().Done():
-				return
-			}
-			if attempt == 1 {
-				w.WriteHeader(http.StatusNotModified)
+	synctest.Test(t, func(t *testing.T) {
+		attempts := 0
+		client := &http.Client{
+			Timeout: 3 * time.Second,
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				attempts++
+				select {
+				case <-time.After(2 * time.Second):
+				case <-request.Context().Done():
+					return nil, fmt.Errorf("origin wait: %w", request.Context().Err())
+				}
+				if attempts == 1 {
+					return &http.Response{
+						StatusCode: http.StatusNotModified,
+						Header:     http.Header{},
+						Body:       http.NoBody,
+						Request:    request,
+					}, nil
+				}
 
-				return
-			}
-			serveHTMLPage(w)
-		},
-	}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"text/html"}},
+					Body: io.NopCloser(
+						strings.NewReader("<html><body>late page</body></html>"),
+					),
+					Request: request,
+				}, nil
+			}),
+		}
+
+		page, err := conditionalFetch(
+			t,
+			t.Context(),
+			client,
+			"https://example.org/article",
+			yagocrawlcontract.HTTPValidators{},
+		)
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("Fetch = %+v %v, want the original deadline to expire", page.URL, err)
+		}
+		if attempts != 2 {
+			t.Fatalf("requests = %d, want the original and the retry", attempts)
+		}
+	})
+}
+
+type countingBrowser struct {
+	calls atomic.Int32
+}
+
+func (b *countingBrowser) Fetch(
+	_ context.Context,
+	request pagefetch.FetchRequest,
+) (pagefetch.FetchedPage, error) {
+	b.calls.Add(1)
+
+	return pagefetch.FetchedPage{
+		URL:         request.Target,
+		HTTPStatus:  http.StatusOK,
+		ContentType: "text/html",
+		Body:        []byte("<html><body>rendered page</body></html>"),
+	}, nil
+}
+
+func TestUnusableNotModifiedNeverFallsBackToTheBrowser(t *testing.T) {
+	origin := &conditionalOrigin{respond: func(w http.ResponseWriter, _ *http.Request, _ int) {
+		w.WriteHeader(http.StatusNotModified)
+	}}
 	server := httptest.NewServer(origin)
 	defer server.Close()
-	client := server.Client()
-	client.Timeout = 3 * pause / 2
-
-	page, err := conditionalFetch(
-		t,
-		t.Context(),
-		client,
-		server.URL,
-		yagocrawlcontract.HTTPValidators{},
+	browser := &countingBrowser{}
+	source := pagefetch.NewFallbackPageSource(
+		httpfetch.NewPageFetcher(server.Client(), "crawler/1.0", 1<<20),
+		browser,
 	)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Fetch = %+v %v, want the original deadline to expire", page.URL, err)
+
+	page, err := source.Fetch(t.Context(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
+	if _, notModified := pagefetch.AsNotModified(err); err == nil || notModified {
+		t.Fatalf("Fetch = %+v %v, want a fetch failure", page, err)
+	}
+	if calls := browser.calls.Load(); calls != 0 {
+		t.Fatalf("browser calls = %d, want none", calls)
 	}
 	if requests := origin.requests(); len(requests) != 2 {
-		t.Fatalf("requests = %d, want the original and the retry", len(requests))
+		t.Fatalf("requests = %d, want the original and one retry", len(requests))
 	}
 }

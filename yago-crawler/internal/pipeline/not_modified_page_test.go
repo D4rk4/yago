@@ -154,8 +154,10 @@ func TestPipelineReportsAuthorizedNotModifiedObservation(t *testing.T) {
 	source := &validatorAwareSource{respond: notModifiedWhenConditional}
 	emitter := &recrawlEmitter{}
 	observer := &countingPipelineObserver{}
+	feedback := &recordingFeedback{}
 	p := pipeline.NewPipeline(frontier, source, pageindex.NewIndexBuilder(), emitter,
-		pipeline.WithNotModifiedEmitter(emitter), pipeline.WithObserver(observer))
+		pipeline.WithNotModifiedEmitter(emitter), pipeline.WithObserver(observer),
+		pipeline.WithHostLoadFeedback(feedback))
 
 	done := runJob(t, p, frontier, conditionalRecrawlJob())
 	if done.httpStatus != http.StatusNotModified ||
@@ -181,6 +183,9 @@ func TestPipelineReportsAuthorizedNotModifiedObservation(t *testing.T) {
 	}
 	if observer.fetchSucceeded != 1 || observer.ingestPublished != 1 || observer.fetchFailed != 0 {
 		t.Fatalf("observer = %+v, want one successful published fetch", observer)
+	}
+	if feedback.successes != 1 || len(feedback.throttled) != 0 {
+		t.Fatalf("host feedback = %+v, want one success and no throttling", feedback)
 	}
 }
 

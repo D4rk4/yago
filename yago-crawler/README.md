@@ -164,8 +164,8 @@ is read, nothing is parsed, and no browser render starts. A `304` the crawler
 did not ask for, or one with malformed validators, is retried once without
 validators inside the same fetch deadline and otherwise fails the fetch. When
 the node does not confirm that it recorded the observation, the crawler fetches
-the page again in full within the same lease. Every full fetch reports the
-response's entity tag and modification date to the node.
+the page again in full within the same lease. Every full HTTP response's valid
+entity tag and modification date are reported to the node.
 
 Every newly parsed live document is stamped with
 `CurrentExtractionGeneration`, currently `1`, before it crosses the ingest

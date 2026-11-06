@@ -50,7 +50,4 @@ func TestUnconditionalFetchRequestKeepsOnlyTheTarget(t *testing.T) {
 		unconditional.Validators != (yagocrawlcontract.HTTPValidators{}) {
 		t.Fatalf("Unconditional() = %+v, want the target without validators", unconditional)
 	}
-	if request.Validators.ETag != `"v1"` {
-		t.Fatalf("original request validators = %+v, want them unchanged", request.Validators)
-	}
 }

@@ -169,18 +169,18 @@ func runServiceWithMetrics(
 	receiverCtx, cancelReceiver := context.WithCancel(ctx)
 	defer cancelReceiver()
 	execution, err := assembleCrawlerExecution(crawlerExecutionStart{
-		context:          receiverCtx,
-		config:           cfg,
-		source:           source,
-		metrics:          metrics,
-		checkpoint:       checkpointSession,
-		nodeRPC:          nodeRPC,
-		emitter:          emitter,
-		notModified:      newCrawlerNotModifiedEmitter(nodeRPC, checkpointSession),
-		growthAdmission:  storagePressure,
-		restart:          restart.Trigger,
-		shutdown:         stopService,
-		maximumRedirects: redirects,
+		context:            receiverCtx,
+		config:             cfg,
+		source:             source,
+		metrics:            metrics,
+		checkpoint:         checkpointSession,
+		nodeRPC:            nodeRPC,
+		emitter:            emitter,
+		notModifiedEmitter: newCrawlerNotModifiedEmitter(nodeRPC, checkpointSession),
+		growthAdmission:    storagePressure,
+		restart:            restart.Trigger,
+		shutdown:           stopService,
+		maximumRedirects:   redirects,
 	})
 	if err != nil {
 		return err

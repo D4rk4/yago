@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"sync"
 	"time"
@@ -271,18 +270,8 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 
 		return fmt.Errorf("parse url: %s", job.URL)
 	}
-	fetched, unchanged, err := p.fetchChangedPage(ctx, job, target, &outcome)
-	if unchanged {
-		outcomeHTTPStatus = http.StatusNotModified
-		outcomeReason = notModifiedPageReason(err)
-		abandoned = err != nil && (ctx.Err() != nil || errors.Is(err, crawllease.ErrLeaseLost))
-		if err != nil && !abandoned {
-			outcome.Failed++
-		}
-
-		return err
-	}
-	if err != nil {
+	fetch, err := p.fetchChangedPage(ctx, job, target, &outcome)
+	if err != nil && !fetch.unchanged {
 		outcomeHTTPStatus = pageOutcomeHTTPStatus(err)
 		outcomeReason = fetchOutcomeReason(err)
 		removalErr := p.emitRemovalIfGone(ctx, job, err)
@@ -294,8 +283,7 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 
 		return err
 	}
-	outcomeHTTPStatus = fetched.HTTPStatus
-	outcomeReason, err = p.processFetchedPage(ctx, job, fetched, &outcome)
+	outcomeHTTPStatus, outcomeReason, err = p.settlePageOutcome(ctx, job, fetch, err, &outcome)
 	abandoned = err != nil && (ctx.Err() != nil || errors.Is(err, crawllease.ErrLeaseLost))
 	if err != nil && !abandoned {
 		outcome.Failed++

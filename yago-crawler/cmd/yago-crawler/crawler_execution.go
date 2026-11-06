@@ -19,20 +19,20 @@ import (
 )
 
 type crawlerExecution struct {
-	checkpoint      crawlerCheckpointSession
-	nodeRPC         crawlerNodeRPC
-	pace            *crawldelay.AdaptivePace
-	tally           *runtally.Tally
-	frontier        *frontier.Frontier
-	orders          *crawlorder.GRPCOrderReceiver
-	concurrency     *workerConcurrency
-	activeRuns      *crawlorder.ActiveRunAdmission
-	fetchBudget     *fetchrate.ProcessBudget
-	fleetAdmission  *fleetfetchstart.Admission
-	emitter         ingest.BatchEmitter
-	notModified     ingest.NotModifiedEmitter
-	urlDenylist     *crawldenylist.Denylist
-	growthAdmission interface {
+	checkpoint         crawlerCheckpointSession
+	nodeRPC            crawlerNodeRPC
+	pace               *crawldelay.AdaptivePace
+	tally              *runtally.Tally
+	frontier           *frontier.Frontier
+	orders             *crawlorder.GRPCOrderReceiver
+	concurrency        *workerConcurrency
+	activeRuns         *crawlorder.ActiveRunAdmission
+	fetchBudget        *fetchrate.ProcessBudget
+	fleetAdmission     *fleetfetchstart.Admission
+	emitter            ingest.BatchEmitter
+	notModifiedEmitter ingest.NotModifiedEmitter
+	urlDenylist        *crawldenylist.Denylist
+	growthAdmission    interface {
 		WaitForGrowth(context.Context) (bool, error)
 	}
 }
@@ -58,7 +58,7 @@ func (execution crawlerExecution) lifecycle(
 		pageindex.NewIndexBuilder(),
 		execution.emitter,
 		pipeline.WithObserver(metrics),
-		pipeline.WithNotModifiedEmitter(execution.notModified),
+		pipeline.WithNotModifiedEmitter(execution.notModifiedEmitter),
 		pipeline.WithInsecureFetcher(chains.insecure),
 		pipeline.WithRobotsIgnoringFetchers(chains.verifyingDirect, chains.insecureDirect),
 		pipeline.WithHostLoadFeedback(execution.pace),

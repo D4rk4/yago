@@ -139,32 +139,35 @@ func (b *countingIndexBuilder) Build(
 	return artifacts, nil
 }
 
-type bodyByteCountingTransport struct {
+type bodyReadCountingTransport struct {
 	inner http.RoundTripper
-	bytes atomic.Int64
+	reads atomic.Int64
 }
 
-func (t *bodyByteCountingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+func (t *bodyReadCountingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	response, err := t.inner.RoundTrip(request)
 	if err != nil {
 		return nil, fmt.Errorf("round trip: %w", err)
 	}
-	response.Body = struct {
-		io.Reader
-		io.Closer
-	}{io.TeeReader(response.Body, bodyByteCounter{bytes: &t.bytes}), response.Body}
+	response.Body = countedResponseBody{
+		Closer: response.Body,
+		read:   response.Body.Read,
+		reads:  &t.reads,
+	}
 
 	return response, nil
 }
 
-type bodyByteCounter struct {
-	bytes *atomic.Int64
+type countedResponseBody struct {
+	io.Closer
+	read  func([]byte) (int, error)
+	reads *atomic.Int64
 }
 
-func (c bodyByteCounter) Write(read []byte) (int, error) {
-	c.bytes.Add(int64(len(read)))
+func (b countedResponseBody) Read(buffer []byte) (int, error) {
+	b.reads.Add(1)
 
-	return len(read), nil
+	return b.read(buffer)
 }
 
 func startRecrawlPipeline(
@@ -228,7 +231,7 @@ func newRecrawlArticleServer(t *testing.T) *httptest.Server {
 
 func TestConditionalRecrawlReportsNotModifiedWithoutReadingOrParsing(t *testing.T) {
 	server := newRecrawlArticleServer(t)
-	transport := &bodyByteCountingTransport{inner: server.Client().Transport}
+	transport := &bodyReadCountingTransport{inner: server.Client().Transport}
 	client := &http.Client{
 		Transport:     transport,
 		CheckRedirect: dynamicRedirectPolicy(newRedirectLimit(5)),
@@ -259,11 +262,11 @@ func TestConditionalRecrawlReportsNotModifiedWithoutReadingOrParsing(t *testing.
 		)
 	}
 	issued := *documents[0].ResponseValidators
-	if issued.ETag != recrawlArticleEntityTag || transport.bytes.Load() == 0 {
-		t.Fatalf("full fetch validators = %+v after %d body bytes", issued, transport.bytes.Load())
+	if issued.ETag != recrawlArticleEntityTag || transport.reads.Load() == 0 {
+		t.Fatalf("full fetch validators = %+v after %d body reads", issued, transport.reads.Load())
 	}
 
-	bodyBytesBefore := transport.bytes.Load()
+	bodyReadsBefore := transport.reads.Load()
 	revision := yagocrawlcontract.DocumentRevision{
 		ContentHash:          "content-hash",
 		ExtractionGeneration: 1,
@@ -285,8 +288,8 @@ func TestConditionalRecrawlReportsNotModifiedWithoutReadingOrParsing(t *testing.
 		recrawl.tally.Failed != 0 {
 		t.Fatalf("recrawl outcome = %+v, want one unchanged fetch", recrawl)
 	}
-	if read := transport.bytes.Load() - bodyBytesBefore; read != 0 {
-		t.Fatalf("recrawl read %d body bytes, want none", read)
+	if reads := transport.reads.Load() - bodyReadsBefore; reads != 0 {
+		t.Fatalf("recrawl made %d body reads, want none", reads)
 	}
 	if builder.builds.Load() != 1 || len(documents) != 1 || browserCalls.Load() != 0 {
 		t.Fatalf("recrawl built %d, emitted %d documents, browser %d; want no extraction",
