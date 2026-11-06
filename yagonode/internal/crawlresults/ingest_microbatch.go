@@ -29,6 +29,7 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 	}
 	group, releases := authorizeIngestGroup(ctx, group)
 	defer releaseIngestGroup(releases)
+	group = c.absorbNotModifiedDeliveries(ctx, group)
 
 	admitted := make([]IngestDelivery, 0, len(group))
 	for _, delivery := range group {
@@ -145,6 +146,7 @@ func (c *IngestConsumer) absorbReservedTailGroup(
 	}
 
 	c.recordFetchGroup(ctx, group)
+	c.recordResponseValidators(ctx, group)
 	if !c.completeObservations(ctx, group) {
 		return
 	}

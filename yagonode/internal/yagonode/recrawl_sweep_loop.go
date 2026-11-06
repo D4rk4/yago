@@ -30,12 +30,13 @@ type recrawlPublisher interface {
 // come due and re-dispatches each as a fresh single-URL crawl order under its
 // recorded profile.
 type recrawlSweeper struct {
-	frontier  *recrawlfrontier.Frontier
-	publisher recrawlPublisher
-	initiator yagomodel.Hash
-	mint      func() []byte
-	now       func() time.Time
-	batch     int
+	frontier    *recrawlfrontier.Frontier
+	publisher   recrawlPublisher
+	initiator   yagomodel.Hash
+	mint        func() []byte
+	now         func() time.Time
+	batch       int
+	conditional conditionalRecrawl
 }
 
 var newRecrawlSweepTicks = func(interval time.Duration) (<-chan time.Time, func()) {
@@ -105,11 +106,12 @@ func (s recrawlSweeper) redispatch(
 		Priority:   priority,
 		Profile:    profile,
 		Requests: []yagocrawlcontract.CrawlRequest{{
-			URL:           item.URL,
-			Mode:          yagocrawlcontract.CrawlRequestModeURL,
-			ProfileHandle: item.ProfileHandle,
-			Initiator:     s.initiator,
-			AppDate:       now,
+			URL:              item.URL,
+			Mode:             yagocrawlcontract.CrawlRequestModeURL,
+			ProfileHandle:    item.ProfileHandle,
+			Initiator:        s.initiator,
+			AppDate:          now,
+			ConditionalFetch: s.conditional.issuedConditionalFetch(ctx, item.URL),
 		}},
 	}
 	if err := s.publisher.Publish(ctx, order); err != nil {

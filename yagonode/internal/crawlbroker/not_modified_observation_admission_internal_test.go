@@ -1,6 +1,7 @@
 package crawlbroker
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -49,6 +50,39 @@ func authorizedNotModifiedSubmission(
 	return server, out, msg
 }
 
+func consumeNotModifiedDelivery(
+	out <-chan crawlresults.IngestDelivery,
+	settle func(crawlresults.IngestDelivery) func(context.Context) error,
+) {
+	go func() {
+		delivery := <-out
+		ctx := context.Background()
+		err := delivery.AuthorizeLeaseSnapshot(ctx)
+		switch {
+		case errors.Is(err, crawlresults.ErrLeaseLost):
+			_ = delivery.LeaseLost(ctx)
+		case err != nil:
+			_ = delivery.Nak(ctx)
+		default:
+			_ = settle(delivery)(ctx)
+		}
+	}()
+}
+
+func recordNotModified(delivery crawlresults.IngestDelivery) func(context.Context) error {
+	return delivery.AckRecordedNotModified
+}
+
+func acknowledgeWithoutRecording(
+	delivery crawlresults.IngestDelivery,
+) func(context.Context) error {
+	return delivery.Ack
+}
+
+func deferNotModified(delivery crawlresults.IngestDelivery) func(context.Context) error {
+	return delivery.Nak
+}
+
 func TestSubmitIngestRefusesNotModifiedFromSettledLease(t *testing.T) {
 	server, out, msg := authorizedNotModifiedSubmission(t, "not-modified-settled-lease")
 	if _, err := server.AckOrder(t.Context(), &crawlrpc.OrderAck{
@@ -57,14 +91,12 @@ func TestSubmitIngestRefusesNotModifiedFromSettledLease(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("settle lease before not-modified submission: %v", err)
 	}
+	consumeNotModifiedDelivery(out, recordNotModified)
 
 	_, err := server.SubmitIngest(boundedSubmissionContext(t), msg)
 
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("settled-lease not-modified status = %v, want FailedPrecondition", err)
-	}
-	if len(out) != 0 {
-		t.Fatal("not-modified observation reached the document ingest pipeline")
 	}
 }
 
@@ -75,14 +107,12 @@ func TestSubmitIngestRefusesNotModifiedFromReplacedSession(t *testing.T) {
 	rewriteNotModifiedLease(t, server.queue, msg.GetLeaseId(), func(record *leaseRecord) {
 		record.WorkerSessionID = testWorkerSessionID
 	})
+	consumeNotModifiedDelivery(out, recordNotModified)
 
 	_, err := server.SubmitIngest(boundedSubmissionContext(t), msg)
 
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("replaced-session not-modified status = %v, want FailedPrecondition", err)
-	}
-	if len(out) != 0 {
-		t.Fatal("not-modified observation reached the document ingest pipeline")
 	}
 }
 
@@ -91,13 +121,46 @@ func TestSubmitIngestDefersNotModifiedWhenLeaseIsUnreadable(t *testing.T) {
 	rewriteNotModifiedLease(t, server.queue, msg.GetLeaseId(), func(record *leaseRecord) {
 		record.OrderData = []byte("{")
 	})
+	consumeNotModifiedDelivery(out, recordNotModified)
 
 	_, err := server.SubmitIngest(boundedSubmissionContext(t), msg)
 
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("unreadable-lease not-modified status = %v, want Unavailable", err)
 	}
-	if len(out) != 0 {
-		t.Fatal("not-modified observation reached the document ingest pipeline")
+}
+
+func TestSubmitIngestConfirmsOnlyARecordedNotModifiedObservation(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		settle func(crawlresults.IngestDelivery) func(context.Context) error
+		want   bool
+	}{
+		{name: "recorded", settle: recordNotModified, want: true},
+		{name: "acknowledged-without-recording", settle: acknowledgeWithoutRecording},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, out, msg := authorizedNotModifiedSubmission(t, "not-modified-"+tc.name)
+			consumeNotModifiedDelivery(out, tc.settle)
+
+			ack, err := server.SubmitIngest(boundedSubmissionContext(t), msg)
+			if err != nil {
+				t.Fatalf("submit not-modified observation: %v", err)
+			}
+			if ack.GetNotModifiedRecorded() != tc.want || ack.GetRejected() {
+				t.Fatalf("not-modified ack = %+v, want recorded %v", ack, tc.want)
+			}
+		})
+	}
+}
+
+func TestSubmitIngestDefersNotModifiedWhenRecordingFails(t *testing.T) {
+	server, out, msg := authorizedNotModifiedSubmission(t, "not-modified-recording-failed")
+	consumeNotModifiedDelivery(out, deferNotModified)
+
+	ack, err := server.SubmitIngest(boundedSubmissionContext(t), msg)
+
+	if status.Code(err) != codes.Unavailable || ack != nil {
+		t.Fatalf("failed-recording not-modified = (%v, %v), want Unavailable", ack, err)
 	}
 }

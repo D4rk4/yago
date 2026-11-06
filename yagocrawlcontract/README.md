@@ -190,9 +190,11 @@ immediate loop.
 
 ## Conditional recrawl
 
-Status: partial and internal. The contract defines and validates these fields,
-but no node issues conditional work yet and no crawler reports a not-modified
-observation yet. Every fetch therefore stays unconditional.
+Status: implemented. The node keeps the origin validators of each stored page
+and sends them on the page's next due recrawl. The crawler asks the origin
+whether the page changed and reports a "not modified" answer instead of
+fetching the page again. The node confirms that answer only after it has
+durably recorded it.
 
 A crawl request may carry `ConditionalFetch`. It holds the HTTP validators of
 the stored document (`Validators`) and that document's revision (`Revision`)
@@ -243,10 +245,35 @@ and both fetch times name the same instant.
 not-modified observation. A crawler that sent one and receives an
 acknowledgement without that flag treats the observation as not recorded,
 whatever else the acknowledgement says. It discards the validators and fetches
-the page again unconditionally within the same lease. The current node refuses
-a not-modified observation from a stale lease or a replaced worker session like
-any other ingest batch. It answers every other valid not-modified observation
-without the flag and records nothing.
+the page again unconditionally within the same lease.
+
+The node keeps the validators of a full fetch only after it has stored that
+document, and only when they follow the rules above. It sends them on the
+page's next due recrawl only while the stored document is still present, still
+has the current extraction generation, and still has the revision the
+validators were kept for. Otherwise the recrawl is unconditional.
+
+The node answers a not-modified observation as follows:
+
+- It records the observation and sets `not_modified_recorded` when the
+  observation comes from the page's crawl profile, its revision matches the
+  stored document and the kept validators, and it is not older than the last
+  observation the node recorded for the page. Recording schedules the page's
+  next recrawl from the observation time and any sitemap `lastmod` hint, and
+  keeps any newer valid validators.
+  The stored document, its full-text entry, its postings, and its URL metadata
+  stay unchanged.
+- A replayed observation with the same revision and observation time is
+  confirmed again without a second change, even when its observation ID is new.
+- It acknowledges every other valid not-modified observation without the flag
+  and records nothing: a changed or removed page, a page that is no longer
+  scheduled for recrawl, a revision the node did not issue, and an observation
+  older than one it already recorded.
+- It asks the crawler to retry later (`Unavailable`) when it cannot read or
+  write its records, so an observation is never confirmed without a durable
+  record.
+- It refuses an observation from a stale lease or a replaced worker session
+  (`FailedPrecondition`) like any other ingest batch.
 
 The full batch from that second fetch is a new observation. Its observation ID
 differs from the not-modified observation's, and its observation time orders
@@ -357,9 +384,21 @@ decoders ignore them, and orders, batches, and crawler checkpoint pages written
 before them decode as unconditional work. An older node never issues
 conditional work. An older crawler ignores `ConditionalFetch` and fetches the
 page unconditionally. An older node never sets `not_modified_recorded`, so a
-current crawler falls back to an unconditional fetch. Before replacing either
-binary with an older release, let the crawl queue drain or cancel the affected
-runs, so that no conditional work or unrecorded observation is in flight.
+current crawler falls back to an unconditional fetch. The node keeps validators
+in additive fields of its recrawl schedule; a schedule without them is stored
+exactly as before, and an older node reads one with them as an unconditional
+recrawl.
+
+Before rolling back to a release without conditional recrawl, drain conditional
+work:
+
+1. Pause the recurring crawl schedules on **Admin → Crawler**.
+2. Select **Clear pending orders**.
+3. Wait until the crawl monitor shows no leased orders.
+4. Stop the crawlers, then the node, and continue with the rollback.
+
+Work left in flight is not confirmed by mistake: an older node never confirms a
+not-modified observation, so the crawler fetches that page in full.
 
 The process-session, active-lease, recovered-order framing, lease-bound
 ingest/progress, rich terminal settlement, and confirmation-token fields are

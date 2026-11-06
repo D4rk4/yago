@@ -35,6 +35,7 @@ type IngestDelivery struct {
 	BeginMutation          func(context.Context) (func(), error)
 	BeginMutationGroup     func(context.Context) (context.Context, func())
 	LeaseLost              func(context.Context) error
+	AckRecordedNotModified func(context.Context) error
 }
 
 type IngestStream interface {
@@ -143,6 +144,7 @@ type IngestConsumer struct {
 	safety            ContentSafetyClassifier
 	observations      observationHistory
 	growthAdmission   GrowthAdmission
+	conditional       ConditionalRecrawlRecorder
 	// quality names the rule a document's text violates, "" for indexable text;
 	// nil skips the gate.
 	quality func(text string) string
@@ -200,6 +202,7 @@ func NewIngestConsumerWithIndex(
 		stale:             noopStaleSweeper{},
 		hashURL:           yagomodel.HashURL,
 		observations:      acceptAllObservationHistory{},
+		conditional:       unconditionalRecrawl{},
 	}
 }
 

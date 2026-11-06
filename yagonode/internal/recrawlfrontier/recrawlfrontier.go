@@ -29,6 +29,7 @@ type scheduleRecord struct {
 	Interval         time.Duration
 	NextDueAt        time.Time
 	SourceModifiedAt time.Time
+	ValidatorBinding *ValidatorBinding `json:",omitempty"`
 }
 
 type recordCodec = vault.JSONCodec[scheduleRecord]

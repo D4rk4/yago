@@ -164,7 +164,10 @@ is read, nothing is parsed, and no browser render starts. A `304` the crawler
 did not ask for, or one with malformed validators, is retried once without
 validators inside the same fetch deadline and otherwise fails the fetch. When
 the node does not confirm that it recorded the observation, the crawler fetches
-the page again in full within the same lease. Every full HTTP response's valid
+the page again in full within the same lease. The node confirms only after it
+has durably recorded the observation; it then schedules the page's next recrawl
+and leaves the stored page, its full-text entry, and its postings unchanged.
+Every full HTTP response's valid
 entity tag and modification date are reported to the node.
 
 Every newly parsed live document is stamped with

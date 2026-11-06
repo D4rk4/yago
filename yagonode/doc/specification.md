@@ -1164,3 +1164,33 @@ it is not an assumed deployment dependency.
   bytes before artifact construction and SHALL drop overlong referenced URL
   elements rather than truncate them into different identities.
 * The crawler SHALL carry sitemap `lastmod` values as recrawl scheduling hints.
+* The node SHALL keep the valid `ETag` and `Last-Modified` validators of a full
+  fetch on the page's recrawl schedule only after it has stored that document,
+  together with the stored document's revision: content hash, extraction
+  generation, and fetch time. A later stored full fetch SHALL replace or clear
+  them. A refused or failed ingest SHALL leave them unchanged. A page without a
+  recrawl schedule SHALL keep none.
+* A due recrawl order SHALL carry a conditional fetch only while the stored
+  document is present, has the current extraction generation, and has the kept
+  revision. Every other due order, including one whose lookup fails, SHALL be
+  unconditional.
+* The node SHALL record a not-modified observation only from a current lease and
+  an owned crawl profile, only when the page's schedule keeps validators for the
+  same profile, the echoed revision matches the kept revision and the stored
+  document, and the observation is not older than the page's last recorded
+  observation. Recording SHALL, in one storage transaction, advance the page's
+  next due time from the observation time and any sitemap `lastmod` hint and keep
+  newer valid validators. It SHALL NOT change the stored document, its
+  timestamps, its full-text entry, its postings, or its URL metadata.
+* The node SHALL set `not_modified_recorded` only after that record is durable.
+  A replayed observation with the same revision and observation time SHALL be
+  confirmed again without a second change, whatever its observation ID. Every
+  other valid observation SHALL be acknowledged without the flag, a storage
+  failure SHALL ask the crawler to retry, and a stale lease or replaced session
+  SHALL be refused.
+* Kept validators SHALL be additive fields of the stored schedule record. A
+  record without them SHALL encode exactly as before, and an older binary SHALL
+  read a record with them as an unconditional recrawl. Before a rollback to a
+  release without conditional recrawl, operators SHALL drain conditional work:
+  pause recurring schedules, clear pending orders, wait until no order is
+  leased, then stop the crawlers before the node.

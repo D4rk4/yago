@@ -61,26 +61,6 @@ func TestSubmitIngestRefusesInvalidPayloadsBeforeDelivery(t *testing.T) {
 	}
 }
 
-func TestSubmitIngestAnswersNotModifiedWithoutRecordingIt(t *testing.T) {
-	out := make(chan crawlresults.IngestDelivery, 1)
-	server := newExchangeServer(memQueue(t), out)
-	msg := ingestMessageForBatch(t, notModifiedIngestBatch())
-	authorizeIngestMessage(t, server, msg, "ingest-not-modified")
-
-	for delivery := range 2 {
-		ack, err := server.SubmitIngest(boundedSubmissionContext(t), msg)
-		if err != nil {
-			t.Fatalf("delivery %d: submit ingest: %v", delivery, err)
-		}
-		if ack.GetNotModifiedRecorded() || ack.GetRejected() || ack.GetRejectionRule() != "" {
-			t.Fatalf("delivery %d: acknowledgement = %+v, want unrecorded", delivery, ack)
-		}
-	}
-	if len(out) != 0 {
-		t.Fatal("not-modified observation reached the document ingest pipeline")
-	}
-}
-
 func TestSubmitIngestDeliversDocumentWithResponseValidatorsUnchanged(t *testing.T) {
 	out := make(chan crawlresults.IngestDelivery)
 	server := newExchangeServer(memQueue(t), out)

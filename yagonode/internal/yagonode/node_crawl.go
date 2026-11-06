@@ -40,6 +40,7 @@ type crawlRuntime struct {
 	initiator   yagomodel.Hash
 	pageBudget  *crawlRunPageBudget
 	remoteCrawl remoteCrawlOrderObserver
+	conditional conditionalRecrawl
 }
 
 const msgCrawlRuntimeStateCloseFailed = "crawl runtime state close failed"
@@ -64,24 +65,25 @@ func buildCrawlRuntime(
 		config,
 		storage,
 		storageVault,
-		coordination.broker,
+		coordination.broker.Ingest,
 	)
 	if err != nil {
 		return nil, coordination.openFailure(err)
 	}
 
 	return &crawlRuntime{
-		broker:     coordination.broker,
-		state:      coordination.state,
-		ownsState:  coordination.ownsState,
-		statePath:  config.StatePath,
-		consumer:   ingest.consumer,
-		runs:       coordination.runs,
-		frontier:   ingest.frontier,
-		formats:    ingest.formats,
-		profiles:   newCrawlProfileDispatchRegistry(ingest.frontier),
-		initiator:  identity.Hash,
-		pageBudget: newCrawlRunPageBudget(config.MaxPagesPerRun),
+		broker:      coordination.broker,
+		state:       coordination.state,
+		ownsState:   coordination.ownsState,
+		statePath:   config.StatePath,
+		consumer:    ingest.consumer,
+		runs:        coordination.runs,
+		frontier:    ingest.frontier,
+		formats:     ingest.formats,
+		profiles:    newCrawlProfileDispatchRegistry(ingest.frontier),
+		initiator:   identity.Hash,
+		pageBudget:  newCrawlRunPageBudget(config.MaxPagesPerRun),
+		conditional: ingest.conditional,
 	}, nil
 }
 
@@ -189,12 +191,13 @@ func (r *crawlRuntime) SetMaxPagesPerRun(value int) {
 // swallowed as a duplicate of its original crawl).
 func (r *crawlRuntime) recrawlSweeper() recrawlSweeper {
 	return recrawlSweeper{
-		frontier:  r.frontier,
-		publisher: keylessCrawlOrderPublisher{queue: r.dispatchQueue()},
-		initiator: r.initiator,
-		mint:      mintProvenance,
-		now:       time.Now,
-		batch:     defaultRecrawlSweepBatch,
+		frontier:    r.frontier,
+		publisher:   keylessCrawlOrderPublisher{queue: r.dispatchQueue()},
+		initiator:   r.initiator,
+		mint:        mintProvenance,
+		now:         time.Now,
+		batch:       defaultRecrawlSweepBatch,
+		conditional: r.conditional,
 	}
 }
 
