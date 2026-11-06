@@ -140,7 +140,7 @@ func feedFormatOf(root xml.Name) (feedFormat, bool) {
 
 func (format feedFormat) roleOf(level feedLevel, name string) feedElementRole {
 	switch {
-	case level == feedRootLevel && format.metadataLevel == feedChannelLevel && name == "channel":
+	case level == feedRootLevel && name == "channel":
 		return feedChannelElement
 	case level == format.entryLevel && name == format.entryName:
 		return feedEntryElement
