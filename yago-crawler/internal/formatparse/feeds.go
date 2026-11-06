@@ -8,6 +8,18 @@ import (
 	"github.com/D4rk4/yago/yago-crawler/internal/pageparse"
 )
 
+func parseXMLFeeds(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
+	if page, parsed, sitemap := parseSitemapXML(rawURL, body); sitemap {
+		return page, parsed
+	}
+	discovery := discoverFeed(rawURL, body)
+	if !discovery.recognized {
+		return parseGenericXML(rawURL, body)
+	}
+
+	return feedPage(rawURL, discovery.title, discovery.text, discovery.links), discovery.complete
+}
+
 // parseGenericXML indexes the character data of any other XML document.
 func parseGenericXML(rawURL string, body []byte) (pageparse.ParsedPage, bool) {
 	decoder := xml.NewDecoder(bytes.NewReader(body))

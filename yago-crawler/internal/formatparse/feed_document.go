@@ -3,282 +3,340 @@ package formatparse
 import (
 	"bytes"
 	"encoding/xml"
-	"errors"
-	"io"
+	"net/url"
+	"slices"
 	"strings"
+	"unicode/utf8"
 
-	"github.com/D4rk4/yago/yago-crawler/internal/pageparse"
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
-// maxFeedItemCandidates bounds the number of completed item candidates a feed
-// pass may examine before stopping bounded work.
-const maxFeedItemCandidates = 200
+const (
+	feedEntryCandidateLimit = 200
+	rdfSyntaxNamespace      = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+	atomNamespace           = "http://www.w3.org/2005/Atom"
+	atomDraftNamespace      = "http://purl.org/atom/ns#"
+)
 
-// feedDiscovery carries the outcome of one bounded token pass over a feed body:
-// whether the root recognized a feed shape, the links completed from closed
-// entries before any fault, whether the document closed cleanly, and the parse
-// error when the document did not.
+type feedLevel int
+
+const (
+	feedRootLevel feedLevel = iota
+	feedChannelLevel
+)
+
+type feedElementRole int
+
+const (
+	unreadFeedElement feedElementRole = iota
+	feedChannelElement
+	feedTitleElement
+	feedDescriptionElement
+	feedEntryElement
+)
+
+type feedFormat struct {
+	metadataLevel   feedLevel
+	entryLevel      feedLevel
+	entryName       string
+	descriptionName string
+	entryTextNames  []string
+	linkInHref      bool
+}
+
+var (
+	rssFeedFormat = feedFormat{
+		metadataLevel:   feedChannelLevel,
+		entryLevel:      feedChannelLevel,
+		entryName:       "item",
+		descriptionName: "description",
+		entryTextNames:  []string{"title", "description"},
+	}
+	rdfFeedFormat = feedFormat{
+		metadataLevel:   feedChannelLevel,
+		entryLevel:      feedRootLevel,
+		entryName:       "item",
+		descriptionName: "description",
+		entryTextNames:  []string{"title", "description"},
+	}
+	atomFeedFormat = feedFormat{
+		metadataLevel:  feedRootLevel,
+		entryLevel:     feedRootLevel,
+		entryName:      "entry",
+		entryTextNames: []string{"title", "summary", "content"},
+		linkInHref:     true,
+	}
+)
+
 type feedDiscovery struct {
 	recognized bool
-	feedTitle  string
-	text       *strings.Builder
-	links      []string
 	complete   bool
-	err        error
+	title      string
+	text       string
+	links      []string
 }
 
-// feedLink is one <link> element inside a feed entry: its relationship, target,
-// body text, and the base the target resolves against.
-type feedLink struct {
-	rel  string
-	href string
-	text string
-	base string
-}
-
-// feedGUID is one <guid> element: its value and isPermaLink attribute.
-type feedGUID struct {
-	value string
-	perma string
-	set   bool
-}
-
-// feedEntry is one item or entry whose text and links are collected during the
-// single token pass over the feed body.
 type feedEntry struct {
-	title       string
-	description string
-	summary     string
-	content     string
-	links       []feedLink
-	guid        feedGUID
-	base        string
+	base            url.URL
+	textFields      []boundedFeedText
+	articleURL      string
+	guid            boundedFeedText
+	guidIsPermalink bool
 }
 
-// feedCursor tracks the entry under collection and the child element whose
-// character data the next CharData belongs to.
-type feedCursor struct {
-	entry     *feedEntry
-	active    string
-	feedBase  string
-	feedTitle string
+type feedReader struct {
+	decoder       *xml.Decoder
+	format        feedFormat
+	title         boundedFeedText
+	description   boundedFeedText
+	entryLines    strings.Builder
+	links         []string
+	closedEntries int
 }
 
-// parseXMLFeeds runs one bounded token pass over the feed body. It routes a
-// recognized sitemap to its own family, and otherwise feeds the tokens to the
-// feed discovery. An unrecognized body falls through to generic XML. A complete
-// feed reports parsed=true; a broken recognized feed keeps the links from closed
-// entries and reports parsed=false.
-func parseXMLFeeds(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
-	if page, parsed, sitemap := parseSitemapXML(rawURL, body); sitemap {
-		return page, parsed
-	}
-
-	discovery := discoverFeed(body)
-	if !discovery.recognized {
-		return parseGenericXML(rawURL, body)
-	}
-
-	return feedPage(
-		rawURL,
-		discovery.feedTitle,
-		discovery.text.String(),
-		discovery.links,
-	), discovery.complete
+type boundedFeedText struct {
+	content []byte
+	room    int
+	clipped bool
 }
 
-// discoverFeed consumes the token stream once, collecting feed links and entry
-// text. Text feeds the active child field; a link or guid starts an open
-// element; an entry or channel/feed close finalizes the current entry; any
-// terminal token ends the pass. io.EOF closes cleanly; any other error leaves
-// the pass incomplete while retaining links from fully closed entries. At most
-// maxFeedItemCandidates items contribute links per feed.
-func discoverFeed(body []byte) feedDiscovery {
-	result := feedDiscovery{complete: true, text: &strings.Builder{}}
+func discoverFeed(documentURL string, body []byte) feedDiscovery {
 	decoder := xml.NewDecoder(bytes.NewReader(body))
-	cursor := feedCursor{}
-	closedItems := 0
+	root := feedRootElement(decoder)
+	format, recognized := feedFormatOf(root.Name)
+	if !recognized {
+		return feedDiscovery{}
+	}
+	reader := &feedReader{decoder: decoder, format: format}
+	closed := reader.readContainer(root, feedRootLevel, resolveBase(url.URL{}, documentURL))
 
+	return reader.discovery(closed)
+}
+
+func feedRootElement(decoder *xml.Decoder) xml.StartElement {
 	for {
 		token, err := decoder.Token()
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			result.complete = false
-			result.err = err
-			break
+			return xml.StartElement{}
 		}
-
-		switch value := token.(type) {
-		case xml.CharData:
-			cursor.charData(string(value), result.text)
-		case xml.ProcInst, xml.Comment:
-		case xml.StartElement:
-			if !result.recognized {
-				result.recognized = isFeedRoot(value.Name)
-			}
-			cursor.openElement(value, result.text, &result.links)
-		case xml.EndElement:
-			closedItems += cursor.closeElement(value, result.text, &result.links)
+		if root, isElement := token.(xml.StartElement); isElement {
+			return root
 		}
-
-		if closedItems >= maxFeedItemCandidates {
-			break
-		}
-	}
-
-	result.feedTitle = cursor.feedTitle
-	return result
-}
-
-// charData attributes character data to the active child field. At feed level
-// (no open entry) the channel description is written directly and the channel
-// title is captured; inside an entry it fills the entry fields or the open link
-// body.
-func (cursor *feedCursor) charData(value string, text *strings.Builder) {
-	if cursor.entry == nil {
-		switch cursor.active {
-		case "title":
-			cursor.feedTitle = value
-		case "description":
-			writeFeedLine(text, value)
-		}
-		return
-	}
-
-	switch cursor.active {
-	case "title":
-		cursor.entry.title = value
-	case "description":
-		cursor.entry.description = value
-	case "summary":
-		cursor.entry.summary = value
-	case "content":
-		cursor.entry.content = value
-	case "link":
-		if len(cursor.entry.links) > 0 {
-			cursor.entry.links[len(cursor.entry.links)-1].text = value
-		}
-	case "guid":
-		cursor.entry.guid.value += value
 	}
 }
 
-// openElement handles a start element for one bounded token pass.
-func (cursor *feedCursor) openElement(
-	value xml.StartElement,
-	text *strings.Builder,
-	links *[]string,
-) {
-	switch value.Name.Local {
-	case "rss", "channel", "feed":
-		if base := attrOf(value, "xml:base"); base != "" {
-			cursor.feedBase = base
-		}
-	case "item", "entry":
-		flushEntry(cursor.entry, text, links)
-		cursor.entry = &feedEntry{
-			base: resolveBase(cursor.feedBase, attrOf(value, "xml:base")),
-		}
-		cursor.active = ""
-	case "link":
-		if cursor.entry != nil {
-			cursor.entry.links = append(cursor.entry.links, feedLink{
-				rel:  attrOf(value, "rel"),
-				href: attrOf(value, "href"),
-				base: resolveBase(cursor.entry.base, attrOf(value, "xml:base")),
-			})
-			cursor.active = "link"
-		}
-	case "guid":
-		if cursor.entry != nil {
-			cursor.entry.guid = feedGUID{
-				perma: attrOf(value, "isPermaLink"),
-				set:   true,
-			}
-			cursor.active = "guid"
-		}
-	case "title", "description", "summary", "content":
-		cursor.active = value.Name.Local
+func feedFormatOf(root xml.Name) (feedFormat, bool) {
+	switch {
+	case root.Local == "rss" && root.Space == "":
+		return rssFeedFormat, true
+	case root.Local == "RDF" && root.Space == rdfSyntaxNamespace:
+		return rdfFeedFormat, true
+	case root.Local == "feed" && (root.Space == atomNamespace || root.Space == atomDraftNamespace):
+		return atomFeedFormat, true
+	}
+
+	return feedFormat{}, false
+}
+
+func (format feedFormat) roleOf(level feedLevel, name string) feedElementRole {
+	switch {
+	case level == feedRootLevel && format.metadataLevel == feedChannelLevel && name == "channel":
+		return feedChannelElement
+	case level == format.entryLevel && name == format.entryName:
+		return feedEntryElement
+	case level == format.metadataLevel && name == "title":
+		return feedTitleElement
+	case level == format.metadataLevel && name == format.descriptionName:
+		return feedDescriptionElement
+	}
+
+	return unreadFeedElement
+}
+
+func (reader *feedReader) readContainer(
+	container xml.StartElement,
+	level feedLevel,
+	inherited url.URL,
+) bool {
+	base := withXMLBase(inherited, container)
+
+	return reader.readChildren(func(child xml.StartElement) bool {
+		return reader.readContainerChild(child, level, base)
+	})
+}
+
+func (reader *feedReader) readContainerChild(
+	child xml.StartElement,
+	level feedLevel,
+	base url.URL,
+) bool {
+	switch reader.format.roleOf(level, child.Name.Local) {
+	case feedChannelElement:
+		return reader.readContainer(child, feedChannelLevel, base)
+	case feedTitleElement:
+		reader.title = newBoundedFeedText(yagocrawlcontract.MaximumDocumentTextBytes)
+
+		return reader.readDirectText(&reader.title)
+	case feedDescriptionElement:
+		reader.description = newBoundedFeedText(yagocrawlcontract.MaximumDocumentTextBytes)
+
+		return reader.readDirectText(&reader.description)
+	case feedEntryElement:
+		return reader.readEntry(child, base)
+	default:
+		return reader.skipElement()
 	}
 }
 
-// closeElement handles an end element and returns whether an item closed.
-func (cursor *feedCursor) closeElement(
-	value xml.EndElement,
-	text *strings.Builder,
-	links *[]string,
-) int {
-	closed := 0
-	switch value.Name.Local {
-	case "channel", "feed", "rss":
-		flushEntry(cursor.entry, text, links)
-		cursor.entry = nil
-		cursor.active = ""
-	case "item", "entry":
-		flushEntry(cursor.entry, text, links)
-		cursor.entry = nil
-		cursor.active = ""
-		closed = 1
-	case "title", "description", "summary", "content", "link", "guid":
-		cursor.active = ""
+func (reader *feedReader) readEntry(start xml.StartElement, inherited url.URL) bool {
+	if reader.closedEntries >= feedEntryCandidateLimit {
+		return reader.skipElement()
 	}
+	entry := feedEntry{
+		base:       withXMLBase(inherited, start),
+		textFields: make([]boundedFeedText, len(reader.format.entryTextNames)),
+	}
+	closed := reader.readChildren(func(child xml.StartElement) bool {
+		return reader.readEntryChild(&entry, child)
+	})
+	if closed {
+		reader.closeEntry(&entry)
+	}
+
 	return closed
 }
 
-// flushEntry resolves the article address for the entry under collection,
-// appends it to the result links when one exists, and records the entry text.
-func flushEntry(entry *feedEntry, text *strings.Builder, links *[]string) {
-	if entry == nil {
-		return
-	}
-	if article := selectItemLink(entry); article != "" {
-		*links = append(*links, article)
-	}
+func (reader *feedReader) readEntryChild(entry *feedEntry, child xml.StartElement) bool {
+	if field := slices.Index(reader.format.entryTextNames, child.Name.Local); field >= 0 {
+		entry.textFields[field] = newBoundedFeedText(yagocrawlcontract.MaximumDocumentTextBytes)
 
-	writeFeedLine(text, textBuffer(entry.title, entry.description,
-		entry.summary, entry.content))
+		return reader.readDirectText(&entry.textFields[field])
+	}
+	switch child.Name.Local {
+	case "link":
+		return reader.readEntryLink(entry, child)
+	case "guid":
+		entry.guid = newBoundedFeedText(yagocrawlcontract.MaximumCrawlURLBytes)
+		entry.guidIsPermalink = attributeValue(child, permalinkAttribute) != "false"
+
+		return reader.readDirectText(&entry.guid)
+	default:
+		return reader.skipElement()
+	}
 }
 
-// textBuffer joins the entry fields the feed parser preserves into one line.
-func textBuffer(parts ...string) string {
-	text := ""
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			text += part + "\n"
+func (reader *feedReader) readEntryLink(entry *feedEntry, link xml.StartElement) bool {
+	linkText := newBoundedFeedText(yagocrawlcontract.MaximumCrawlURLBytes)
+	closed := reader.readDirectText(&linkText)
+	target := linkText.completeText()
+	if reader.format.linkInHref {
+		target = attributeValue(link, hrefAttribute)
+	}
+	if entry.articleURL == "" {
+		entry.articleURL = entryLinkTarget(
+			withXMLBase(entry.base, link),
+			attributeValue(link, relAttribute),
+			target,
+		)
+	}
+
+	return closed
+}
+
+func (reader *feedReader) closeEntry(entry *feedEntry) {
+	for index := range entry.textFields {
+		writeFeedLine(&reader.entryLines, entry.textFields[index].String())
+	}
+	if article := entry.article(); article != "" {
+		reader.links = append(reader.links, article)
+	}
+	reader.closedEntries++
+}
+
+func (reader *feedReader) readChildren(readChild func(xml.StartElement) bool) bool {
+	for {
+		token, err := reader.decoder.Token()
+		if err != nil {
+			return false
+		}
+		switch value := token.(type) {
+		case xml.StartElement:
+			if !readChild(value) {
+				return false
+			}
+		case xml.EndElement:
+			return true
 		}
 	}
-
-	return text
 }
 
-// rdfNamespace is the RDF syntax namespace that names the RSS1/RDF root.
-const rdfNamespace = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-
-// isFeedRoot reports whether an element names a feed root: rss for RSS2,
-// feed for Atom (including Atom 0.3), and rdf:RDF for RSS1/RDF.
-func isFeedRoot(name xml.Name) bool {
-	switch name.Local {
-	case "rss", "feed":
-		return true
-	case "RDF":
-		return name.Space == rdfNamespace
-	}
-
-	return false
-}
-
-// attrOf returns the value of the attribute named name on the start element,
-// joining the namespace prefix on the local name (e.g. xml:base) as the decoder
-// reports it.
-func attrOf(element xml.StartElement, name string) string {
-	for _, attr := range element.Attr {
-		if attr.Name.Local == name || attr.Name.Local == strings.TrimPrefix(name, "xml:") {
-			return attr.Value
+func (reader *feedReader) readDirectText(text *boundedFeedText) bool {
+	nestedElements := 0
+	for {
+		token, err := reader.decoder.Token()
+		if err != nil {
+			return false
+		}
+		switch value := token.(type) {
+		case xml.CharData:
+			if nestedElements == 0 {
+				text.append(value)
+			}
+		case xml.StartElement:
+			nestedElements++
+		case xml.EndElement:
+			if nestedElements == 0 {
+				return true
+			}
+			nestedElements--
 		}
 	}
+}
 
-	return ""
+func (reader *feedReader) skipElement() bool {
+	return reader.decoder.Skip() == nil
+}
+
+func (reader *feedReader) discovery(complete bool) feedDiscovery {
+	var text strings.Builder
+	writeFeedLine(&text, reader.description.String())
+	text.WriteString(reader.entryLines.String())
+
+	return feedDiscovery{
+		recognized: true,
+		complete:   complete,
+		title:      reader.title.String(),
+		text:       text.String(),
+		links:      reader.links,
+	}
+}
+
+func newBoundedFeedText(limit int) boundedFeedText {
+	return boundedFeedText{room: limit}
+}
+
+func (text *boundedFeedText) append(chunk []byte) {
+	if len(chunk) > text.room {
+		cut := text.room
+		for cut > 0 && !utf8.RuneStart(chunk[cut]) {
+			cut--
+		}
+		chunk = chunk[:cut]
+		text.room = cut
+		text.clipped = true
+	}
+	text.content = append(text.content, chunk...)
+	text.room -= len(chunk)
+}
+
+func (text *boundedFeedText) String() string {
+	return string(text.content)
+}
+
+func (text *boundedFeedText) completeText() string {
+	if text.clipped {
+		return ""
+	}
+
+	return string(text.content)
 }

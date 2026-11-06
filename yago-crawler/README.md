@@ -293,18 +293,26 @@ A sitemap encountered as a normal crawl URL supplies followable URLs and is not
 indexed as searchable text. This applies to future fetches; previously stored
 sitemap documents remain until an operator removes them in Admin → Index.
 
-XML feeds (RSS2, RSS1/RDF, Atom1, Atom 0.3) discovered during crawling undergo
-bounded link discovery before any text extraction. One `encoding/xml` token pass
-recognizes a feed by root local name and namespace, not by MIME type alone, and
-collects at most 200 completed item candidates per feed. Atom `rel` defaults to
-alternate and never selects `self` or `enclosure`; an RSS `<guid>` substitutes
-only when there is no usable link and `isPermaLink` is not `false`. `xml:base`
-resolves structurally at root, entry, and link level through `net/url`
-resolution. A complete empty feed reports success with zero links; a recognized
-feed truncated or malformed retains links from fully closed entries and reports
-partial failure rather than falling through to generic XML parsing. Link text
-falls back to an empty `href` only when the `href` is absent, not merely
-non-HTTP(S). No text-extraction behavior changes are made by feed discovery.
+XML feeds (RSS 2.0, RSS 1.0, Atom 1.0, and Atom 0.3) supply article links to the
+crawl. A body counts as a feed only when its first element is a feed root: `rss`
+without a namespace, `RDF` in the RDF namespace, or `feed` in an Atom namespace.
+Any other XML document is indexed as generic XML text. The crawler reads a feed
+once and examines at most 200 items or entries per feed; later items contribute
+neither links nor text. Each item contributes at most one article link: its
+first usable link. For Atom, a usable link has no `rel` or `rel="alternate"`;
+`self`, `enclosure`, and other relations are never used. An RSS `<guid>` stands
+in only when the item has no usable link, `isPermaLink` is not `false`, and the
+GUID is already an absolute HTTP or HTTPS address. Relative links resolve
+against the feed address and then against each enclosing `xml:base` value. Only
+HTTP and HTTPS links are kept, and a link longer than the crawl URL limit is
+dropped. A complete feed with no items is a successful fetch with no links. When
+a recognized feed ends early or is malformed, links from items that closed
+before the fault still enter the crawl through the normal scope, nofollow,
+URL-limit, and duplicate checks, but the feed page counts as a parse failure, is
+not indexed, and is not re-read as generic XML. Feed text comes from the RSS
+channel title and description, the Atom feed title, and each item's title,
+description, summary, and content. Text inside elements nested within those
+fields is not read, and each field is limited to 1 MiB.
 
 Configuration comes from the environment (`YAGO_CRAWLER_NODE_RPC_ADDR` is required;
 `YAGO_DATA_DIR` defaults to `./data` and contains `crawler/frontier-v1.db`;

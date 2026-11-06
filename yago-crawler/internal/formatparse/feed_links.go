@@ -1,84 +1,80 @@
 package formatparse
 
 import (
+	"encoding/xml"
 	"net/url"
 	"strings"
 )
 
-// selectItemLink chooses the single article address for a completed entry.
-// It prefers nonempty HTTP(S) absent or alternate links, then an RSS GUID only
-// when there is no usable link and its isPermaLink is not false. It never
-// selects a self or enclosure link.
-func selectItemLink(entry *feedEntry) string {
-	if article := usableLink(entry); article != "" {
-		return article
+const xmlNamespace = "http://www.w3.org/XML/1998/namespace"
+
+var (
+	xmlBaseAttribute   = xml.Name{Space: xmlNamespace, Local: "base"}
+	relAttribute       = xml.Name{Local: "rel"}
+	hrefAttribute      = xml.Name{Local: "href"}
+	permalinkAttribute = xml.Name{Local: "isPermaLink"}
+)
+
+func (entry *feedEntry) article() string {
+	if entry.articleURL != "" || !entry.guidIsPermalink {
+		return entry.articleURL
 	}
 
-	if entry.guid.set && entry.guid.perma != "false" {
-		if isHTTPTarget(entry.guid.value) {
-			return resolveBase(entry.base, entry.guid.value)
-		}
-	}
-
-	return ""
+	return permalinkGUIDTarget(entry.guid.completeText())
 }
 
-// usableLink returns the first nonempty HTTP(S) absent or alternate link, or
-// an empty string when none exists.
-func usableLink(entry *feedEntry) string {
-	for _, link := range entry.links {
-		rel := strings.ToLower(strings.TrimSpace(link.rel))
-		if rel == "self" || rel == "enclosure" {
-			continue
-		}
-		if rel != "" && rel != "alternate" {
-			continue
-		}
-		target := link.href
-		if target == "" {
-			target = link.text
-		}
-		if link.base != "" {
-			target = resolveBase(link.base, target)
-		}
-		if isHTTPTarget(target) {
-			return target
-		}
+func entryLinkTarget(base url.URL, rel, target string) string {
+	if rel != "" && rel != "alternate" {
+		return ""
 	}
-
-	return ""
-}
-
-// isHTTPTarget reports whether target is a nonempty HTTP(S) reference.
-func isHTTPTarget(target string) bool {
 	target = strings.TrimSpace(target)
 	if target == "" {
-		return false
+		return ""
 	}
-	lower := strings.ToLower(target)
+	reference, err := url.Parse(target)
+	if err != nil {
+		return ""
+	}
 
-	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://")
+	return webArticleURL(base.ResolveReference(reference))
 }
 
-// resolveBase resolves a relative base against the entry base. An empty local
-// returns the parent base unchanged, an empty parent returns the local
-// untouched.
-func resolveBase(parent string, local string) string {
-	local = strings.TrimSpace(local)
-	if local == "" {
-		return parent
-	}
-	if parent == "" {
-		return local
-	}
-	parsedParent, err := url.Parse(parent)
+func permalinkGUIDTarget(guid string) string {
+	reference, err := url.Parse(strings.TrimSpace(guid))
 	if err != nil {
-		return local
-	}
-	parsedLocal, err := url.Parse(local)
-	if err != nil {
-		return local
+		return ""
 	}
 
-	return parsedParent.ResolveReference(parsedLocal).String()
+	return webArticleURL(reference)
+}
+
+func webArticleURL(target *url.URL) string {
+	if target.Scheme != "http" && target.Scheme != "https" {
+		return ""
+	}
+
+	return target.String()
+}
+
+func withXMLBase(inherited url.URL, element xml.StartElement) url.URL {
+	return resolveBase(inherited, attributeValue(element, xmlBaseAttribute))
+}
+
+func resolveBase(inherited url.URL, reference string) url.URL {
+	parsed, err := url.Parse(strings.TrimSpace(reference))
+	if err != nil {
+		return inherited
+	}
+
+	return *inherited.ResolveReference(parsed)
+}
+
+func attributeValue(element xml.StartElement, name xml.Name) string {
+	for _, attribute := range element.Attr {
+		if attribute.Name == name {
+			return attribute.Value
+		}
+	}
+
+	return ""
 }
