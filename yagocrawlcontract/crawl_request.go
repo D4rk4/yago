@@ -7,15 +7,16 @@ import (
 )
 
 type CrawlRequest struct {
-	URL           string
-	Mode          CrawlRequestMode
-	ReferrerURL   string
-	AnchorName    string
-	Depth         int
-	ProfileHandle string
-	Initiator     yagomodel.Hash
-	AppDate       time.Time
-	LastModified  time.Time
+	URL              string
+	Mode             CrawlRequestMode
+	ReferrerURL      string
+	AnchorName       string
+	Depth            int
+	ProfileHandle    string
+	Initiator        yagomodel.Hash
+	AppDate          time.Time
+	LastModified     time.Time
+	ConditionalFetch *ConditionalFetch `json:",omitempty"`
 }
 
 type CrawlRequestMode string

@@ -19,6 +19,9 @@ func validateCrawlOrderRequests(requests []yagocrawlcontract.CrawlRequest) error
 			(target.Scheme != "http" && target.Scheme != "https") {
 			return fmt.Errorf("request %d has invalid URL", index)
 		}
+		if err := request.ValidateConditionalFetch(); err != nil {
+			return fmt.Errorf("request %d: %w", index, err)
+		}
 	}
 
 	return nil

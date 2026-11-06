@@ -164,6 +164,7 @@ func pendingPageFromCandidate(candidate frontierCandidate) pendingPage {
 		depth:            candidate.depth,
 		profileHandle:    candidate.profileHandle,
 		sourceModifiedAt: candidate.sourceModifiedAt,
+		conditionalFetch: candidate.conditionalFetch,
 		indexAllowed:     candidate.indexAllowed,
 		observationID:    candidate.observationID,
 		observedAt:       candidate.observedAt,

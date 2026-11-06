@@ -1430,9 +1430,10 @@ type IngestAck struct {
 	Rejected bool `protobuf:"varint,1,opt,name=rejected,proto3" json:"rejected,omitempty"`
 	// rejection_rule names the gate rule the page violated, for the crawler's
 	// per-URL outcome and logs. Empty when the page was stored.
-	RejectionRule string `protobuf:"bytes,2,opt,name=rejection_rule,json=rejectionRule,proto3" json:"rejection_rule,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RejectionRule       string `protobuf:"bytes,2,opt,name=rejection_rule,json=rejectionRule,proto3" json:"rejection_rule,omitempty"`
+	NotModifiedRecorded bool   `protobuf:"varint,3,opt,name=not_modified_recorded,json=notModifiedRecorded,proto3" json:"not_modified_recorded,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *IngestAck) Reset() {
@@ -1477,6 +1478,13 @@ func (x *IngestAck) GetRejectionRule() string {
 		return x.RejectionRule
 	}
 	return ""
+}
+
+func (x *IngestAck) GetNotModifiedRecorded() bool {
+	if x != nil {
+		return x.NotModifiedRecorded
+	}
+	return false
 }
 
 type CrawlRunTally struct {
@@ -1953,10 +1961,11 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"batch_json\x18\x01 \x01(\fR\tbatchJson\x12\x19\n" +
 	"\blease_id\x18\x02 \x01(\tR\aleaseId\x12\x1b\n" +
 	"\tworker_id\x18\x03 \x01(\tR\bworkerId\x12*\n" +
-	"\x11worker_session_id\x18\x04 \x01(\tR\x0fworkerSessionId\"N\n" +
+	"\x11worker_session_id\x18\x04 \x01(\tR\x0fworkerSessionId\"\x82\x01\n" +
 	"\tIngestAck\x12\x1a\n" +
 	"\brejected\x18\x01 \x01(\bR\brejected\x12%\n" +
-	"\x0erejection_rule\x18\x02 \x01(\tR\rrejectionRule\"\xba\x01\n" +
+	"\x0erejection_rule\x18\x02 \x01(\tR\rrejectionRule\x122\n" +
+	"\x15not_modified_recorded\x18\x03 \x01(\bR\x13notModifiedRecorded\"\xba\x01\n" +
 	"\rCrawlRunTally\x12\x18\n" +
 	"\afetched\x18\x01 \x01(\x04R\afetched\x12\x18\n" +
 	"\aindexed\x18\x02 \x01(\x04R\aindexed\x12\x16\n" +

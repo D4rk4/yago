@@ -42,6 +42,12 @@ func (s *exchangeServer) SubmitIngest(
 	if authorization.LeaseID == "" || len(batch.Provenance) == 0 || batch.ProfileHandle == "" {
 		return nil, status.Error(codes.InvalidArgument, "empty crawl ingest lease identity")
 	}
+	if err := batch.ValidatePayload(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid ingest payload: %v", err)
+	}
+	if batch.NotModified != nil {
+		return &crawlrpc.IngestAck{}, nil
+	}
 	finish := func() {}
 	if s.beginIngest != nil {
 		finish = s.beginIngest()

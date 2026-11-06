@@ -20,9 +20,9 @@ yago-crawler/internal/frontier/checkpoint_run_recovery.go:167:2
 yago-crawler/internal/frontier/checkpoint_run_recovery.go:168:2
 yago-crawler/internal/frontier/checkpoint_run_recovery.go:171:4
 yago-crawler/internal/frontier/checkpoint_run_recovery.go:193:22
-yago-crawler/internal/frontier/checkpoint_run_recovery.go:202:59
-yago-crawler/internal/frontier/checkpoint_run_recovery.go:211:4
-yago-crawler/internal/frontier/checkpoint_run_recovery.go:249:18
+yago-crawler/internal/frontier/checkpoint_run_recovery.go:203:59
+yago-crawler/internal/frontier/checkpoint_run_recovery.go:212:4
+yago-crawler/internal/frontier/checkpoint_run_recovery.go:250:18
 yago-crawler/internal/frontier/frontier_run_seeding.go:106:3
 yago-crawler/internal/frontier/frontier_run_seeding.go:95:2
 yago-crawler/internal/frontier/host_failure_retirement.go:148:6
@@ -37,7 +37,7 @@ yago-crawler/internal/frontier/persistent_run_control.go:156:9
 yago-crawler/internal/frontier/ready_capacity.go:127:13
 yago-crawler/internal/frontier/ready_capacity.go:128:80
 yago-crawler/internal/frontier/ready_capacity.go:164:21
-yago-crawler/internal/frontier/ready_capacity.go:195:9
+yago-crawler/internal/frontier/ready_capacity.go:196:9
 yago-crawler/internal/frontier/run_durability.go:37:3
 yago-crawler/internal/frontier/run_lease_rebinding.go:36:2
 yago-crawler/internal/frontier/run_retention.go:7:16

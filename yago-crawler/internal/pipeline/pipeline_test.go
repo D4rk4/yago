@@ -182,6 +182,14 @@ func (f emitFunc) Emit(
 
 func (emitFunc) EmitRemoval(context.Context, ingest.Envelope) error { return nil }
 
+func (emitFunc) EmitNotModified(
+	context.Context,
+	yagocrawlcontract.NotModifiedObservation,
+	ingest.Envelope,
+) error {
+	return nil
+}
+
 func htmlPage() pagefetch.FetchedPage {
 	target, _ := url.Parse("https://example.com/")
 	return pagefetch.FetchedPage{

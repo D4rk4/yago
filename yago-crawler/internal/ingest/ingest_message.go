@@ -21,6 +21,9 @@ func prepareIngestMessage(batch IngestBatch) ([]byte, error) {
 	if err := validateIngestIdentity(batch); err != nil {
 		return nil, err
 	}
+	if err := batch.ValidatePayload(); err != nil {
+		return nil, fmt.Errorf("invalid ingest payload: %w", err)
+	}
 	batch = boundedIngestBatch(batch)
 	data, err := yagocrawlcontract.MarshalIngestBatch(batch)
 	if err != nil {

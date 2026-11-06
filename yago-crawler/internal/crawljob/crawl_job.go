@@ -17,6 +17,7 @@ type CrawlJob struct {
 	RunID            uuid.UUID
 	Index            bool
 	SourceModifiedAt time.Time
+	ConditionalFetch *yagocrawlcontract.ConditionalFetch
 	ObservationID    string
 	ObservedAt       time.Time
 	// CrawlDelay is the profile's requested politeness delay for this job's host.

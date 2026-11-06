@@ -243,6 +243,7 @@ func samePage(left, right Page) bool {
 		left.ObservationID == right.ObservationID &&
 		left.ObservedAt.Equal(right.ObservedAt) &&
 		left.SourceModifiedAt.Equal(right.SourceModifiedAt) &&
+		sameConditionalFetch(left.ConditionalFetch, right.ConditionalFetch) &&
 		left.RedirectURL == right.RedirectURL &&
 		left.RedirectHost == right.RedirectHost &&
 		left.RedirectHostBump == right.RedirectHostBump &&

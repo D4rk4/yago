@@ -188,6 +188,62 @@ recrawl scheduler accepts only non-future hints. A hint may advance scheduling
 within the profile cadence, but stale or unchanged values do not create an
 immediate loop.
 
+## Conditional recrawl
+
+Status: partial and internal. The contract defines and validates these fields,
+but no node issues conditional work yet and no crawler reports a not-modified
+observation yet. Every fetch therefore stays unconditional.
+
+A crawl request may carry `ConditionalFetch`. It holds the HTTP validators of
+the stored document (`Validators`) and that document's revision (`Revision`)
+at the moment the node issued the order. A revision is the stored document's
+content hash, extraction generation, and fetch time. A request without
+`ConditionalFetch` is fetched unconditionally. The validators are the origin's
+`ETag` and `Last-Modified` header values. They are separate from the sitemap
+`LastModified` hint above.
+
+An ingest batch may carry `ResponseValidators`, the validators the origin sent
+with the fetched representation. A batch may instead carry `NotModified`, which
+reports that the origin answered "not modified" and echoes the issued revision.
+The crawler attaches origin validators only when they follow the rules below;
+it leaves out invalid ones instead of failing the page.
+
+The crawler checks conditional fetch values on every received order and the
+payload of every batch it submits. The node checks batch payloads on every
+submitted batch. Values are never truncated or repaired; a value that breaks a
+rule is refused:
+
+- An `ETag` is `"opaque"` or `W/"opaque"`. The weak prefix is case sensitive.
+  Opaque characters are printable ASCII except the double quote. The whole
+  value, prefix and quotes included, is at most `MaximumHTTPValidatorBytes`
+  bytes and travels unchanged.
+- A `Last-Modified` value is exactly one HTTP date in one of these forms, with a
+  weekday that matches the date: `Sun, 06 Nov 1994 08:49:37 GMT`,
+  `Sunday, 06-Nov-94 08:49:37 GMT`, or `Sun Nov  6 08:49:37 1994`. It travels
+  unchanged.
+- A validators value that is present carries at least one validator.
+- A revision carries all three parts. A page without a stored document has no
+  revision and gets no conditional fetch. The content hash is at most
+  `MaximumDocumentMetadataBytes` bytes.
+- A conditional fetch carries valid validators and a valid revision, and only a
+  `url` request may carry one. An order that breaks these rules is terminated
+  like any other invalid order.
+- A batch carries one payload: a removal, a document (document content,
+  postings, or URL metadata), or a not-modified observation. A batch that mixes
+  them is refused.
+- A not-modified observation carries the source URL, an observation ID, and a
+  complete revision.
+
+Two revisions match when the content hash and extraction generation are equal
+and both fetch times name the same instant.
+
+`IngestAck.not_modified_recorded` reports that the node durably recorded a
+not-modified observation. A crawler that sent one and receives an
+acknowledgement without that flag treats the observation as not recorded,
+whatever else the acknowledgement says. It discards the validators and fetches
+the page again unconditionally within the same lease. The current node answers
+every valid not-modified observation that way and records nothing.
+
 ## Backpressure
 
 Every streamed order has a durable lease ID. `AckOrder` deletes completed work;
@@ -284,6 +340,15 @@ index keys for already consumed orders are removed during selection. The
 priority of an unsettled lease created by the older node is recovered from its
 retained order payload. The intermediate split-payload development format is
 migrated at startup.
+
+Conditional recrawl fields are additive JSON and are omitted when absent. Older
+decoders ignore them, and orders, batches, and crawler checkpoint pages written
+before them decode as unconditional work. An older node never issues
+conditional work. An older crawler ignores `ConditionalFetch` and fetches the
+page unconditionally. An older node never sets `not_modified_recorded`, so a
+current crawler falls back to an unconditional fetch. Before replacing either
+binary with an older release, let the crawl queue drain or cancel the affected
+runs, so that no conditional work or unrecorded observation is in flight.
 
 The process-session, active-lease, recovered-order framing, lease-bound
 ingest/progress, rich terminal settlement, and confirmation-token fields are

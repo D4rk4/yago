@@ -192,6 +192,7 @@ func (f *Frontier) restoreCheckpointRunLocked(
 			profileHandle:    page.ProfileHandle,
 			provenance:       run.provenanceValue,
 			sourceModifiedAt: page.SourceModifiedAt,
+			conditionalFetch: page.ConditionalFetch,
 			indexAllowed:     page.Index,
 			observationID:    page.ObservationID,
 			observedAt:       page.ObservedAt,
@@ -305,6 +306,7 @@ func checkpointPage(candidate frontierCandidate) frontiercheckpoint.Page {
 		ObservationID:    candidate.observationID,
 		ObservedAt:       candidate.observedAt,
 		SourceModifiedAt: candidate.sourceModifiedAt,
+		ConditionalFetch: candidate.conditionalFetch,
 		Index:            candidate.indexAllowed,
 	}
 }
