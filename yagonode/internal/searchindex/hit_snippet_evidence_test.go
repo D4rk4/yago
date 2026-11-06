@@ -49,39 +49,43 @@ func TestResultSnippetUsesTheMatchedByteOffset(t *testing.T) {
 	}
 }
 
-func TestLocationBiasedSnippetKeepsAWholeShortBody(t *testing.T) {
+func TestSentenceSnippetKeepsAWholeShortBody(t *testing.T) {
 	body := strings.Repeat("short context ", 12) + "needle"
 	start := strings.LastIndex(body, "needle")
-	evidence, found := locationSnippetEvidence(
-		[]string{body},
-		&search.Location{
+	witness, found := fieldSnippetEvidence(
+		search.TermLocationMap{"needle": {{
 			Start: storedLocationCoordinate(start),
 			End:   storedLocationCoordinate(start + len("needle")),
-		},
+		}}},
+		[]string{body},
+		nil,
+		true,
 	)
 	if !found {
 		t.Fatal("valid location rejected")
 	}
-	if got := locationBiasedSnippet(evidence, "fallback"); got != body {
+	if got := sentenceSnippet(witness, "fallback"); got != body {
 		t.Fatalf("short snippet = %q", got)
 	}
 }
 
-func TestLocationBiasedSnippetBoundsLargeUnicodeBody(t *testing.T) {
+func TestSentenceSnippetBoundsLargeUnicodeBody(t *testing.T) {
 	prefix := strings.Repeat("Длинный текст без цели. ", 100_000)
 	body := prefix + "Точное совпадение псилобатах находится здесь."
 	start := strings.LastIndex(body, "псилобатах")
-	evidence, found := locationSnippetEvidence(
-		[]string{body},
-		&search.Location{
+	witness, found := fieldSnippetEvidence(
+		search.TermLocationMap{"псилобат": {{
 			Start: storedLocationCoordinate(start),
 			End:   storedLocationCoordinate(start + len("псилобатах")),
-		},
+		}}},
+		[]string{body},
+		nil,
+		true,
 	)
 	if !found {
 		t.Fatal("valid Unicode byte offsets rejected")
 	}
-	got := locationBiasedSnippet(evidence, "fallback")
+	got := sentenceSnippet(witness, "fallback")
 	if !strings.Contains(got, "псилобатах") || len([]rune(got)) > snippetRuneCap+2 {
 		t.Fatalf("bounded Unicode snippet = %q", got)
 	}
@@ -293,7 +297,7 @@ func TestStoredEvidencePropagatesCancellation(t *testing.T) {
 	}
 }
 
-func TestLocationSnippetEvidenceRejectsInvalidOffsets(t *testing.T) {
+func TestLocationSnippetOccurrenceRejectsInvalidOffsets(t *testing.T) {
 	invalid := []*search.Location{
 		nil,
 		{Start: 3, End: 3},
@@ -301,20 +305,21 @@ func TestLocationSnippetEvidenceRejectsInvalidOffsets(t *testing.T) {
 		{Start: 0, End: 1, ArrayPositions: search.ArrayPositions{2}},
 	}
 	for _, location := range invalid {
-		if _, found := locationSnippetEvidence([]string{"text"}, location); found {
+		if _, found := locationSnippetOccurrence([]string{"text"}, location, 0); found {
 			t.Fatalf("invalid location admitted: %#v", location)
 		}
 	}
-	if _, found := locationSnippetEvidence(nil, &search.Location{Start: 0, End: 1}); found {
+	if _, found := locationSnippetOccurrence(nil, &search.Location{Start: 0, End: 1}, 0); found {
 		t.Fatal("empty values admitted")
 	}
-	if _, found := locationSnippetEvidence(
+	if _, found := locationSnippetOccurrence(
 		[]string{"é"},
 		&search.Location{Start: 0, End: 1},
+		0,
 	); found {
 		t.Fatal("split UTF-8 location admitted")
 	}
-	if got := locationBiasedSnippet(snippetEvidence{text: " "}, "fallback"); got != "fallback" {
+	if got := sentenceSnippet(snippetWitness{text: " "}, "fallback"); got != "fallback" {
 		t.Fatalf("blank location snippet = %q", got)
 	}
 }
@@ -337,13 +342,12 @@ func TestFieldSnippetEvidenceSkipsAnInvalidLeadingLocation(t *testing.T) {
 		hit.Locations["body"]["needle"]...,
 	)
 	evidence, found := fieldSnippetEvidence(
-		hit,
-		"body",
+		hit.Locations["body"],
 		[]string{"text needle"},
 		map[string]struct{}{"needle": {}},
 		false,
 	)
-	if !found || evidence.start != 5 {
+	if !found || evidence.evidence.Start != 5 {
 		t.Fatalf("evidence = %#v, found = %t", evidence, found)
 	}
 }
@@ -367,8 +371,7 @@ func TestAnalyzedQueryTermsHandlesBlankAndUnavailableAnalyzers(t *testing.T) {
 func TestFieldSnippetEvidenceRejectsUnrelatedTerms(t *testing.T) {
 	hit := snippetHit("body", "unrelated", 0, 9)
 	if evidence, found := fieldSnippetEvidence(
-		hit,
-		"body",
+		hit.Locations["body"],
 		[]string{"unrelated"},
 		map[string]struct{}{"needle": {}},
 		false,
