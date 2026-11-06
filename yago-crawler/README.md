@@ -293,6 +293,19 @@ A sitemap encountered as a normal crawl URL supplies followable URLs and is not
 indexed as searchable text. This applies to future fetches; previously stored
 sitemap documents remain until an operator removes them in Admin → Index.
 
+XML feeds (RSS2, RSS1/RDF, Atom1, Atom 0.3) discovered during crawling undergo
+bounded link discovery before any text extraction. One `encoding/xml` token pass
+recognizes a feed by root local name and namespace, not by MIME type alone, and
+collects at most 200 completed item candidates per feed. Atom `rel` defaults to
+alternate and never selects `self` or `enclosure`; an RSS `<guid>` substitutes
+only when there is no usable link and `isPermaLink` is not `false`. `xml:base`
+resolves structurally at root, entry, and link level through `net/url`
+resolution. A complete empty feed reports success with zero links; a recognized
+feed truncated or malformed retains links from fully closed entries and reports
+partial failure rather than falling through to generic XML parsing. Link text
+falls back to an empty `href` only when the `href` is absent, not merely
+non-HTTP(S). No text-extraction behavior changes are made by feed discovery.
+
 Configuration comes from the environment (`YAGO_CRAWLER_NODE_RPC_ADDR` is required;
 `YAGO_DATA_DIR` defaults to `./data` and contains `crawler/frontier-v1.db`;
 `YAGO_CRAWLER_WORKER_ID` is an optional one-line display prefix of at most 219
