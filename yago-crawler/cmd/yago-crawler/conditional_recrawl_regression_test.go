@@ -222,7 +222,7 @@ func newRecrawlArticleServer(t *testing.T) *httptest.Server {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("ETag", recrawlArticleEntityTag)
 		w.Header().Set("Last-Modified", "Wed, 01 Jul 2026 10:00:00 GMT")
-		_, _ = w.Write([]byte(article))
+		_, _ = strings.NewReader(article).WriteTo(w)
 	}))
 	t.Cleanup(server.Close)
 

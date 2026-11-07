@@ -2,10 +2,10 @@ package yagonode
 
 import (
 	"context"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,7 +27,8 @@ func TestAssembledNodeFollowsSeedlistRedirectAndRefusesHelloRedirect(t *testing.
 			http.Redirect(w, r, "/seedlist-moved", http.StatusMovedPermanently)
 		case "/seedlist-moved":
 			seedlistReads.Add(1)
-			_, _ = io.WriteString(w, yagomodel.EncodeCompactWireForm(listed.String())+"\n")
+			seedlist := yagomodel.EncodeCompactWireForm(listed.String()) + "\n"
+			_, _ = strings.NewReader(seedlist).WriteTo(w)
 		case yagoproto.PathHello:
 			helloAttempts.Add(1)
 			select {
