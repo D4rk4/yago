@@ -777,14 +777,23 @@ it is not an assumed deployment dependency.
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.
 * The node SHALL allow operators to configure its storage quota.
 * The serving sharded vault SHALL keep bbolt freelist persistence disabled on
-  ordinary write transactions. A clean close SHALL take exclusive storage
-  quiescence, force transaction synchronization and freelist persistence for
-  each shard, commit exactly one empty checkpoint transaction, and close every
-  shard even when an earlier checkpoint or close fails. A successful durable
-  checkpoint SHALL NOT issue a redundant explicit sync. After a checkpoint
-  failure on a shard that used deferred fsync, close SHALL attempt one
-  best-effort explicit sync and SHALL return every checkpoint, sync, and close
-  failure together. An unclean stop SHALL retain bbolt's scan-based freelist
+  ordinary write transactions. An authenticated online operator checkpoint SHALL
+  take exclusive storage quiescence, force transaction synchronization and
+  freelist persistence for every shard, commit one empty checkpoint transaction
+  per shard, and leave freelist persistence enabled for later writes. It SHALL
+  restore configured deferred-fsync mode before releasing vault operations,
+  attempt every shard, and report each checkpoint and fallback-sync failure. A
+  successful durable checkpoint SHALL NOT issue a redundant explicit sync. A
+  checkpoint cancelled before quiescence SHALL perform no writes; once
+  checkpointing starts it SHALL finish all shards before releasing the vault.
+  The node and listeners SHALL remain running and vault operations SHALL resume
+  after completion. A clean close SHALL take exclusive storage quiescence, force
+  transaction synchronization and freelist persistence for every shard, commit
+  exactly one empty checkpoint transaction, and close every shard even when an
+  earlier checkpoint or close fails. After a checkpoint failure on a shard that
+  used deferred fsync, close SHALL attempt one best-effort explicit sync and
+  SHALL return every checkpoint, sync, and close failure together. An unclean
+  stop before a successful checkpoint SHALL retain bbolt's scan-based freelist
   reconstruction. Top-level node shutdown SHALL wait for active event
   persistence only through its bounded drain and cancellation grace. If the
   writer remains active, shutdown SHALL report an error and skip vault close so

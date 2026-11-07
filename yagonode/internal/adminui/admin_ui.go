@@ -139,6 +139,7 @@ type Options struct {
 	RWIBackfill          RWIBackfillController
 	CrawlOrderImport     CrawlOrderImporter
 	Compactor            Compactor
+	FreelistCheckpointer FreelistCheckpointer
 	Network              NetworkSource
 	NetworkSelfTest      NetworkSelfTester
 	Config               ConfigSource
@@ -339,12 +340,13 @@ type configPageData struct {
 	Error         string
 	// CompactEnabled gates the Storage tab's "Compact now" action; it is set
 	// when the console has a storage compactor wired.
-	CompactEnabled   bool
-	Formats          *FormatSettings
-	FormatForm       *formatSettingsForm
-	FormatsOn        bool
-	FormatsError     string
-	FormatsSaveError string
+	CompactEnabled            bool
+	FreelistCheckpointEnabled bool
+	Formats                   *FormatSettings
+	FormatForm                *formatSettingsForm
+	FormatsOn                 bool
+	FormatsError              string
+	FormatsSaveError          string
 }
 
 type indexPageData struct {
@@ -481,6 +483,7 @@ type Console struct {
 	rwiBackfill          RWIBackfillController
 	crawlOrderImport     CrawlOrderImporter
 	compactor            Compactor
+	freelistCheckpointer FreelistCheckpointer
 	network              NetworkSource
 	networkSelfTest      NetworkSelfTester
 	config               ConfigSource
@@ -547,6 +550,7 @@ func New(opts Options) *Console {
 		rwiBackfill:          opts.RWIBackfill,
 		crawlOrderImport:     opts.CrawlOrderImport,
 		compactor:            opts.Compactor,
+		freelistCheckpointer: opts.FreelistCheckpointer,
 		network:              opts.Network,
 		networkSelfTest:      opts.NetworkSelfTest,
 		config:               opts.Config,
@@ -1254,6 +1258,11 @@ func (c *Console) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if r.PostFormValue("form") == "checkpoint-freelists" {
+		c.handleConfigFreelistCheckpoint(w, r)
+
+		return
+	}
 
 	binding := r.PostFormValue("form") == "binding"
 	if (binding && c.binding == nil) || (!binding && c.settings == nil) {
@@ -1385,6 +1394,7 @@ func (c *Console) configPage(r *http.Request, notice, errMsg string) configPageD
 		data.Bindings = c.binding.Bindings(r.Context())
 	}
 	data.CompactEnabled = c.compactor != nil
+	data.FreelistCheckpointEnabled = c.freelistCheckpointer != nil
 	c.loadConfigFormats(r, &data)
 
 	return data
