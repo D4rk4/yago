@@ -28,14 +28,14 @@ func (s *localExactCountingSearcher) Search(
 }
 
 func TestLocalExactRecoveryKeepsKnownLocalResultAfterFederatedFailure(t *testing.T) {
-	req := searchcore.Request{Query: "drunklab", Terms: []string{"drunklab"}, Limit: 10}
+	req := searchcore.Request{Query: "examplelab", Terms: []string{"examplelab"}, Limit: 10}
 	primary := &localExactCountingSearcher{response: webFallbackExactStageFailure(
 		req,
 		webFallbackExactStageTimeoutFailure,
 		searchcore.FailureCauseDeadline,
 	)}
 	local := &localExactCountingSearcher{response: searchcore.Response{
-		Results: []searchcore.Result{{URL: "https://drunklab.example/"}},
+		Results: []searchcore.Result{{URL: "https://examplelab.example/"}},
 		Facets:  []searchcore.FacetGroup{{Name: "host"}},
 		PartialFailures: []searchcore.PartialFailure{{
 			Source: "local-evidence", Reason: "partial",

@@ -36,7 +36,7 @@ func TestRemoteCapacityRetainsPeerSessionButHonestMissReplacesIt(t *testing.T) {
 	admission := make(chan struct{}, 1)
 	remote := &remoteSessionSequenceSearcher{responses: []searchcore.Response{
 		{Results: []searchcore.Result{{
-			URL:    "https://peer.example/drunklab",
+			URL:    "https://peer.example/examplelab",
 			Source: searchcore.SourceRemote,
 		}}},
 		{PartialFailures: []searchcore.PartialFailure{{
@@ -50,7 +50,7 @@ func TestRemoteCapacityRetainsPeerSessionButHonestMissReplacesIt(t *testing.T) {
 		retained,
 	))
 	req := searchcore.Request{
-		Query:  "drunklab",
+		Query:  "examplelab",
 		Source: searchcore.SourceGlobal,
 		Limit:  10,
 	}
@@ -62,7 +62,7 @@ func TestRemoteCapacityRetainsPeerSessionButHonestMissReplacesIt(t *testing.T) {
 	admission <- struct{}{}
 	busy, err := stable.Search(t.Context(), req)
 	if err != nil || len(busy.Results) != 1 ||
-		busy.Results[0].URL != "https://peer.example/drunklab" ||
+		busy.Results[0].URL != "https://peer.example/examplelab" ||
 		len(busy.PartialFailures) != 1 ||
 		busy.PartialFailures[0].Source != searchcore.PartialFailureSourceRemoteStage {
 		t.Fatalf("busy response = %#v, error = %v", busy, err)

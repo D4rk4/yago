@@ -141,9 +141,9 @@ func assertRetainedImpressionPersistsAfterResponseDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := store.PrepareImpression(t.Context(), "drunklab", []Candidate{{
-		URLIdentity:     "https://about.me/drunklab",
-		ClusterIdentity: "drunklab",
+	prepared, err := store.PrepareImpression(t.Context(), "examplelab", []Candidate{{
+		URLIdentity:     "https://example.org/profile",
+		ClusterIdentity: "examplelab",
 		Position:        1,
 	}})
 	if err != nil || prepared.Token == "" {
@@ -176,10 +176,10 @@ func assertRetainedImpressionPersistsAfterResponseDeadline(t *testing.T) {
 	}
 	store.StopImpressionPreparations()
 	aggregates, err := store.Aggregates(t.Context())
-	if err != nil || len(aggregates) != 1 || aggregates[0].Query != "drunklab" {
+	if err != nil || len(aggregates) != 1 || aggregates[0].Query != "examplelab" {
 		t.Fatalf("retained aggregates = %#v, error = %v", aggregates, err)
 	}
-	result := aggregates[0].Models[adjacentPairModelAssignment].Results["drunklab"]
+	result := aggregates[0].Models[adjacentPairModelAssignment].Results["examplelab"]
 	if result.Clicks != 1 {
 		t.Fatalf("immediate click evidence = %#v", result)
 	}
@@ -206,20 +206,20 @@ func TestFailedRetainedImpressionCannotClickOlderAggregate(t *testing.T) {
 			t.Fatal(err)
 		}
 		candidate := Candidate{
-			URLIdentity:     "https://about.me/drunklab",
-			ClusterIdentity: "drunklab",
+			URLIdentity:     "https://example.org/profile",
+			ClusterIdentity: "examplelab",
 			Position:        1,
 		}
 		if _, err := store.PrepareImpression(
 			t.Context(),
-			"drunklab",
+			"examplelab",
 			[]Candidate{candidate},
 		); err != nil {
 			t.Fatalf("seed impression: %v", err)
 		}
 		prepared, err := store.PrepareImpression(
 			t.Context(),
-			"drunklab",
+			"examplelab",
 			[]Candidate{candidate},
 		)
 		if err != nil || prepared.Token == "" {
@@ -244,7 +244,7 @@ func TestFailedRetainedImpressionCannotClickOlderAggregate(t *testing.T) {
 		if err != nil || len(aggregates) != 1 {
 			t.Fatalf("aggregates = %#v, error = %v", aggregates, err)
 		}
-		result := aggregates[0].Models[adjacentPairModelAssignment].Results["drunklab"]
+		result := aggregates[0].Models[adjacentPairModelAssignment].Results["examplelab"]
 		if result.Impressions != 1 || result.Clicks != 0 || engine.updates.Load() != 2 {
 			t.Fatalf("older aggregate changed = %#v, updates = %d", result, engine.updates.Load())
 		}
@@ -268,8 +268,8 @@ func assertBoundedImpressionPreparation(t *testing.T, teamDraft bool) {
 		t.Fatal(err)
 	}
 	candidate := Candidate{
-		URLIdentity:     "https://about.me/drunklab",
-		ClusterIdentity: "drunklab",
+		URLIdentity:     "https://example.org/profile",
+		ClusterIdentity: "examplelab",
 		Position:        1,
 	}
 	started := time.Now()
@@ -278,7 +278,7 @@ func assertBoundedImpressionPreparation(t *testing.T, teamDraft bool) {
 	if teamDraft {
 		prepared, preparationError = store.PrepareTeamDraft(
 			t.Context(),
-			"drunklab",
+			"examplelab",
 			draftRanking("model", []Candidate{candidate}),
 			draftRanking(LexicalRevision, []Candidate{candidate}),
 			1,
@@ -286,7 +286,7 @@ func assertBoundedImpressionPreparation(t *testing.T, teamDraft bool) {
 	} else {
 		prepared, preparationError = store.PrepareImpression(
 			t.Context(),
-			"drunklab",
+			"examplelab",
 			[]Candidate{candidate},
 		)
 	}
@@ -324,7 +324,7 @@ func assertBoundedImpressionPreparation(t *testing.T, teamDraft bool) {
 	}
 	if _, err := store.PrepareImpression(
 		t.Context(),
-		"drunklab",
+		"examplelab",
 		[]Candidate{candidate},
 	); !errors.Is(err, errImpressionPreparationStopped) {
 		t.Fatalf("preparation after stop error = %v", err)

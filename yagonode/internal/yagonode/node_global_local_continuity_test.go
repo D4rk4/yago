@@ -16,11 +16,11 @@ func TestGlobalJSONDeadlineReturnsRecentLocalCoverage(t *testing.T) {
 	stable := searchsession.NewStableWindow(staticSearcher{resp: searchcore.Response{
 		TotalResults: 148,
 		Results: []searchcore.Result{{
-			Title: "DrunkLab", URL: "https://about.me/drunklab", Source: searchcore.SourceLocal,
+			Title: "ExampleLab", URL: "https://example.org/profile", Source: searchcore.SourceLocal,
 		}},
 	}})
 	localRequest := searchcore.Request{
-		Query: "drunklab", Source: searchcore.SourceLocal,
+		Query: "examplelab", Source: searchcore.SourceLocal,
 		ContentDomain: searchcore.ContentDomainText, Verify: searchcore.VerifyIfExist, Limit: 10,
 	}
 	if _, err := withParsedQuery(stable).Search(t.Context(), localRequest); err != nil {
@@ -39,7 +39,7 @@ func TestGlobalJSONDeadlineReturnsRecentLocalCoverage(t *testing.T) {
 	mux.ServeHTTP(response, httptest.NewRequestWithContext(
 		t.Context(),
 		http.MethodGet,
-		"/yacysearch.json?query=drunklab&resource=global&contentdom=text&maximumRecords=10&startRecord=0",
+		"/yacysearch.json?query=examplelab&resource=global&contentdom=text&maximumRecords=10&startRecord=0",
 		nil,
 	))
 	if response.Code != http.StatusOK {
@@ -59,7 +59,7 @@ func TestGlobalJSONDeadlineReturnsRecentLocalCoverage(t *testing.T) {
 	}
 	if len(payload.Channels) != 1 || payload.Channels[0].TotalResults != "148" ||
 		len(payload.Channels[0].Items) != 1 ||
-		payload.Channels[0].Items[0].Link != "https://about.me/drunklab" {
+		payload.Channels[0].Items[0].Link != "https://example.org/profile" {
 		t.Fatalf("payload = %#v", payload)
 	}
 	close(inner.release)

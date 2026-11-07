@@ -18,7 +18,7 @@ func TestContendedUpdateLeavesViewsAvailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := vault.Key("drunklab")
+	key := vault.Key("examplelab")
 	seedAdmissionValue(t, vaulted, values, key)
 	release, first := holdAdmissionValue(vaulted, values, key)
 	attempts, contended, second := contendAdmissionValue(vaulted, values, key)

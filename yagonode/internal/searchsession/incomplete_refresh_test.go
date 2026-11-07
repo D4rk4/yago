@@ -138,7 +138,7 @@ func TestStableWindowKeepsRecentSuccessOnIncompletePageOneRefresh(t *testing.T) 
 	inner := &refreshSequenceSearcher{responses: []searchcore.Response{
 		{
 			TotalResults: 1,
-			Results:      []searchcore.Result{{URL: "https://drunklab.example/"}},
+			Results:      []searchcore.Result{{URL: "https://examplelab.example/"}},
 			PartialFailures: []searchcore.PartialFailure{{
 				Source: "peer", Reason: "late",
 			}},
@@ -146,7 +146,7 @@ func TestStableWindowKeepsRecentSuccessOnIncompletePageOneRefresh(t *testing.T) 
 		{PartialFailures: []searchcore.PartialFailure{failure, failure}},
 	}}
 	stable := NewStableWindow(inner)
-	req := searchcore.Request{Query: "drunklab", Limit: 10}
+	req := searchcore.Request{Query: "examplelab", Limit: 10}
 	if _, err := stable.Search(t.Context(), req); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestStableWindowKeepsRecentSuccessOnIncompletePageOneRefresh(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Results) != 1 || response.Results[0].URL != "https://drunklab.example/" ||
+	if len(response.Results) != 1 || response.Results[0].URL != "https://examplelab.example/" ||
 		len(response.PartialFailures) != 2 || response.PartialFailures[1] != failure {
 		t.Fatalf("response = %#v", response)
 	}
@@ -189,7 +189,7 @@ func TestStableWindowHonestEmptyReplacesRecentSuccess(t *testing.T) {
 func TestStableWindowKeepsLocalSuccessOnWebOnlyInfrastructureRefresh(t *testing.T) {
 	inner := &refreshSequenceSearcher{responses: []searchcore.Response{
 		{Results: []searchcore.Result{{
-			URL:    "https://drunklab.example/",
+			URL:    "https://examplelab.example/",
 			Source: searchcore.SourceLocal,
 		}}},
 		{
@@ -204,19 +204,19 @@ func TestStableWindowKeepsLocalSuccessOnWebOnlyInfrastructureRefresh(t *testing.
 		},
 	}}
 	stable := NewStableWindow(inner)
-	req := searchcore.Request{Query: "drunklab", Limit: 10}
+	req := searchcore.Request{Query: "examplelab", Limit: 10}
 	if _, err := stable.Search(t.Context(), req); err != nil {
 		t.Fatal(err)
 	}
 	response, err := stable.Search(t.Context(), req)
 	if err != nil || len(response.Results) != 1 ||
-		response.Results[0].URL != "https://drunklab.example/" ||
+		response.Results[0].URL != "https://examplelab.example/" ||
 		len(response.PartialFailures) != 1 {
 		t.Fatalf("response = %#v, error = %v", response, err)
 	}
 	recent, ok := stable.Recent(req)
 	if !ok || len(recent.Results) != 1 ||
-		recent.Results[0].URL != "https://drunklab.example/" ||
+		recent.Results[0].URL != "https://examplelab.example/" ||
 		len(recent.PartialFailures) != 0 {
 		t.Fatalf("recent = %#v, found = %t", recent, ok)
 	}
@@ -388,9 +388,9 @@ func TestStableWindowCanceledExtensionDoesNotMutateSession(t *testing.T) {
 
 func TestRecentSuccessDecoratorUsesSharedSessionForOuterFailure(t *testing.T) {
 	stable := NewStableWindow(&refreshSequenceSearcher{responses: []searchcore.Response{{
-		Results: []searchcore.Result{{URL: "https://drunklab.example/"}},
+		Results: []searchcore.Result{{URL: "https://examplelab.example/"}},
 	}}})
-	req := searchcore.Request{Query: "drunklab", Limit: 10}
+	req := searchcore.Request{Query: "examplelab", Limit: 10}
 	if _, err := stable.Search(t.Context(), req); err != nil {
 		t.Fatal(err)
 	}

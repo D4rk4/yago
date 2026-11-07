@@ -20,7 +20,7 @@ func TestHTMLEndpointHidesInternalWebFailureSource(t *testing.T) {
 	request := httptest.NewRequestWithContext(
 		t.Context(),
 		http.MethodGet,
-		"http://node.test/yacysearch.html?query=drunklab",
+		"http://node.test/yacysearch.html?query=examplelab",
 		nil,
 	)
 	htmlEndpoint{search: search, suggestions: newRecentQueries()}.ServeHTTP(recorder, request)

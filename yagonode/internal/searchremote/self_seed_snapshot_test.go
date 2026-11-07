@@ -104,10 +104,10 @@ func TestRemoteSearchReusesSelfSeedAcrossPeersAndMorphologyPasses(t *testing.T) 
 
 			return searchSeed(t, "snapshot")
 		},
-		ExpandWord: func(string) []string { return []string{"drunklab", "drunklabs"} },
+		ExpandWord: func(string) []string { return []string{"examplelab", "examplelabs"} },
 	})
 	_, err := searcher.Search(t.Context(), searchcore.Request{
-		Query: "drunklab", Terms: []string{"drunklab"},
+		Query: "examplelab", Terms: []string{"examplelab"},
 		Source: searchcore.SourceGlobal, Limit: 10,
 	})
 	if err != nil {

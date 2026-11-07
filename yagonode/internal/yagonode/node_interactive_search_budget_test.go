@@ -385,10 +385,10 @@ func TestInteractiveSearchDeadlineReturnsRecentParsedSession(t *testing.T) {
 	stable := searchsession.NewStableWindow(staticSearcher{resp: searchcore.Response{
 		TotalResults: 1,
 		Results: []searchcore.Result{{
-			Title: "DrunkLab", URL: "https://drunklab.example/", Source: searchcore.SourceLocal,
+			Title: "ExampleLab", URL: "https://examplelab.example/", Source: searchcore.SourceLocal,
 		}},
 	}})
-	req := searchcore.Request{Query: "drunklab", Limit: 10}
+	req := searchcore.Request{Query: "examplelab", Limit: 10}
 	if _, err := withParsedQuery(stable).Search(t.Context(), req); err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +402,7 @@ func TestInteractiveSearchDeadlineReturnsRecentParsedSession(t *testing.T) {
 	))
 	response, err := searcher.Search(t.Context(), req)
 	if err != nil || len(response.Results) != 1 ||
-		response.Results[0].URL != "https://drunklab.example/" ||
+		response.Results[0].URL != "https://examplelab.example/" ||
 		len(response.PartialFailures) != 1 ||
 		response.PartialFailures[0].Source != interactiveSearchFailureSource {
 		t.Fatalf("response = %#v, error = %v", response, err)

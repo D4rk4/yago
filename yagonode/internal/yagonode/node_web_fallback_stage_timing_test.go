@@ -397,7 +397,7 @@ func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testi
 		)
 		for attempt := range rounds {
 			response, err := searcher.Search(t.Context(), searchcore.Request{
-				Query: "drunklab", Source: searchcore.SourceGlobal, Limit: 10,
+				Query: "examplelab", Source: searchcore.SourceGlobal, Limit: 10,
 			})
 			if err != nil || len(response.Results) == 0 ||
 				response.Results[0].URL != "https://local.example/needle" {

@@ -33,10 +33,10 @@ func prepareBlockedImpression(t *testing.T, clicks *clickcapture.Store) {
 	t.Helper()
 	prepared, err := clicks.PrepareImpression(
 		t.Context(),
-		"drunklab",
+		"examplelab",
 		[]clickcapture.Candidate{{
-			URLIdentity:     "https://about.me/drunklab",
-			ClusterIdentity: "drunklab",
+			URLIdentity:     "https://example.org/profile",
+			ClusterIdentity: "examplelab",
 			Position:        1,
 		}},
 	)

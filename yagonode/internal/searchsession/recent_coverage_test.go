@@ -17,12 +17,12 @@ func TestGlobalIncompleteRefreshUsesUnexpiredLocalCoverage(t *testing.T) {
 	t.Cleanup(func() { clock = previousClock })
 
 	localRequest := searchcore.Request{
-		Query: "drunklab", Source: searchcore.SourceLocal, Limit: 10,
+		Query: "examplelab", Source: searchcore.SourceLocal, Limit: 10,
 	}
 	stable := NewStableWindow(&refreshSequenceSearcher{responses: []searchcore.Response{{
 		TotalResults: 148,
 		Results: []searchcore.Result{{
-			URL: "https://about.me/drunklab", Source: searchcore.SourceLocal,
+			URL: "https://example.org/profile", Source: searchcore.SourceLocal,
 		}},
 	}}})
 	if _, err := stable.Search(t.Context(), localRequest); err != nil {
@@ -59,10 +59,10 @@ func TestGlobalIncompleteRefreshUsesUnexpiredLocalCoverage(t *testing.T) {
 
 func TestGlobalHonestMissDoesNotUseLocalCoverage(t *testing.T) {
 	localRequest := searchcore.Request{
-		Query: "drunklab", Source: searchcore.SourceLocal, Limit: 10,
+		Query: "examplelab", Source: searchcore.SourceLocal, Limit: 10,
 	}
 	stable := NewStableWindow(&refreshSequenceSearcher{responses: []searchcore.Response{{
-		Results: []searchcore.Result{{URL: "https://about.me/drunklab"}},
+		Results: []searchcore.Result{{URL: "https://example.org/profile"}},
 	}}})
 	if _, err := stable.Search(t.Context(), localRequest); err != nil {
 		t.Fatal(err)
