@@ -81,6 +81,7 @@ func (p *Pipeline) fetchChangedPage(
 	)
 	if errors.Is(err, ingest.ErrNotModifiedUnrecorded) {
 		slog.WarnContext(ctx, msgNotModifiedUnrecorded, slog.String("url", job.URL))
+		observeNotModifiedRefetch(p.observer)
 		fetched, err = p.fetchJob(ctx, unconditionalCrawlJob(job), target, outcome)
 
 		return changedPageFetch{page: fetched}, err

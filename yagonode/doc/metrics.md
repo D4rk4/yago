@@ -73,6 +73,14 @@ The registry publishes:
   results from the crawl fleet (`crawl_ingest_batches_total`,
   `crawl_ingest_deferrals_total`, `crawl_ingest_content_bytes_total`,
   `crawl_ingest_urls_total`, `crawl_ingest_postings_total`).
+- **Conditional recrawl** — due recrawl orders published with a conditional
+  fetch, and not-modified observations the node recorded or refused
+  (`crawl_recrawl_conditional_fetches_total`,
+  `crawl_ingest_not_modified_recorded_total`,
+  `crawl_ingest_not_modified_refused_total`). A refused observation is stale,
+  belongs to another crawl profile, or no longer matches the stored document,
+  so the crawler fetches the page in full. An observation that fails to record
+  counts as a deferral, not as refused. These series carry no URL labels.
 - **Crawl search-index writes** — successful documents, failed write attempts,
   and one duration observation per Bleve batch or fallback write attempt
   (`crawl_search_index_documents_total`,

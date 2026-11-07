@@ -1192,6 +1192,11 @@ it is not an assumed deployment dependency.
 * Kept validators SHALL be additive fields of the stored schedule record. A
   record without them SHALL encode exactly as before, and an older binary SHALL
   read a record with them as an unconditional recrawl.
+* The node SHALL count a conditional fetch only after its due recrawl order is
+  published, and SHALL count each not-modified observation once as recorded or
+  refused; an observation whose recording fails SHALL count only as a deferral.
+  The crawler SHALL count each full fetch it starts because the node did not
+  record its not-modified observation. These counters SHALL carry no URL label.
 
 The wire rules that carry these validators and the not-modified observation are
 stated in the [conditional recrawl section of the contract README](../yagocrawlcontract/README.md#conditional-recrawl),

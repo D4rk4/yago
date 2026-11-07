@@ -620,7 +620,8 @@ Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,
 `yacy_crawler_fetches_total`, `yacy_crawler_fetch_failures_total`,
 `yacy_crawler_parse_failures_total`, `yacy_crawler_bytes_total`,
 `yacy_crawler_robots_denied_total`,
-`yacy_crawler_ingest_batches_total`, `yacy_crawler_host_backoffs_total`, and
+`yacy_crawler_ingest_batches_total`, `yacy_crawler_host_backoffs_total`,
+`yacy_crawler_not_modified_refetches_total`, and
 `yacy_crawler_browser_slot_acquisition_deadlines_total`, plus filesystem
 availability, reserve, hysteresis, pressure, measurement availability, rejected
 growth, and measurement-failure storage series under
@@ -634,8 +635,10 @@ browser-slot deadline counter remains available and advances with the
 `slot_deadline` failure reason; ordinary request cancellation and crawler
 shutdown do not classify as slot-deadline failures. The parse-failure counter
 advances when a fetched body cannot produce an indexable document through any
-enabled parser; it is separate from transport fetch failures. When the value is
-empty the crawler starts no metrics server and opens no port. Wildcard and
+enabled parser; it is separate from transport fetch failures. The
+not-modified refetch counter advances once for each full fetch the crawler
+starts because the node did not record its not-modified observation. When the
+value is empty the crawler starts no metrics server and opens no port. Wildcard and
 non-loopback listeners are rejected; a trusted tunnel or proxy must mediate a
 remote scrape. The environment value bootstraps both services;
 Configuration → Crawler persists the authoritative value, delivers it before

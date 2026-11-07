@@ -28,19 +28,20 @@ type crawlProcess interface {
 }
 
 type crawlRuntime struct {
-	broker      *crawlbroker.CrawlBroker
-	state       *vault.Vault
-	ownsState   bool
-	statePath   string
-	consumer    *crawlresults.IngestConsumer
-	runs        *crawlruns.Registry
-	frontier    *recrawlfrontier.Frontier
-	formats     *crawlformats.Store
-	profiles    *crawlProfileDispatchRegistry
-	initiator   yagomodel.Hash
-	pageBudget  *crawlRunPageBudget
-	remoteCrawl remoteCrawlOrderObserver
-	conditional conditionalRecrawl
+	broker                 *crawlbroker.CrawlBroker
+	state                  *vault.Vault
+	ownsState              bool
+	statePath              string
+	consumer               *crawlresults.IngestConsumer
+	runs                   *crawlruns.Registry
+	frontier               *recrawlfrontier.Frontier
+	formats                *crawlformats.Store
+	profiles               *crawlProfileDispatchRegistry
+	initiator              yagomodel.Hash
+	pageBudget             *crawlRunPageBudget
+	remoteCrawl            remoteCrawlOrderObserver
+	conditional            conditionalRecrawl
+	conditionalFetchIssues conditionalFetchIssueObserver
 }
 
 const msgCrawlRuntimeStateCloseFailed = "crawl runtime state close failed"
@@ -118,6 +119,7 @@ func (r *crawlRuntime) mountDispatch(mux *http.ServeMux) {
 
 func (r *crawlRuntime) observe(observer crawlresults.IngestObserver) {
 	r.consumer.Observe(observer)
+	r.conditionalFetchIssues, _ = observer.(conditionalFetchIssueObserver)
 }
 
 func (r *crawlRuntime) useContentSafetyClassifier(
@@ -191,13 +193,14 @@ func (r *crawlRuntime) SetMaxPagesPerRun(value int) {
 // swallowed as a duplicate of its original crawl).
 func (r *crawlRuntime) recrawlSweeper() recrawlSweeper {
 	return recrawlSweeper{
-		frontier:    r.frontier,
-		publisher:   keylessCrawlOrderPublisher{queue: r.dispatchQueue()},
-		initiator:   r.initiator,
-		mint:        mintProvenance,
-		now:         time.Now,
-		batch:       defaultRecrawlSweepBatch,
-		conditional: r.conditional,
+		frontier:               r.frontier,
+		publisher:              keylessCrawlOrderPublisher{queue: r.dispatchQueue()},
+		initiator:              r.initiator,
+		mint:                   mintProvenance,
+		now:                    time.Now,
+		batch:                  defaultRecrawlSweepBatch,
+		conditional:            r.conditional,
+		conditionalFetchIssues: r.conditionalFetchIssues,
 	}
 }
 

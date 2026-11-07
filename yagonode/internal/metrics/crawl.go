@@ -3,14 +3,15 @@ package metrics
 import "github.com/prometheus/client_golang/prometheus"
 
 type CrawlMetrics struct {
-	absorbed         prometheus.Counter
-	deferred         prometheus.Counter
-	rejected         prometheus.Counter
-	lowQuality       prometheus.Counter
-	scheduleFailures prometheus.Counter
-	bytes            prometheus.Counter
-	urls             prometheus.Counter
-	postings         prometheus.Counter
+	absorbed           prometheus.Counter
+	deferred           prometheus.Counter
+	rejected           prometheus.Counter
+	lowQuality         prometheus.Counter
+	scheduleFailures   prometheus.Counter
+	bytes              prometheus.Counter
+	urls               prometheus.Counter
+	postings           prometheus.Counter
+	conditionalRecrawl conditionalRecrawlOutcomes
 }
 
 func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
@@ -54,14 +55,15 @@ func NewCrawlMetrics(registry prometheus.Registerer) *CrawlMetrics {
 	)
 
 	return &CrawlMetrics{
-		absorbed:         absorbed,
-		deferred:         deferred,
-		scheduleFailures: scheduleFailures,
-		rejected:         rejected,
-		lowQuality:       lowQuality,
-		bytes:            bytes,
-		urls:             urls,
-		postings:         postings,
+		absorbed:           absorbed,
+		deferred:           deferred,
+		scheduleFailures:   scheduleFailures,
+		rejected:           rejected,
+		lowQuality:         lowQuality,
+		bytes:              bytes,
+		urls:               urls,
+		postings:           postings,
+		conditionalRecrawl: newConditionalRecrawlOutcomes(registry),
 	}
 }
 

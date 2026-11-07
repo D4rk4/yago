@@ -38,6 +38,7 @@ func (c *IngestConsumer) absorbNotModified(ctx context.Context, delivery IngestD
 
 		return
 	}
+	c.observeNotModified(recorded)
 	settle := delivery.Ack
 	if recorded {
 		slog.DebugContext(ctx, msgNotModifiedRecorded, slog.String("sourceUrl", sourceURL))

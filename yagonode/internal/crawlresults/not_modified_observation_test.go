@@ -45,6 +45,7 @@ type conditionalConsumerRun struct {
 	urls        *recordingURLReceiver
 	postings    *recordingPostingReceiver
 	ownership   crawlresults.OwnershipCheck
+	observer    crawlresults.IngestObserver
 }
 
 func newConditionalConsumerRun(conditional *scriptedConditionalRecrawl) *conditionalConsumerRun {
@@ -70,6 +71,7 @@ func (r *conditionalConsumerRun) absorb(
 		consumer.RecordConditionalRecrawl(r.conditional)
 	}
 	consumer.CheckOwnership(r.ownership)
+	consumer.Observe(r.observer)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {

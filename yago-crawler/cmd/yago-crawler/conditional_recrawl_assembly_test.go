@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -14,10 +15,7 @@ import (
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
-func TestRunServiceReportsNotModifiedThenRefetchesWhenUnrecorded(t *testing.T) {
-	restoreAssemblySeams(t)
-	serveViaSlowSource(t)
-	origin := loopbackOrigin(t)
+func stubOriginNotModifiedOnRevalidation() {
 	newCrawlerHTTPPageFetcher = func(*http.Client, string, int64) *httpfetch.PageFetcher {
 		return httpfetch.NewPageFetcher(&http.Client{Transport: crawlerRobotsRoundTrip(
 			func(request *http.Request) (*http.Response, error) {
@@ -43,6 +41,13 @@ func TestRunServiceReportsNotModifiedThenRefetchesWhenUnrecorded(t *testing.T) {
 			},
 		)}, "", 0)
 	}
+}
+
+func TestRunServiceReportsNotModifiedThenRefetchesWhenUnrecorded(t *testing.T) {
+	restoreAssemblySeams(t)
+	serveViaSlowSource(t)
+	origin := loopbackOrigin(t)
+	stubOriginNotModifiedOnRevalidation()
 	revision := yagocrawlcontract.DocumentRevision{
 		ContentHash:          "content-hash",
 		ExtractionGeneration: 1,
@@ -68,9 +73,10 @@ func TestRunServiceReportsNotModifiedThenRefetchesWhenUnrecorded(t *testing.T) {
 	stubExchange(t, exchange)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	crawlerMetrics := crawlermetrics.New()
 	runDone := make(chan error, 1)
 	go func() {
-		runDone <- runServiceWithMetrics(ctx, flowConfig(t, 1), htmlPageSource(nil), crawlermetrics.New())
+		runDone <- runServiceWithMetrics(ctx, flowConfig(t, 1), htmlPageSource(nil), crawlerMetrics)
 	}()
 
 	awaitFinishedReport(t, exchange.progress)
@@ -93,5 +99,16 @@ func TestRunServiceReportsNotModifiedThenRefetchesWhenUnrecorded(t *testing.T) {
 			"ingested batches = %+v, want a not-modified observation then a full document",
 			batches,
 		)
+	}
+	scrape := httptest.NewRecorder()
+	crawlerMetrics.Handler().ServeHTTP(
+		scrape,
+		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil),
+	)
+	if body := scrape.Body.String(); !strings.Contains(
+		body,
+		"yacy_crawler_not_modified_refetches_total 1",
+	) {
+		t.Fatalf("not-modified refetch metric missing:\n%s", body)
 	}
 }

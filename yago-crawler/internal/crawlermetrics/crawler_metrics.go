@@ -26,6 +26,7 @@ type Metrics struct {
 	bytes                           prometheus.Counter
 	robotsDenied                    prometheus.Counter
 	ingestBatches                   prometheus.Counter
+	notModifiedRefetches            prometheus.Counter
 	browserSlotAcquisitionDeadlines prometheus.Counter
 	browserSlotWait                 prometheus.Histogram
 	browserSessions                 *prometheus.GaugeVec
@@ -77,6 +78,7 @@ func newCrawlerActivityMetrics() *Metrics {
 			Name: "yacy_crawler_ingest_batches_total",
 			Help: "Ingest batches accepted by the node.",
 		}),
+		notModifiedRefetches: newNotModifiedRefetchCounter(),
 		fetchAdmissionWaiting: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "yacy_crawler_fetch_admission_waiting",
 			Help: "Fetch worker jobs parked on the fleet fetch-start permit or the process page-rate budget. " +
@@ -121,6 +123,7 @@ func (m *Metrics) prometheusCollectors() []prometheus.Collector {
 		m.bytes,
 		m.robotsDenied,
 		m.ingestBatches,
+		m.notModifiedRefetches,
 		m.fetchAdmissionWaiting,
 		m.fetchAdmissionWait,
 		m.hostBackoffs,

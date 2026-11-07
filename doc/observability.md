@@ -47,6 +47,17 @@ honestly. `crawl_ingest_low_quality_total` counts them on the node.
 profile or recrawl entry could not be written: they stay searchable but are not
 scheduled for refresh until a later dispatch supplies one.
 
+Conditional recrawl has its own outcome counters. On the node,
+`crawl_recrawl_conditional_fetches_total` counts due recrawl orders sent with
+the page's stored validators, `crawl_ingest_not_modified_recorded_total` counts
+unchanged pages confirmed without a full download, and
+`crawl_ingest_not_modified_refused_total` counts unchanged answers the node
+could not accept. On the crawler, `yacy_crawler_not_modified_refetches_total`
+counts the full fetches that follow a refused answer, so it tracks the node's
+refused counter. Recorded divided by issued is the share of recrawls that saved
+a full download; a rising refused rate means stored pages or their recrawl
+schedules changed after their recrawl orders were sent.
+
 ## Saturation events
 
 `intake_rejections_total` counts every request shed by a bounded intake gate.
