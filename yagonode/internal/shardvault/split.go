@@ -100,6 +100,7 @@ func (e *engine) splitLocked(ctx context.Context) (bool, error) {
 
 		return false, fmt.Errorf("commit split: %w", err)
 	}
+	opened.NoSync = e.deferFsync.Load()
 	e.shards = append(e.shards, opened)
 	e.level, e.split = newLevel, newSplit
 	e.appendConservativeWordFilter()

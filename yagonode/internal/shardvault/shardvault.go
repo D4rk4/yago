@@ -202,11 +202,12 @@ type engine struct {
 	// 2^level + split shards and route reads them to place a record. They change
 	// only under the exclusive globalGate (a split), so a gate-holding reader
 	// always sees a consistent pair.
-	level          int
-	split          int
-	shardLocks     []sync.Mutex
-	globalGate     sync.RWMutex
-	writeAdmission writeAdmission
+	level           int
+	split           int
+	shardLocks      []sync.Mutex
+	globalGate      sync.RWMutex
+	writeAdmission  writeAdmission
+	contendedWrites contendedWriteQueue
 	// viewsInFlight counts active read transactions so bulk writes can yield
 	// the disk to interactive reads (IO-PRIO-01): an Update briefly defers
 	// while reads are running, bounded so readers can never starve writers.
@@ -303,16 +304,7 @@ func (e *engine) Update(ctx context.Context, fn func(vault.EngineTxn) error) err
 		return err
 	}
 
-	if err := e.writeAdmission.enterContended(ctx); err != nil {
-		return err
-	}
-	defer e.writeAdmission.leaveContended()
-	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
-		return err
-	}
-	defer e.globalGate.RUnlock()
-
-	return e.runUpdate(fn, false)
+	return e.updateContended(ctx, fn)
 }
 
 // runUpdate executes one update attempt; tryLocks selects the fast path that
@@ -341,11 +333,7 @@ func (e *engine) runUpdate(fn func(vault.EngineTxn) error, tryLocks bool) error 
 		return err
 	}
 	if err := txn.commit(); err != nil {
-		if storageAtCapacityError(err) {
-			return vault.ErrAtCapacity
-		}
-
-		return fmt.Errorf("update storage: %w", err)
+		return updateCommitError(err)
 	}
 
 	return nil

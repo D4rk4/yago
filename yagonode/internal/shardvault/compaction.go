@@ -90,6 +90,7 @@ func (e *engine) compactShard(index int) (int64, bool, error) {
 
 	reopened, err := swapShard(db, tmp, path)
 	if reopened != nil {
+		reopened.NoSync = e.deferFsync.Load()
 		e.shards[index] = reopened
 		e.scheduleWordFilterRebuild(index)
 	}

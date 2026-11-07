@@ -234,6 +234,11 @@ it is not an assumed deployment dependency.
   expire after 24 hours. A successful response in one search session SHALL take
   precedence over another transport failure for the same peer. Invalid protocol
   data SHALL affect reputation without changing transport reachability.
+* A repeated caller observation SHALL refresh reachable membership in memory
+  without a roster write when the stored row has the same verification level,
+  no retry cooldown, the same answered endpoint, and the same seed apart from
+  its statistics, and was written less than five minutes earlier. An unverified
+  caller observation SHALL NOT write a peer that is already known.
 * A persisted peer's primary row SHALL retain the v0.0.20 timestamp-plus-seed
   encoding. Retry, expiry, and verification evidence SHALL use additive internal
   metadata bound to that complete row and to its own lifecycle fields. Missing,
@@ -778,6 +783,15 @@ it is not an assumed deployment dependency.
 * The node SHALL support bounded quoted-phrase preference plus ordered and unordered proximity evidence through the local stored-position path.
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.
 * The node SHALL allow operators to configure its storage quota.
+* Writes that the sharded vault serializes after shard contention SHALL commit
+  together. The writer that gains the contended path SHALL apply up to 32
+  queued updates in one transaction and commit it once. When any update in that
+  group fails, panics, or reaches an unreadable shard root, the group SHALL roll
+  back and every member SHALL run again alone, so each caller observes only its
+  own outcome. A failed group commit SHALL be reported to every member. A writer
+  cancelled before its group forms SHALL write nothing.
+* A shard reopened after compaction or split SHALL keep the vault's current
+  deferred-fsync mode.
 * The serving sharded vault SHALL keep bbolt freelist persistence disabled on
   ordinary write transactions. A clean close SHALL take exclusive storage
   quiescence, force transaction synchronization and freelist persistence for

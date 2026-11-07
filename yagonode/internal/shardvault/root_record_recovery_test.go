@@ -141,7 +141,8 @@ func TestRootRecordRecoveryResumesAfterIsolation(t *testing.T) {
 	assertQuarantinedKeys(t, recovered)
 }
 
-func TestRootRecordGuardRefusesMaintenanceAndCommit(t *testing.T) {
+func openStructuralRootRecordShard(t *testing.T) *bolt.DB {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "corrupt.db")
 	database, err := bolt.Open(path, 0o600, nil)
 	if err != nil {
@@ -163,6 +164,12 @@ func TestRootRecordGuardRefusesMaintenanceAndCommit(t *testing.T) {
 		t.Fatalf("reopen corrupt fixture: %v", err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
+
+	return database
+}
+
+func TestRootRecordGuardRefusesMaintenanceAndCommit(t *testing.T) {
+	database := openStructuralRootRecordShard(t)
 
 	if err := validateStructuralRoot(database); !errors.Is(err, errStructuralRootRecord) {
 		t.Fatalf("validate structural root = %v", err)

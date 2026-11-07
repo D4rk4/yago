@@ -77,6 +77,16 @@ func (r *roster) persistCallerObservation(
 	if r.isSelf(observation.seed.Hash) {
 		return false, nil
 	}
+	previous, err := r.previousCallerObservation(ctx, observation, answered)
+	if err != nil {
+		return false, fmt.Errorf("observe caller: %w", err)
+	}
+	if previous.known && !observation.verified {
+		return false, nil
+	}
+	if previous.repeated {
+		return true, nil
+	}
 	stored, err := r.persistObservation(ctx, observation, !observation.verified, answered)
 	if err != nil {
 		return false, fmt.Errorf("observe caller: %w", err)

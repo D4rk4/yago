@@ -84,16 +84,8 @@ func (r *roster) storeAnsweredEndpoint(
 	entry rosterEntry,
 	answered yagomodel.Optional[peerwire.Endpoint],
 ) error {
-	endpoint, present := answered.Get()
-	if !present {
-		return nil
-	}
-	record, admitted := answeredEndpointRecordFor(entry, endpoint)
-	if !admitted {
-		return nil
-	}
-	stored, found, err := r.answeredEndpoints.Get(tx, key)
-	if err == nil && found && stored == record {
+	record, changed := r.answeredEndpointChange(tx, key, entry, answered)
+	if !changed {
 		return nil
 	}
 	if err := r.answeredEndpoints.Put(tx, key, record); err != nil {
@@ -101,4 +93,23 @@ func (r *roster) storeAnsweredEndpoint(
 	}
 
 	return nil
+}
+
+func (r *roster) answeredEndpointChange(
+	tx *vault.Txn,
+	key vault.Key,
+	entry rosterEntry,
+	answered yagomodel.Optional[peerwire.Endpoint],
+) (answeredEndpointRecord, bool) {
+	endpoint, present := answered.Get()
+	if !present {
+		return answeredEndpointRecord{}, false
+	}
+	record, admitted := answeredEndpointRecordFor(entry, endpoint)
+	if !admitted {
+		return answeredEndpointRecord{}, false
+	}
+	stored, found, err := r.answeredEndpoints.Get(tx, key)
+
+	return record, err != nil || !found || stored != record
 }
