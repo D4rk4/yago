@@ -12,12 +12,13 @@ import (
 )
 
 type Envelope struct {
-	SourceURL        string
-	Provenance       []byte
-	ProfileHandle    string
-	ObservationID    string
-	ObservedAt       time.Time
-	SourceModifiedAt time.Time
+	SourceURL          string
+	Provenance         []byte
+	ProfileHandle      string
+	ObservationID      string
+	ObservedAt         time.Time
+	SourceModifiedAt   time.Time
+	ResponseValidators *yagocrawlcontract.HTTPValidators
 }
 
 type BatchEmitter interface {
@@ -53,15 +54,16 @@ func (e *batchEmitter) Emit(
 	envelope Envelope,
 ) error {
 	batch := IngestBatch{
-		SourceURL:        envelope.SourceURL,
-		Provenance:       envelope.Provenance,
-		ProfileHandle:    envelope.ProfileHandle,
-		ObservationID:    ingestObservationID(envelope.ObservationID),
-		ObservedAt:       ingestObservationTime(envelope.ObservedAt, document.FetchedAt),
-		SourceModifiedAt: envelope.SourceModifiedAt,
-		Document:         document,
-		Postings:         postings,
-		Metadata:         []yagomodel.URIMetadataRow{metadata},
+		SourceURL:          envelope.SourceURL,
+		Provenance:         envelope.Provenance,
+		ProfileHandle:      envelope.ProfileHandle,
+		ObservationID:      ingestObservationID(envelope.ObservationID),
+		ObservedAt:         ingestObservationTime(envelope.ObservedAt, document.FetchedAt),
+		SourceModifiedAt:   envelope.SourceModifiedAt,
+		ResponseValidators: usableResponseValidators(envelope.ResponseValidators),
+		Document:           document,
+		Postings:           postings,
+		Metadata:           []yagomodel.URIMetadataRow{metadata},
 	}
 	if err := e.queue.Publish(ctx, batch); err != nil {
 		return fmt.Errorf("publish ingest batch %s: %w", envelope.SourceURL, err)

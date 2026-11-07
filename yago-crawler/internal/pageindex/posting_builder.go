@@ -42,7 +42,7 @@ func BuildRWIPageArtifacts(
 			FirstPosition: firstPosition[word],
 		})
 	}
-	return yagomodel.BuildRWIPageArtifacts(yagomodel.RWIPage{
+	artifacts := yagomodel.BuildRWIPageArtifacts(yagomodel.RWIPage{
 		URL:               page.URL,
 		Title:             page.Title,
 		Language:          NormalizeLanguage(page.Language),
@@ -56,6 +56,9 @@ func BuildRWIPageArtifacts(
 		ModifiedAt:        loadedAt,
 		FreshUntil:        loadedAt,
 	}, yagocrawlcontract.MaximumIngestPostings)
+	addURLComponentCountToPostings(artifacts.Postings, page.URL)
+
+	return artifacts
 }
 
 func BuildPostings(page pageparse.ParsedPage, stats pageparse.PageStats) []yagomodel.RWIPosting {

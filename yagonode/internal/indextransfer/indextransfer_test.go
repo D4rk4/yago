@@ -34,6 +34,15 @@ func (b failingBody) Close() error {
 	return nil
 }
 
+func parseMultipartForm(tb testing.TB, req *http.Request) {
+	tb.Helper()
+	requireMultipartContentType(tb, req)
+	if err := req.ParseMultipartForm(1 << 20); err != nil {
+		tb.Fatalf("parse multipart form: %v", err)
+	}
+	tb.Cleanup(func() { _ = req.MultipartForm.RemoveAll() })
+}
+
 func hashOf(tb testing.TB, word string) yagomodel.Hash {
 	tb.Helper()
 
@@ -171,12 +180,7 @@ func TestTransferRWIPostsYaCyFormAndParsesResponse(t *testing.T) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("method = %q", req.Method)
 		}
-		if ct := req.Header.Get("Content-Type"); ct != "application/x-www-form-urlencoded" {
-			t.Fatalf("content type = %q", ct)
-		}
-		if err := req.ParseForm(); err != nil {
-			t.Fatalf("parse form: %v", err)
-		}
+		parseMultipartForm(t, req)
 		parsed, err := yagoproto.ParseTransferRWIRequest(req.Context(), req.PostForm)
 		if err != nil {
 			t.Fatalf("parse transfer rwi request: %v", err)
@@ -229,9 +233,7 @@ func TestTransferURLPostsYaCyFormAndParsesResponse(t *testing.T) {
 		if req.URL.Path != yagoproto.PathTransferURL {
 			t.Fatalf("path = %q", req.URL.Path)
 		}
-		if err := req.ParseForm(); err != nil {
-			t.Fatalf("parse form: %v", err)
-		}
+		parseMultipartForm(t, req)
 		parsed, err := yagoproto.ParseTransferURLRequest(req.Context(), req.PostForm)
 		if err != nil {
 			t.Fatalf("parse transfer url request: %v", err)
@@ -280,9 +282,10 @@ func TestTransferURLSignsControlledNetworkRequest(t *testing.T) {
 	}
 	server := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-			if err := request.ParseForm(); err != nil {
+			if err := request.ParseMultipartForm(1 << 20); err != nil {
 				t.Fatal(err)
 			}
+			defer func() { _ = request.MultipartForm.RemoveAll() }()
 			verifier := access
 			verifier.Self = self.Hash
 			if !verifier.Authorizes(request.PostForm) ||

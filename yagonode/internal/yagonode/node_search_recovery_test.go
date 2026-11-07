@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -138,22 +139,24 @@ func TestRecoveryKeepsHonestEmptyAndSkipsWhenNotEligible(t *testing.T) {
 }
 
 func TestRecoveryStopsAtItsBudget(t *testing.T) {
-	previous := recoverySearchBudget
-	recoverySearchBudget = 10 * time.Millisecond
-	t.Cleanup(func() { recoverySearchBudget = previous })
+	synctest.Test(t, func(t *testing.T) {
+		previous := recoverySearchBudget
+		recoverySearchBudget = 10 * time.Millisecond
+		t.Cleanup(func() { recoverySearchBudget = previous })
 
-	inner := &deadlineRecoverySearcher{canceled: make(chan struct{})}
-	response, err := withZeroResultRecovery(inner, inner, nil).Search(
-		t.Context(),
-		searchcore.Request{Query: "missing", Terms: []string{"missing"}},
-	)
-	if err != nil {
-		t.Fatalf("Search: %v", err)
-	}
-	<-inner.canceled
-	if len(response.Results) != 0 {
-		t.Fatalf("budgeted recovery response = %#v", response)
-	}
+		inner := &deadlineRecoverySearcher{canceled: make(chan struct{})}
+		response, err := withZeroResultRecovery(inner, inner, nil).Search(
+			t.Context(),
+			searchcore.Request{Query: "missing", Terms: []string{"missing"}},
+		)
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		<-inner.canceled
+		if len(response.Results) != 0 {
+			t.Fatalf("budgeted recovery response = %#v", response)
+		}
+	})
 }
 
 func TestRecoveryPreservesParentCancellation(t *testing.T) {

@@ -57,11 +57,14 @@ func TestFetchChainsRobotsDirectVariantsSkipRobots(t *testing.T) {
 	}
 	if _, err := chains.verifying.Fetch(
 		context.Background(),
-		target,
+		pagefetch.FetchRequest{Target: target},
 	); !errors.Is(err, robots.ErrDisallowed) {
 		t.Fatalf("verifying chain error = %v, want robots denial", err)
 	}
-	page, err := chains.verifyingDirect.Fetch(context.Background(), target)
+	page, err := chains.verifyingDirect.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	)
 	if err != nil {
 		t.Fatalf("direct chain fetch: %v", err)
 	}

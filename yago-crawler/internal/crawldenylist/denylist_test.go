@@ -16,8 +16,9 @@ type fetchFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
 func (f fetchFunc) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return f(ctx, target)
 }
 
@@ -149,17 +150,23 @@ func TestAdmissionFetcherRejectsBeforeAndAfterInnerFetch(t *testing.T) {
 		return pagefetch.FetchedPage{URL: mustParse(t, "https://redirected.example/")}, nil
 	}), denylist)
 
-	_, err = fetcher.Fetch(t.Context(), mustParse(t, "https://blocked.example/exact"))
+	_, err = fetcher.Fetch(
+		t.Context(),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://blocked.example/exact")},
+	)
 	assertPermanentRejection(t, err)
 	if calls != 0 {
 		t.Fatalf("blocked target reached inner fetch %d times", calls)
 	}
-	_, err = fetcher.Fetch(t.Context(), mustParse(t, "https://allowed.example/"))
+	_, err = fetcher.Fetch(
+		t.Context(),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://allowed.example/")},
+	)
 	assertPermanentRejection(t, err)
 	if calls != 1 {
 		t.Fatalf("redirect result inner calls = %d, want 1", calls)
 	}
-	_, err = fetcher.Fetch(t.Context(), nil)
+	_, err = fetcher.Fetch(t.Context(), pagefetch.FetchRequest{})
 	assertPermanentRejection(t, err)
 	if err.Error() == "" {
 		t.Fatal("nil target rejection has empty message")
@@ -182,7 +189,7 @@ func TestAdmissionFetcherReturnsAllowedPageAndInnerError(t *testing.T) {
 	) (pagefetch.FetchedPage, error) {
 		return pagefetch.FetchedPage{URL: target}, nil
 	}), denylist)
-	page, err := fetcher.Fetch(t.Context(), target)
+	page, err := fetcher.Fetch(t.Context(), pagefetch.FetchRequest{Target: target})
 	if err != nil || page.URL.String() != target.String() {
 		t.Fatalf("allowed fetch = %+v, %v", page, err)
 	}
@@ -193,7 +200,13 @@ func TestAdmissionFetcherReturnsAllowedPageAndInnerError(t *testing.T) {
 	) (pagefetch.FetchedPage, error) {
 		return pagefetch.FetchedPage{}, want
 	}), denylist)
-	if _, err := fetcher.Fetch(t.Context(), target); !errors.Is(err, want) {
+	if _, err := fetcher.Fetch(
+		t.Context(),
+		pagefetch.FetchRequest{Target: target},
+	); !errors.Is(
+		err,
+		want,
+	) {
 		t.Fatalf("inner error = %v, want %v", err, want)
 	}
 	if denylist.Blocks("%zz") || denylist.Blocks("mailto:person@example.com") {

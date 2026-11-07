@@ -29,6 +29,7 @@ func TestAssembleNodeLeavesRemoteCrawlObserverDetachedWhenDisabled(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	crawl.ListenAddr = "127.0.0.1:0"
 	config.Crawl = crawl
 	assembled := assembleTestNode(t, config, openTestVault(t))
 	runtime, ok := assembled.crawl.(*crawlRuntime)

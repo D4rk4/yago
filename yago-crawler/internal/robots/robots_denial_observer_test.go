@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yago-crawler/internal/robots"
 )
 
@@ -25,13 +26,13 @@ func TestRobotsAdmissionRecordsDenial(t *testing.T) {
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, server.URL+"/private/secret"),
+		pagefetch.FetchRequest{Target: mustParse(t, server.URL+"/private/secret")},
 	); err == nil {
 		t.Fatal("expected robots rejection")
 	}
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, server.URL+"/public"),
+		pagefetch.FetchRequest{Target: mustParse(t, server.URL+"/public")},
 	); err != nil {
 		t.Fatalf("allow public: %v", err)
 	}
@@ -53,7 +54,7 @@ func TestRobotsAdmissionNilDenialObserverStaysNoop(t *testing.T) {
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, server.URL+"/private/x"),
+		pagefetch.FetchRequest{Target: mustParse(t, server.URL+"/private/x")},
 	); err == nil {
 		t.Fatal("expected robots rejection")
 	}

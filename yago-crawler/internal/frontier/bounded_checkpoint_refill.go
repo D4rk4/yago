@@ -131,6 +131,7 @@ func checkpointCandidate(page frontiercheckpoint.Page, provenance []byte) fronti
 		profileHandle:    page.ProfileHandle,
 		provenance:       provenance,
 		sourceModifiedAt: page.SourceModifiedAt,
+		conditionalFetch: page.ConditionalFetch,
 		indexAllowed:     page.Index,
 		observationID:    page.ObservationID,
 		observedAt:       page.ObservedAt,

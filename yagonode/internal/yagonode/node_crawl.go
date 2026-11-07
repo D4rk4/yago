@@ -41,6 +41,7 @@ type crawlRuntime struct {
 	initiator      yagomodel.Hash
 	pageBudget     *crawlRunPageBudget
 	remoteCrawl    remoteCrawlOrderObserver
+	conditional    conditionalRecrawl
 	indexImport    adminui.IndexImporter
 	frontierImport adminui.CrawlOrderImporter
 }
@@ -67,7 +68,7 @@ func buildCrawlRuntime(
 		config,
 		storage,
 		storageVault,
-		coordination.broker,
+		coordination.broker.Ingest,
 	)
 	if err != nil {
 		return nil, coordination.openFailure(err)
@@ -85,6 +86,7 @@ func buildCrawlRuntime(
 		profiles:   newCrawlProfileDispatchRegistry(ingest.frontier),
 		initiator:  identity.Hash,
 		pageBudget: newCrawlRunPageBudget(config.MaxPagesPerRun),
+		conditional: ingest.conditional,
 	}
 	importer := newDocumentImportService(
 		storage.documentDirectory,

@@ -49,7 +49,7 @@ func TestPageFetcherReturnsHTMLPage(t *testing.T) {
 		server.Client(),
 		"crawler/1.0",
 		0,
-	).Fetch(context.Background(), mustParse(t, server.URL))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestPageFetcherReturnsFinalRedirectURL(t *testing.T) {
 		server.Client(),
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, server.URL+"/start"))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL+"/start")})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -108,7 +108,8 @@ func TestPageFetcherUsesTargetWhenResponseRequestIsMissing(t *testing.T) {
 	)}
 	target := mustParse(t, "https://example.com/page")
 
-	page, err := httpfetch.NewPageFetcher(client, "", 0).Fetch(context.Background(), target)
+	page, err := httpfetch.NewPageFetcher(client, "", 0).
+		Fetch(context.Background(), pagefetch.FetchRequest{Target: target})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -127,7 +128,7 @@ func TestPageFetcherDetectsHTMLContentType(t *testing.T) {
 		server.Client(),
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, server.URL))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -147,7 +148,7 @@ func TestPageFetcherCapsBody(t *testing.T) {
 		server.Client(),
 		"",
 		9,
-	).Fetch(context.Background(), mustParse(t, server.URL))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -166,7 +167,7 @@ func TestPageFetcherRejectsNonSuccessStatus(t *testing.T) {
 		server.Client(),
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, server.URL))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
 	if !errors.Is(err, pagefetch.ErrPageRejected) {
 		t.Fatalf("error = %v, want page rejected", err)
 	}
@@ -192,7 +193,7 @@ func TestPageFetcherPassesNonHTMLContentTypes(t *testing.T) {
 		server.Client(),
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, server.URL))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -215,7 +216,7 @@ func TestPageFetcherSniffsMissingContentType(t *testing.T) {
 		server.Client(),
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, server.URL))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -237,7 +238,7 @@ func TestPageFetcherSniffsMissingContentType(t *testing.T) {
 		client,
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, "https://example.com/"))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")})
 	if err != nil {
 		t.Fatalf("empty-body fetch: %v", err)
 	}
@@ -266,7 +267,7 @@ func TestPageFetcherReturnsBodyReadError(t *testing.T) {
 		client,
 		"",
 		0,
-	).Fetch(context.Background(), mustParse(t, "https://example.com/"))
+	).Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
@@ -281,7 +282,7 @@ func TestPageFetcherReturnsRequestAndNetworkErrors(t *testing.T) {
 			http.DefaultClient,
 			"",
 			0,
-		).Fetch(context.Background(), target)
+		).Fetch(context.Background(), pagefetch.FetchRequest{Target: target})
 		if err == nil {
 			t.Fatalf("target %#v should fail", target)
 		}
@@ -321,19 +322,28 @@ func TestPageFetcherSignalsThrottleWithRetryAfter(t *testing.T) {
 	defer server.Close()
 	fetcher := httpfetch.NewPageFetcher(server.Client(), "", 1<<20)
 
-	_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/throttled"))
+	_, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, server.URL+"/throttled")},
+	)
 	throttled, ok := pagefetch.AsThrottled(err)
 	if !ok || throttled.Status != http.StatusTooManyRequests ||
 		throttled.RetryAfter != 2*time.Minute {
 		t.Fatalf("throttle = %#v, %v", throttled, ok)
 	}
 
-	_, err = fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/unavailable"))
+	_, err = fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, server.URL+"/unavailable")},
+	)
 	if throttled, ok = pagefetch.AsThrottled(err); !ok || throttled.RetryAfter != 0 {
 		t.Fatalf("503 throttle = %#v, %v", throttled, ok)
 	}
 
-	_, err = fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/missing"))
+	_, err = fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, server.URL+"/missing")},
+	)
 	if _, ok = pagefetch.AsThrottled(err); ok || !errors.Is(err, pagefetch.ErrPageRejected) {
 		t.Fatalf("404 error = %v", err)
 	}
@@ -361,7 +371,10 @@ func TestPageFetcherSignalsGoneOnDeadStatus(t *testing.T) {
 	fetcher := httpfetch.NewPageFetcher(server.Client(), "", 1<<20)
 
 	for _, path := range []string{"/notfound", "/gone"} {
-		_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+path))
+		_, err := fetcher.Fetch(
+			context.Background(),
+			pagefetch.FetchRequest{Target: mustParse(t, server.URL+path)},
+		)
 		var gone *pagefetch.GoneError
 		if !errors.As(err, &gone) || !errors.Is(err, pagefetch.ErrPageRejected) {
 			t.Fatalf("%s error = %v, want GoneError", path, err)
@@ -369,14 +382,20 @@ func TestPageFetcherSignalsGoneOnDeadStatus(t *testing.T) {
 	}
 
 	for _, path := range []string{"/forbidden", "/error"} {
-		_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+path))
+		_, err := fetcher.Fetch(
+			context.Background(),
+			pagefetch.FetchRequest{Target: mustParse(t, server.URL+path)},
+		)
 		var gone *pagefetch.GoneError
 		if errors.As(err, &gone) || !errors.Is(err, pagefetch.ErrPageRejected) {
 			t.Fatalf("%s error = %v, want plain rejection", path, err)
 		}
 	}
 
-	_, err := fetcher.Fetch(context.Background(), mustParse(t, server.URL+"/unavailable"))
+	_, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, server.URL+"/unavailable")},
+	)
 	var gone *pagefetch.GoneError
 	if errors.As(err, &gone) {
 		t.Fatalf("503 error = %v, must not be gone", err)

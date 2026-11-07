@@ -149,7 +149,11 @@ func (*recordingFrontier) RecordHostFetchOutcome(
 
 type fetchFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
-func (f fetchFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+func (f fetchFunc) Fetch(
+	ctx context.Context,
+	request pagefetch.FetchRequest,
+) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return f(ctx, target)
 }
 

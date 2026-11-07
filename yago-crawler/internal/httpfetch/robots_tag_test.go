@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/httpfetch"
+	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
 )
 
 func TestPageFetcherCapturesXRobotsTag(t *testing.T) {
@@ -18,7 +19,7 @@ func TestPageFetcherCapturesXRobotsTag(t *testing.T) {
 	defer server.Close()
 
 	page, err := httpfetch.NewPageFetcher(server.Client(), "", 0).
-		Fetch(context.Background(), mustParse(t, server.URL))
+		Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -35,7 +36,7 @@ func TestPageFetcherLeavesRobotsTagEmptyWhenAbsent(t *testing.T) {
 	defer server.Close()
 
 	page, err := httpfetch.NewPageFetcher(server.Client(), "", 0).
-		Fetch(context.Background(), mustParse(t, server.URL))
+		Fetch(context.Background(), pagefetch.FetchRequest{Target: mustParse(t, server.URL)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}

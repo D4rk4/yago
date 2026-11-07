@@ -55,9 +55,11 @@ it in the same atomic checkpoint, and publishes an immutable snapshot before
 listeners open. Four endpoint requests are admitted concurrently; they only
 read the snapshot and never start or wait for a document-store scan.
 The peer message endpoint `/yacy/message.html` supports permission checks and
-stores inbound peer messages; `iam` is optional, permission checks ignore
-post-only body fields, and attachments are advertised as size `0`. These match
-the public P2P surfaces exposed by original YaCy peers.
+stores inbound peer messages. Permission checks ignore post-only body fields.
+A `process=post` message is accepted only when `iam` is present and equal to the
+posted `myseed` hash; permission requests do not require `iam`. Attachments are
+advertised as size `0`. These match the public P2P surfaces exposed by original
+YaCy peers.
 
 The remote search endpoint `/yacy/search.html` returns YaCy key-value rows with
 `searchtime`, `references`, `joincount`, `count`, `resourceN`, `indexcount.*`,
@@ -163,3 +165,26 @@ stable YaCy wire shapes.
 authentication failure and missing required fields before accepting RWI rows.
 `/yacy/transferURL.html` preserves upstream network-auth failure behavior by
 returning no transferURL result fields before target handling.
+
+Outbound hello, transferRWI, and transferURL POSTs are encoded as
+`multipart/form-data`. Java YaCy accepts transfers larger than 200,000 bytes in
+this encoding. Inbound intake parses both `multipart/form-data` and
+`application/x-www-form-urlencoded`, so these nodes interoperate with peers
+that still send URL-encoded bodies.
+
+Outbound peer-protocol calls refuse every 3xx redirect and return the redirect
+status to the caller instead of replaying the request at the destination. Only
+peer-protocol clients refuse redirects; seedlist downloads and the generic
+crawler, admin, and web-fetch clients keep their existing redirect behavior.
+
+The outbound hello greeting and the hello back-ping remember the exact scheme,
+host, and port at which a peer last answered directly with its own identity. The
+next greeting or back-ping tries that endpoint first, but only while the peer
+still advertises it and the current HTTPS preference and egress rules still
+allow it; otherwise the advertised order applies unchanged. Gossip, failed
+requests, redirects, malformed answers, and answers from another peer leave
+nothing behind. When HTTPS is preferred, a peer advertised by DNS name is also
+tried at `https://<name>:443` before its plain HTTP endpoints; peers advertised
+by IP address are not. All attempts share one deadline. Remote search,
+transferRWI, and transferURL keep the advertised endpoint order. Seeds sent to
+other peers are unchanged.

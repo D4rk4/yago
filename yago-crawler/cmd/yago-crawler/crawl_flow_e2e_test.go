@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -31,8 +30,9 @@ func newCountingSource(pages map[string]string) *countingSource {
 
 func (s *countingSource) Fetch(
 	_ context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	path := target.Path
 	if path == "" {
 		path = "/"

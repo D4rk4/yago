@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -185,43 +186,45 @@ func TestSeedlistsPreserveFreshnessDeduplicateAndRejectStaleDates(t *testing.T) 
 }
 
 func TestSeedlistsRetainFastSourceWhenAggregateDeadlineCancelsSlowSource(t *testing.T) {
-	slowCanceled := make(chan struct{})
-	client := &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if req.URL.Host == "slow.test" {
-				<-req.Context().Done()
-				close(slowCanceled)
+	synctest.Test(t, func(t *testing.T) {
+		slowCanceled := make(chan struct{})
+		client := &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Host == "slow.test" {
+					<-req.Context().Done()
+					close(slowCanceled)
 
-				return nil, req.Context().Err()
-			}
+					return nil, req.Context().Err()
+				}
 
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body: io.NopCloser(strings.NewReader(
-					seedlistLine(t, "AAAAAAAAAAAA", "203.0.113.1"),
-				)),
-			}, nil
-		}),
-	}
-	source := New(client, []string{
-		"http://fast.test/seeds",
-		"http://slow.test/seeds",
-	}).(*seedlists)
-	source.timeout = 40 * time.Millisecond
-	source.concurrency = 2
-	started := time.Now()
-	seeds := source.Fetch(t.Context())
-	if len(seeds) != 1 || seeds[0].Hash != yagomodel.Hash("AAAAAAAAAAAA") {
-		t.Fatalf("partial aggregate seeds = %#v", seeds)
-	}
-	if elapsed := time.Since(started); elapsed >= 250*time.Millisecond {
-		t.Fatalf("partial aggregate took %s", elapsed)
-	}
-	select {
-	case <-slowCanceled:
-	case <-time.After(time.Second):
-		t.Fatal("slow seedlist request did not observe aggregate cancellation")
-	}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body: io.NopCloser(strings.NewReader(
+						seedlistLine(t, "AAAAAAAAAAAA", "203.0.113.1"),
+					)),
+				}, nil
+			}),
+		}
+		source := New(client, []string{
+			"http://fast.test/seeds",
+			"http://slow.test/seeds",
+		}).(*seedlists)
+		source.timeout = 40 * time.Millisecond
+		source.concurrency = 2
+		started := time.Now()
+		seeds := source.Fetch(t.Context())
+		if len(seeds) != 1 || seeds[0].Hash != yagomodel.Hash("AAAAAAAAAAAA") {
+			t.Fatalf("partial aggregate seeds = %#v", seeds)
+		}
+		if elapsed := time.Since(started); elapsed >= 250*time.Millisecond {
+			t.Fatalf("partial aggregate took %s", elapsed)
+		}
+		select {
+		case <-slowCanceled:
+		case <-time.After(time.Second):
+			t.Fatal("slow seedlist request did not observe aggregate cancellation")
+		}
+	})
 }
 
 func TestSeedlistsBoundWholeRefreshAcrossMultipleSources(t *testing.T) {

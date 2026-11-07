@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -58,14 +59,16 @@ func (p callerBackPing) ReachableCaller(
 	caller yagomodel.Seed,
 	self yagomodel.Hash,
 	networkName string,
-) (yagomodel.Seed, bool) {
+	answered yagomodel.Optional[peerwire.Endpoint],
+) (yagomodel.Seed, yagomodel.Optional[peerwire.Endpoint]) {
+	unanswered := yagomodel.None[peerwire.Endpoint]()
 	probeContext, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
-	targets, err := caller.ProtocolEndpoints(yagoproto.PathQuery, p.preferHTTPS)
+	targets, err := peerwire.ContactEndpoints(caller, yagoproto.PathQuery, p.preferHTTPS, answered)
 	if err != nil {
 		slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
-		return caller, false
+		return caller, unanswered
 	}
 
 	query := yagoproto.QueryRequest{
@@ -82,14 +85,14 @@ func (p callerBackPing) ReachableCaller(
 		if err := p.signForm(access, form); err != nil {
 			slog.DebugContext(ctx, callerBackPingUnreachableMessage, slog.Any("error", err))
 
-			return caller, false
+			return caller, unanswered
 		}
 	}
 	rawQuery := form.Encode()
 
 	for index, target := range targets {
 		if probeContext.Err() != nil {
-			return caller, false
+			return caller, unanswered
 		}
 		attemptContext, cancelAttempt := backPingAttemptContext(
 			probeContext,
@@ -115,10 +118,10 @@ func (p callerBackPing) ReachableCaller(
 			continue
 		}
 		contactedHost, _ := yagomodel.ParseHost(target.Hostname())
-		return caller.WithPrimaryHost(contactedHost), true
+		return caller.WithPrimaryHost(contactedHost), yagomodel.Some(peerwire.EndpointAt(target))
 	}
 
-	return caller, false
+	return caller, unanswered
 }
 
 func (p callerBackPing) confirmClose(ctx context.Context, resp *http.Response) bool {

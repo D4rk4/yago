@@ -85,8 +85,19 @@ func (f fakeReferences) ReferencedURLCount(context.Context) (int, error) {
 }
 
 type fakePostings struct {
-	purged []yagomodel.Hash
-	err    error
+	purged     []yagomodel.Hash
+	err        error
+	waiting    []yagomodel.Hash
+	waitingErr error
+}
+
+func (f *fakePostings) DropWaitingOutboundPostings(_ *vault.Txn, urls []yagomodel.Hash) error {
+	if f.waitingErr != nil {
+		return f.waitingErr
+	}
+	f.waiting = append(f.waiting, urls...)
+
+	return nil
 }
 
 func (f *fakePostings) PurgePosting(

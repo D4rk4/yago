@@ -470,6 +470,7 @@ type frontierCandidate struct {
 	profileHandle    string
 	provenance       []byte
 	sourceModifiedAt time.Time
+	conditionalFetch *yagocrawlcontract.ConditionalFetch
 	indexAllowed     bool
 	observationID    string
 	observedAt       time.Time
@@ -482,6 +483,7 @@ type pendingPage struct {
 	depth            int
 	profileHandle    string
 	sourceModifiedAt time.Time
+	conditionalFetch *yagocrawlcontract.ConditionalFetch
 	indexAllowed     bool
 	observationID    string
 	observedAt       time.Time

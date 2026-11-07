@@ -19,14 +19,15 @@ type redirectTestPageSource func(
 
 func (source redirectTestPageSource) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return source(ctx, target)
 }
 
 func (source *maximumRedirectsSource) Fetch(
 	context.Context,
-	*url.URL,
+	pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
 	return pagefetch.FetchedPage{}, nil
 }

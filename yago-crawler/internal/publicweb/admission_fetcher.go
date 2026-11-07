@@ -35,12 +35,12 @@ func NewAdmissionFetcher(
 
 func (f *AdmissionFetcher) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
-	if err := f.admit(ctx, target); err != nil {
+	if err := f.admit(ctx, request.Target); err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("target: %w", err)
 	}
-	page, err := f.inner.Fetch(ctx, target)
+	page, err := f.inner.Fetch(ctx, request)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("inner fetch: %w", err)
 	}

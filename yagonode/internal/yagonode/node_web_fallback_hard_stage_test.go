@@ -4,57 +4,60 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 )
 
 func TestWebFallbackExactStageReturnsBeforeUncooperativeWorkStops(t *testing.T) {
-	inner := &blockingInteractiveSearch{
-		started:  make(chan struct{}),
-		release:  make(chan struct{}),
-		finished: make(chan struct{}),
-	}
-	admission := newInteractiveSearchAdmission(1)
-	searcher := webFallbackExactStageBudgetSearcher{
-		inner: inner, permit: func(searchcore.Request) bool { return true },
-		budget: 20 * time.Millisecond, grace: 10 * time.Millisecond,
-		admission: admission, panicLog: discardInteractiveSearchPanic,
-	}
-
-	started := time.Now()
-	response, err := searcher.Search(
-		t.Context(),
-		searchcore.Request{Query: "slow", Terms: []string{"slow"}},
-	)
-	if err != nil || time.Since(started) > 200*time.Millisecond ||
-		len(response.PartialFailures) != 1 ||
-		response.PartialFailures[0].Reason != webFallbackExactStageTimeoutFailure {
-		t.Fatalf("response = %#v, error = %v", response, err)
-	}
-	if len(admission.slots) != 1 {
-		t.Fatalf("active exact stages = %d", len(admission.slots))
-	}
-	busy, err := searcher.Search(t.Context(), searchcore.Request{Query: "busy"})
-	if err != nil || len(busy.PartialFailures) != 1 ||
-		busy.PartialFailures[0].Reason != webFallbackExactStageCapacityFailure ||
-		inner.calls.Load() != 1 {
-		t.Fatalf("busy = %#v, error = %v, calls = %d", busy, err, inner.calls.Load())
-	}
-
-	close(inner.release)
-	select {
-	case <-inner.finished:
-	case <-time.After(time.Second):
-		t.Fatal("exact work did not finish")
-	}
-	deadline := time.Now().Add(time.Second)
-	for len(admission.slots) != 0 {
-		if time.Now().After(deadline) {
-			t.Fatal("exact admission was not released")
+	synctest.Test(t, func(t *testing.T) {
+		inner := &blockingInteractiveSearch{
+			started:  make(chan struct{}),
+			release:  make(chan struct{}),
+			finished: make(chan struct{}),
 		}
-		time.Sleep(time.Millisecond)
-	}
+		admission := newInteractiveSearchAdmission(1)
+		searcher := webFallbackExactStageBudgetSearcher{
+			inner: inner, permit: func(searchcore.Request) bool { return true },
+			budget: 20 * time.Millisecond, grace: 10 * time.Millisecond,
+			admission: admission, panicLog: discardInteractiveSearchPanic,
+		}
+
+		started := time.Now()
+		response, err := searcher.Search(
+			t.Context(),
+			searchcore.Request{Query: "slow", Terms: []string{"slow"}},
+		)
+		if err != nil || time.Since(started) > 200*time.Millisecond ||
+			len(response.PartialFailures) != 1 ||
+			response.PartialFailures[0].Reason != webFallbackExactStageTimeoutFailure {
+			t.Fatalf("response = %#v, error = %v", response, err)
+		}
+		if len(admission.slots) != 1 {
+			t.Fatalf("active exact stages = %d", len(admission.slots))
+		}
+		busy, err := searcher.Search(t.Context(), searchcore.Request{Query: "busy"})
+		if err != nil || len(busy.PartialFailures) != 1 ||
+			busy.PartialFailures[0].Reason != webFallbackExactStageCapacityFailure ||
+			inner.calls.Load() != 1 {
+			t.Fatalf("busy = %#v, error = %v, calls = %d", busy, err, inner.calls.Load())
+		}
+
+		close(inner.release)
+		select {
+		case <-inner.finished:
+		case <-time.After(time.Second):
+			t.Fatal("exact work did not finish")
+		}
+		deadline := time.Now().Add(time.Second)
+		for len(admission.slots) != 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("exact admission was not released")
+			}
+			time.Sleep(time.Millisecond)
+		}
+	})
 }
 
 func TestWebFallbackExactStageWrapsUnbudgetedError(t *testing.T) {

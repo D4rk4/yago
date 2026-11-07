@@ -3,6 +3,7 @@ package crawlorder
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/boundedqueue"
@@ -22,7 +23,9 @@ func TestReplacementLeaseRebindsActiveRunWithoutStaleAdmissionLoop(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			runReplacementLeaseRebinding(t, test.name, test.revoke)
+			synctest.Test(t, func(t *testing.T) {
+				runReplacementLeaseRebinding(t, test.name, test.revoke)
+			})
 		})
 	}
 }

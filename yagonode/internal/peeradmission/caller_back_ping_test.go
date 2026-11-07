@@ -11,9 +11,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -97,13 +99,14 @@ func TestCallerBackPingFallsBackAndReturnsWinningAddress(t *testing.T) {
 		}),
 	}
 
-	verified, reachable := newCallerBackPing(client, false).ReachableCaller(
+	verified, answered := newCallerBackPing(client, false).ReachableCaller(
 		t.Context(),
 		caller,
 		hashFor("self"),
 		"freeworld",
+		yagomodel.None[peerwire.Endpoint](),
 	)
-	if !reachable {
+	if !answered.Present() {
 		t.Fatal("alternate address was not reachable")
 	}
 	address, ok := verified.NetworkAddress()
@@ -134,12 +137,13 @@ func TestCallerBackPingSharesOneDeadlineAcrossAddresses(t *testing.T) {
 	}, false)
 	probe.timeout = 200 * time.Millisecond
 	started := time.Now()
-	if _, reachable := probe.ReachableCaller(
+	if _, answered := probe.ReachableCaller(
 		t.Context(),
 		caller,
 		hashFor("self"),
 		"freeworld",
-	); reachable {
+		yagomodel.None[peerwire.Endpoint](),
+	); answered.Present() {
 		t.Fatal("timed-out caller was reported reachable")
 	}
 	if attempts != 2 {
@@ -169,7 +173,9 @@ func TestCallerBackPingStopsFallbackOnCancellation(t *testing.T) {
 		}),
 	}, false)
 
-	if _, reachable := probe.ReachableCaller(ctx, caller, hashFor("self"), "freeworld"); reachable {
+	if _, answered := probe.ReachableCaller(
+		ctx, caller, hashFor("self"), "freeworld", yagomodel.None[peerwire.Endpoint](),
+	); answered.Present() {
 		t.Fatal("canceled caller was reported reachable")
 	}
 	if attempts != 1 || !errors.Is(ctx.Err(), context.Canceled) {
@@ -347,31 +353,33 @@ func TestCallerBackPingRejectsNegativeQueryResponse(t *testing.T) {
 }
 
 func TestCallerBackPingBoundsBlackholedCallback(t *testing.T) {
-	requestFinished := make(chan error, 1)
-	probe := newCallerBackPing(&http.Client{
-		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			<-request.Context().Done()
-			requestFinished <- request.Context().Err()
+	synctest.Test(t, func(t *testing.T) {
+		requestFinished := make(chan error, 1)
+		probe := newCallerBackPing(&http.Client{
+			Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				<-request.Context().Done()
+				requestFinished <- request.Context().Err()
 
-			return nil, request.Context().Err()
-		}),
-	}, false)
-	probe.timeout = time.Millisecond
-	started := time.Now()
-	if probe.Reachable(
-		t.Context(),
-		callerSeed(t, "peer", "203.0.113.1", 8090),
-		hashFor("self"),
-		"freeworld",
-	) {
-		t.Fatal("Reachable = true, want false for a timed-out callback")
-	}
-	if !errors.Is(<-requestFinished, context.DeadlineExceeded) {
-		t.Fatal("callback did not finish at the probe deadline")
-	}
-	if elapsed := time.Since(started); elapsed >= time.Second {
-		t.Fatalf("bounded callback elapsed = %v", elapsed)
-	}
+				return nil, request.Context().Err()
+			}),
+		}, false)
+		probe.timeout = time.Millisecond
+		started := time.Now()
+		if probe.Reachable(
+			t.Context(),
+			callerSeed(t, "peer", "203.0.113.1", 8090),
+			hashFor("self"),
+			"freeworld",
+		) {
+			t.Fatal("Reachable = true, want false for a timed-out callback")
+		}
+		if !errors.Is(<-requestFinished, context.DeadlineExceeded) {
+			t.Fatal("callback did not finish at the probe deadline")
+		}
+		if elapsed := time.Since(started); elapsed >= time.Second {
+			t.Fatalf("bounded callback elapsed = %v", elapsed)
+		}
+	})
 }
 
 func TestCallerBackPingUsesCompatibilityBudgets(t *testing.T) {

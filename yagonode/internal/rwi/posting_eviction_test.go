@@ -11,9 +11,12 @@ import (
 
 type recordingObserver struct {
 	purged []yagomodel.Hash
+	stored []yagomodel.Hash
 }
 
-func (o *recordingObserver) PostingStored(_ *vault.Txn, _, _ yagomodel.Hash) error {
+func (o *recordingObserver) PostingStored(_ *vault.Txn, word, url yagomodel.Hash) error {
+	o.stored = append(o.stored, word)
+
 	return nil
 }
 

@@ -18,6 +18,13 @@ type redirectPurgePostingScript struct {
 	purged int
 }
 
+func (s *redirectPurgePostingScript) DropWaitingOutboundPostings(
+	*vault.Txn,
+	[]yagomodel.Hash,
+) error {
+	return nil
+}
+
 func (s *redirectPurgePostingScript) PurgePosting(
 	*vault.Txn,
 	yagomodel.Hash,

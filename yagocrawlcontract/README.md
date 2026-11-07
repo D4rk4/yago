@@ -194,6 +194,100 @@ recrawl scheduler accepts only non-future hints. A hint may advance scheduling
 within the profile cadence, but stale or unchanged values do not create an
 immediate loop.
 
+## Conditional recrawl
+
+Status: implemented. The node keeps the origin validators of each stored page
+and sends them on the page's next due recrawl. The crawler asks the origin
+whether the page changed and reports a "not modified" answer instead of
+fetching the page again. The node confirms that answer only after it has
+committed its record of it.
+
+A crawl request may carry `ConditionalFetch`. It holds the HTTP validators of
+the stored document (`Validators`) and that document's revision (`Revision`)
+at the moment the node issued the order. A revision is the stored document's
+content hash, extraction generation, and fetch time. A request without
+`ConditionalFetch` is fetched unconditionally. The validators are the origin's
+`ETag` and `Last-Modified` header values. They are separate from the sitemap
+`LastModified` hint above.
+
+An ingest batch may carry `ResponseValidators`, the validators the origin sent
+with the fetched representation. A batch may instead carry `NotModified`, which
+reports that the origin answered "not modified" and echoes the issued revision.
+The crawler attaches origin validators only when they follow the rules below;
+it leaves out invalid ones instead of failing the page.
+
+The crawler checks conditional fetch values on every received order and the
+payload of every batch it submits. The node checks batch payloads on every
+submitted batch. Values are never truncated or repaired; a value that breaks a
+rule is refused:
+
+- An `ETag` is `"opaque"` or `W/"opaque"`. The weak prefix is case sensitive.
+  Opaque characters are printable ASCII except the double quote. The whole
+  value, prefix and quotes included, is at most `MaximumHTTPValidatorBytes`
+  bytes and travels unchanged.
+- A `Last-Modified` value is exactly one HTTP date in one of these forms, with a
+  weekday that matches the date: `Sun, 06 Nov 1994 08:49:37 GMT`,
+  `Sunday, 06-Nov-94 08:49:37 GMT`, or `Sun Nov  6 08:49:37 1994`. It travels
+  unchanged.
+- A validators value that is present carries at least one validator.
+- A revision carries all three parts. A page without a stored document has no
+  revision and gets no conditional fetch. The content hash is at most
+  `MaximumDocumentMetadataBytes` bytes.
+- A conditional fetch carries valid validators and a valid revision, and only a
+  `url` request may carry one. An order that breaks these rules is terminated
+  like any other invalid order.
+- A batch carries one payload: a removal, a document (document content,
+  postings, or URL metadata), or a not-modified observation. A batch that mixes
+  them is refused.
+- Origin validators ride only on a document or a not-modified observation. A
+  removal or source-only batch that carries them is refused.
+- A not-modified observation carries the source URL, an observation ID, and a
+  complete revision.
+
+Two revisions match when the content hash and extraction generation are equal
+and both fetch times name the same instant.
+
+`IngestAck.not_modified_recorded` reports that the node committed its record of
+a not-modified observation. A crawler that sent one and receives an
+acknowledgement without that flag treats the observation as not recorded,
+whatever else the acknowledgement says. It discards the validators and fetches
+the page again unconditionally within the same lease.
+
+The node keeps the validators of a full fetch only after it has stored that
+document, and only when they follow the rules above. It sends them on the
+page's next due recrawl only while the stored document is still present, still
+has the current extraction generation, and still has the revision the
+validators were kept for. Otherwise the recrawl is unconditional.
+
+The node answers a not-modified observation as follows:
+
+- It records the observation and sets `not_modified_recorded` when the
+  observation comes from the page's crawl profile, its revision matches the
+  stored document and the kept validators, and it is not older than the last
+  observation the node recorded for the page. Recording schedules the page's
+  next recrawl from the observation time and any sitemap `lastmod` hint, and
+  keeps any newer valid validators.
+  The stored document, its full-text entry, its postings, and its URL metadata
+  stay unchanged.
+- A replayed observation with the same revision and observation time is
+  confirmed again without a second change, even when its observation ID is new.
+- It acknowledges every other valid not-modified observation without the flag
+  and records nothing: a changed or removed page, a page that is no longer
+  scheduled for recrawl, a revision the node did not issue, and an observation
+  older than one it already recorded.
+- It asks the crawler to retry later (`Unavailable`) when it cannot read or
+  write its records, so an observation is never confirmed without a committed
+  record.
+- It refuses an observation from a stale lease or a replaced worker session
+  (`FailedPrecondition`) like any other ingest batch.
+
+The full batch from that second fetch is a new observation. Its observation ID
+differs from the not-modified observation's, and its observation time orders
+after it, so a node that kept the not-modified batch as a source-only
+observation still stores the document. The crawler gives a not-modified
+observation a fresh observation ID and an observation time one nanosecond
+before the page's own, which the full batch keeps.
+
 ## Backpressure
 
 Every streamed order has a durable lease ID. `AckOrder` deletes completed work;
@@ -307,6 +401,22 @@ index keys for already consumed orders are removed during selection. The
 priority of an unsettled lease created by the older node is recovered from its
 retained order payload. The intermediate split-payload development format is
 migrated at startup.
+
+Conditional recrawl fields are additive JSON and are omitted when absent. Older
+decoders ignore them, and orders, batches, and crawler checkpoint pages written
+before them decode as unconditional work. The node keeps validators in additive
+fields of its recrawl schedule; a schedule without them is stored exactly as
+before.
+
+Rolling back to a release without conditional recrawl needs no drain, because
+every page falls back to a full fetch:
+
+- An older node ignores the validators kept in its recrawl schedule and
+  recrawls the page unconditionally.
+- An older crawler ignores `ConditionalFetch` and fetches the page
+  unconditionally.
+- An older node never confirms a not-modified observation, so a current crawler
+  fetches the page again in full.
 
 The process-session, active-lease, recovered-order framing, lease-bound
 ingest/progress, rich terminal settlement, and confirmation-token fields are

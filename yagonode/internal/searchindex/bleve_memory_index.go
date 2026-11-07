@@ -679,5 +679,5 @@ func snippet(text string, fallback string) string {
 		return normalizedSnippetWindow(text, false, fallback)
 	}
 
-	return snippetAtByte(text, 0, fallback)
+	return boundedSnippet(text, TextQueryEvidence{}, fallback)
 }

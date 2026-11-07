@@ -13,8 +13,9 @@ type sourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
 func (f sourceFunc) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return f(ctx, target)
 }
 
@@ -30,7 +31,7 @@ func TestFallbackPageSourceReturnsPrimaryPage(t *testing.T) {
 		}),
 	)
 
-	page, err := source.Fetch(context.Background(), exampleURL(t))
+	page, err := source.Fetch(context.Background(), pagefetch.FetchRequest{Target: exampleURL(t)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -52,7 +53,7 @@ func TestFallbackPageSourceUsesFallbackForRejectedPrimary(t *testing.T) {
 		}),
 	)
 
-	page, err := source.Fetch(context.Background(), exampleURL(t))
+	page, err := source.Fetch(context.Background(), pagefetch.FetchRequest{Target: exampleURL(t)})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestFallbackPageSourceSkipsBrowserForUnsupportedContentType(t *testing.T) {
 		}),
 	)
 
-	_, err := source.Fetch(context.Background(), exampleURL(t))
+	_, err := source.Fetch(context.Background(), pagefetch.FetchRequest{Target: exampleURL(t)})
 	if !errors.Is(err, pagefetch.ErrUnsupportedContentType) {
 		t.Fatalf("error = %v, want unsupported content type", err)
 	}
@@ -93,7 +94,7 @@ func TestFallbackPageSourceReturnsPrimaryFetchError(t *testing.T) {
 		}),
 	)
 
-	_, err := source.Fetch(context.Background(), exampleURL(t))
+	_, err := source.Fetch(context.Background(), pagefetch.FetchRequest{Target: exampleURL(t)})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
@@ -110,7 +111,7 @@ func TestFallbackPageSourceReturnsFallbackFetchError(t *testing.T) {
 		}),
 	)
 
-	_, err := source.Fetch(context.Background(), exampleURL(t))
+	_, err := source.Fetch(context.Background(), pagefetch.FetchRequest{Target: exampleURL(t)})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
@@ -127,7 +128,7 @@ func TestFallbackPageSourcePreservesPrimaryStatusWhenBrowserFails(t *testing.T) 
 		}),
 	)
 
-	_, err := source.Fetch(context.Background(), exampleURL(t))
+	_, err := source.Fetch(context.Background(), pagefetch.FetchRequest{Target: exampleURL(t)})
 	statusError, ok := pagefetch.AsHTTPStatus(err)
 	if !ok || statusError.Status != 502 {
 		t.Fatalf("primary status = %v, %t", statusError, ok)
@@ -160,7 +161,7 @@ func TestFallbackPageSourceSkipsBrowserOnThrottle(t *testing.T) {
 		}),
 	)
 
-	_, err := source.Fetch(context.Background(), exampleURL(t))
+	_, err := source.Fetch(context.Background(), pagefetch.FetchRequest{Target: exampleURL(t)})
 	if _, ok := pagefetch.AsThrottled(err); !ok {
 		t.Fatalf("throttle signal lost: %v", err)
 	}
@@ -186,7 +187,7 @@ func TestFallbackPageSourceSkipsBrowserForGonePage(t *testing.T) {
 		}),
 	)
 
-	_, err := source.Fetch(context.Background(), exampleURL(t))
+	_, err := source.Fetch(context.Background(), pagefetch.FetchRequest{Target: exampleURL(t)})
 	if _, ok := pagefetch.AsGone(err); !ok {
 		t.Fatalf("gone signal lost through fallback: %v", err)
 	}
@@ -213,7 +214,13 @@ func TestFallbackPageSourceHonorsBrowserOptOut(t *testing.T) {
 	)
 
 	ctx := pagefetch.WithoutBrowserFallback(context.Background())
-	if _, err := source.Fetch(ctx, exampleURL(t)); !errors.Is(err, pagefetch.ErrPageRejected) {
+	if _, err := source.Fetch(
+		ctx,
+		pagefetch.FetchRequest{Target: exampleURL(t)},
+	); !errors.Is(
+		err,
+		pagefetch.ErrPageRejected,
+	) {
 		t.Fatalf("rejection lost: %v", err)
 	}
 	if fallbackCalls != 0 {

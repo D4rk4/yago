@@ -36,7 +36,11 @@ type permanentFailure interface {
 	Permanent() bool
 }
 
-func (f fetchFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+func (f fetchFunc) Fetch(
+	ctx context.Context,
+	request pagefetch.FetchRequest,
+) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return f(ctx, target)
 }
 
@@ -59,7 +63,10 @@ func TestAdmissionFetcherAllowsPublicWebTargets(t *testing.T) {
 		}),
 	)
 
-	page, err := fetcher.Fetch(context.Background(), mustParse(t, "https://example.com/path"))
+	page, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/path")},
+	)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -86,7 +93,7 @@ func TestAdmissionFetcherAllowsPrivateWhenGuardPermits(t *testing.T) {
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, "http://intranet.example/"),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://intranet.example/")},
 	); err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -122,7 +129,7 @@ func TestAdmissionFetcherAllowsPublicLiteralAddress(t *testing.T) {
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, "https://93.184.216.34/"),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://93.184.216.34/")},
 	); err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -155,7 +162,10 @@ func TestAdmissionFetcherRejectsUnsafeTargetsBeforeInnerFetch(t *testing.T) {
 				}),
 			)
 
-			_, err := fetcher.Fetch(context.Background(), mustParse(t, raw))
+			_, err := fetcher.Fetch(
+				context.Background(),
+				pagefetch.FetchRequest{Target: mustParse(t, raw)},
+			)
 			if !errors.Is(err, pagefetch.ErrPageRejected) {
 				t.Fatalf("error = %v, want page rejected", err)
 			}
@@ -184,7 +194,7 @@ func TestAdmissionFetcherRejectsMalformedTargetsBeforeInnerFetch(t *testing.T) {
 			}),
 		)
 
-		_, err := fetcher.Fetch(context.Background(), target)
+		_, err := fetcher.Fetch(context.Background(), pagefetch.FetchRequest{Target: target})
 		if !errors.Is(err, pagefetch.ErrPageRejected) {
 			t.Fatalf("target = %#v error = %v, want page rejected", target, err)
 		}
@@ -209,7 +219,10 @@ func TestAdmissionFetcherRejectsUnsafeDNSAnswersBeforeInnerFetch(t *testing.T) {
 			}),
 		)
 
-		_, err := fetcher.Fetch(context.Background(), mustParse(t, "https://example.com/"))
+		_, err := fetcher.Fetch(
+			context.Background(),
+			pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")},
+		)
 		if !errors.Is(err, pagefetch.ErrPageRejected) {
 			t.Fatalf("addresses = %v error = %v, want page rejected", addresses, err)
 		}
@@ -230,7 +243,10 @@ func TestAdmissionFetcherReturnsInnerFetchError(t *testing.T) {
 		}),
 	)
 
-	_, err := fetcher.Fetch(context.Background(), mustParse(t, "https://example.com/"))
+	_, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")},
+	)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}
@@ -249,7 +265,10 @@ func TestAdmissionFetcherRejectsResolverFailureBeforeInnerFetch(t *testing.T) {
 		}),
 	)
 
-	_, err := fetcher.Fetch(context.Background(), mustParse(t, "https://example.com/"))
+	_, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")},
+	)
 	if !errors.Is(err, pagefetch.ErrPageRejected) || !errors.Is(err, resolverFailure) ||
 		!strings.Contains(err.Error(), "dns failed") {
 		t.Fatalf("error = %v, want resolver rejection", err)
@@ -277,7 +296,10 @@ func TestAdmissionFetcherRejectsUnsafeFinalURL(t *testing.T) {
 		}),
 	)
 
-	_, err := fetcher.Fetch(context.Background(), mustParse(t, "https://example.com/"))
+	_, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "https://example.com/")},
+	)
 	if !errors.Is(err, pagefetch.ErrPageRejected) {
 		t.Fatalf("error = %v, want page rejected", err)
 	}

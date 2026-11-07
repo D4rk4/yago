@@ -19,8 +19,9 @@ type policyPageSource func(context.Context, *url.URL) (pagefetch.FetchedPage, er
 
 func (source policyPageSource) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return source(ctx, target)
 }
 
@@ -94,19 +95,19 @@ func TestRobotsPolicyCacheSeparatesSchemesForSameHost(t *testing.T) {
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		policyURL(t, "http://example.com/private"),
+		pagefetch.FetchRequest{Target: policyURL(t, "http://example.com/private")},
 	); err != nil {
 		t.Fatalf("HTTP policy should allow: %v", err)
 	}
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		policyURL(t, "https://example.com/private"),
+		pagefetch.FetchRequest{Target: policyURL(t, "https://example.com/private")},
 	); !errors.Is(err, ErrDisallowed) {
 		t.Fatalf("HTTPS policy error = %v, want ErrDisallowed", err)
 	}
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		policyURL(t, "HTTP://EXAMPLE.COM/again"),
+		pagefetch.FetchRequest{Target: policyURL(t, "HTTP://EXAMPLE.COM/again")},
 	); err != nil {
 		t.Fatalf("equivalent HTTP origin should allow: %v", err)
 	}
@@ -127,15 +128,30 @@ func TestRobotsPolicyRefreshesAfterFreshnessWindow(t *testing.T) {
 	fetcher.policies.now = func() time.Time { return now }
 	target := policyURL(t, "https://example.com/private")
 
-	if _, err := fetcher.Fetch(context.Background(), target); !errors.Is(err, ErrDisallowed) {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); !errors.Is(
+		err,
+		ErrDisallowed,
+	) {
 		t.Fatalf("initial policy error = %v, want ErrDisallowed", err)
 	}
 	now = now.Add(robotsPolicyFreshness - time.Nanosecond)
-	if _, err := fetcher.Fetch(context.Background(), target); !errors.Is(err, ErrDisallowed) {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); !errors.Is(
+		err,
+		ErrDisallowed,
+	) {
 		t.Fatalf("fresh policy error = %v, want ErrDisallowed", err)
 	}
 	now = now.Add(time.Nanosecond)
-	if _, err := fetcher.Fetch(context.Background(), target); err != nil {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); err != nil {
 		t.Fatalf("refreshed policy should allow: %v", err)
 	}
 	if got := requests.Load(); got != 2 {
@@ -181,7 +197,13 @@ func TestRobotsPolicyRetriesNetworkFailureWithoutRequestStorm(t *testing.T) {
 	target := policyURL(t, "https://example.com/page")
 
 	for range 3 {
-		if _, err := fetcher.Fetch(context.Background(), target); !errors.Is(err, ErrDisallowed) {
+		if _, err := fetcher.Fetch(
+			context.Background(),
+			pagefetch.FetchRequest{Target: target},
+		); !errors.Is(
+			err,
+			ErrDisallowed,
+		) {
 			t.Fatalf("unreachable policy error = %v, want ErrDisallowed", err)
 		}
 	}
@@ -189,7 +211,10 @@ func TestRobotsPolicyRetriesNetworkFailureWithoutRequestStorm(t *testing.T) {
 		t.Fatalf("robots requests during retry window = %d, want 1", got)
 	}
 	now = now.Add(robotsRetryInterval)
-	if _, err := fetcher.Fetch(context.Background(), target); err != nil {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); err != nil {
 		t.Fatalf("recovered policy should allow: %v", err)
 	}
 	if got := requests.Load(); got != 2 {
@@ -211,7 +236,13 @@ func TestRobotsPolicyRetriesServerFailureWithoutReadingBody(t *testing.T) {
 	target := policyURL(t, "https://example.com/page")
 
 	for range 3 {
-		if _, err := fetcher.Fetch(context.Background(), target); !errors.Is(err, ErrDisallowed) {
+		if _, err := fetcher.Fetch(
+			context.Background(),
+			pagefetch.FetchRequest{Target: target},
+		); !errors.Is(
+			err,
+			ErrDisallowed,
+		) {
 			t.Fatalf("unreachable policy error = %v, want ErrDisallowed", err)
 		}
 	}
@@ -222,7 +253,10 @@ func TestRobotsPolicyRetriesServerFailureWithoutReadingBody(t *testing.T) {
 		t.Fatalf("server failure body reads = %d, want 0", got)
 	}
 	now = now.Add(robotsRetryInterval)
-	if _, err := fetcher.Fetch(context.Background(), target); err != nil {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); err != nil {
 		t.Fatalf("recovered policy should allow: %v", err)
 	}
 	if got := requests.Load(); got != 2 {
@@ -246,12 +280,24 @@ func TestRobotsPolicyRetainsLastRulesDuringServerFailure(t *testing.T) {
 	fetcher.policies.now = func() time.Time { return now }
 	target := policyURL(t, "https://example.com/private")
 
-	if _, err := fetcher.Fetch(context.Background(), target); !errors.Is(err, ErrDisallowed) {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); !errors.Is(
+		err,
+		ErrDisallowed,
+	) {
 		t.Fatalf("initial policy error = %v, want ErrDisallowed", err)
 	}
 	now = now.Add(robotsPolicyFreshness)
 	for range 2 {
-		if _, err := fetcher.Fetch(context.Background(), target); !errors.Is(err, ErrDisallowed) {
+		if _, err := fetcher.Fetch(
+			context.Background(),
+			pagefetch.FetchRequest{Target: target},
+		); !errors.Is(
+			err,
+			ErrDisallowed,
+		) {
 			t.Fatalf("retained policy error = %v, want ErrDisallowed", err)
 		}
 	}
@@ -259,7 +305,10 @@ func TestRobotsPolicyRetainsLastRulesDuringServerFailure(t *testing.T) {
 		t.Fatalf("robots requests during server failure = %d, want 2", got)
 	}
 	now = now.Add(robotsRetryInterval)
-	if _, err := fetcher.Fetch(context.Background(), target); err != nil {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: target},
+	); err != nil {
 		t.Fatalf("recovered policy should allow: %v", err)
 	}
 	if got := requests.Load(); got != 3 {
@@ -288,7 +337,7 @@ func TestRobotsPolicyCoalescesConcurrentOriginRefresh(t *testing.T) {
 		go func() {
 			defer callersDone.Done()
 			<-start
-			_, err := fetcher.Fetch(context.Background(), target)
+			_, err := fetcher.Fetch(context.Background(), pagefetch.FetchRequest{Target: target})
 			errorsByCaller <- err
 		}()
 	}

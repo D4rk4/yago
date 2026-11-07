@@ -27,6 +27,7 @@ type roster struct {
 	peers                  *vault.Collection[rosterEntry]
 	lifecycles             *vault.Keyspace[rosterLifecycle]
 	lifecycleCleanupCursor *vault.Keyspace[vault.Key]
+	answeredEndpoints      *vault.Keyspace[answeredEndpointRecord]
 	self                   yagomodel.Hash
 	now                    func() time.Time
 	reservoirCap           int

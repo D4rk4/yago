@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"time"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 var ErrPageRejected = errors.New("page rejected")
@@ -27,9 +29,10 @@ type FetchedPage struct {
 	// pipeline can honor header-level noindex/nofollow directives. The
 	// headless-browser fetch path cannot observe response headers and leaves
 	// it empty.
-	RobotsTag string
+	RobotsTag  string
+	Validators yagocrawlcontract.HTTPValidators
 }
 
 type PageSource interface {
-	Fetch(ctx context.Context, target *url.URL) (FetchedPage, error)
+	Fetch(ctx context.Context, request FetchRequest) (FetchedPage, error)
 }

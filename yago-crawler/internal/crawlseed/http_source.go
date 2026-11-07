@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
@@ -26,8 +25,9 @@ func NewHTTPSource(client *http.Client, userAgent string, maxBytes int64) *HTTPS
 
 func (s *HTTPSource) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	fetchRequest pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := fetchRequest.Target
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("create request: %w", err)

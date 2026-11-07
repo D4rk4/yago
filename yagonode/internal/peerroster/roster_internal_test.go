@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -22,6 +23,7 @@ type scriptedEngine struct {
 	buckets         map[vault.Name]map[string][]byte
 	provisionErrors map[vault.Name]error
 	putErrors       map[vault.Name]error
+	puts            map[vault.Name]int
 	deleteErrors    map[vault.Name]error
 	scanErrors      map[vault.Name]error
 	keyPageError    error
@@ -37,6 +39,7 @@ func newScriptedEngine() *scriptedEngine {
 		buckets:         map[vault.Name]map[string][]byte{},
 		provisionErrors: map[vault.Name]error{},
 		putErrors:       map[vault.Name]error{},
+		puts:            map[vault.Name]int{},
 		deleteErrors:    map[vault.Name]error{},
 		scanErrors:      map[vault.Name]error{},
 	}
@@ -113,6 +116,7 @@ func (b scriptedBucket) Put(key vault.Key, raw []byte) error {
 		return err
 	}
 	b.engine.buckets[b.name][string(key)] = append([]byte(nil), raw...)
+	b.engine.puts[b.name]++
 	return nil
 }
 
@@ -224,7 +228,7 @@ func corruptPeerCount(t *testing.T, engine *scriptedEngine) {
 	t.Helper()
 	for name, bucket := range engine.buckets {
 		if name != peersBucket && name != peerLifecyclesBucket &&
-			name != peerLifecycleCleanupCursorBucket {
+			name != peerLifecycleCleanupCursorBucket && name != answeredEndpointsBucket {
 			bucket[string(peersBucket)] = []byte("bad")
 			return
 		}
@@ -381,10 +385,17 @@ func TestPrivateRosterMutationsRejectSelf(t *testing.T) {
 	if entry, _, found := r.touch(t.Context(), self.Hash); found || entry.seed.Hash != "" {
 		t.Fatalf("touch self = %#v found %v", entry, found)
 	}
-	if _, err := r.persistCallerObservation(t.Context(), rosterEntry{seed: self}); err != nil {
+	unanswered := yagomodel.None[peerwire.Endpoint]()
+	if _, err := r.persistCallerObservation(
+		t.Context(),
+		rosterEntry{seed: self},
+		unanswered,
+	); err != nil {
 		t.Fatalf("persist caller self: %v", err)
 	}
-	if _, err := r.persistResponderObservation(t.Context(), rosterEntry{seed: self}); err != nil {
+	if _, err := r.persistResponderObservation(
+		t.Context(), rosterEntry{seed: self}, unanswered,
+	); err != nil {
 		t.Fatalf("persist responder self: %v", err)
 	}
 }

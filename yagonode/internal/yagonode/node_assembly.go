@@ -195,15 +195,24 @@ func assembleNode(
 	assembledLifecycle := false
 	defer func() {
 		if !assembledLifecycle {
-			peerWire.lifecycle.Close()
-			closeVault(peerWire.rosterVault.dedicated)
+			peerWire.close()
 		}
 	}()
-	peerClient := nodePeerClient(config, client)
+	seedlistClient, peerClient := nodePeerClients(config, client)
 	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
-	exchange, err := assembleNodePeerExchange(nodePeerExchangeInput{
-		config: config, vault: vault, client: peerClient, identity: identity,
-		telemetry: telemetry, peerWire: peerWire, host: hostLinkSnapshot,
+	exchange, err := assembleRuntimePeerExchange(peerExchange{
+		router:                       peerWire.router,
+		identity:                     identity,
+		report:                       peerWire.report,
+		config:                       config,
+		vault:                        vault,
+		client:                       peerClient,
+		seedlistClient:               seedlistClient,
+		peer:                         telemetry.peer,
+		host:                         hostLinkSnapshot,
+		roster:                       peerWire.roster,
+		news:                         peerWire.news,
+		externalReachabilityEvidence: peerWire.reachability,
 	})
 	if err != nil {
 		return node{}, err
@@ -246,34 +255,6 @@ func assembleNode(
 	assembledLifecycle = true
 
 	return assembled, nil
-}
-
-func openNodeRWIBackfill(vault *vault.Vault, storage nodeStorage) (*rwibackfill.Backfill, error) {
-	resumableDocuments, ok := storage.documentDirectory.(documentstore.ResumableStoredDocumentPageScanner)
-	if !ok {
-		return nil, fmt.Errorf("resumable stored-document scan is unavailable")
-	}
-	backfill, err := rwibackfill.Open(
-		vault,
-		resumableDocuments,
-		storage.urlReceiver,
-		storage.postingReceiver,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("open rwi backfill: %w", err)
-	}
-	return backfill, nil
-}
-
-// nodePeerClient picks the client for peer-protocol calls: a client tolerant
-// of the self-signed certificates YaCy peers serve when https preference is
-// on, and the plain egress client verbatim otherwise.
-func nodePeerClient(config nodeConfig, client *http.Client) *http.Client {
-	if config.PeerHTTPSPreferred {
-		return newRuntimePeerProtocolClient(config)
-	}
-
-	return client
 }
 
 type assembleSurfacesInput struct {

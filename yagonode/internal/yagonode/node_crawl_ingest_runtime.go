@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/D4rk4/yago/yagonode/internal/contentquality"
-	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawlformats"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 	"github.com/D4rk4/yago/yagonode/internal/eviction"
@@ -13,16 +12,17 @@ import (
 )
 
 type crawlIngestRuntime struct {
-	consumer *crawlresults.IngestConsumer
-	frontier *recrawlfrontier.Frontier
-	formats  *crawlformats.Store
+	consumer    *crawlresults.IngestConsumer
+	frontier    *recrawlfrontier.Frontier
+	formats     *crawlformats.Store
+	conditional conditionalRecrawl
 }
 
 func openCrawlIngestRuntime(
 	config crawlConfig,
 	storage nodeStorage,
 	storageVault *vault.Vault,
-	broker *crawlbroker.CrawlBroker,
+	ingest crawlresults.IngestStream,
 ) (crawlIngestRuntime, error) {
 	observationHistory, err := crawlresults.OpenURLObservationHistory(storageVault)
 	if err != nil {
@@ -37,7 +37,7 @@ func openCrawlIngestRuntime(
 		return crawlIngestRuntime{}, fmt.Errorf("open crawl formats: %w", err)
 	}
 	consumer := crawlresults.NewIngestConsumerWithIndex(
-		broker.Ingest,
+		ingest,
 		storage.documentReceiver,
 		storage.searchIndex,
 		storage.urlReceiver,
@@ -46,6 +46,8 @@ func openCrawlIngestRuntime(
 	consumer.AdmitGrowth(crawlStateLifecycleAdmission(config.GrowthAdmission))
 	consumer.OrderObservations(observationHistory)
 	consumer.RecordFetches(frontier)
+	conditional := conditionalRecrawl{frontier: frontier, documents: storage.documentDirectory}
+	consumer.RecordConditionalRecrawl(conditional)
 	consumer.TrackContentClusters(storage.contentClusters)
 	evictor := eviction.NewEvictor(
 		storageVault,
@@ -61,5 +63,10 @@ func openCrawlIngestRuntime(
 		consumer.GateQuality(contentquality.RejectionRule)
 	}
 
-	return crawlIngestRuntime{consumer: consumer, frontier: frontier, formats: formats}, nil
+	return crawlIngestRuntime{
+		consumer:    consumer,
+		frontier:    frontier,
+		formats:     formats,
+		conditional: conditional,
+	}, nil
 }

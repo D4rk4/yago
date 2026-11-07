@@ -42,6 +42,9 @@ func (s *exchangeServer) SubmitIngest(
 	if authorization.LeaseID == "" || len(batch.Provenance) == 0 || batch.ProfileHandle == "" {
 		return nil, status.Error(codes.InvalidArgument, "empty crawl ingest lease identity")
 	}
+	if err := batch.ValidatePayload(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid ingest payload: %v", err)
+	}
 	finish := func() {}
 	if s.beginIngest != nil {
 		finish = s.beginIngest()
@@ -72,8 +75,9 @@ func (s *exchangeServer) SubmitIngest(
 		}
 
 		return &crawlrpc.IngestAck{
-			Rejected:      outcome.rejectionRule != "",
-			RejectionRule: outcome.rejectionRule,
+			Rejected:            outcome.rejectionRule != "",
+			RejectionRule:       outcome.rejectionRule,
+			NotModifiedRecorded: outcome.notModifiedRecorded,
 		}, nil
 	case <-ctx.Done():
 		return nil, status.FromContextError(ctx.Err()).Err()
@@ -84,8 +88,9 @@ func (s *exchangeServer) SubmitIngest(
 // non-empty rejectionRule means the node consumed the batch but refused to
 // store its document, which the crawler must not tally as indexed.
 type ingestOutcome struct {
-	err           error
-	rejectionRule string
+	err                 error
+	rejectionRule       string
+	notModifiedRecorded bool
 }
 
 func (s *exchangeServer) authorizedIngestDelivery(
@@ -134,6 +139,12 @@ func (s *exchangeServer) authorizedIngestDelivery(
 		LeaseLost: func(context.Context) error {
 			finish()
 			result <- ingestOutcome{err: errLeaseLost}
+
+			return nil
+		},
+		AckRecordedNotModified: func(context.Context) error {
+			finish()
+			result <- ingestOutcome{notModifiedRecorded: true}
 
 			return nil
 		},

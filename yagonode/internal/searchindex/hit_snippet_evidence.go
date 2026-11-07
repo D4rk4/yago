@@ -2,18 +2,11 @@ package searchindex
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	"github.com/blevesearch/bleve/v2/search"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 )
-
-type snippetEvidence struct {
-	text       string
-	arrayIndex uint64
-	start      int
-}
 
 func resultSnippet(
 	hit *search.DocumentMatch,
@@ -31,66 +24,32 @@ func resultSnippet(
 		return queryBiasedSnippet(doc.ExtractedText, terms, fallback)
 	}
 	allowedTerms := analyzedQueryTerms(req)
-	if evidence, found := fieldSnippetEvidence(
-		hit,
-		"body",
+	if witness, found := fieldSnippetEvidence(
+		hit.Locations["body"],
 		[]string{doc.ExtractedText},
 		allowedTerms,
 		req.Fuzzy,
 	); found {
-		return locationBiasedSnippet(evidence, fallback)
+		return sentenceSnippet(witness, fallback)
 	}
-	if evidence, found := fieldSnippetEvidence(
-		hit,
-		"headings",
+	if witness, found := fieldSnippetEvidence(
+		hit.Locations["headings"],
 		doc.Headings,
 		allowedTerms,
 		req.Fuzzy,
 	); found {
-		return locationBiasedSnippet(evidence, fallback)
+		return sentenceSnippet(witness, fallback)
 	}
-	if evidence, found := fieldSnippetEvidence(
-		hit,
-		"anchors",
+	if witness, found := fieldSnippetEvidence(
+		hit.Locations["anchors"],
 		anchorTexts(doc.Inlinks),
 		allowedTerms,
 		req.Fuzzy,
 	); found {
-		return locationBiasedSnippet(evidence, fallback)
+		return sentenceSnippet(witness, fallback)
 	}
 
 	return queryBiasedSnippet(doc.ExtractedText, terms, fallback)
-}
-
-func locationBiasedSnippet(evidence snippetEvidence, fallback string) string {
-	text := evidence.text
-	anchor := evidence.start
-	start := anchor
-	for index := 0; index < snippetRuneCap/4 && start > 0; index++ {
-		_, size := utf8.DecodeLastRuneInString(text[:start])
-		start -= size
-	}
-	end := start
-	windowRunes := 0
-	for windowRunes < snippetRuneCap && end < len(text) {
-		_, size := utf8.DecodeRuneInString(text[end:])
-		end += size
-		windowRunes++
-	}
-	for windowRunes < snippetRuneCap && start > 0 {
-		_, size := utf8.DecodeLastRuneInString(text[:start])
-		start -= size
-		windowRunes++
-	}
-	excerpt := strings.Join(strings.Fields(text[start:end]), " ")
-	if excerpt == "" {
-		return fallback
-	}
-	if start > 0 {
-		excerpt = "… " + excerpt
-	}
-
-	return excerpt
 }
 
 func analyzedQueryTerms(req SearchRequest) map[string]struct{} {
@@ -119,64 +78,4 @@ func analyzedQueryTerms(req SearchRequest) map[string]struct{} {
 	}
 
 	return out
-}
-
-func fieldSnippetEvidence(
-	hit *search.DocumentMatch,
-	field string,
-	values []string,
-	allowedTerms map[string]struct{},
-	acceptAnyTerm bool,
-) (snippetEvidence, bool) {
-	var selected snippetEvidence
-	found := false
-	for term, locations := range hit.Locations[field] {
-		if _, allowed := allowedTerms[term]; !acceptAnyTerm && !allowed {
-			continue
-		}
-		for _, location := range locations {
-			candidate, valid := locationSnippetEvidence(values, location)
-			if !valid {
-				continue
-			}
-			if !found || candidate.arrayIndex < selected.arrayIndex ||
-				(candidate.arrayIndex == selected.arrayIndex && candidate.start < selected.start) {
-				selected = candidate
-				found = true
-			}
-			break
-		}
-	}
-
-	return selected, found
-}
-
-func locationSnippetEvidence(
-	values []string,
-	location *search.Location,
-) (snippetEvidence, bool) {
-	if location == nil || len(values) == 0 || location.End <= location.Start {
-		return snippetEvidence{}, false
-	}
-	arrayIndex := uint64(0)
-	if len(location.ArrayPositions) > 0 {
-		arrayIndex = location.ArrayPositions[0]
-	}
-	if arrayIndex >= uint64(len(values)) {
-		return snippetEvidence{}, false
-	}
-	value := values[arrayIndex]
-	if location.End > uint64(len(value)) {
-		return snippetEvidence{}, false
-	}
-	term := value[location.Start:location.End]
-	if term == "" || !utf8.ValidString(term) {
-		return snippetEvidence{}, false
-	}
-
-	return snippetEvidence{
-		text:       value,
-		arrayIndex: arrayIndex,
-		start:      len(value[:location.Start]),
-	}, true
 }

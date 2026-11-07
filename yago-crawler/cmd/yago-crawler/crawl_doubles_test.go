@@ -10,7 +10,11 @@ import (
 
 type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
 
-func (f pageSourceFunc) Fetch(ctx context.Context, target *url.URL) (pagefetch.FetchedPage, error) {
+func (f pageSourceFunc) Fetch(
+	ctx context.Context,
+	request pagefetch.FetchRequest,
+) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	return f(ctx, target)
 }
 

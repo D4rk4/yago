@@ -87,6 +87,9 @@ func (r *roster) deleteRosterEntry(tx *vault.Txn, key vault.Key) (bool, error) {
 	if _, err := r.lifecycles.Delete(tx, key); err != nil {
 		return false, fmt.Errorf("delete roster lifecycle: %w", err)
 	}
+	if _, err := r.answeredEndpoints.Delete(tx, key); err != nil {
+		return false, fmt.Errorf("delete roster answered endpoint: %w", err)
+	}
 
 	return removed, nil
 }

@@ -207,6 +207,7 @@ func TestConfirmOutboundClearsPendingSelection(t *testing.T) {
 	if confirmed != 1 {
 		t.Fatalf("confirmed = %d, want 1", confirmed)
 	}
+	assertJournalEntries(t, ctx, h, 0)
 	recovered, err := store.RecoverOutbound(ctx)
 	if err != nil {
 		t.Fatalf("RecoverOutbound: %v", err)
@@ -354,6 +355,7 @@ func TestRestoreOutboundReturnsStorageObserverAndPostingErrors(t *testing.T) {
 	}
 
 	_, index, _, _, engine := openScriptedRWI(t, fakeURLDirectory{})
+	journalScriptedOutboundSelection(t, engine, good.Postings[0])
 	engine.putErrors[PostingsBucket] = errors.New("put failed")
 	if _, err := outboundStore(
 		t,
@@ -362,11 +364,12 @@ func TestRestoreOutboundReturnsStorageObserverAndPostingErrors(t *testing.T) {
 		t.Fatal("expected put error")
 	}
 
-	_, index, _, _, _ = openScriptedRWI(
+	_, index, _, _, engine = openScriptedRWI(
 		t,
 		fakeURLDirectory{},
 		failingObserver{storeErr: errors.New("observer failed")},
 	)
+	journalScriptedOutboundSelection(t, engine, good.Postings[0])
 	if _, err := outboundStore(
 		t,
 		index,

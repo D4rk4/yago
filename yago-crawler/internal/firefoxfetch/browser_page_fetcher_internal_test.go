@@ -263,7 +263,10 @@ func TestBrowserPageFetcherReturnsRenderedBody(t *testing.T) {
 		timeout: time.Second,
 	}
 
-	page, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/"))
+	page, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://example.com/")},
+	)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -289,7 +292,10 @@ func TestBrowserPageFetcherReportsCapturedContentType(t *testing.T) {
 		},
 	}
 
-	page, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/"))
+	page, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://example.com/")},
+	)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -309,7 +315,10 @@ func TestBrowserPageFetcherRejectsDisallowedContentType(t *testing.T) {
 		},
 	}
 
-	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/doc.pdf"))
+	_, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://example.com/doc.pdf")},
+	)
 	if !errors.Is(err, pagefetch.ErrUnsupportedContentType) {
 		t.Fatalf("error = %v, want ErrUnsupportedContentType", err)
 	}
@@ -326,7 +335,10 @@ func TestBrowserPageFetcherPropagatesRenderError(t *testing.T) {
 		},
 	}
 
-	_, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/"))
+	_, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://example.com/")},
+	)
 	if !errors.Is(err, sentinel) {
 		t.Errorf("error = %v, want %v", err, sentinel)
 	}
@@ -345,7 +357,7 @@ func TestBrowserPageFetcherAppliesTimeout(t *testing.T) {
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, "http://example.com/"),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://example.com/")},
 	); err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -361,7 +373,10 @@ func TestBrowserPageFetcherReturnsFinalURL(t *testing.T) {
 		},
 	}
 
-	page, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/start"))
+	page, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://example.com/start")},
+	)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -381,7 +396,10 @@ func TestBrowserPageFetcherCapsRenderedBody(t *testing.T) {
 		maxBytes: 3,
 	}
 
-	page, err := fetcher.Fetch(context.Background(), mustParse(t, "http://example.com/"))
+	page, err := fetcher.Fetch(
+		context.Background(),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://example.com/")},
+	)
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -399,7 +417,7 @@ func TestBrowserPageFetcherRejectsBadFinalURL(t *testing.T) {
 
 	if _, err := fetcher.Fetch(
 		context.Background(),
-		mustParse(t, "http://example.com/"),
+		pagefetch.FetchRequest{Target: mustParse(t, "http://example.com/")},
 	); err == nil {
 		t.Fatal("bad final URL should fail")
 	}

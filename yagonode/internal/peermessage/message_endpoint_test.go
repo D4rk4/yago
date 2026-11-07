@@ -87,6 +87,7 @@ func TestMessageStoresPostedMessage(t *testing.T) {
 		YouAre:      hashFor("self"),
 		Process:     yagoproto.MessageProcessPost,
 		MySeed:      yagomodel.Some(senderSeed()),
+		Iam:         hashFor("sender"),
 		Subject:     "  hello  ",
 		Body:        "  body  ",
 	})
@@ -124,6 +125,7 @@ func TestMessageUsesAnonymousSenderNameWhenSeedHasNoName(t *testing.T) {
 		YouAre:      hashFor("self"),
 		Process:     yagoproto.MessageProcessPost,
 		MySeed:      yagomodel.Some(seed),
+		Iam:         hashFor("sender"),
 		Subject:     "hello",
 		Body:        "body",
 	})
@@ -144,8 +146,8 @@ func TestMessagePostRejectsMissingSeedOrEmptyContent(t *testing.T) {
 
 	for _, req := range []yagoproto.MessageRequest{
 		{NetworkName: "freeworld", YouAre: hashFor("self"), Process: yagoproto.MessageProcessPost, Subject: "hello", Body: "body"},
-		{NetworkName: "freeworld", YouAre: hashFor("self"), Process: yagoproto.MessageProcessPost, MySeed: yagomodel.Some(senderSeed()), Subject: "", Body: "body"},
-		{NetworkName: "freeworld", YouAre: hashFor("self"), Process: yagoproto.MessageProcessPost, MySeed: yagomodel.Some(senderSeed()), Subject: "hello", Body: ""},
+		{NetworkName: "freeworld", YouAre: hashFor("self"), Process: yagoproto.MessageProcessPost, MySeed: yagomodel.Some(senderSeed()), Iam: hashFor("sender"), Subject: "", Body: "body"},
+		{NetworkName: "freeworld", YouAre: hashFor("self"), Process: yagoproto.MessageProcessPost, MySeed: yagomodel.Some(senderSeed()), Iam: hashFor("sender"), Subject: "hello", Body: ""},
 	} {
 		resp, err := endpoint.Serve(t.Context(), req)
 		if err != nil {
@@ -182,9 +184,13 @@ func TestMessagePostEnforcesDecodedContentLimits(t *testing.T) {
 			resp, err := endpoint{identity: localIdentity(), inbox: inbox}.Serve(
 				t.Context(),
 				yagoproto.MessageRequest{
-					NetworkName: "freeworld", YouAre: hashFor("self"),
-					Process: yagoproto.MessageProcessPost, MySeed: yagomodel.Some(senderSeed()),
-					Subject: test.subject, Body: test.body,
+					NetworkName: "freeworld",
+					YouAre:      hashFor("self"),
+					Process:     yagoproto.MessageProcessPost,
+					MySeed:      yagomodel.Some(senderSeed()),
+					Iam:         hashFor("sender"),
+					Subject:     test.subject,
+					Body:        test.body,
 				},
 			)
 			if err != nil {
@@ -231,6 +237,7 @@ func TestMessageSurfacesInboxFailure(t *testing.T) {
 		YouAre:      hashFor("self"),
 		Process:     yagoproto.MessageProcessPost,
 		MySeed:      yagomodel.Some(senderSeed()),
+		Iam:         hashFor("sender"),
 		Subject:     "hello",
 		Body:        "body",
 	})

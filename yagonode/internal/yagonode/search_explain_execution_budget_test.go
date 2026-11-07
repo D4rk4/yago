@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -19,47 +20,49 @@ type blockedSearchExplanationSource struct {
 }
 
 func TestSearchExplanationExecutionBudgetHandlesShortBudgetAndPanic(t *testing.T) {
-	short := searchExplanationExecutionBudget{
-		budget:    10 * time.Millisecond,
-		grace:     20 * time.Millisecond,
-		admission: newInteractiveSearchAdmission(1),
-		panicLog:  func(context.Context, string, ...any) {},
-	}
-	if outcome, err := short.execute(
-		t.Context(),
-		func(context.Context) (searchExplainOutcome, error) {
-			return searchExplainOutcome{}, nil
-		},
-	); err != nil || len(outcome.partialFailures) != 0 {
-		t.Fatalf("short execution = %#v, %v", outcome, err)
-	}
-	ctx, _ := tracectx.StartServerSpan(
-		t.Context(),
-		"00-11111111111111112222222222222222-3333333333333333-01",
-	)
-	serverSpanID, ok := tracectx.ServerSpanIDFromContext(ctx)
-	if !ok {
-		t.Fatal("server span ID missing")
-	}
-	var logged slog.Attr
-	panicValue := func() (recovered any) {
-		defer func() { recovered = recover() }()
-		panicBudget := newSearchExplanationExecutionBudget()
-		panicBudget.admission = newInteractiveSearchAdmission(1)
-		panicBudget.panicLog = func(_ context.Context, _ string, attributes ...any) {
-			logged = attributes[0].(slog.Attr)
+	synctest.Test(t, func(t *testing.T) {
+		short := searchExplanationExecutionBudget{
+			budget:    10 * time.Millisecond,
+			grace:     20 * time.Millisecond,
+			admission: newInteractiveSearchAdmission(1),
+			panicLog:  func(context.Context, string, ...any) {},
 		}
-		_, _ = panicBudget.execute(
-			ctx,
-			func(context.Context) (searchExplainOutcome, error) { panic("PRIVATE_PANIC_CANARY") },
+		if outcome, err := short.execute(
+			t.Context(),
+			func(context.Context) (searchExplainOutcome, error) {
+				return searchExplainOutcome{}, nil
+			},
+		); err != nil || len(outcome.partialFailures) != 0 {
+			t.Fatalf("short execution = %#v, %v", outcome, err)
+		}
+		ctx, _ := tracectx.StartServerSpan(
+			t.Context(),
+			"00-11111111111111112222222222222222-3333333333333333-01",
 		)
+		serverSpanID, ok := tracectx.ServerSpanIDFromContext(ctx)
+		if !ok {
+			t.Fatal("server span ID missing")
+		}
+		var logged slog.Attr
+		panicValue := func() (recovered any) {
+			defer func() { recovered = recover() }()
+			panicBudget := newSearchExplanationExecutionBudget()
+			panicBudget.admission = newInteractiveSearchAdmission(1)
+			panicBudget.panicLog = func(_ context.Context, _ string, attributes ...any) {
+				logged = attributes[0].(slog.Attr)
+			}
+			_, _ = panicBudget.execute(
+				ctx,
+				func(context.Context) (searchExplainOutcome, error) { panic("PRIVATE_PANIC_CANARY") },
+			)
 
-		return nil
-	}()
-	if panicValue != "PRIVATE_PANIC_CANARY" || logged.Key != "serverSpanId" ||
-		logged.Value.String() != serverSpanID || logged.Value.String() == "PRIVATE_PANIC_CANARY" {
-		t.Fatalf("panic = %#v, logged = %#v", panicValue, logged)
-	}
+			return nil
+		}()
+		if panicValue != "PRIVATE_PANIC_CANARY" || logged.Key != "serverSpanId" ||
+			logged.Value.String() != serverSpanID || logged.Value.String() == "PRIVATE_PANIC_CANARY" {
+			t.Fatalf("panic = %#v, logged = %#v", panicValue, logged)
+		}
+	})
 }
 
 func TestSearchExplanationExecutionFailures(t *testing.T) {
@@ -124,69 +127,78 @@ func (s blockedSearchExplanationSource) Search(
 func TestSearchExplanationBudgetBoundsLocalAndGlobalRanking(t *testing.T) {
 	for _, scope := range []searchcore.Source{searchcore.SourceLocal, searchcore.SourceGlobal} {
 		t.Run(string(scope), func(t *testing.T) {
-			blocked := blockedSearchExplanationSource{
-				started: make(chan struct{}),
-				release: make(chan struct{}),
-				done:    make(chan struct{}),
-			}
-			index := searchindex.SearchIndex(nil)
-			if scope == searchcore.SourceLocal {
-				index = &searchExplainScript{}
-			}
-			endpoint := newSearchExplainEndpoint(index, nil, nil, nil, nil).withGlobal(blocked)
-			endpoint.execution = searchExplanationExecutionBudget{
-				budget:    40 * time.Millisecond,
-				grace:     10 * time.Millisecond,
-				admission: newInteractiveSearchAdmission(1),
-				panicLog:  func(context.Context, string, ...any) {},
-			}
-			startedAt := time.Now()
-			response, status, err := endpoint.explanation(t.Context(), searchExplainRequest{
-				Query: "alpha", Scope: scope,
+			synctest.Test(t, func(t *testing.T) {
+				assertSearchExplanationBudgetBoundsRanking(t, scope)
 			})
-			elapsed := time.Since(startedAt)
-			<-blocked.started
-			close(blocked.release)
-			<-blocked.done
-			if err != nil || status != 200 {
-				t.Fatalf("explanation = %#v, %d, %v", response, status, err)
-			}
-			if elapsed >= 200*time.Millisecond {
-				t.Fatalf("elapsed = %s", elapsed)
-			}
-			if len(response.PartialFailures) != 1 ||
-				response.PartialFailures[0].Reason != interactiveSearchTimeoutFailure {
-				t.Fatalf("partial failures = %#v", response.PartialFailures)
-			}
 		})
 	}
 }
 
-func TestSearchExplanationBudgetIncludesPostRetrievalWork(t *testing.T) {
-	execution := searchExplanationExecutionBudget{
+func assertSearchExplanationBudgetBoundsRanking(t *testing.T, scope searchcore.Source) {
+	t.Helper()
+	blocked := blockedSearchExplanationSource{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+		done:    make(chan struct{}),
+	}
+	index := searchindex.SearchIndex(nil)
+	if scope == searchcore.SourceLocal {
+		index = &searchExplainScript{}
+	}
+	endpoint := newSearchExplainEndpoint(index, nil, nil, nil, nil).withGlobal(blocked)
+	endpoint.execution = searchExplanationExecutionBudget{
 		budget:    40 * time.Millisecond,
 		grace:     10 * time.Millisecond,
 		admission: newInteractiveSearchAdmission(1),
 		panicLog:  func(context.Context, string, ...any) {},
 	}
-	postRetrieval := make(chan struct{})
-	release := make(chan struct{})
-	done := make(chan struct{})
-	outcome, err := execution.execute(
-		t.Context(),
-		func(context.Context) (searchExplainOutcome, error) {
-			close(postRetrieval)
-			<-release
-			close(done)
-
-			return searchExplainOutcome{}, nil
-		},
-	)
-	<-postRetrieval
-	close(release)
-	<-done
-	if err != nil || len(outcome.partialFailures) != 1 ||
-		outcome.partialFailures[0].Reason != interactiveSearchTimeoutFailure {
-		t.Fatalf("outcome = %#v, error = %v", outcome, err)
+	startedAt := time.Now()
+	response, status, err := endpoint.explanation(t.Context(), searchExplainRequest{
+		Query: "alpha", Scope: scope,
+	})
+	elapsed := time.Since(startedAt)
+	<-blocked.started
+	close(blocked.release)
+	<-blocked.done
+	if err != nil || status != 200 {
+		t.Fatalf("explanation = %#v, %d, %v", response, status, err)
 	}
+	if elapsed >= 200*time.Millisecond {
+		t.Fatalf("elapsed = %s", elapsed)
+	}
+	if len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Reason != interactiveSearchTimeoutFailure {
+		t.Fatalf("partial failures = %#v", response.PartialFailures)
+	}
+}
+
+func TestSearchExplanationBudgetIncludesPostRetrievalWork(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		execution := searchExplanationExecutionBudget{
+			budget:    40 * time.Millisecond,
+			grace:     10 * time.Millisecond,
+			admission: newInteractiveSearchAdmission(1),
+			panicLog:  func(context.Context, string, ...any) {},
+		}
+		postRetrieval := make(chan struct{})
+		release := make(chan struct{})
+		done := make(chan struct{})
+		outcome, err := execution.execute(
+			t.Context(),
+			func(context.Context) (searchExplainOutcome, error) {
+				close(postRetrieval)
+				<-release
+				close(done)
+
+				return searchExplainOutcome{}, nil
+			},
+		)
+		<-postRetrieval
+		close(release)
+		<-done
+		if err != nil || len(outcome.partialFailures) != 1 ||
+			outcome.partialFailures[0].Reason != interactiveSearchTimeoutFailure {
+			t.Fatalf("outcome = %#v, error = %v", outcome, err)
+		}
+	})
 }

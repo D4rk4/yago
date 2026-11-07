@@ -52,11 +52,6 @@ settlement, and progress; the ingest connection carries document/RWI/URL
 metadata batches. A large ingest call therefore cannot queue lease or progress
 traffic on the same transport.
 
-Each five-second worker heartbeat reports the current active fetch count and,
-when supported by the worker version, how many active jobs are waiting for a
-fetch-start permit. The node's Admin Performance page combines these readings
-with progress tallies to show measured fetched and indexed pages per minute.
-
 Multiple crawler instances can each stream orders from the node to load-balance,
 and the node's blocking ingest call applies backpressure when it
 falls behind. Each order is leased rather than handed off: the crawler acks a
@@ -160,6 +155,22 @@ The node leaves its stored document and full-text entry untouched when their
 content and evidence have not changed. Stored fetched/indexed dates then remain
 those of the last substantive document revision, rather than the latest recrawl.
 
+A recrawl order from the node can carry the page's last entity tag and
+modification date. The crawler then sends `If-None-Match` and, when a date is
+known, `If-Modified-Since` to the exact target URL only; every redirect hop
+drops both headers. A `304 Not Modified` answer to such a request is reported
+to the node as a not-modified observation with the merged validators: no body
+is read, nothing is parsed, and no browser render starts. A `304` the crawler
+did not ask for, or one with malformed validators, is retried once without
+validators inside the same fetch deadline and otherwise fails the fetch. When
+the node does not confirm that it recorded the observation, the crawler fetches
+the page again in full within the same lease. The node's binding,
+acknowledgement, rejection, replay, and rollback rules are stated in the
+[conditional recrawl section of the contract README](../yagocrawlcontract/README.md#conditional-recrawl)
+and the [node specification](../yagonode/doc/specification.md#non-functional-requirements).
+Every full HTTP response's valid
+entity tag and modification date are reported to the node.
+
 Every newly parsed live document is stamped with
 `CurrentExtractionGeneration`, currently `1`, before it crosses the ingest
 boundary. Generation `0` is reserved for older unstamped payloads. A material
@@ -183,7 +194,8 @@ and extensionless responses route through `text/markdown` or
 `text/x-markdown`. Binary-looking bodies still fail closed before parsing.
 
 Concurrent runs requesting the same normalized URL share one in-flight fetch
-only when their TLS, robots, and browser-fallback policies match. Each run gets
+only when their TLS, robots, and browser-fallback policies and their recrawl
+validators match. Each run gets
 an independent page copy and still applies its own redirect, parser, directive,
 scope, indexing, tally, and delivery policy. A completed response is not cached.
 
@@ -234,6 +246,16 @@ content evidence wins; a valid HTML `lang` declaration is the fallback for
 uncertain text, and English is used only when neither source identifies a
 language. This includes legacy pages served as Windows-1251 without a `lang`
 attribute.
+
+Each generated RWI posting carries the shared URL-derived fields once per page,
+not once per token. The document type, language, URL hash, text and title word
+counts, local and external link counts, and the URL component count are computed
+from the page URL and its extracted statistics before the word postings are
+built. The URL component count (field `n`) carries the Java-YaCy-compatible
+count, wrapping to one byte; the exact rule lives in the target architecture
+section of the [node specification](../yagonode/doc/specification.md#target-architecture).
+The Java revision and the synthetic counting inputs are recorded in
+`yagonode/test/fixtures/yacywire/component-count-provenance.md`.
 
 Crawler RWI postings and URL metadata use the same YaCy-compatible artifact
 builder as the optional migration backfill. Both paths use the single tokenizer
@@ -289,6 +311,27 @@ A sitemap encountered as a normal crawl URL supplies followable URLs and is not
 indexed as searchable text. This applies to future fetches; previously stored
 sitemap documents remain until an operator removes them in Admin → Index.
 
+XML feeds (RSS 2.0, RSS 1.0, Atom 1.0, and Atom 0.3) supply article links to the
+crawl. A body counts as a feed only when its first element is a feed root: `rss`
+without a namespace, `RDF` in the RDF namespace, or `feed` in an Atom namespace.
+Any other XML document is indexed as generic XML text. The crawler reads a feed
+once and examines at most 200 items or entries per feed; later items contribute
+neither links nor text. Each item contributes at most one article link: its
+first usable link. For Atom, a usable link has no `rel` or `rel="alternate"`;
+`self`, `enclosure`, and other relations are never used. An RSS `<guid>` stands
+in only when the item has no usable link, `isPermaLink` is not `false`, and the
+GUID is already an absolute HTTP or HTTPS address. Relative links resolve
+against the feed address and then against each enclosing `xml:base` value. Only
+HTTP and HTTPS links are kept, and a link longer than the crawl URL limit is
+dropped. A complete feed with no items is a successful fetch with no links. When
+a recognized feed ends early or is malformed, links from items that closed
+before the fault still enter the crawl through the normal scope, nofollow,
+URL-limit, and duplicate checks, but the feed page counts as a parse failure, is
+not indexed, and is not re-read as generic XML. Feed text comes from the RSS
+channel title and description, the Atom feed title, and each item's title,
+description, summary, and content. Text inside elements nested within those
+fields is not read, and each field is limited to 1 MiB.
+
 Configuration comes from the environment (`YAGO_CRAWLER_NODE_RPC_ADDR` is required;
 `YAGO_DATA_DIR` defaults to `./data` and contains `crawler/frontier-v1.db`;
 `YAGO_CRAWLER_WORKER_ID` is an optional one-line display prefix of at most 219
@@ -333,14 +376,9 @@ distinct crawl tasks whose prepared orders, frontiers, and progress reporters
 may remain active in each process, independently of page-fetch concurrency. The
 same bootstrap value belongs in the node environment, and the live
 `crawler.max_active_runs` Admin setting becomes authoritative after heartbeat;
-`YAGO_CRAWLER_RUN_PAGES_PER_MINUTE` defaults to 0 (unlimited per run). Host
-crawl delay, per-host concurrency, worker capacity, fleet admission, and storage
-pressure continue to bound work;
-temporary connection, DNS, timeout, truncated-response, 408, 425, 429, and 5xx
-fetch failures remain in the durable frontier for up to three retries. Retry
-deadlines use capped exponential backoff with jitter and honor a longer
-`Retry-After`. The scheduler serves eligible first-pass pages before retrying
-deferred pages, while continuing to dispatch other origins when one host waits;
+`YAGO_CRAWLER_RUN_PAGES_PER_MINUTE` defaults to 30 and limits each active run
+independently, with per-host crawl delay and concurrency applying additional
+politeness;
 `YAGO_CRAWLER_PRIORITIZE_AUTOMATIC_DISCOVERY` defaults to `true` in both service
 environments and gives explicit discovery work at most three due page dispatches
 before waiting normal work; a successful startup heartbeat applies the node's
@@ -575,12 +613,8 @@ served representation accepted for parsing resets the consecutive-failure
 evidence. Five consecutive
 availability failures retire the remaining URLs for that host in that run and
 emit one warning with the run, host, and dropped-page total. A single-host run
-then finishes normally, while a multi-host run continues its healthy hosts. If
-every queued page in a run is waiting for host backoff, the crawler releases the
-run slot and retains its checkpoint until the earliest host deadline. A run with
-any ready page continues without being deferred. The crawler increments
-`yacy_crawler_backoff_run_deferrals_total` for each released run.
-A 404/410 page, unsupported media type, ordinary client rejection, robots denial,
+then finishes normally, while a multi-host run continues its healthy hosts. A
+404/410 page, unsupported media type, ordinary client rejection, robots denial,
 operator cancellation, or permanent egress-policy rejection never retires a
 healthy host. Expected URL-specific, robots, and unsupported-format outcomes log
 at debug; actionable failures remain warnings.
@@ -589,11 +623,9 @@ When `YAGO_CRAWLER_METRICS_ADDR` is set to a loopback IP-literal listener (for
 example `127.0.0.1:9101` or `[::1]:9101`), the crawler serves
 Prometheus metrics at `/metrics` on that address: `yacy_crawler_jobs_active`,
 `yacy_crawler_fetches_total`, `yacy_crawler_fetch_failures_total`,
-`yacy_crawler_page_retries_total`,
 `yacy_crawler_parse_failures_total`, `yacy_crawler_bytes_total`,
 `yacy_crawler_robots_denied_total`,
 `yacy_crawler_ingest_batches_total`, `yacy_crawler_host_backoffs_total`, and
-`yacy_crawler_backoff_run_deferrals_total`,
 `yacy_crawler_browser_slot_acquisition_deadlines_total`, plus filesystem
 availability, reserve, hysteresis, pressure, measurement availability, rejected
 growth, and measurement-failure storage series under

@@ -65,8 +65,9 @@ func NewRobotsAdmissionFetcher(
 
 func (f *RobotsAdmissionFetcher) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	group := f.group(ctx, target)
 	if !group.Test(target.Path) {
 		f.observer.RobotsDenied()
@@ -75,7 +76,7 @@ func (f *RobotsAdmissionFetcher) Fetch(
 			"robots disallow: %w: %w", ErrDisallowed, pagefetch.ErrPageRejected,
 		)
 	}
-	page, err := f.inner.Fetch(ctx, target)
+	page, err := f.inner.Fetch(ctx, request)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("inner fetch: %w", err)
 	}

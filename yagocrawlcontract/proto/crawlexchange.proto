@@ -225,8 +225,9 @@ message IngestAck {
   // rejection_rule names the gate rule the page violated, for the crawler's
   // per-URL outcome and logs. Empty when the page was stored.
   string rejection_rule = 2;
-  string submission_id = 3;
+  bool not_modified_recorded = 3;
   int32 error_code = 4;
+  string submission_id = 5;
 }
 
 enum CrawlRunState {

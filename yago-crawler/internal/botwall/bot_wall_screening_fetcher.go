@@ -3,7 +3,6 @@ package botwall
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
@@ -33,9 +32,9 @@ func NewBotWallScreeningFetcher(inner pagefetch.PageSource) *BotWallScreeningFet
 
 func (f *BotWallScreeningFetcher) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
-	page, err := f.inner.Fetch(ctx, target)
+	page, err := f.inner.Fetch(ctx, request)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("inner fetch: %w", err)
 	}

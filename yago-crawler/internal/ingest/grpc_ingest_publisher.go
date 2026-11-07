@@ -94,11 +94,7 @@ func (p *GRPCIngestPublisher) Publish(ctx context.Context, batch IngestBatch) er
 	for {
 		ack, err := p.client.SubmitIngest(ctx, msg)
 		if err == nil {
-			if ack.GetRejected() {
-				return &RejectedError{Rule: ack.GetRejectionRule()}
-			}
-
-			return nil
+			return acknowledgedIngestOutcome(batch, ack)
 		}
 		if status.Code(err) == codes.FailedPrecondition {
 			if p.grants != nil {

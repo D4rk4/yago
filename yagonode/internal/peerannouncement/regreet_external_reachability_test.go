@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 )
 
 func TestAnnounceRecordsExternalSeniorClassification(t *testing.T) {
@@ -185,6 +186,7 @@ func (g *refreshCycleGreeter) Greet(
 	yagomodel.Seed,
 	yagomodel.Seed,
 	int,
+	yagomodel.Optional[peerwire.Endpoint],
 ) (greetResult, error) {
 	g.calls++
 	g.called <- g.calls

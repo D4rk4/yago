@@ -46,7 +46,10 @@ RUN apk add --no-cache \
     libexpat=2.10.0-r0 \
     libmount=2.42.3-r1 \
     libssl3=3.5.9-r0 \
-    pcre2=10.49-r0
+    musl=1.2.6-r3 \
+    musl-utils=1.2.6-r3 \
+    pcre2=10.49-r0 \
+    zlib=1.4-r0
 
 ENV HOME=/tmp \
     XDG_CACHE_HOME=/tmp/.cache \

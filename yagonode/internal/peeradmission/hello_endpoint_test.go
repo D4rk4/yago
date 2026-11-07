@@ -15,6 +15,7 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 	"github.com/D4rk4/yago/yagonode/internal/nodeidentity"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -23,6 +24,8 @@ type stubProbe struct {
 	called       bool
 	caller       yagomodel.Seed
 	verifiedHost yagomodel.Optional[yagomodel.Host]
+	answered     yagomodel.Optional[peerwire.Endpoint]
+	contacted    peerwire.Endpoint
 }
 
 type cancelingProbe struct {
@@ -34,10 +37,11 @@ func (p cancelingProbe) ReachableCaller(
 	caller yagomodel.Seed,
 	_ yagomodel.Hash,
 	_ string,
-) (yagomodel.Seed, bool) {
+	_ yagomodel.Optional[peerwire.Endpoint],
+) (yagomodel.Seed, yagomodel.Optional[peerwire.Endpoint]) {
 	p.cancel()
 
-	return caller, false
+	return caller, yagomodel.None[peerwire.Endpoint]()
 }
 
 func (p *stubProbe) ReachableCaller(
@@ -45,14 +49,23 @@ func (p *stubProbe) ReachableCaller(
 	caller yagomodel.Seed,
 	_ yagomodel.Hash,
 	_ string,
-) (yagomodel.Seed, bool) {
+	answered yagomodel.Optional[peerwire.Endpoint],
+) (yagomodel.Seed, yagomodel.Optional[peerwire.Endpoint]) {
 	p.called = true
 	p.caller = caller
-	if verifiedHost, ok := p.verifiedHost.Get(); ok && p.reachable {
+	p.answered = answered
+	if !p.reachable {
+		return caller, yagomodel.None[peerwire.Endpoint]()
+	}
+	if verifiedHost, ok := p.verifiedHost.Get(); ok {
 		caller = caller.WithPrimaryHost(verifiedHost)
 	}
+	contacted := p.contacted
+	if contacted == (peerwire.Endpoint{}) {
+		contacted = peerwire.Endpoint{Scheme: "http", Host: "203.0.113.1", Port: "8090"}
+	}
 
-	return caller, p.reachable
+	return caller, yagomodel.Some(contacted)
 }
 
 type stubReachability struct {
@@ -62,6 +75,9 @@ type stubReachability struct {
 	observed     []yagomodel.Seed
 	classifying  []yagomodel.PeerType
 	contextErrs  []error
+	answered     map[yagomodel.Hash]peerwire.Endpoint
+	answeredErr  error
+	remembered   map[yagomodel.Hash]peerwire.Endpoint
 }
 
 func (s *stubReachability) FreshestPeers(_ context.Context, limit int) []yagomodel.Seed {

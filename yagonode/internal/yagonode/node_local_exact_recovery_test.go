@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -191,26 +192,28 @@ func TestLocalExactRecoveryStageForwardsConfiguredPanic(t *testing.T) {
 }
 
 func TestLocalExactRecoveryBudgetUsesProductionProfile(t *testing.T) {
-	previousBudget := localExactRecoveryBudget
-	previousAdmission := processLocalExactRecoveryAdmission
-	localExactRecoveryBudget = 20 * time.Millisecond
-	processLocalExactRecoveryAdmission = newInteractiveSearchAdmission(1)
-	t.Cleanup(func() {
-		localExactRecoveryBudget = previousBudget
-		processLocalExactRecoveryAdmission = previousAdmission
+	synctest.Test(t, func(t *testing.T) {
+		previousBudget := localExactRecoveryBudget
+		previousAdmission := processLocalExactRecoveryAdmission
+		localExactRecoveryBudget = 20 * time.Millisecond
+		processLocalExactRecoveryAdmission = newInteractiveSearchAdmission(1)
+		t.Cleanup(func() {
+			localExactRecoveryBudget = previousBudget
+			processLocalExactRecoveryAdmission = previousAdmission
+		})
+		response, err := withLocalExactRecoveryBudget(errorInteractiveSearch{
+			err: errors.New("broken"),
+		}).Search(t.Context(), searchcore.Request{Query: "broken"})
+		if err != nil || len(response.PartialFailures) != 1 ||
+			response.PartialFailures[0] != (searchcore.PartialFailure{
+				Source: localExactRecoveryFailureSource,
+				Reason: localExactRecoveryFailed,
+				Diagnostic: searchcore.PartialFailureDiagnostic{
+					Stage: searchcore.FailureStageLocalExactSearch,
+					Cause: searchcore.FailureCauseBackend,
+				},
+			}) {
+			t.Fatalf("response = %#v, error = %v", response, err)
+		}
 	})
-	response, err := withLocalExactRecoveryBudget(errorInteractiveSearch{
-		err: errors.New("broken"),
-	}).Search(t.Context(), searchcore.Request{Query: "broken"})
-	if err != nil || len(response.PartialFailures) != 1 ||
-		response.PartialFailures[0] != (searchcore.PartialFailure{
-			Source: localExactRecoveryFailureSource,
-			Reason: localExactRecoveryFailed,
-			Diagnostic: searchcore.PartialFailureDiagnostic{
-				Stage: searchcore.FailureStageLocalExactSearch,
-				Cause: searchcore.FailureCauseBackend,
-			},
-		}) {
-		t.Fatalf("response = %#v, error = %v", response, err)
-	}
 }

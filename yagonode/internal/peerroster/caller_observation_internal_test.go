@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 )
 
 func TestCallerObservationHandlesPersistenceFailures(t *testing.T) {
@@ -68,7 +69,9 @@ func TestCandidateSnapshotRejectsPersistedAddresslessPeer(t *testing.T) {
 		Hash:     internalHashFor("legacy"),
 		PeerType: yagomodel.Some(yagomodel.PeerJunior),
 	}
-	if _, err := r.persistCallerObservation(t.Context(), rosterEntry{seed: peer}); err != nil {
+	if _, err := r.persistCallerObservation(
+		t.Context(), rosterEntry{seed: peer}, yagomodel.None[peerwire.Endpoint](),
+	); err != nil {
 		t.Fatalf("persistCallerObservation: %v", err)
 	}
 	r.invalidateCandidateSnapshot()

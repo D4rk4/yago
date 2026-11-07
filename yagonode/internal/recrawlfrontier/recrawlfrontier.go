@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
-	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -29,6 +28,7 @@ type scheduleRecord struct {
 	Interval         time.Duration
 	NextDueAt        time.Time
 	SourceModifiedAt time.Time
+	ValidatorBinding *ValidatorBinding `json:",omitempty"`
 }
 
 type recordCodec = vault.JSONCodec[scheduleRecord]
@@ -139,10 +139,7 @@ type fetchObservation struct {
 
 // observeInTx applies one fetch observation inside the caller's transaction.
 func (f *Frontier) observeInTx(tx *vault.Txn, obs fetchObservation) error {
-	// HashURL derives a fixed 12-character hash from any input, so it never
-	// errors here; the error result exists only for the general URL API.
-	hash, _ := yagomodel.HashURL(obs.url)
-	key := vault.Key(string(hash))
+	key := scheduleKey(obs.url)
 
 	existing, found, err := f.clearDue(tx, key)
 	if err != nil {

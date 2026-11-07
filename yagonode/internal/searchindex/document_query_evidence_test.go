@@ -188,17 +188,17 @@ func TestDocumentQueryEvidenceInternalBoundsAndOrdering(t *testing.T) {
 	}
 	document := documentstore.Document{ExtractedText: "fallback target text"}
 	want := queryBiasedSnippet(document.ExtractedText, []string{"target"}, "")
-	for _, match := range []TextQueryMatch{
-		{Start: -1, End: 1},
-		{Start: 0, End: len(document.ExtractedText) + 1},
+	for _, location := range []*search.Location{
+		nil,
+		{Start: 0, End: storedLocationCoordinate(len(document.ExtractedText) + 1)},
 		{Start: 1, End: 1},
 	} {
 		if got := queryEvidenceSnippet(
 			document,
 			[]string{"target"},
-			[]TextQueryMatch{match},
+			search.TermLocationMap{"target": {location}},
 		); got != want {
-			t.Fatalf("match=%#v snippet=%q want=%q", match, got, want)
+			t.Fatalf("location=%#v snippet=%q want=%q", location, got, want)
 		}
 	}
 	for _, test := range []struct {

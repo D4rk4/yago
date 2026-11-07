@@ -44,6 +44,7 @@ func prepareSeedCandidates(
 			profileHandle:    request.ProfileHandle,
 			provenance:       provenance,
 			sourceModifiedAt: request.LastModified,
+			conditionalFetch: request.ConditionalFetch,
 		}, profile))
 	}
 
@@ -78,6 +79,7 @@ type frontierCandidateSource struct {
 	profileHandle    string
 	provenance       []byte
 	sourceModifiedAt time.Time
+	conditionalFetch *yagocrawlcontract.ConditionalFetch
 }
 
 func preparedCandidate(
@@ -91,6 +93,7 @@ func preparedCandidate(
 		profileHandle:    source.profileHandle,
 		provenance:       source.provenance,
 		sourceModifiedAt: source.sourceModifiedAt,
+		conditionalFetch: source.conditionalFetch,
 		indexAllowed:     profile.IndexAllowed(source.normalized),
 		observationID:    rand.Text(),
 		observedAt:       time.Now().UTC(),

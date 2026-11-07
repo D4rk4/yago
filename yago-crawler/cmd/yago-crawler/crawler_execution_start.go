@@ -15,17 +15,18 @@ import (
 )
 
 type crawlerExecutionStart struct {
-	context          context.Context
-	config           ServiceConfig
-	source           pagefetch.PageSource
-	metrics          *crawlermetrics.Metrics
-	checkpoint       crawlerCheckpointSession
-	nodeRPC          crawlerNodeRPC
-	emitter          ingest.BatchEmitter
-	growthAdmission  *yagocrawlcontract.StoragePressureGate
-	restart          func()
-	shutdown         func()
-	maximumRedirects *redirectLimit
+	context            context.Context
+	config             ServiceConfig
+	source             pagefetch.PageSource
+	metrics            *crawlermetrics.Metrics
+	checkpoint         crawlerCheckpointSession
+	nodeRPC            crawlerNodeRPC
+	emitter            ingest.BatchEmitter
+	notModifiedEmitter ingest.NotModifiedEmitter
+	growthAdmission    *yagocrawlcontract.StoragePressureGate
+	restart            func()
+	shutdown           func()
+	maximumRedirects   *redirectLimit
 }
 
 func assembleCrawlerExecution(start crawlerExecutionStart) (crawlerExecution, error) {
@@ -68,18 +69,19 @@ func assembleCrawlerExecution(start crawlerExecutionStart) (crawlerExecution, er
 	})
 	activeRuns := crawlorder.NewActiveRunAdmission(crawl.MaxActiveRuns)
 	execution := crawlerExecution{
-		checkpoint:      start.checkpoint,
-		nodeRPC:         start.nodeRPC,
-		pace:            pace,
-		tally:           tally,
-		frontier:        crawlFrontier,
-		concurrency:     workerConcurrency,
-		activeRuns:      activeRuns,
-		fetchBudget:     fetchBudget,
-		fleetAdmission:  fleetAdmission,
-		emitter:         start.emitter,
-		growthAdmission: newGrowthAdmission,
-		urlDenylist:     urlDenylist,
+		checkpoint:         start.checkpoint,
+		nodeRPC:            start.nodeRPC,
+		pace:               pace,
+		tally:              tally,
+		frontier:           crawlFrontier,
+		concurrency:        workerConcurrency,
+		activeRuns:         activeRuns,
+		fetchBudget:        fetchBudget,
+		fleetAdmission:     fleetAdmission,
+		emitter:            start.emitter,
+		notModifiedEmitter: start.notModifiedEmitter,
+		growthAdmission:    newGrowthAdmission,
+		urlDenylist:        urlDenylist,
 	}
 	execution.orders = assembleCrawlerOrderReceiver(start, execution, fetchStartSession)
 

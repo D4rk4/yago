@@ -45,10 +45,11 @@ func (f *PageFetcher) WithHTTP1Fallback(client *http.Client) *PageFetcher {
 	return f
 }
 
-func (f *PageFetcher) Fetch(
+func (f *PageFetcher) fetchRepresentation(
 	ctx context.Context,
-	target *url.URL,
+	fetchRequest pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := fetchRequest.Target
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return pagefetch.FetchedPage{}, fmt.Errorf("create request: %w", err)
@@ -56,6 +57,7 @@ func (f *PageFetcher) Fetch(
 	if f.userAgent != "" {
 		request.Header.Set("User-Agent", f.userAgent)
 	}
+	applyConditionalHeaders(request.Header, fetchRequest.Validators)
 
 	response, err := f.do(request, target)
 	if err != nil {
@@ -63,6 +65,9 @@ func (f *PageFetcher) Fetch(
 	}
 	defer func() { _ = response.Body.Close() }()
 
+	if response.StatusCode == http.StatusNotModified {
+		return pagefetch.FetchedPage{}, notModifiedOutcome(fetchRequest.Validators, response)
+	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		if pagefetch.ThrottledStatus(response.StatusCode) {
 			return pagefetch.FetchedPage{}, &pagefetch.ThrottledError{
@@ -102,6 +107,7 @@ func (f *PageFetcher) Fetch(
 		Body:         body,
 		LastModified: responseLastModified(response.Header.Get("Last-Modified")),
 		RobotsTag:    robotsTag,
+		Validators:   representationValidators(response.Header),
 	}, nil
 }
 

@@ -54,8 +54,8 @@ func TestParseAtomFeed(t *testing.T) {
 			t.Fatalf("atom text missing %q", want)
 		}
 	}
-	if len(page.Links) != 3 || page.Links[0] != "https://a.example/e1" ||
-		page.Links[1] != "https://a.example/e2" || page.Links[2] != "https://a.example/only-self" {
+	if len(page.Links) != 2 || page.Links[0] != "https://a.example/e1" ||
+		page.Links[1] != "https://a.example/e2" {
 		t.Fatalf("atom links = %v", page.Links)
 	}
 }
@@ -90,33 +90,38 @@ func TestParseGenericXMLAndEdges(t *testing.T) {
 func TestFeedItemLimitClipsHostileFeeds(t *testing.T) {
 	var rss strings.Builder
 	rss.WriteString(`<rss version="2.0"><channel><title>big</title>`)
-	for i := 0; i < feedItemLimit+50; i++ {
+	for i := 0; i < feedEntryCandidateLimit+50; i++ {
 		rss.WriteString(`<item><title>x</title><link>https://a.example/l</link></item>`)
 	}
 	rss.WriteString(`</channel></rss>`)
-	page, parsed := parseRSS("https://a.example/big.rss", []byte(rss.String()))
-	if !parsed || len(page.Links) != feedItemLimit {
-		t.Fatalf("rss clip = %v links=%d, want %d", parsed, len(page.Links), feedItemLimit)
+	page, parsed := parseXMLFeeds("https://a.example/big.rss", "", []byte(rss.String()))
+	if !parsed || len(page.Links) != feedEntryCandidateLimit {
+		t.Fatalf(
+			"rss clip = %v links=%d, want %d",
+			parsed,
+			len(page.Links),
+			feedEntryCandidateLimit,
+		)
 	}
 
 	var atom strings.Builder
 	atom.WriteString(`<feed xmlns="http://www.w3.org/2005/Atom"><title>big</title>`)
-	for i := 0; i < feedItemLimit+50; i++ {
+	for i := 0; i < feedEntryCandidateLimit+50; i++ {
 		atom.WriteString(`<entry><title>x</title><link href="https://a.example/l"/></entry>`)
 	}
 	atom.WriteString(`</feed>`)
-	aPage, aParsed := parseAtom("https://a.example/big.atom", []byte(atom.String()))
-	if !aParsed || len(aPage.Links) != feedItemLimit {
-		t.Fatalf("atom clip = %v links=%d, want %d", aParsed, len(aPage.Links), feedItemLimit)
+	aPage, aParsed := parseXMLFeeds("https://a.example/big.atom", "", []byte(atom.String()))
+	if !aParsed || len(aPage.Links) != feedEntryCandidateLimit {
+		t.Fatalf(
+			"atom clip = %v links=%d, want %d",
+			aParsed,
+			len(aPage.Links),
+			feedEntryCandidateLimit,
+		)
 	}
 
-	if got := atomEntryLink(atomEntry{}); got != "" {
-		t.Fatalf("linkless atom entry = %q", got)
-	}
-
-	// A feed whose title is empty falls back to the first text line.
 	titleless := `<rss version="2.0"><channel><item><title>Only item</title></item></channel></rss>`
-	tPage, tParsed := parseRSS("https://a.example/t.rss", []byte(titleless))
+	tPage, tParsed := parseXMLFeeds("https://a.example/t.rss", "", []byte(titleless))
 	if !tParsed || tPage.Title != "Only item" {
 		t.Fatalf("titleless feed = %v %+v", tParsed, tPage)
 	}

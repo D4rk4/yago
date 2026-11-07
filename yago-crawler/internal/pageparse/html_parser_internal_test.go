@@ -14,7 +14,7 @@ func restoreParserSeams(
 	t *testing.T,
 	charsetReader func(io.Reader, string) (io.Reader, error),
 	htmlParser func(io.Reader) (*html.Node, error),
-	extractor func(io.Reader, trafilatura.Options) (*trafilatura.ExtractResult, error),
+	extractor func(*html.Node, trafilatura.Options) (*trafilatura.ExtractResult, error),
 ) {
 	t.Helper()
 	t.Cleanup(func() {
@@ -29,7 +29,7 @@ func TestParseHTMLFallsBackWhenCharsetReaderFails(t *testing.T) {
 	newHTMLCharsetReader = func(io.Reader, string) (io.Reader, error) {
 		return nil, errors.New("charset failed")
 	}
-	extractReadableContent = func(io.Reader, trafilatura.Options) (*trafilatura.ExtractResult, error) {
+	extractReadableContent = func(*html.Node, trafilatura.Options) (*trafilatura.ExtractResult, error) {
 		return &trafilatura.ExtractResult{}, nil
 	}
 
@@ -143,11 +143,15 @@ func TestHasLinkRelation(t *testing.T) {
 
 func TestSelectTextFallsBackWhenExtractorFails(t *testing.T) {
 	restoreParserSeams(t, newHTMLCharsetReader, parseHTMLDocument, extractReadableContent)
-	extractReadableContent = func(io.Reader, trafilatura.Options) (*trafilatura.ExtractResult, error) {
+	extractReadableContent = func(*html.Node, trafilatura.Options) (*trafilatura.ExtractResult, error) {
 		return nil, errors.New("extract failed")
 	}
 
-	got := selectText("text/html", []byte("<html></html>"), " fallback \n text ")
+	root, err := html.Parse(strings.NewReader("<html></html>"))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	got := selectText(root, " fallback \n text ")
 
 	if got != "fallback text" {
 		t.Fatalf("text = %q", got)
@@ -157,11 +161,16 @@ func TestSelectTextFallsBackWhenExtractorFails(t *testing.T) {
 func TestExtractMainContentReturnsExtractorError(t *testing.T) {
 	restoreParserSeams(t, newHTMLCharsetReader, parseHTMLDocument, extractReadableContent)
 	sentinel := errors.New("extract failed")
-	extractReadableContent = func(io.Reader, trafilatura.Options) (*trafilatura.ExtractResult, error) {
+	extractReadableContent = func(*html.Node, trafilatura.Options) (*trafilatura.ExtractResult, error) {
 		return nil, sentinel
 	}
 
-	_, err := extractMainContent("text/html", []byte("<html></html>"))
+	root, err := html.Parse(strings.NewReader("<html></html>"))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+
+	_, err = extractMainContent(root)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("error = %v, want %v", err, sentinel)
 	}

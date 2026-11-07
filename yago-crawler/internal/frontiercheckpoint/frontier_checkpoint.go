@@ -50,6 +50,7 @@ type Page struct {
 	ObservationID    string
 	ObservedAt       time.Time
 	SourceModifiedAt time.Time
+	ConditionalFetch *yagocrawlcontract.ConditionalFetch `json:",omitempty"`
 	RedirectURL      string
 	RedirectHost     string
 	RedirectHostBump bool

@@ -47,6 +47,11 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 
 		return
 	}
+	if delivery.Batch.NotModified != nil {
+		c.absorbNotModified(ctx, delivery)
+
+		return
+	}
 	if !c.passesGates(ctx, delivery) {
 		return
 	}
@@ -202,6 +207,7 @@ func (c *IngestConsumer) absorbReservedTail(
 	}
 
 	c.recordFetch(ctx, delivery)
+	c.recordResponseValidators(ctx, []IngestDelivery{delivery})
 	if !c.completeObservations(ctx, []IngestDelivery{delivery}) {
 		return
 	}

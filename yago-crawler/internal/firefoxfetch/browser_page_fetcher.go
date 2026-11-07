@@ -322,8 +322,9 @@ func (m *firefoxManager) applySandbox() {
 
 func (f *BrowserPageFetcher) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
+	target := request.Target
 	if f.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, f.timeout)

@@ -7,14 +7,16 @@ import (
 )
 
 type IngestBatch struct {
-	SourceURL        string
-	Provenance       []byte
-	ProfileHandle    string
-	ObservationID    string
-	ObservedAt       time.Time
-	SourceModifiedAt time.Time
-	Removed          bool
-	Document         DocumentIngest
-	Postings         []yagomodel.RWIPosting
-	Metadata         []yagomodel.URIMetadataRow
+	SourceURL          string
+	Provenance         []byte
+	ProfileHandle      string
+	ObservationID      string
+	ObservedAt         time.Time
+	SourceModifiedAt   time.Time
+	Removed            bool
+	Document           DocumentIngest
+	Postings           []yagomodel.RWIPosting
+	Metadata           []yagomodel.URIMetadataRow
+	ResponseValidators *HTTPValidators         `json:",omitempty"`
+	NotModified        *NotModifiedObservation `json:",omitempty"`
 }

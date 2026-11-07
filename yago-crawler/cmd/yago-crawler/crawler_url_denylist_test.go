@@ -49,7 +49,10 @@ func TestCrawlURLDenylistWrapsEveryFetchChain(t *testing.T) {
 		chains.insecureDirect,
 	}
 	for index, source := range sources {
-		_, err := source.Fetch(t.Context(), targets[index%len(targets)])
+		_, err := source.Fetch(
+			t.Context(),
+			pagefetch.FetchRequest{Target: targets[index%len(targets)]},
+		)
 		if !errors.Is(err, pagefetch.ErrPageRejected) {
 			t.Fatalf("source %d error = %v", index, err)
 		}

@@ -102,14 +102,17 @@ func TestHelloAndRosterRetainPromoteAndDoNotDowngradeCaller(t *testing.T) {
 
 	serveHelloRosterRequest(t, mux, caller)
 	assertHelloRosterCaller(t, roster, caller.Hash, yagomodel.PeerJunior, false)
+	assertHelloRosterAnsweredEndpoint(t, roster, caller.Hash, false)
 
 	reachable = true
 	serveHelloRosterRequest(t, mux, caller)
 	assertHelloRosterCaller(t, roster, caller.Hash, yagomodel.PeerPrincipal, true)
+	assertHelloRosterAnsweredEndpoint(t, roster, caller.Hash, true)
 
 	reachable = false
 	serveHelloRosterRequest(t, mux, caller)
 	assertHelloRosterCaller(t, roster, caller.Hash, yagomodel.PeerPrincipal, true)
+	assertHelloRosterAnsweredEndpoint(t, roster, caller.Hash, true)
 }
 
 func TestHelloAndRosterRetainJuniorAfterRequestCancellation(t *testing.T) {

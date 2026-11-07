@@ -322,7 +322,9 @@ live DHT traffic as stored RWI rows are fed into the outbound queue.
 YaCy sends an index handoff in two phases. The sender posts RWI rows to
 `/yacy/transferRWI.html`; when the receiver reports hashes in `unknownURL`, the
 sender loads the matching local URL metadata rows and posts them to
-`/yacy/transferURL.html`. An `ok` RWI response must contain the `unknownURL`
+`/yacy/transferURL.html`. The POST body encoding is described in
+[yacy-wire-protocol.md](yacy-wire-protocol.md).
+An `ok` RWI response must contain the `unknownURL`
 field; a present empty value completes an RWI-only handoff, while an absent
 field is a malformed response and leaves the postings recoverable. The RWI
 receiver preserves upstream preflight result
@@ -348,7 +350,18 @@ the sender restores those rows and clears their recovery records. A selected
 posting whose URL metadata is known missing is terminally removed together with
 its recovery record, matching YaCy's sender-side orphan filter. A
 metadata-backed posting with no eligible target is restored instead of being
-discarded.
+discarded. A restore never replaces a posting written after selection, and
+selection never removes a posting that changed after it was chosen. A restore
+or confirmation acts only on a journal entry that still holds the posting its
+own batch selected. When a later selection of the same posting has replaced
+that entry, the earlier batch leaves it in place. A purge of a posting that is still live, including URL
+deletion, also drops a posting waiting for transfer, so neither a later
+restore nor restart recovery brings it back. A posting already sent to a peer
+is not recalled.
+
+Known limitation: a word dropped from a page by a recrawl may return after a
+failed transfer until the next recrawl of that URL, and a posting already in a
+transfer batch may still reach the peer.
 
 Once redundancy copies are queued, one accepted transfer leaves the recovery
 record intact while another in-memory copy remains. Only the final accepted copy

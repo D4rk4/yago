@@ -26,14 +26,19 @@ func TestQueryBiasedSnippetCentersOnTerms(t *testing.T) {
 	}
 }
 
-func TestQueryBiasedSnippetUsesOriginalByteOffsetForEvidence(t *testing.T) {
+func TestQueryBiasedSnippetFillsTheWindowWithEarlierContextNearTheEnd(t *testing.T) {
+	closing := "Closing needle remark."
+	long := strings.Repeat("earlier context. ", 40) + closing
+	got := queryBiasedSnippet(long, []string{"needle"}, "fallback")
+	if !strings.HasSuffix(got, closing) ||
+		len([]rune(got)) != snippetRuneCap+len([]rune("… ")) {
+		t.Fatalf("snippet runes=%d: %q", len([]rune(got)), got)
+	}
+}
+
+func TestDocumentEvidenceSnippetUsesOriginalByteOffset(t *testing.T) {
 	text := strings.Repeat("İ prefix words. ", 40) + "Needle evidence appears here."
-	got := queryBiasedSnippetWithEvidence(
-		text,
-		[]string{"needle"},
-		"Needle",
-		"fallback",
-	)
+	got := documentEvidenceSnippet(t, text, "en", []string{"needle"})
 	if !strings.Contains(got, "Needle evidence") {
 		t.Fatalf("evidence missing: %q", got)
 	}
@@ -158,16 +163,11 @@ func TestNewBleveShardRejectsOccupiedPath(t *testing.T) {
 	}
 }
 
-func TestQueryBiasedSnippetAnchorsOnContentTerm(t *testing.T) {
+func TestDocumentEvidenceSnippetAnchorsOnContentTerm(t *testing.T) {
 	text := "Ну вот я и не понимаю, что я делаю не так. " +
 		strings.Repeat("Форумные сообщения о маршрутизаторах и настройке. ", 20) +
 		"У меня отвалилось после обновления прошлой осенью, вроде бы."
-	got := queryBiasedSnippetWithEvidence(
-		text,
-		[]string{"что", "такое", "осень"},
-		"осенью",
-		"fallback",
-	)
+	got := documentEvidenceSnippet(t, text, "ru", []string{"что", "такое", "осень"})
 	if !strings.Contains(got, "осенью") {
 		t.Fatalf("snippet not anchored on the content term: %q", got)
 	}
@@ -197,4 +197,24 @@ func TestQueryBiasedSnippetAllStopwordQueryAnchorsOnAnyTerm(t *testing.T) {
 	if !strings.Contains(got, "что") {
 		t.Fatalf("all-stopword query lost its anchor: %q", got)
 	}
+}
+
+func documentEvidenceSnippet(
+	t *testing.T,
+	text string,
+	language string,
+	requirements []string,
+) string {
+	t.Helper()
+	evidence, _, available, err := AnalyzeDocumentQueryEvidence(
+		t.Context(),
+		documentstore.Document{Title: "fallback", ExtractedText: text, Language: language},
+		requirements,
+		MaximumDocumentQueryEvidenceBytes,
+	)
+	if err != nil || !available {
+		t.Fatalf("available=%v err=%v", available, err)
+	}
+
+	return evidence.Snippet
 }

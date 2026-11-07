@@ -71,7 +71,7 @@ func AnalyzeDocumentQueryEvidence(
 		)
 	}
 	fields["url"] = ordinalRequirementPositions(matcher, urlPositions)
-	snippet := queryEvidenceSnippet(document, requirements, stored.bodyQueryMatches)
+	snippet := queryEvidenceSnippet(document, requirements, stored.locations["body"])
 	_, snippetMatches, err := scanVisibleFieldEvidence(ctx, matcher, snippet, true)
 	if err != nil {
 		return DocumentQueryEvidence{}, analyzedBytes, false, fmt.Errorf(
@@ -182,23 +182,19 @@ func ordinalRequirementPositions(
 func queryEvidenceSnippet(
 	document documentstore.Document,
 	requirements []string,
-	matches []TextQueryMatch,
+	bodyLocations search.TermLocationMap,
 ) string {
 	fallback := documentTitle(document)
-	if len(matches) == 0 {
-		return queryBiasedSnippet(document.ExtractedText, requirements, fallback)
-	}
-	match := matches[0]
-	if match.Start < 0 || match.End > len(document.ExtractedText) || match.End <= match.Start {
-		return queryBiasedSnippet(document.ExtractedText, requirements, fallback)
+	if witness, found := fieldSnippetEvidence(
+		bodyLocations,
+		[]string{document.ExtractedText},
+		nil,
+		true,
+	); found {
+		return sentenceSnippet(witness, fallback)
 	}
 
-	return queryBiasedSnippetWithEvidence(
-		document.ExtractedText,
-		requirements,
-		document.ExtractedText[match.Start:match.End],
-		fallback,
-	)
+	return queryBiasedSnippet(document.ExtractedText, requirements, fallback)
 }
 
 func boundedEvidenceDocument(

@@ -18,6 +18,7 @@ type CrawlRequest struct {
 	AppDate        time.Time
 	LastModified   time.Time
 	SourceMetadata *CrawlSourceMetadata `json:",omitempty"`
+	ConditionalFetch *ConditionalFetch `json:",omitempty"`
 }
 
 func ParseCrawlInitiator(raw []byte) (yagomodel.Hash, error) {

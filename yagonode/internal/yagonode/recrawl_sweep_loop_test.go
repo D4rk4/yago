@@ -76,12 +76,13 @@ func TestSweepOnceRedispatchesDueURL(t *testing.T) {
 	initiator := yagomodel.Hash("initiator")
 	dispatchAt := sweepBase.Add(time.Hour)
 	sweeper := recrawlSweeper{
-		frontier:  frontier,
-		publisher: publisher,
-		initiator: initiator,
-		mint:      func() []byte { return []byte("prov") },
-		now:       func() time.Time { return dispatchAt },
-		batch:     16,
+		frontier:    frontier,
+		conditional: conditionalRecrawl{frontier: frontier, documents: scriptedDocumentDirectory{}},
+		publisher:   publisher,
+		initiator:   initiator,
+		mint:        func() []byte { return []byte("prov") },
+		now:         func() time.Time { return dispatchAt },
+		batch:       16,
 	}
 
 	sweeper.sweepOnce(context.Background())
@@ -112,11 +113,12 @@ func TestSweepOnceSkipsNotYetDueURL(t *testing.T) {
 	seedDueURL(t, frontier, "https://a.example/")
 	publisher := &capturingPublisher{}
 	sweeper := recrawlSweeper{
-		frontier:  frontier,
-		publisher: publisher,
-		mint:      func() []byte { return []byte("p") },
-		now:       func() time.Time { return sweepBase.Add(30 * time.Minute) },
-		batch:     16,
+		frontier:    frontier,
+		conditional: conditionalRecrawl{frontier: frontier, documents: scriptedDocumentDirectory{}},
+		publisher:   publisher,
+		mint:        func() []byte { return []byte("p") },
+		now:         func() time.Time { return sweepBase.Add(30 * time.Minute) },
+		batch:       16,
 	}
 
 	sweeper.sweepOnce(context.Background())
@@ -140,9 +142,10 @@ func TestRecrawlSweepLoopRunsAndStops(t *testing.T) {
 	var passes atomic.Int64
 	publisher := &capturingPublisher{signal: make(chan struct{}, 4)}
 	sweeper := recrawlSweeper{
-		frontier:  frontier,
-		publisher: publisher,
-		mint:      func() []byte { return []byte("p") },
+		frontier:    frontier,
+		conditional: conditionalRecrawl{frontier: frontier, documents: scriptedDocumentDirectory{}},
+		publisher:   publisher,
+		mint:        func() []byte { return []byte("p") },
 		now: func() time.Time {
 			return sweepBase.Add(time.Duration(passes.Add(1)) * time.Hour)
 		},

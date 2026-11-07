@@ -24,6 +24,7 @@ type PostingObserver interface {
 
 type PostingPurger interface {
 	PurgePosting(tx *vault.Txn, word, url yagomodel.Hash) (bool, error)
+	DropWaitingOutboundPostings(tx *vault.Txn, urls []yagomodel.Hash) error
 }
 
 type PostingIndex interface {

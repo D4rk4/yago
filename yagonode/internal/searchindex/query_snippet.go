@@ -2,7 +2,6 @@ package searchindex
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	"github.com/D4rk4/yago/yagonode/internal/stopwords"
 )
@@ -14,15 +13,6 @@ import (
 // searcher judge relevance without opening the page (Tombros & Sanderson,
 // SIGIR 1998).
 func queryBiasedSnippet(text string, terms []string, fallback string) string {
-	return queryBiasedSnippetWithEvidence(text, terms, "", fallback)
-}
-
-func queryBiasedSnippetWithEvidence(
-	text string,
-	terms []string,
-	evidence string,
-	fallback string,
-) string {
 	if strings.TrimSpace(text) == "" {
 		return fallback
 	}
@@ -36,13 +26,7 @@ func queryBiasedSnippetWithEvidence(
 	if len(anchorTerms) == 0 {
 		anchorTerms = terms
 	}
-	anchor := -1
-	if evidence != "" {
-		anchor = strings.Index(text, evidence)
-	}
-	if anchor < 0 {
-		anchor = firstTextTermAnchor(text, anchorTerms)
-	}
+	anchor := firstTextTermAnchor(text, anchorTerms)
 	if anchor < 0 {
 		anchor = firstTextTermAnchor(text, terms)
 	}
@@ -50,23 +34,7 @@ func queryBiasedSnippetWithEvidence(
 		return snippet(text, fallback)
 	}
 
-	return snippetAtByte(text, anchor, fallback)
-}
-
-func snippetAtByte(text string, anchor int, fallback string) string {
-	anchor = min(max(anchor, 0), len(text))
-	start := anchor
-	for count := 0; start > 0 && count < snippetRuneCap/4; count++ {
-		_, size := utf8.DecodeLastRuneInString(text[:start])
-		start -= size
-	}
-	end := start
-	for count := 0; end < len(text) && count < snippetRuneCap; count++ {
-		_, size := utf8.DecodeRuneInString(text[end:])
-		end += size
-	}
-
-	return normalizedSnippetWindow(text[start:end], start > 0, fallback)
+	return boundedSnippet(text, TextQueryEvidence{Start: anchor, End: anchor}, fallback)
 }
 
 func textWithinRuneLimit(text string, limit int) bool {

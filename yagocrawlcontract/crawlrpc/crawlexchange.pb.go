@@ -1614,11 +1614,12 @@ type IngestAck struct {
 	Rejected bool `protobuf:"varint,1,opt,name=rejected,proto3" json:"rejected,omitempty"`
 	// rejection_rule names the gate rule the page violated, for the crawler's
 	// per-URL outcome and logs. Empty when the page was stored.
-	RejectionRule string `protobuf:"bytes,2,opt,name=rejection_rule,json=rejectionRule,proto3" json:"rejection_rule,omitempty"`
-	SubmissionId  string `protobuf:"bytes,3,opt,name=submission_id,json=submissionId,proto3" json:"submission_id,omitempty"`
-	ErrorCode     int32  `protobuf:"varint,4,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RejectionRule       string `protobuf:"bytes,2,opt,name=rejection_rule,json=rejectionRule,proto3" json:"rejection_rule,omitempty"`
+	NotModifiedRecorded bool   `protobuf:"varint,3,opt,name=not_modified_recorded,json=notModifiedRecorded,proto3" json:"not_modified_recorded,omitempty"`
+	ErrorCode           int32  `protobuf:"varint,4,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	SubmissionId        string `protobuf:"bytes,5,opt,name=submission_id,json=submissionId,proto3" json:"submission_id,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *IngestAck) Reset() {
@@ -1665,11 +1666,11 @@ func (x *IngestAck) GetRejectionRule() string {
 	return ""
 }
 
-func (x *IngestAck) GetSubmissionId() string {
+func (x *IngestAck) GetNotModifiedRecorded() bool {
 	if x != nil {
-		return x.SubmissionId
+		return x.NotModifiedRecorded
 	}
-	return ""
+	return false
 }
 
 func (x *IngestAck) GetErrorCode() int32 {
@@ -1677,6 +1678,13 @@ func (x *IngestAck) GetErrorCode() int32 {
 		return x.ErrorCode
 	}
 	return 0
+}
+
+func (x *IngestAck) GetSubmissionId() string {
+	if x != nil {
+		return x.SubmissionId
+	}
+	return ""
 }
 
 type CrawlRunTally struct {
@@ -2170,13 +2178,14 @@ const file_crawlexchange_proto_rawDesc = "" +
 	"\blease_id\x18\x02 \x01(\tR\aleaseId\x12\x1b\n" +
 	"\tworker_id\x18\x03 \x01(\tR\bworkerId\x12*\n" +
 	"\x11worker_session_id\x18\x04 \x01(\tR\x0fworkerSessionId\x12#\n" +
-	"\rsubmission_id\x18\x05 \x01(\tR\fsubmissionId\"\x92\x01\n" +
+	"\rsubmission_id\x18\x05 \x01(\tR\fsubmissionId\"\xc6\x01\n" +
 	"\tIngestAck\x12\x1a\n" +
 	"\brejected\x18\x01 \x01(\bR\brejected\x12%\n" +
-	"\x0erejection_rule\x18\x02 \x01(\tR\rrejectionRule\x12#\n" +
-	"\rsubmission_id\x18\x03 \x01(\tR\fsubmissionId\x12\x1d\n" +
+	"\x0erejection_rule\x18\x02 \x01(\tR\rrejectionRule\x122\n" +
+	"\x15not_modified_recorded\x18\x03 \x01(\bR\x13notModifiedRecorded\x12\x1d\n" +
 	"\n" +
-	"error_code\x18\x04 \x01(\x05R\terrorCode\"\xba\x01\n" +
+	"error_code\x18\x04 \x01(\x05R\terrorCode\x12#\n" +
+	"\rsubmission_id\x18\x05 \x01(\tR\fsubmissionId\"\xba\x01\n" +
 	"\rCrawlRunTally\x12\x18\n" +
 	"\afetched\x18\x01 \x01(\x04R\afetched\x12\x18\n" +
 	"\aindexed\x18\x02 \x01(\x04R\aindexed\x12\x16\n" +

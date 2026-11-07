@@ -37,9 +37,13 @@ func (d postingDirectory) PurgePosting(
 	tx *vault.Txn,
 	word, url yagomodel.Hash,
 ) (bool, error) {
-	deleted, err := d.postings.Delete(tx, postingKey(word, url))
+	key := postingKey(word, url)
+	deleted, err := d.postings.Delete(tx, key)
 	if err != nil {
 		return false, fmt.Errorf("delete rwi posting: %w", err)
+	}
+	if err := d.dropWaitingOutboundPosting(tx, key); err != nil {
+		return false, err
 	}
 	if err := d.observers.purged(tx, word, url); err != nil {
 		return false, err

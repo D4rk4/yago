@@ -1,15 +1,16 @@
 package peerannouncement
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/D4rk4/yago/yagomodel"
+	"github.com/D4rk4/yago/yagonode/internal/peerwire"
 	"github.com/D4rk4/yago/yagoproto"
 )
 
@@ -21,11 +22,12 @@ var (
 )
 
 type greetResult struct {
-	Responder     yagomodel.Seed
-	ContactedHost yagomodel.Optional[yagomodel.Host]
-	YourIP        string
-	YourType      yagomodel.PeerType
-	Known         []yagomodel.Seed
+	Responder         yagomodel.Seed
+	ContactedHost     yagomodel.Optional[yagomodel.Host]
+	ContactedEndpoint peerwire.Endpoint
+	YourIP            string
+	YourType          yagomodel.PeerType
+	Known             []yagomodel.Seed
 }
 
 type httpPeerGreeter struct {
@@ -63,8 +65,9 @@ func (g httpPeerGreeter) Greet(
 	target yagomodel.Seed,
 	self yagomodel.Seed,
 	count int,
+	answered yagomodel.Optional[peerwire.Endpoint],
 ) (greetResult, error) {
-	endpoints, err := greetEndpoints(target, g.preferHTTPS)
+	endpoints, err := greetEndpoints(target, g.preferHTTPS, answered)
 	if err != nil {
 		return greetResult{}, err
 	}
@@ -83,10 +86,10 @@ func (g httpPeerGreeter) Greet(
 			return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 		}
 	}
-	form := formValues.Encode()
 	operationContext, cancelOperation := g.operationContext(ctx)
 	defer cancelOperation()
 
+	body, contentType := peerwire.EncodeMultipartForm(formValues)
 	var lastErr error
 	for index, endpoint := range endpoints {
 		if err := operationContext.Err(); err != nil {
@@ -96,7 +99,7 @@ func (g httpPeerGreeter) Greet(
 			operationContext,
 			len(endpoints)-index,
 		)
-		result, err := g.greetEndpoint(attemptContext, endpoint, form, self)
+		result, err := g.greetEndpoint(attemptContext, endpoint, body, contentType, self)
 		cancelAttempt()
 		if err == nil {
 			if result.Responder.Hash != target.Hash {
@@ -110,6 +113,7 @@ func (g httpPeerGreeter) Greet(
 			}
 			contactedHost, _ := yagomodel.ParseHost(endpoint.Hostname())
 			result.ContactedHost = yagomodel.Some(contactedHost)
+			result.ContactedEndpoint = peerwire.EndpointAt(endpoint)
 			return result, nil
 		}
 		lastErr = err
@@ -124,14 +128,16 @@ func (g httpPeerGreeter) Greet(
 func (g httpPeerGreeter) greetEndpoint(
 	ctx context.Context,
 	target *url.URL,
-	form string,
+	body []byte,
+	contentType string,
 	self yagomodel.Seed,
 ) (greetResult, error) {
-	req, err := newGreetRequest(ctx, http.MethodPost, target.String(), strings.NewReader(form))
+	req, err := newGreetRequest(ctx, http.MethodPost, target.String(), bytes.NewReader(body))
 	if err != nil {
 		return greetResult{}, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", contentType)
+	req.ContentLength = int64(len(body))
 
 	resp, err := g.client.Do(req)
 	if err != nil {
@@ -185,8 +191,12 @@ func parseGreetResponse(
 	}, nil
 }
 
-func greetEndpoints(target yagomodel.Seed, preferHTTPS bool) ([]*url.URL, error) {
-	endpoints, err := target.ProtocolEndpoints(yagoproto.PathHello, preferHTTPS)
+func greetEndpoints(
+	target yagomodel.Seed,
+	preferHTTPS bool,
+	answered yagomodel.Optional[peerwire.Endpoint],
+) ([]*url.URL, error) {
+	endpoints, err := peerwire.ContactEndpoints(target, yagoproto.PathHello, preferHTTPS, answered)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errGreetFailed, err)
 	}
