@@ -200,24 +200,19 @@ func assembleNode(
 	}()
 	seedlistClient, peerClient := nodePeerClients(config, client)
 	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
-	exchange, err := assembleRuntimePeerExchange(peerExchange{
-		router:                       peerWire.router,
-		identity:                     identity,
-		report:                       peerWire.report,
-		config:                       config,
-		vault:                        vault,
-		client:                       peerClient,
-		seedlistClient:               seedlistClient,
-		peer:                         telemetry.peer,
-		host:                         hostLinkSnapshot,
-		roster:                       peerWire.roster,
-		news:                         peerWire.news,
-		externalReachabilityEvidence: peerWire.reachability,
+	exchange, err := assembleNodePeerExchange(nodePeerExchangeInput{
+		config:         config,
+		vault:          vault,
+		client:         peerClient,
+		seedlistClient: seedlistClient,
+		identity:       identity,
+		telemetry:      telemetry,
+		peerWire:       peerWire,
+		host:           hostLinkSnapshot,
 	})
 	if err != nil {
 		return node{}, err
 	}
-	exchange.externalReachabilityEvidence = peerWire.reachability
 	surfaces, err := assembleNodeSurfaces(assembleSurfacesInput{
 		ctx:                          ctx,
 		config:                       config,

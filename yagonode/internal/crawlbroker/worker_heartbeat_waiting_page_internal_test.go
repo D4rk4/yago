@@ -41,7 +41,10 @@ func TestWaitingCrawlerPagesFromHeartbeatRejectsInvalidSamples(t *testing.T) {
 			t.Fatalf("case %d accepted an invalid sample", index)
 		}
 	}
-	tooMany := make([]*crawlrpc.WaitingCrawlPage, yagocrawlcontract.MaximumCrawlerWaitingPageReports+1)
+	tooMany := make(
+		[]*crawlrpc.WaitingCrawlPage,
+		yagocrawlcontract.MaximumCrawlerWaitingPageReports+1,
+	)
 	for index := range tooMany {
 		tooMany[index] = &crawlrpc.WaitingCrawlPage{
 			RunId:  "run-a",
@@ -53,7 +56,10 @@ func TestWaitingCrawlerPagesFromHeartbeatRejectsInvalidSamples(t *testing.T) {
 	if _, valid := waitingCrawlerPagesFromHeartbeat(tooMany); valid {
 		t.Fatal("accepted a sample over the report limit")
 	}
-	tooManyForRun := make([]*crawlrpc.WaitingCrawlPage, yagocrawlcontract.MaximumCrawlerWaitingPagesPerRun+1)
+	tooManyForRun := make(
+		[]*crawlrpc.WaitingCrawlPage,
+		yagocrawlcontract.MaximumCrawlerWaitingPagesPerRun+1,
+	)
 	for index := range tooManyForRun {
 		tooManyForRun[index] = &crawlrpc.WaitingCrawlPage{
 			RunId:  "run-a",

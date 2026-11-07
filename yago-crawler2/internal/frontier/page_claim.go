@@ -14,7 +14,11 @@ type hostSchedule struct {
 	NextAllowed time.Time `json:"nextAllowed"`
 }
 
-func (frontier *Frontier) Claim(ctx context.Context, runID string, now time.Time) (Page, bool, error) {
+func (frontier *Frontier) Claim(
+	ctx context.Context,
+	runID string,
+	now time.Time,
+) (Page, bool, error) {
 	if err := checkContext(ctx); err != nil {
 		return Page{}, false, err
 	}
@@ -54,7 +58,11 @@ func (frontier *Frontier) Claim(ctx context.Context, runID string, now time.Time
 				return err
 			}
 			if page.RunID != runID {
-				return fmt.Errorf("frontier run index contains page %s from %s", page.ID, page.RunID)
+				return fmt.Errorf(
+					"frontier run index contains page %s from %s",
+					page.ID,
+					page.RunID,
+				)
 			}
 			if page.State != StateQueued && page.State != StateDeferred {
 				return fmt.Errorf("ready page %s is %s", page.ID, page.State)
@@ -63,7 +71,8 @@ func (frontier *Frontier) Claim(ctx context.Context, runID string, now time.Time
 			if err != nil {
 				return err
 			}
-			if schedule.Active >= frontier.config.MaximumHostActive || schedule.NextAllowed.After(now) {
+			if schedule.Active >= frontier.config.MaximumHostActive ||
+				schedule.NextAllowed.After(now) {
 				deferUntil := schedule.NextAllowed
 				if !deferUntil.After(now) {
 					deferUntil = now.Add(frontier.config.HostDelay)

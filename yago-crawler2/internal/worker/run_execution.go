@@ -228,9 +228,16 @@ func (worker *Worker) processPage(
 		return pageProcessingResult{state: frontier.StateFailed}, nil
 	}
 	mediaType, _, _ := mime.ParseMediaType(response.ContentType)
-	if strings.EqualFold(mediaType, "application/xml") || strings.EqualFold(mediaType, "text/xml") ||
+	if strings.EqualFold(mediaType, "application/xml") ||
+		strings.EqualFold(mediaType, "text/xml") ||
 		strings.Contains(strings.ToLower(response.ContentType), "sitemap") {
-		if err := worker.enqueueSitemap(ctx, response.Body, rules, runID, page.Depth+1); err != nil {
+		if err := worker.enqueueSitemap(
+			ctx,
+			response.Body,
+			rules,
+			runID,
+			page.Depth+1,
+		); err != nil {
 			if ctx.Err() != nil {
 				return worker.deferredPageResult(page, "sitemap"), nil
 			}
@@ -292,7 +299,10 @@ func (worker *Worker) processPage(
 				break
 			}
 			if enqueueErr != nil && !errors.Is(enqueueErr, frontier.ErrHostPageLimit) &&
-				!errors.Is(enqueueErr, frontier.ErrPendingLimit) && !errors.Is(enqueueErr, frontier.ErrStateLimit) {
+				!errors.Is(
+					enqueueErr,
+					frontier.ErrPendingLimit,
+				) && !errors.Is(enqueueErr, frontier.ErrStateLimit) {
 				if ctx.Err() != nil {
 					return worker.deferredPageResult(page, result.stage), nil
 				}
@@ -364,7 +374,10 @@ func (worker *Worker) enqueueSitemap(
 				return nil
 			}
 			if !errors.Is(err, frontier.ErrHostPageLimit) &&
-				!errors.Is(err, frontier.ErrPendingLimit) && !errors.Is(err, frontier.ErrStateLimit) {
+				!errors.Is(
+					err,
+					frontier.ErrPendingLimit,
+				) && !errors.Is(err, frontier.ErrStateLimit) {
 				return err
 			}
 		}

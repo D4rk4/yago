@@ -50,7 +50,11 @@ func TestWaitingPageReporterSharesNextFrontierURLsByRun(t *testing.T) {
 
 func TestWaitingPageReporterBoundsAndRotatesActiveRunSamples(t *testing.T) {
 	reporter := newWaitingPageReporter()
-	if got := reporter.nextRunIDs(yagocrawlcontract.MaximumCrawlerWaitingPageReports); len(got) != 0 {
+	if got := reporter.nextRunIDs(
+		yagocrawlcontract.MaximumCrawlerWaitingPageReports,
+	); len(
+		got,
+	) != 0 {
 		t.Fatalf("empty reporter selected %d runs", len(got))
 	}
 	for index := 0; index <= yagocrawlcontract.MaximumCrawlerWaitingPageReports; index++ {

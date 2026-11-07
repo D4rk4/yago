@@ -75,17 +75,17 @@ func buildCrawlRuntime(
 	}
 
 	runtime := &crawlRuntime{
-		broker:     coordination.broker,
-		state:      coordination.state,
-		ownsState:  coordination.ownsState,
-		statePath:  config.StatePath,
-		consumer:   ingest.consumer,
-		runs:       coordination.runs,
-		frontier:   ingest.frontier,
-		formats:    ingest.formats,
-		profiles:   newCrawlProfileDispatchRegistry(ingest.frontier),
-		initiator:  identity.Hash,
-		pageBudget: newCrawlRunPageBudget(config.MaxPagesPerRun),
+		broker:      coordination.broker,
+		state:       coordination.state,
+		ownsState:   coordination.ownsState,
+		statePath:   config.StatePath,
+		consumer:    ingest.consumer,
+		runs:        coordination.runs,
+		frontier:    ingest.frontier,
+		formats:     ingest.formats,
+		profiles:    newCrawlProfileDispatchRegistry(ingest.frontier),
+		initiator:   identity.Hash,
+		pageBudget:  newCrawlRunPageBudget(config.MaxPagesPerRun),
 		conditional: ingest.conditional,
 	}
 	importer := newDocumentImportService(

@@ -57,7 +57,12 @@ func TestAllowsSharesConcurrentOriginFetchAndCachesRules(t *testing.T) {
 	if got := fetches.Load(); got != 1 {
 		t.Fatalf("robots fetches = %d, want one shared fetch", got)
 	}
-	if allowed, err := policy.Allows(context.Background(), "https://example.org/next", false); err != nil || !allowed {
+	if allowed, err := policy.Allows(
+		context.Background(),
+		"https://example.org/next",
+		false,
+	); err != nil ||
+		!allowed {
 		t.Fatalf("cached rules allowed %t, err %v", allowed, err)
 	}
 	if got := fetches.Load(); got != 1 {
@@ -72,10 +77,20 @@ func TestAllowsCachesUnavailableRobotsAsDisallowAll(t *testing.T) {
 		return httpfetch.PageResponse{}, context.DeadlineExceeded
 	}, "yago-test", 0)
 
-	if allowed, err := policy.Allows(context.Background(), "https://slow.example/page", false); err != nil || allowed {
+	if allowed, err := policy.Allows(
+		context.Background(),
+		"https://slow.example/page",
+		false,
+	); err != nil ||
+		allowed {
 		t.Fatalf("timed-out robots result allowed %t, err %v", allowed, err)
 	}
-	if allowed, err := policy.Allows(context.Background(), "https://slow.example/next", false); err != nil || allowed {
+	if allowed, err := policy.Allows(
+		context.Background(),
+		"https://slow.example/next",
+		false,
+	); err != nil ||
+		allowed {
 		t.Fatalf("cached unavailable robots result allowed %t, err %v", allowed, err)
 	}
 	if got := fetches.Load(); got != 1 {
@@ -98,13 +113,23 @@ func TestAllowsDoesNotCacheWhenCrawlAttemptDeadlineExpires(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 
-	if allowed, err := policy.Allows(ctx, "https://deadline.example/page", false); !errors.Is(err, context.DeadlineExceeded) || allowed {
+	if allowed, err := policy.Allows(
+		ctx,
+		"https://deadline.example/page",
+		false,
+	); !errors.Is(err, context.DeadlineExceeded) ||
+		allowed {
 		t.Fatalf("expired crawl attempt allowed %t, err %v", allowed, err)
 	}
 	if len(policy.cache) != 0 {
 		t.Fatal("expired crawl attempt populated the robots cache")
 	}
-	if allowed, err := policy.Allows(context.Background(), "https://deadline.example/next", false); err != nil || !allowed {
+	if allowed, err := policy.Allows(
+		context.Background(),
+		"https://deadline.example/next",
+		false,
+	); err != nil ||
+		!allowed {
 		t.Fatalf("fresh robots result allowed %t, err %v", allowed, err)
 	}
 	if got := fetches.Load(); got != 2 {
@@ -121,7 +146,12 @@ func TestAllowsDoesNotCacheWhenCrawlIsCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if allowed, err := policy.Allows(ctx, "https://cancelled.example/page", false); err == nil || allowed {
+	if allowed, err := policy.Allows(
+		ctx,
+		"https://cancelled.example/page",
+		false,
+	); err == nil ||
+		allowed {
 		t.Fatalf("cancelled robots result allowed %t, err %v", allowed, err)
 	}
 	if len(policy.cache) != 0 {

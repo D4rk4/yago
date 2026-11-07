@@ -68,7 +68,13 @@ func TestWaitingSampleRejectsInvalidRequests(t *testing.T) {
 	if _, err := frontier.WaitingSample(context.Background(), nil, 0, 1, time.Now()); err == nil {
 		t.Fatal("accepted a nonpositive waiting sample limit")
 	}
-	if _, err := frontier.WaitingSample(context.Background(), []string{""}, 1, 1, time.Now()); err == nil {
+	if _, err := frontier.WaitingSample(
+		context.Background(),
+		[]string{""},
+		1,
+		1,
+		time.Now(),
+	); err == nil {
 		t.Fatal("accepted an empty crawl run identity")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -86,7 +92,14 @@ func TestWaitingSampleBoundsPagesPerRunAndAcrossRuns(t *testing.T) {
 		"https://two.example/second",
 		"https://three.example/third",
 	} {
-		if _, _, err := frontier.Enqueue(context.Background(), "run-a", url, "", 0, now); err != nil {
+		if _, _, err := frontier.Enqueue(
+			context.Background(),
+			"run-a",
+			url,
+			"",
+			0,
+			now,
+		); err != nil {
 			t.Fatalf("enqueue %s: %v", url, err)
 		}
 	}
@@ -96,7 +109,13 @@ func TestWaitingSampleBoundsPagesPerRunAndAcrossRuns(t *testing.T) {
 		t.Fatalf("enqueue run-b URL: %v", err)
 	}
 
-	sample, err := frontier.WaitingSample(context.Background(), []string{"run-a", "run-b"}, 3, 2, now)
+	sample, err := frontier.WaitingSample(
+		context.Background(),
+		[]string{"run-a", "run-b"},
+		3,
+		2,
+		now,
+	)
 	if err != nil || len(sample) != 2 || sample[0].Page.RunID != "run-a" ||
 		sample[1].Page.RunID != "run-a" {
 		t.Fatalf("bounded waiting sample = %#v, err %v", sample, err)

@@ -26,7 +26,12 @@ func openFrontier(t *testing.T, maximum uint64) *Frontier {
 func TestEnqueueCanonicalizesAndDeduplicatesWithinRun(t *testing.T) {
 	frontier := openFrontier(t, 10)
 	first, added, err := frontier.Enqueue(
-		context.Background(), "run-a", "https://Example.org/article?utm_source=feed", "", 0, time.Time{},
+		context.Background(),
+		"run-a",
+		"https://Example.org/article?utm_source=feed",
+		"",
+		0,
+		time.Time{},
 	)
 	if err != nil || !added {
 		t.Fatalf("first enqueue = added %v, err %v", added, err)
@@ -51,7 +56,14 @@ func TestClaimDefersBusyHostAndContinuesWithAnotherHost(t *testing.T) {
 		{"run-a", "https://one.example/second"},
 		{"run-b", "https://two.example/first"},
 	} {
-		if _, _, err := frontier.Enqueue(context.Background(), value.runID, value.url, "", 0, now); err != nil {
+		if _, _, err := frontier.Enqueue(
+			context.Background(),
+			value.runID,
+			value.url,
+			"",
+			0,
+			now,
+		); err != nil {
 			t.Fatalf("enqueue %s: %v", value.url, err)
 		}
 	}
@@ -59,7 +71,12 @@ func TestClaimDefersBusyHostAndContinuesWithAnotherHost(t *testing.T) {
 	if err != nil || !found || first.URL != "https://one.example/first" {
 		t.Fatalf("first claim = %#v, found %v, err %v", first, found, err)
 	}
-	if err := frontier.Settle(context.Background(), first.ID, StateFetched, time.Time{}); err != nil {
+	if err := frontier.Settle(
+		context.Background(),
+		first.ID,
+		StateFetched,
+		time.Time{},
+	); err != nil {
 		t.Fatalf("settle first host page: %v", err)
 	}
 	second, found, err := frontier.Claim(context.Background(), "run-b", now)
@@ -116,7 +133,12 @@ func TestFrontierRejectsPendingGrowthAndAcceptsCompletion(t *testing.T) {
 	if err != nil || !found || claimed.ID != page.ID {
 		t.Fatalf("claim = %#v, found %v, err %v", claimed, found, err)
 	}
-	if err := frontier.Settle(context.Background(), page.ID, StateFetched, time.Time{}); err != nil {
+	if err := frontier.Settle(
+		context.Background(),
+		page.ID,
+		StateFetched,
+		time.Time{},
+	); err != nil {
 		t.Fatalf("settle fetched: %v", err)
 	}
 	if _, added, err := frontier.Enqueue(
@@ -149,7 +171,12 @@ func TestRunDepthAndClaimsStayWithinTheirCrawl(t *testing.T) {
 	if err != nil || !found || claimed.ID != second.ID {
 		t.Fatalf("run-b claim = %#v, found %v, err %v", claimed, found, err)
 	}
-	if err := frontier.Settle(context.Background(), second.ID, StateIndexed, time.Time{}); err != nil {
+	if err := frontier.Settle(
+		context.Background(),
+		second.ID,
+		StateIndexed,
+		time.Time{},
+	); err != nil {
 		t.Fatalf("settle run-b page: %v", err)
 	}
 	firstDepth, err := frontier.DepthForRun(context.Background(), "run-a")
@@ -157,7 +184,8 @@ func TestRunDepthAndClaimsStayWithinTheirCrawl(t *testing.T) {
 		t.Fatalf("run-a depth = %#v, err %v", firstDepth, err)
 	}
 	secondDepth, err := frontier.DepthForRun(context.Background(), "run-b")
-	if err != nil || secondDepth.Queued != 0 || secondDepth.Fetching != 0 || secondDepth.Indexed != 1 {
+	if err != nil || secondDepth.Queued != 0 || secondDepth.Fetching != 0 ||
+		secondDepth.Indexed != 1 {
 		t.Fatalf("run-b depth = %#v, err %v", secondDepth, err)
 	}
 	claimed, found, err = frontier.Claim(context.Background(), "run-a", now)
@@ -252,7 +280,8 @@ func TestCancelRunRemovesOnlyQueuedAndDeferredPages(t *testing.T) {
 		t.Fatalf("cancelled pages = %d, err %v", cancelled, err)
 	}
 	activeDepth, err := frontier.DepthForRun(ctx, "run-a")
-	if err != nil || activeDepth.Fetching != 1 || activeDepth.Cancelled != 1 || activeDepth.Pending() != 1 {
+	if err != nil || activeDepth.Fetching != 1 || activeDepth.Cancelled != 1 ||
+		activeDepth.Pending() != 1 {
 		t.Fatalf("run depth after cancellation = %#v, err %v", activeDepth, err)
 	}
 	page, found, err := frontier.Claim(ctx, "run-a", now.Add(time.Second))
@@ -263,7 +292,8 @@ func TestCancelRunRemovesOnlyQueuedAndDeferredPages(t *testing.T) {
 		t.Fatalf("settle active page: %v", err)
 	}
 	depth, err := frontier.Depth(ctx)
-	if err != nil || depth.Queued != 0 || depth.Fetching != 0 || depth.Cancelled != 1 || depth.Fetched != 1 {
+	if err != nil || depth.Queued != 0 || depth.Fetching != 0 || depth.Cancelled != 1 ||
+		depth.Fetched != 1 {
 		t.Fatalf("global depth after settlement = %#v, err %v", depth, err)
 	}
 	if queued.ID == active.ID {

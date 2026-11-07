@@ -183,44 +183,18 @@ func (f *Frontier) restoreCheckpointRunLocked(
 	}
 	restoredAt := time.Now()
 	restoredHosts := make(map[string]struct{})
+	pageRestorer := checkpointRunRestorer{
+		frontier:        f,
+		runID:           runID,
+		run:             run,
+		profile:         profile,
+		restoredAt:      restoredAt,
+		restoredHosts:   restoredHosts,
+		recoveryBounded: snapshot.RecoveryBounded,
+	}
 	for _, page := range snapshot.Outstanding {
-		if page.ProfileHandle != profile.Profile.Handle {
-			return fmt.Errorf("%w: crawl profile changed", frontiercheckpoint.ErrCorruptCheckpoint)
-		}
-		candidate := frontierCandidate{
-			normURL:          page.URL,
-			host:             page.Host,
-			depth:            page.Depth,
-			profileHandle:    page.ProfileHandle,
-			provenance:       run.provenanceValue,
-			sourceModifiedAt: page.SourceModifiedAt,
-			conditionalFetch: page.ConditionalFetch,
-			indexAllowed:     page.Index,
-			observationID:    page.ObservationID,
-			observedAt:       page.ObservedAt,
-			retryAttempt:     page.RetryAttempt,
-			retryAfter:       page.RetryAfter,
-		}
-		run.appendPending(candidate)
-		if page.RetryAttempt == 0 {
-			run.firstPassPending++
-		}
-		run.retainBoundedResidentPage(page.URL)
-		if _, restored := restoredHosts[page.Host]; !restored {
-			f.pace.Visited(candidateJob(runID, candidate, profile, run.leaseID), restoredAt)
-			restoredHosts[page.Host] = struct{}{}
-		}
-		if page.RedirectURL != "" {
-			redirect := redirectReservation{
-				URL:      page.RedirectURL,
-				Host:     page.RedirectHost,
-				HostBump: page.RedirectHostBump,
-			}
-			run.redirects[page.URL] = redirect
-			run.retainBoundedResidentRedirect(redirect)
-		}
-		if !snapshot.RecoveryBounded {
-			f.state.completion.Track(runID)
+		if err := pageRestorer.restoreOutstandingPage(page); err != nil {
+			return err
 		}
 	}
 	if snapshot.RecoveryBounded {
@@ -231,6 +205,62 @@ func (f *Frontier) restoreCheckpointRunLocked(
 	}
 	f.state.tally.Restore(run.provenanceValue, snapshot.Tally)
 	f.restoreControlStateLocked(runID, snapshot.Control)
+
+	return nil
+}
+
+type checkpointRunRestorer struct {
+	frontier        *Frontier
+	runID           uuid.UUID
+	run             *crawlRun
+	profile         crawladmission.AdmissionProfile
+	restoredAt      time.Time
+	restoredHosts   map[string]struct{}
+	recoveryBounded bool
+}
+
+func (r checkpointRunRestorer) restoreOutstandingPage(page frontiercheckpoint.Page) error {
+	if page.ProfileHandle != r.profile.Profile.Handle {
+		return fmt.Errorf("%w: crawl profile changed", frontiercheckpoint.ErrCorruptCheckpoint)
+	}
+	candidate := frontierCandidate{
+		normURL:          page.URL,
+		host:             page.Host,
+		depth:            page.Depth,
+		profileHandle:    page.ProfileHandle,
+		provenance:       r.run.provenanceValue,
+		sourceModifiedAt: page.SourceModifiedAt,
+		conditionalFetch: page.ConditionalFetch,
+		indexAllowed:     page.Index,
+		observationID:    page.ObservationID,
+		observedAt:       page.ObservedAt,
+		retryAttempt:     page.RetryAttempt,
+		retryAfter:       page.RetryAfter,
+	}
+	r.run.appendPending(candidate)
+	if page.RetryAttempt == 0 {
+		r.run.firstPassPending++
+	}
+	r.run.retainBoundedResidentPage(page.URL)
+	if _, restored := r.restoredHosts[page.Host]; !restored {
+		r.frontier.pace.Visited(
+			candidateJob(r.runID, candidate, r.profile, r.run.leaseID),
+			r.restoredAt,
+		)
+		r.restoredHosts[page.Host] = struct{}{}
+	}
+	if page.RedirectURL != "" {
+		redirect := redirectReservation{
+			URL:      page.RedirectURL,
+			Host:     page.RedirectHost,
+			HostBump: page.RedirectHostBump,
+		}
+		r.run.redirects[page.URL] = redirect
+		r.run.retainBoundedResidentRedirect(redirect)
+	}
+	if !r.recoveryBounded {
+		r.frontier.state.completion.Track(r.runID)
+	}
 
 	return nil
 }

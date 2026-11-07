@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/D4rk4/yago/yago-crawler2/internal/httpfetch"
 	"github.com/temoto/robotstxt"
+
+	"github.com/D4rk4/yago/yago-crawler2/internal/httpfetch"
 )
 
 const (
@@ -111,7 +112,10 @@ func (policy *Policy) load(ctx context.Context, origin string) (originRules, err
 		if ctx.Err() != nil {
 			return originRules{}, ctx.Err()
 		}
-		return originRules{group: disallowAll(), validTill: time.Now().Add(robotsCacheLifetime)}, nil
+		return originRules{
+			group:     disallowAll(),
+			validTill: time.Now().Add(robotsCacheLifetime),
+		}, nil
 	}
 	var group *robotstxt.Group
 	switch {

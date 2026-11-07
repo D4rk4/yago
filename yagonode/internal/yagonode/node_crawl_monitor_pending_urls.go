@@ -2,10 +2,16 @@ package yagonode
 
 import (
 	"context"
+	"fmt"
 )
 
 func (r *crawlRuntime) pendingOrderURLs(ctx context.Context) ([]string, error) {
-	return r.broker.Orders.PendingURLSample(ctx)
+	urls, err := r.broker.Orders.PendingURLSample(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("sample pending crawl URLs: %w", err)
+	}
+
+	return urls, nil
 }
 
 func crawlQueuePendingURLs(runtime crawlProcess) func(context.Context) ([]string, error) {

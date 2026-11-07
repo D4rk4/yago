@@ -15,7 +15,9 @@ type fakeFreelistCheckpointer struct {
 	calls  int
 }
 
-func (f *fakeFreelistCheckpointer) CheckpointFreelists(context.Context) (FreelistCheckpointResult, error) {
+func (f *fakeFreelistCheckpointer) CheckpointFreelists(
+	context.Context,
+) (FreelistCheckpointResult, error) {
 	f.calls++
 
 	return f.result, f.err
@@ -70,7 +72,11 @@ func TestConfigFreelistCheckpointOnlyRendersInStorageTab(t *testing.T) {
 	})
 	got := do(t, console, configPath)
 	if got.status != http.StatusOK || strings.Contains(got.body, "Save freelists now") {
-		t.Fatalf("checkpoint appeared without a Storage tab: status=%d body=%s", got.status, got.body)
+		t.Fatalf(
+			"checkpoint appeared without a Storage tab: status=%d body=%s",
+			got.status,
+			got.body,
+		)
 	}
 }
 
@@ -84,8 +90,16 @@ func TestConfigFreelistCheckpointReportsSuccess(t *testing.T) {
 		url.Values{"form": {"checkpoint-freelists"}},
 	)
 	if got.status != http.StatusOK || checkpointer.calls != 1 ||
-		!strings.Contains(got.body, "Saved freelists for 8 shard(s). Vault operations have resumed.") {
-		t.Fatalf("checkpoint result status=%d calls=%d body=%s", got.status, checkpointer.calls, got.body)
+		!strings.Contains(
+			got.body,
+			"Saved freelists for 8 shard(s). Vault operations have resumed.",
+		) {
+		t.Fatalf(
+			"checkpoint result status=%d calls=%d body=%s",
+			got.status,
+			checkpointer.calls,
+			got.body,
+		)
 	}
 }
 
@@ -102,7 +116,12 @@ func TestConfigFreelistCheckpointReportsPartialFailure(t *testing.T) {
 	if got.status != http.StatusOK || checkpointer.calls != 1 ||
 		!strings.Contains(got.body, "Vault checkpoint saved 6 of 8 shard freelists.") ||
 		strings.Contains(got.body, "private shard detail") {
-		t.Fatalf("checkpoint error status=%d calls=%d body=%s", got.status, checkpointer.calls, got.body)
+		t.Fatalf(
+			"checkpoint error status=%d calls=%d body=%s",
+			got.status,
+			checkpointer.calls,
+			got.body,
+		)
 	}
 }
 

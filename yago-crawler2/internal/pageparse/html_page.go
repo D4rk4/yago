@@ -5,8 +5,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/D4rk4/yago/yagocrawlcontract"
 	"golang.org/x/net/html"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 const (

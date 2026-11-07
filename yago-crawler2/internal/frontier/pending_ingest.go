@@ -8,8 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/D4rk4/yago/yagocrawlcontract"
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 type PendingIngest struct {
@@ -258,7 +259,9 @@ func (frontier *Frontier) RebindPendingIngestLease(
 			if err != nil {
 				return err
 			}
-			if err := ready.Delete(pendingIngestReadyKey(record.NotBefore, record.PageID)); err != nil {
+			if err := ready.Delete(
+				pendingIngestReadyKey(record.NotBefore, record.PageID),
+			); err != nil {
 				return err
 			}
 			record.LeaseID = leaseID
@@ -270,7 +273,10 @@ func (frontier *Frontier) RebindPendingIngestLease(
 			if err := records.Put(key, encoded); err != nil {
 				return err
 			}
-			if err := ready.Put(pendingIngestReadyKey(record.NotBefore, record.PageID), []byte(record.PageID)); err != nil {
+			if err := ready.Put(
+				pendingIngestReadyKey(record.NotBefore, record.PageID),
+				[]byte(record.PageID),
+			); err != nil {
 				return err
 			}
 		}

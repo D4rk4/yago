@@ -15,7 +15,9 @@ type freelistCheckpointEngine struct {
 	calls  int
 }
 
-func (e *freelistCheckpointEngine) CheckpointFreelists(context.Context) (vault.FreelistCheckpointResult, error) {
+func (e *freelistCheckpointEngine) CheckpointFreelists(
+	context.Context,
+) (vault.FreelistCheckpointResult, error) {
 	e.calls++
 
 	return e.result, e.err
@@ -35,7 +37,12 @@ func TestVaultFreelistCheckpointCapability(t *testing.T) {
 	if unsupported.SupportsFreelistCheckpoint() {
 		t.Fatal("engine without checkpoint capability was accepted")
 	}
-	if _, err := unsupported.CheckpointFreelists(ctx); !errors.Is(err, vault.ErrFreelistCheckpointUnsupported) {
+	if _, err := unsupported.CheckpointFreelists(
+		ctx,
+	); !errors.Is(
+		err,
+		vault.ErrFreelistCheckpointUnsupported,
+	) {
 		t.Fatalf("unsupported checkpoint error = %v", err)
 	}
 
@@ -52,7 +59,8 @@ func TestVaultFreelistCheckpointCapability(t *testing.T) {
 		t.Fatal("checkpoint-capable engine was not detected")
 	}
 	result, err := storage.CheckpointFreelists(ctx)
-	if err != nil || engine.calls != 1 || result.ShardsCheckpointed != 7 || result.ShardsTotal != 8 {
+	if err != nil || engine.calls != 1 || result.ShardsCheckpointed != 7 ||
+		result.ShardsTotal != 8 {
 		t.Fatalf("checkpoint result=%+v calls=%d error=%v", result, engine.calls, err)
 	}
 

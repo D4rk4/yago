@@ -16,7 +16,13 @@ func TestHostAdmissionLimitsOneHostWithoutBlockingAnother(t *testing.T) {
 
 	blockedContext, cancelBlocked := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancelBlocked()
-	if _, err := admission.Acquire(blockedContext, "example.test"); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := admission.Acquire(
+		blockedContext,
+		"example.test",
+	); !errors.Is(
+		err,
+		context.DeadlineExceeded,
+	) {
 		t.Fatalf("duplicate host admission error = %v", err)
 	}
 

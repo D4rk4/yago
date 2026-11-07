@@ -14,13 +14,15 @@ import (
 )
 
 func TestFetchReturnsBoundedResponseAndConfiguredIdentity(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.UserAgent() != "YagoCrawler/2" {
-			t.Errorf("user agent = %q", request.UserAgent())
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = io.WriteString(w, "<html><title>sample</title></html>")
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if request.UserAgent() != "YagoCrawler/2" {
+				t.Errorf("user agent = %q", request.UserAgent())
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, "<html><title>sample</title></html>")
+		}),
+	)
 	defer server.Close()
 	fetcher := &PageFetcher{
 		client:              server.Client(),
@@ -32,7 +34,9 @@ func TestFetchReturnsBoundedResponseAndConfiguredIdentity(t *testing.T) {
 		t.Fatalf("fetch: %v", err)
 	}
 	if page.StatusCode != http.StatusOK || page.ContentType != "text/html; charset=utf-8" ||
-		string(page.Body) != "<html><title>sample</title></html>" || page.FinalURL != server.URL+"/page" {
+		string(
+			page.Body,
+		) != "<html><title>sample</title></html>" || page.FinalURL != server.URL+"/page" {
 		t.Fatalf("page response = %#v", page)
 	}
 }
@@ -47,7 +51,13 @@ func TestFetchRejectsResponseOverTheByteLimit(t *testing.T) {
 		maximumResponseSize: 4,
 		userAgent:           "YagoCrawler/2",
 	}
-	if _, err := fetcher.Fetch(context.Background(), server.URL); !errors.Is(err, ErrResponseTooLarge) {
+	if _, err := fetcher.Fetch(
+		context.Background(),
+		server.URL,
+	); !errors.Is(
+		err,
+		ErrResponseTooLarge,
+	) {
 		t.Fatalf("oversized response error = %v", err)
 	}
 }
@@ -64,13 +74,15 @@ func TestFetchRejectsURLCredentialsBeforeNetworkAccess(t *testing.T) {
 }
 
 func TestSetMaximumRedirectsChangesTheLiveFetchLimit(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if request.URL.Path == "/" {
-			http.Redirect(w, request, "/target", http.StatusFound)
-			return
-		}
-		_, _ = io.WriteString(w, "ready")
-	}))
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if request.URL.Path == "/" {
+				http.Redirect(w, request, "/target", http.StatusFound)
+				return
+			}
+			_, _ = io.WriteString(w, "ready")
+		}),
+	)
 	defer server.Close()
 	fetcher, err := NewPageFetcher(Limits{
 		RequestTimeout:      2 * time.Second,
@@ -86,6 +98,7 @@ func TestSetMaximumRedirectsChangesTheLiveFetchLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create page fetcher: %v", err)
 	}
+	fetcher.client.Transport = server.Client().Transport
 	defer fetcher.CloseIdleConnections()
 	if !fetcher.SetMaximumRedirects(0) {
 		t.Fatal("zero redirect limit was rejected")

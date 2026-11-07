@@ -19,84 +19,107 @@ import (
 func TestOnlineFreelistCheckpointPersistsCurrentAndLaterWrites(t *testing.T) {
 	for _, deferredFsync := range []bool{false, true} {
 		t.Run(fmt.Sprintf("deferred-fsync-%t", deferredFsync), func(t *testing.T) {
-			directory := filepath.Join(t.TempDir(), "vault")
-			engine, err := openEngine(directory, 1<<20)
-			if err != nil {
-				t.Fatalf("open engine: %v", err)
-			}
-			shardsClosed := false
-			t.Cleanup(func() {
-				if !shardsClosed {
-					closeShards(engine.shards)
-				}
-			})
-			if err := engine.Provision(testBucket); err != nil {
-				t.Fatalf("provision: %v", err)
-			}
-			engine.SetDeferredFsync(deferredFsync)
-			if err := engine.Update(t.Context(), func(transaction vault.EngineTxn) error {
-				bucket := transaction.Bucket(testBucket)
-				for index := range 128 {
-					key := vault.Key(fmt.Sprintf("before-%03d", index))
-					if err := bucket.Put(key, bytes.Repeat([]byte("v"), 128)); err != nil {
-						return fmt.Errorf("store initial record: %w", err)
-					}
-				}
-				for index := range 64 {
-					if err := bucket.Delete(vault.Key(fmt.Sprintf("before-%03d", index))); err != nil {
-						return fmt.Errorf("delete initial record: %w", err)
-					}
-				}
-
-				return nil
-			}); err != nil {
-				t.Fatalf("populate engine: %v", err)
-			}
-
-			result, err := engine.CheckpointFreelists(t.Context())
-			if err != nil || result.ShardsCheckpointed != minShards || result.ShardsTotal != minShards {
-				t.Fatalf("checkpoint result=%+v error=%v", result, err)
-			}
-			for shard, database := range engine.shards {
-				if database.NoFreelistSync {
-					t.Fatalf("shard %d did not retain freelist persistence", shard)
-				}
-				if database.NoSync != deferredFsync {
-					t.Fatalf("shard %d NoSync=%t, want %t", shard, database.NoSync, deferredFsync)
-				}
-			}
-
-			laterValue := []byte("after online checkpoint")
-			if err := engine.Update(t.Context(), func(transaction vault.EngineTxn) error {
-				return transaction.Bucket(testBucket).Put(vault.Key("after"), laterValue)
-			}); err != nil {
-				t.Fatalf("write after checkpoint: %v", err)
-			}
-			if deferredFsync {
-				if err := engine.SyncShards(t.Context()); err != nil {
-					t.Fatalf("sync deferred writes: %v", err)
-				}
-			}
-
-			closeShards(engine.shards)
-			shardsClosed = true
-			assertFreelistReopensWithoutRecoveryWrite(t, directory)
-
-			reopened, err := openEngine(directory, 1<<20)
-			if err != nil {
-				t.Fatalf("reopen engine: %v", err)
-			}
-			t.Cleanup(func() { _ = reopened.Close() })
-			if err := reopened.View(t.Context(), func(transaction vault.EngineTxn) error {
-				if got := transaction.Bucket(testBucket).Get(vault.Key("after")); !bytes.Equal(got, laterValue) {
-					t.Fatalf("later value = %q, want %q", got, laterValue)
-				}
-
-				return nil
-			}); err != nil {
-				t.Fatalf("read later value: %v", err)
-			}
+			assertOnlineFreelistCheckpointPersistence(t, deferredFsync)
 		})
+	}
+}
+
+func assertOnlineFreelistCheckpointPersistence(t *testing.T, deferredFsync bool) {
+	t.Helper()
+	directory := filepath.Join(t.TempDir(), "vault")
+	engine, err := openEngine(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("open engine: %v", err)
+	}
+	shardsClosed := false
+	t.Cleanup(func() {
+		if !shardsClosed {
+			closeShards(engine.shards)
+		}
+	})
+	if err := engine.Provision(testBucket); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+	engine.SetDeferredFsync(deferredFsync)
+	if err := populateFreelistCheckpointEngine(t.Context(), engine); err != nil {
+		t.Fatalf("populate engine: %v", err)
+	}
+	result, err := engine.CheckpointFreelists(t.Context())
+	if err != nil || result.ShardsCheckpointed != minShards || result.ShardsTotal != minShards {
+		t.Fatalf("checkpoint result=%+v error=%v", result, err)
+	}
+	assertFreelistCheckpointFlags(t, engine, deferredFsync)
+	laterValue := []byte("after online checkpoint")
+	if err := writeAfterFreelistCheckpoint(t.Context(), engine, laterValue); err != nil {
+		t.Fatalf("write after checkpoint: %v", err)
+	}
+	if deferredFsync {
+		if err := engine.SyncShards(t.Context()); err != nil {
+			t.Fatalf("sync deferred writes: %v", err)
+		}
+	}
+	closeShards(engine.shards)
+	shardsClosed = true
+	assertFreelistReopensWithoutRecoveryWrite(t, directory)
+	assertFreelistCheckpointReopenedValue(t, directory, laterValue)
+}
+
+func populateFreelistCheckpointEngine(ctx context.Context, engine *engine) error {
+	return engine.Update(ctx, func(transaction vault.EngineTxn) error {
+		bucket := transaction.Bucket(testBucket)
+		for index := range 128 {
+			key := vault.Key(fmt.Sprintf("before-%03d", index))
+			if err := bucket.Put(key, bytes.Repeat([]byte("v"), 128)); err != nil {
+				return fmt.Errorf("store initial record: %w", err)
+			}
+		}
+		for index := range 64 {
+			if err := bucket.Delete(vault.Key(fmt.Sprintf("before-%03d", index))); err != nil {
+				return fmt.Errorf("delete initial record: %w", err)
+			}
+		}
+
+		return nil
+	})
+}
+
+func assertFreelistCheckpointFlags(t *testing.T, engine *engine, deferredFsync bool) {
+	t.Helper()
+	for shard, database := range engine.shards {
+		if database.NoFreelistSync {
+			t.Fatalf("shard %d did not retain freelist persistence", shard)
+		}
+		if database.NoSync != deferredFsync {
+			t.Fatalf("shard %d NoSync=%t, want %t", shard, database.NoSync, deferredFsync)
+		}
+	}
+}
+
+func writeAfterFreelistCheckpoint(
+	ctx context.Context,
+	engine *engine,
+	value []byte,
+) error {
+	return engine.Update(ctx, func(transaction vault.EngineTxn) error {
+		return transaction.Bucket(testBucket).Put(vault.Key("after"), value)
+	})
+}
+
+func assertFreelistCheckpointReopenedValue(t *testing.T, directory string, value []byte) {
+	t.Helper()
+	reopened, err := openEngine(directory, 1<<20)
+	if err != nil {
+		t.Fatalf("reopen engine: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	if err := reopened.View(t.Context(), func(transaction vault.EngineTxn) error {
+		if got := transaction.Bucket(testBucket).Get(vault.Key("after")); !bytes.Equal(got, value) {
+			t.Fatalf("later value = %q, want %q", got, value)
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("read later value: %v", err)
 	}
 }
 
@@ -245,7 +268,12 @@ func TestOnlineFreelistCheckpointAttemptsEveryShardAndReportsFailures(t *testing
 	}
 	for index, database := range databases {
 		if database.NoFreelistSync || !database.NoSync {
-			t.Fatalf("shard %d flags NoFreelistSync=%t NoSync=%t", index, database.NoFreelistSync, database.NoSync)
+			t.Fatalf(
+				"shard %d flags NoFreelistSync=%t NoSync=%t",
+				index,
+				database.NoFreelistSync,
+				database.NoSync,
+			)
 		}
 	}
 }
@@ -254,7 +282,11 @@ func openCheckpointTestShards(t *testing.T, count int) []*bolt.DB {
 	t.Helper()
 	databases := make([]*bolt.DB, 0, count)
 	for index := range count {
-		database, err := bolt.Open(filepath.Join(t.TempDir(), fmt.Sprintf("shard-%d.vlt", index)), 0o600, openTimeoutOptions())
+		database, err := bolt.Open(
+			filepath.Join(t.TempDir(), fmt.Sprintf("shard-%d.vlt", index)),
+			0o600,
+			openTimeoutOptions(),
+		)
 		if err != nil {
 			t.Fatalf("open shard %d: %v", index, err)
 		}

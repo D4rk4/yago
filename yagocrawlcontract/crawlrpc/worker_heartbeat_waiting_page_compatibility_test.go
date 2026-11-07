@@ -3,9 +3,10 @@ package crawlrpc_test
 import (
 	"testing"
 
-	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/dynamicpb"
+
+	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
 func TestWorkerHeartbeatURLActivityFieldsAreAdditive(t *testing.T) {

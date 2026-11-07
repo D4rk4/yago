@@ -69,7 +69,8 @@ func (frontier *Frontier) Settle(
 			if notBefore.IsZero() {
 				page.NotBefore = time.Now().UTC()
 			}
-			ready, err := transaction.Bucket([]byte(readyBucketName)).CreateBucketIfNotExists([]byte(page.RunID))
+			ready, err := transaction.Bucket([]byte(readyBucketName)).
+				CreateBucketIfNotExists([]byte(page.RunID))
 			if err != nil {
 				return err
 			}

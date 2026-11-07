@@ -16,11 +16,12 @@ func TestParseHTMLPageExtractsVisibleTextAndBoundedLinks(t *testing.T) {
 		page.CanonicalURL != "https://example.org/canonical" || !page.Noindex || !page.Nofollow {
 		t.Fatalf("page fields = %#v", page)
 	}
-	if strings.Contains(page.Text, "hidden script phrase") || !strings.Contains(page.Text, "Visible content.") {
+	if strings.Contains(page.Text, "hidden script phrase") ||
+		!strings.Contains(page.Text, "Visible content.") {
 		t.Fatalf("visible text = %q", page.Text)
 	}
-	if len(page.Links) != 2 || page.Links[0].URL != "https://example.org/next" ||
-		page.Links[1].URL != "https://example.org/feed.xml" || !page.Links[0].NoFollow ||
+	if len(page.Links) != 2 || page.Links[0].URL != "https://example.org/feed.xml" ||
+		page.Links[1].URL != "https://example.org/next" || !page.Links[0].NoFollow ||
 		!page.Links[1].NoFollow {
 		t.Fatalf("links = %#v", page.Links)
 	}

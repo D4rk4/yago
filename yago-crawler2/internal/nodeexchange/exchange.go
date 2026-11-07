@@ -9,10 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/D4rk4/yago/yagocrawlcontract"
-	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
 )
 
 const (
@@ -56,7 +58,9 @@ func (exchange *Exchange) Close() error {
 	return nil
 }
 
-func (exchange *Exchange) ReadRuntimePolicy(ctx context.Context) (yagocrawlcontract.CrawlerRuntimePolicy, error) {
+func (exchange *Exchange) ReadRuntimePolicy(
+	ctx context.Context,
+) (yagocrawlcontract.CrawlerRuntimePolicy, error) {
 	requestContext, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	message, err := exchange.client.ReadRuntimePolicy(
@@ -65,14 +69,20 @@ func (exchange *Exchange) ReadRuntimePolicy(ctx context.Context) (yagocrawlcontr
 		grpc.WaitForReady(true),
 	)
 	if err != nil {
-		return yagocrawlcontract.CrawlerRuntimePolicy{}, fmt.Errorf("read crawler runtime policy: %w", err)
+		return yagocrawlcontract.CrawlerRuntimePolicy{}, fmt.Errorf(
+			"read crawler runtime policy: %w",
+			err,
+		)
 	}
 	policy, err := yagocrawlcontract.CrawlerRuntimePolicyFromProtoWithFallback(
 		message,
 		yagocrawlcontract.DefaultCrawlerRuntimePolicy(),
 	)
 	if err != nil {
-		return yagocrawlcontract.CrawlerRuntimePolicy{}, fmt.Errorf("decode crawler runtime policy: %w", err)
+		return yagocrawlcontract.CrawlerRuntimePolicy{}, fmt.Errorf(
+			"decode crawler runtime policy: %w",
+			err,
+		)
 	}
 	return policy, nil
 }
@@ -170,7 +180,10 @@ func (exchange *Exchange) AcknowledgeTerminal(
 		TerminalState:   state,
 		TerminalTally:   tallyToProto(tally),
 	}
-	settlementContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), terminalCallTimeout)
+	settlementContext, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		terminalCallTimeout,
+	)
 	defer cancel()
 	var lastErr error
 	for settlementContext.Err() == nil {
@@ -179,9 +192,9 @@ func (exchange *Exchange) AcknowledgeTerminal(
 			err = errors.New("node returned an empty terminal confirmation token")
 		}
 		if err == nil {
-			confirmation := *request
+			confirmation := proto.CloneOf(request)
 			confirmation.ConfirmationToken = append([]byte(nil), result.GetConfirmationToken()...)
-			_, err = exchange.client.AckOrder(settlementContext, &confirmation)
+			_, err = exchange.client.AckOrder(settlementContext, confirmation)
 		}
 		if err == nil {
 			return nil
@@ -195,7 +208,10 @@ func (exchange *Exchange) AcknowledgeTerminal(
 			timer.Stop()
 		}
 	}
-	return fmt.Errorf("terminal crawl acknowledgment timed out: %w", errors.Join(lastErr, settlementContext.Err()))
+	return fmt.Errorf(
+		"terminal crawl acknowledgment timed out: %w",
+		errors.Join(lastErr, settlementContext.Err()),
+	)
 }
 
 func (exchange *Exchange) Requeue(ctx context.Context, leaseID string) error {

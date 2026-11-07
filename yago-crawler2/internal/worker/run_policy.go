@@ -6,8 +6,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/D4rk4/yago/yagocrawlcontract"
 	"golang.org/x/net/publicsuffix"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 type scopeRoot struct {
@@ -47,7 +48,9 @@ func compileRunRules(
 	if rules.indexMustMatch, err = compileProfilePattern(profile.IndexURLMustMatch); err != nil {
 		return runRules{}, fmt.Errorf("compile indexing URL inclusion rule: %w", err)
 	}
-	if rules.indexMustNotMatch, err = compileProfilePattern(profile.IndexURLMustNotMatch); err != nil {
+	if rules.indexMustNotMatch, err = compileProfilePattern(
+		profile.IndexURLMustNotMatch,
+	); err != nil {
 		return runRules{}, fmt.Errorf("compile indexing URL exclusion rule: %w", err)
 	}
 	maximumPages := profile.EffectiveMaxPagesPerRun(yagocrawlcontract.DefaultMaxPagesPerRun)
@@ -95,7 +98,10 @@ func compileRunRules(
 		if pathPrefix == "" {
 			pathPrefix = "/"
 		}
-		rules.roots = append(rules.roots, scopeRoot{url: parsed, domain: domain, pathPrefix: pathPrefix})
+		rules.roots = append(
+			rules.roots,
+			scopeRoot{url: parsed, domain: domain, pathPrefix: pathPrefix},
+		)
 	}
 	return rules, nil
 }

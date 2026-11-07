@@ -18,7 +18,12 @@ func TestPendingIngestSurvivesFetchSettlementAndCompletesIndexing(t *testing.T) 
 	if _, found, err := frontier.Claim(ctx, page.RunID, time.Now()); err != nil || !found {
 		t.Fatalf("claim = found %t, err %v", found, err)
 	}
-	if err := frontier.StorePendingIngest(ctx, page.ID, "lease-a", []byte(`{"batch":true}`)); err != nil {
+	if err := frontier.StorePendingIngest(
+		ctx,
+		page.ID,
+		"lease-a",
+		[]byte(`{"batch":true}`),
+	); err != nil {
 		t.Fatalf("store pending ingest: %v", err)
 	}
 	if err := frontier.Settle(ctx, page.ID, StateFetched, time.Time{}); err != nil {
@@ -36,7 +41,11 @@ func TestPendingIngestSurvivesFetchSettlementAndCompletesIndexing(t *testing.T) 
 	if err != nil || depth.Fetched != 0 || depth.Indexed != 1 {
 		t.Fatalf("run depth after ingest = %#v, err %v", depth, err)
 	}
-	if pendingCount, err := frontier.PendingIngestForRun(ctx, page.RunID); err != nil || pendingCount != 0 {
+	if pendingCount, err := frontier.PendingIngestForRun(
+		ctx,
+		page.RunID,
+	); err != nil ||
+		pendingCount != 0 {
 		t.Fatalf("pending ingest count = %d, err %v", pendingCount, err)
 	}
 }
@@ -84,7 +93,7 @@ func TestPendingIngestSelectionSkipsItemsClaimedByOtherSenders(t *testing.T) {
 	ctx := context.Background()
 	for _, pageURL := range []string{
 		"https://one.example/first",
-		"https://one.example/second",
+		"https://two.example/second",
 	} {
 		page, _, err := frontier.Enqueue(ctx, "run-d", pageURL, "", 0, time.Time{})
 		if err != nil {
@@ -93,7 +102,12 @@ func TestPendingIngestSelectionSkipsItemsClaimedByOtherSenders(t *testing.T) {
 		if _, found, err := frontier.Claim(ctx, page.RunID, time.Now()); err != nil || !found {
 			t.Fatalf("claim %s = found %t, err %v", pageURL, found, err)
 		}
-		if err := frontier.StorePendingIngest(ctx, page.ID, "lease-d", []byte(`{"batch":true}`)); err != nil {
+		if err := frontier.StorePendingIngest(
+			ctx,
+			page.ID,
+			"lease-d",
+			[]byte(`{"batch":true}`),
+		); err != nil {
 			t.Fatalf("store pending ingest for %s: %v", pageURL, err)
 		}
 		if err := frontier.Settle(ctx, page.ID, StateFetched, time.Time{}); err != nil {
@@ -129,7 +143,12 @@ func TestPendingIngestRejectsInvalidBatchSizeAndRetryWaitsUntilDue(t *testing.T)
 	if _, found, err := frontier.Claim(ctx, page.RunID, time.Now()); err != nil || !found {
 		t.Fatalf("claim = found %t, err %v", found, err)
 	}
-	if err := frontier.StorePendingIngest(ctx, page.ID, "lease-a", []byte(`{"batch":true}`)); err != nil {
+	if err := frontier.StorePendingIngest(
+		ctx,
+		page.ID,
+		"lease-a",
+		[]byte(`{"batch":true}`),
+	); err != nil {
 		t.Fatalf("store pending ingest: %v", err)
 	}
 	if err := frontier.Settle(ctx, page.ID, StateFetched, time.Time{}); err != nil {

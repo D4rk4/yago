@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
-	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
+	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
 )
 
 func TestStreamIngestReturnsAcknowledgmentBeforeClientClosesSend(t *testing.T) {
@@ -27,7 +28,8 @@ func TestStreamIngestReturnsAcknowledgmentBeforeClientClosesSend(t *testing.T) {
 			_ = delivery.LeaseLost(context.Background())
 		}
 	}()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen for ingest stream: %v", err)
 	}
@@ -54,9 +56,13 @@ func TestStreamIngestReturnsAcknowledgmentBeforeClientClosesSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open ingest stream: %v", err)
 	}
-	invalidMessage := *message
-	invalidMessage.SubmissionId = ""
-	if err := stream.Send(&invalidMessage); err != nil {
+	invalidMessage := &crawlrpc.IngestBatchMessage{
+		BatchJson:       message.GetBatchJson(),
+		LeaseId:         message.GetLeaseId(),
+		WorkerId:        message.GetWorkerId(),
+		WorkerSessionId: message.GetWorkerSessionId(),
+	}
+	if err := stream.Send(invalidMessage); err != nil {
 		t.Fatalf("send ingest without submission identity: %v", err)
 	}
 	invalidAcknowledgment, err := stream.Recv()

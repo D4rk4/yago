@@ -7,7 +7,9 @@ import (
 	"github.com/D4rk4/yago/yago-crawler2/internal/frontier"
 )
 
-func (worker *Worker) claimPendingIngest(ctx context.Context) (frontier.PendingIngest, bool, error) {
+func (worker *Worker) claimPendingIngest(
+	ctx context.Context,
+) (frontier.PendingIngest, bool, error) {
 	worker.pendingIngestMutex.Lock()
 	defer worker.pendingIngestMutex.Unlock()
 	if worker.pendingIngestActive == nil {

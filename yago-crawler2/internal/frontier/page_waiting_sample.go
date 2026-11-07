@@ -67,7 +67,10 @@ func (frontier *Frontier) WaitingSample(
 				if err != nil {
 					return err
 				}
-				waiting = append(waiting, waitingPage(page, due, schedule, now, frontier.config.MaximumHostActive))
+				waiting = append(
+					waiting,
+					waitingPage(page, due, schedule, now, frontier.config.MaximumHostActive),
+				)
 				key, pageID = cursor.Next()
 			}
 		}
@@ -80,7 +83,13 @@ func (frontier *Frontier) WaitingSample(
 	return waiting, nil
 }
 
-func waitingPage(page Page, due time.Time, schedule hostSchedule, now time.Time, maximumHostActive int) WaitingPage {
+func waitingPage(
+	page Page,
+	due time.Time,
+	schedule hostSchedule,
+	now time.Time,
+	maximumHostActive int,
+) WaitingPage {
 	waiting := WaitingPage{Page: page}
 	switch {
 	case schedule.Active >= maximumHostActive:

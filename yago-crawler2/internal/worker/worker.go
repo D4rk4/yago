@@ -42,7 +42,7 @@ type Configuration struct {
 type Worker struct {
 	exchange                        *nodeexchange.Exchange
 	frontier                        *frontier.Frontier
-	fetcher                         *httpfetch.PageFetcher
+	fetcher                         pageFetcher
 	orders                          *orderAdmission
 	fetchAdmission                  *fetchAdmission
 	hosts                           *hostAdmission

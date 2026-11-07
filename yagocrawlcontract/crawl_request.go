@@ -8,17 +8,17 @@ import (
 )
 
 type CrawlRequest struct {
-	URL            string
-	Mode           CrawlRequestMode
-	ReferrerURL    string
-	AnchorName     string
-	Depth          int
-	ProfileHandle  string
-	Initiator      yagomodel.Hash
-	AppDate        time.Time
-	LastModified   time.Time
-	SourceMetadata *CrawlSourceMetadata `json:",omitempty"`
-	ConditionalFetch *ConditionalFetch `json:",omitempty"`
+	URL              string
+	Mode             CrawlRequestMode
+	ReferrerURL      string
+	AnchorName       string
+	Depth            int
+	ProfileHandle    string
+	Initiator        yagomodel.Hash
+	AppDate          time.Time
+	LastModified     time.Time
+	SourceMetadata   *CrawlSourceMetadata `json:",omitempty"`
+	ConditionalFetch *ConditionalFetch    `json:",omitempty"`
 }
 
 func ParseCrawlInitiator(raw []byte) (yagomodel.Hash, error) {

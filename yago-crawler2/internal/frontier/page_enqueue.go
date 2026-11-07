@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/D4rk4/yago/yagocrawlcontract"
 	bolt "go.etcd.io/bbolt"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 func (frontier *Frontier) Enqueue(
@@ -108,7 +109,8 @@ func (frontier *Frontier) enqueue(
 		if maximumRunPages > 0 && runDepth.Total() >= maximumRunPages {
 			return ErrRunPageLimit
 		}
-		runHosts, err := transaction.Bucket([]byte(runHostsBucketName)).CreateBucketIfNotExists([]byte(runID))
+		runHosts, err := transaction.Bucket([]byte(runHostsBucketName)).
+			CreateBucketIfNotExists([]byte(runID))
 		if err != nil {
 			return err
 		}
@@ -123,7 +125,8 @@ func (frontier *Frontier) enqueue(
 			depth.Queued+depth.Fetching+depth.Deferred >= frontier.config.MaximumPendingPages {
 			return ErrPendingLimit
 		}
-		ready, err := transaction.Bucket([]byte(readyBucketName)).CreateBucketIfNotExists([]byte(runID))
+		ready, err := transaction.Bucket([]byte(readyBucketName)).
+			CreateBucketIfNotExists([]byte(runID))
 		if err != nil {
 			return err
 		}

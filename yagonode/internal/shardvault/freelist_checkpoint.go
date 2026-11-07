@@ -26,12 +26,18 @@ var checkpointLiveShardFreelist = checkpointShardFreelist
 
 func (e *engine) CheckpointFreelists(ctx context.Context) (vault.FreelistCheckpointResult, error) {
 	if err := ctx.Err(); err != nil {
-		return vault.FreelistCheckpointResult{}, err
+		return vault.FreelistCheckpointResult{}, fmt.Errorf(
+			"check context before freelist checkpoint: %w",
+			err,
+		)
 	}
 	e.globalGate.Lock()
 	defer e.globalGate.Unlock()
 	if err := ctx.Err(); err != nil {
-		return vault.FreelistCheckpointResult{}, err
+		return vault.FreelistCheckpointResult{}, fmt.Errorf(
+			"check context after acquiring freelist checkpoint gate: %w",
+			err,
+		)
 	}
 
 	result := vault.FreelistCheckpointResult{ShardsTotal: len(e.shards)}

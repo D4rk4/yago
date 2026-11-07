@@ -147,9 +147,11 @@ func crawlerActivePageViews(pages []CrawlerActivePage) []crawlerActivePageView {
 	views := make([]crawlerActivePageView, 0, len(pages))
 	for _, page := range pages {
 		views = append(views, crawlerActivePageView{
-			URL:     page.URL,
-			Stage:   crawlerPageStageLabel(page.Stage),
-			Elapsed: time.Duration(page.ElapsedMilliseconds * uint64(time.Millisecond)).Round(time.Second).String(),
+			URL:   page.URL,
+			Stage: crawlerPageStageLabel(page.Stage),
+			Elapsed: time.Duration(page.ElapsedMilliseconds * uint64(time.Millisecond)).
+				Round(time.Second).
+				String(),
 		})
 	}
 	return views
@@ -187,14 +189,6 @@ func pulseActiveFetches(worker CrawlerWorkerPulse) string {
 	}
 
 	return fmt.Sprintf("%d / %d", worker.ActiveFetches, worker.FetchLimit)
-}
-
-func pulseWaitingFetches(worker CrawlerWorkerPulse) string {
-	if !worker.FetchAdmissionWaitingKnown {
-		return "Unavailable"
-	}
-
-	return formatPulseInteger(worker.FetchAdmissionWaiting)
 }
 
 func pulseWorkerRate(worker CrawlerWorkerPulse, value float64) string {

@@ -246,18 +246,8 @@ func (p *Pipeline) fetchJob(
 
 func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	p.observer.JobStarted()
-	outcome := yagocrawlcontract.CrawlRunTally{}
-	outcomeReason := ""
-	outcomeHTTPStatus := uint32(0)
-	abandoned := false
-	defer func() {
-		if abandoned {
-			p.frontier.Abandon(job)
-
-			return
-		}
-		completePage(p.frontier, job, outcome, outcomeHTTPStatus, outcomeReason)
-	}()
+	outcome := pageProcessingOutcome{}
+	defer p.finishPage(ctx, job, &outcome)
 	defer p.observer.JobFinished()
 	slog.DebugContext(ctx, msgJobFetching,
 		slog.String("url", job.URL),
@@ -265,28 +255,25 @@ func (p *Pipeline) process(ctx context.Context, job crawljob.CrawlJob) error {
 	)
 	target, ok := weburl.ParseBase(job.URL)
 	if !ok {
-		outcome.Failed++
-		outcomeReason = crawlURLInvalidReason
+		outcome.runTally.Failed++
+		outcome.reason = crawlURLInvalidReason
 
 		return fmt.Errorf("parse url: %s", job.URL)
 	}
-	fetch, err := p.fetchChangedPage(ctx, job, target, &outcome)
+	fetch, err := p.fetchChangedPage(ctx, job, target, &outcome.runTally)
 	if err != nil && !fetch.unchanged {
-		outcomeHTTPStatus = pageOutcomeHTTPStatus(err)
-		outcomeReason = fetchOutcomeReason(err)
-		removalErr := p.emitRemovalIfGone(ctx, job, err)
-		abandoned = ctx.Err() != nil || errors.Is(removalErr, crawllease.ErrLeaseLost)
-		if removalErr != nil {
-			outcomeReason = pageProcessingFailureReason(removalErr)
-			return errors.Join(err, removalErr)
-		}
-
-		return err
+		return p.finishFailedFetch(ctx, job, err, &outcome)
 	}
-	outcomeHTTPStatus, outcomeReason, err = p.settlePageOutcome(ctx, job, fetch, err, &outcome)
-	abandoned = err != nil && (ctx.Err() != nil || errors.Is(err, crawllease.ErrLeaseLost))
-	if err != nil && !abandoned {
-		outcome.Failed++
+	outcome.httpStatus, outcome.reason, err = p.settlePageOutcome(
+		ctx,
+		job,
+		fetch,
+		err,
+		&outcome.runTally,
+	)
+	outcome.abandoned = err != nil && (ctx.Err() != nil || errors.Is(err, crawllease.ErrLeaseLost))
+	if err != nil && !outcome.abandoned {
+		outcome.runTally.Failed++
 	}
 
 	return err

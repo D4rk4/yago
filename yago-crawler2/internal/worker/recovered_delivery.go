@@ -79,8 +79,10 @@ func (worker *Worker) confirmOrderDelivery(
 		}
 		replay.leaseIDs = append([]string(nil), batchLeaseIDs...)
 	}
-	if !startedBatch && (len(message.GetRecoveredLeaseIds()) > 0 || len(message.GetRecoveredSessionLeaseIds()) > 0) ||
-		replay.next >= len(replay.leaseIDs) || replay.leaseIDs[replay.next] != message.GetLeaseId() {
+	if !startedBatch &&
+		(len(message.GetRecoveredLeaseIds()) > 0 || len(message.GetRecoveredSessionLeaseIds()) > 0) ||
+		replay.next >= len(replay.leaseIDs) ||
+		replay.leaseIDs[replay.next] != message.GetLeaseId() {
 		return errInvalidRecoveredOrderFrame
 	}
 	replay.next++

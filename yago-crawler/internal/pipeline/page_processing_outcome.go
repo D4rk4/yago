@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"errors"
-	"net/url"
 	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/crawljob"
@@ -57,25 +56,6 @@ func (p *Pipeline) deferPageRetry(
 		}
 	}
 	return true
-}
-
-func (p *Pipeline) processFetchedJob(
-	ctx context.Context,
-	job crawljob.CrawlJob,
-	target *url.URL,
-	outcome *pageProcessingOutcome,
-) error {
-	fetched, err := p.fetchJob(ctx, job, target, &outcome.runTally)
-	if err != nil {
-		return p.finishFailedFetch(ctx, job, err, outcome)
-	}
-	outcome.httpStatus = fetched.HTTPStatus
-	outcome.reason, err = p.processFetchedPage(ctx, job, fetched, &outcome.runTally)
-	outcome.abandoned = err != nil && (ctx.Err() != nil || errors.Is(err, crawllease.ErrLeaseLost))
-	if err != nil && !outcome.abandoned {
-		outcome.runTally.Failed++
-	}
-	return err
 }
 
 func (p *Pipeline) finishFailedFetch(

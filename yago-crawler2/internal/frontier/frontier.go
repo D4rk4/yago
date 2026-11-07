@@ -28,10 +28,12 @@ const (
 	maximumReadyScan      = 4096
 )
 
-var ErrPendingLimit = errors.New("frontier pending page limit reached")
-var ErrStateLimit = errors.New("frontier state byte limit reached")
-var ErrHostPageLimit = errors.New("crawl run host page limit reached")
-var ErrRunPageLimit = errors.New("crawl run page limit reached")
+var (
+	ErrPendingLimit  = errors.New("frontier pending page limit reached")
+	ErrStateLimit    = errors.New("frontier state byte limit reached")
+	ErrHostPageLimit = errors.New("crawl run host page limit reached")
+	ErrRunPageLimit  = errors.New("crawl run page limit reached")
+)
 
 type State string
 
@@ -84,8 +86,10 @@ type QueueDepth struct {
 }
 
 func Open(path string, config Config) (*Frontier, error) {
-	if config.MaximumPendingPages == 0 && config.MaximumStateBytes == 0 || config.LeaseDuration <= 0 ||
-		config.HostDelay < 0 || config.MaximumHostActive < 1 {
+	if config.MaximumPendingPages == 0 && config.MaximumStateBytes == 0 ||
+		config.LeaseDuration <= 0 ||
+		config.HostDelay < 0 ||
+		config.MaximumHostActive < 1 {
 		return nil, errors.New("invalid frontier limits")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
@@ -125,7 +129,9 @@ func (frontier *Frontier) initialize() error {
 		if _, err := transaction.CreateBucketIfNotExists([]byte(ingestBucketName)); err != nil {
 			return err
 		}
-		if _, err := transaction.CreateBucketIfNotExists([]byte(ingestReadyBucketName)); err != nil {
+		if _, err := transaction.CreateBucketIfNotExists(
+			[]byte(ingestReadyBucketName),
+		); err != nil {
 			return err
 		}
 		if _, err := transaction.CreateBucketIfNotExists([]byte(ingestRunsBucketName)); err != nil {
@@ -179,7 +185,14 @@ func savePage(bucket *bolt.Bucket, page Page) error {
 
 func validState(state State) bool {
 	switch state {
-	case StateQueued, StateFetching, StateFetched, StateIndexed, StateFailed, StateDeferred, StateBlocked, StateCancelled:
+	case StateQueued,
+		StateFetching,
+		StateFetched,
+		StateIndexed,
+		StateFailed,
+		StateDeferred,
+		StateBlocked,
+		StateCancelled:
 		return true
 	default:
 		return false

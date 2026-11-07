@@ -2,12 +2,15 @@ package crawlbroker
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagocrawlcontract/crawlrpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type ingestStreamOutcome struct {
@@ -36,34 +39,21 @@ func (s *exchangeServer) StreamIngest(
 		}
 		select {
 		case message := <-nextRequest:
-			if message == nil {
-				continue
+			started, err := startIngestStreamRequest(ctx, stream, s, message, results)
+			if err != nil {
+				return err
 			}
-			if message.GetSubmissionId() == "" {
-				if err := stream.Send(&crawlrpc.IngestAck{
-					SubmissionId: message.GetSubmissionId(),
-					ErrorCode:    int32(codes.InvalidArgument),
-				}); err != nil {
-					return err
-				}
-				continue
+			if started {
+				active++
 			}
-			active++
-			go submitStreamIngest(ctx, s, message, results)
 		case outcome := <-results:
 			active--
-			acknowledgment := outcome.acknowledgment
-			if acknowledgment == nil {
-				acknowledgment = &crawlrpc.IngestAck{}
-			}
-			acknowledgment.SubmissionId = outcome.submissionID
-			acknowledgment.ErrorCode = int32(outcome.errorCode)
-			if err := stream.Send(acknowledgment); err != nil {
+			if err := sendIngestStreamOutcome(stream, outcome); err != nil {
 				return err
 			}
 		case receiveErr := <-receiveErrors:
 			receiveErrors = nil
-			if receiveErr == io.EOF {
+			if errors.Is(receiveErr, io.EOF) {
 				readClosed = true
 				continue
 			}
@@ -72,6 +62,54 @@ func (s *exchangeServer) StreamIngest(
 			return status.FromContextError(ctx.Err()).Err()
 		}
 	}
+}
+
+func startIngestStreamRequest(
+	ctx context.Context,
+	stream crawlrpc.CrawlExchange_StreamIngestServer,
+	server *exchangeServer,
+	message *crawlrpc.IngestBatchMessage,
+	results chan<- ingestStreamOutcome,
+) (bool, error) {
+	if message == nil {
+		return false, nil
+	}
+	if message.GetSubmissionId() == "" {
+		err := sendIngestStreamAcknowledgment(stream, &crawlrpc.IngestAck{
+			SubmissionId: message.GetSubmissionId(),
+			ErrorCode:    int32(codes.InvalidArgument),
+		})
+
+		return false, err
+	}
+	go submitStreamIngest(ctx, server, message, results)
+
+	return true, nil
+}
+
+func sendIngestStreamOutcome(
+	stream crawlrpc.CrawlExchange_StreamIngestServer,
+	outcome ingestStreamOutcome,
+) error {
+	acknowledgment := outcome.acknowledgment
+	if acknowledgment == nil {
+		acknowledgment = &crawlrpc.IngestAck{}
+	}
+	acknowledgment.SubmissionId = outcome.submissionID
+	acknowledgment.ErrorCode = int32(outcome.errorCode)
+
+	return sendIngestStreamAcknowledgment(stream, acknowledgment)
+}
+
+func sendIngestStreamAcknowledgment(
+	stream crawlrpc.CrawlExchange_StreamIngestServer,
+	acknowledgment *crawlrpc.IngestAck,
+) error {
+	if err := stream.Send(acknowledgment); err != nil {
+		return fmt.Errorf("send ingest acknowledgment: %w", err)
+	}
+
+	return nil
 }
 
 func readIngestStream(
