@@ -25,6 +25,8 @@ and
 [`doc/adr/0086-return-useful-shard-samples-and-cache-complete-searches.md`](doc/adr/0086-return-useful-shard-samples-and-cache-complete-searches.md)
 for the design and resource bounds.
 
+An administrator can save the shard freelists from Configuration → Storage while the node remains running. Vault reads and writes pause until all shards finish; later writes keep freelists current, which adds disk work.
+
 The authenticated Admin console is available at `/admin/` on the ops listener.
 The Performance page shows per-process fetched and indexed rates, current worker
 activity, fetch-admission waits, queued orders, and evidence-based signals.

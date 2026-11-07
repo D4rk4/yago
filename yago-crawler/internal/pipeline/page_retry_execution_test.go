@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"net/url"
 	"testing"
 	"time"
 
@@ -98,7 +97,7 @@ func TestProcessDefersTransientFetchAndCompletesPermanentFetch(t *testing.T) {
 			observer := &pageRetryExecutionObserver{}
 			crawler := NewPipeline(
 				frontier,
-				pageSourceFunc(func(context.Context, *url.URL) (pagefetch.FetchedPage, error) {
+				pageSourceFunc(func(context.Context, pagefetch.FetchRequest) (pagefetch.FetchedPage, error) {
 					return pagefetch.FetchedPage{}, test.err
 				}),
 				nil,
@@ -133,20 +132,20 @@ func TestProcessDefersTransientFetchAndCompletesPermanentFetch(t *testing.T) {
 	}
 }
 
-type pageSourceFunc func(context.Context, *url.URL) (pagefetch.FetchedPage, error)
+type pageSourceFunc func(context.Context, pagefetch.FetchRequest) (pagefetch.FetchedPage, error)
 
 func (f pageSourceFunc) Fetch(
 	ctx context.Context,
-	target *url.URL,
+	request pagefetch.FetchRequest,
 ) (pagefetch.FetchedPage, error) {
-	return f(ctx, target)
+	return f(ctx, request)
 }
 
 func TestProcessDoesNotRetryCanceledFetch(t *testing.T) {
 	frontier := &retryExecutionFrontier{}
 	crawler := NewPipeline(
 		frontier,
-		pageSourceFunc(func(ctx context.Context, _ *url.URL) (pagefetch.FetchedPage, error) {
+		pageSourceFunc(func(ctx context.Context, _ pagefetch.FetchRequest) (pagefetch.FetchedPage, error) {
 			return pagefetch.FetchedPage{}, ctx.Err()
 		}),
 		nil,

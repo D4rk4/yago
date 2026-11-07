@@ -107,7 +107,11 @@ module graph as indirect dependencies of bleve:
    best-effort sync before close, continue through every shard, and return all
    checkpoint, sync, and close failures together. An unclean stop leaves the
    no-freelist marker intact, so bbolt reconstructs by scanning the shard on the
-   next open. Open shards sequentially and emit stable structured INFO records
+   next open. An authenticated online checkpoint uses the same durable
+   transaction without closing shards: it takes exclusive quiescence, leaves
+   freelist persistence enabled for future writes, restores the configured
+   deferred-fsync mode, and resumes vault operations after every shard has been
+   attempted. Open shards sequentially and emit stable structured INFO records
    before and after each one. Install conservative word filters without scanning,
    then build them through one owned post-open worker using bounded snapshots.
    Maintenance start and successful completion are DEBUG; a failed shard remains

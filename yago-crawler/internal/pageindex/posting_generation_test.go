@@ -1,6 +1,7 @@
 package pageindex_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/pageindex"
@@ -14,8 +15,10 @@ func TestGeneratedComponentCountUsesJavaComponentCount(t *testing.T) {
 		tokens[index] = "harbor"
 	}
 	postings := pageindex.BuildPostings(
-		pageparse.ParsedPage{URL: "https://example.com/a//b", Language: "en"},
-		pageparse.PageStats{Tokens: tokens},
+		pageparse.ParsedPage{
+			URL: "https://example.com/a//b", Language: "en", Text: strings.Join(tokens, " "),
+		},
+		pageparse.PageStats{},
 	)
 	if len(postings) != 1 {
 		t.Fatalf("postings = %d", len(postings))

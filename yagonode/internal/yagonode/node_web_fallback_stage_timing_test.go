@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -331,39 +332,41 @@ func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
 }
 
 func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
-	previous := webFallbackExactStageBudget
-	webFallbackExactStageBudget = 20 * time.Millisecond
-	t.Cleanup(func() { webFallbackExactStageBudget = previous })
+	synctest.Test(t, func(t *testing.T) {
+		previous := webFallbackExactStageBudget
+		webFallbackExactStageBudget = 20 * time.Millisecond
+		t.Cleanup(func() { webFallbackExactStageBudget = previous })
 
-	release := make(chan struct{})
-	finished := make(chan struct{}, 1)
-	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
-	searcher := withWebFallbackExactStageBudget(
-		searchcore.NewFederatedSearcher(
-			productionShapeLocalHit{},
-			remote,
-		),
-		webFallbackConfig{
-			Privacy:  webFallbackPrivacyEnabled,
-			Provider: webFallbackProviderDDGS,
-		},
-	)
-	response, err := searcher.Search(t.Context(), searchcore.Request{
-		Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
+		release := make(chan struct{})
+		finished := make(chan struct{}, 1)
+		remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
+		searcher := withWebFallbackExactStageBudget(
+			searchcore.NewFederatedSearcher(
+				productionShapeLocalHit{},
+				remote,
+			),
+			webFallbackConfig{
+				Privacy:  webFallbackPrivacyEnabled,
+				Provider: webFallbackProviderDDGS,
+			},
+		)
+		response, err := searcher.Search(t.Context(), searchcore.Request{
+			Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
+		})
+		close(release)
+		select {
+		case <-finished:
+		case <-time.After(time.Second):
+			t.Fatal("remote search did not finish")
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(response.Results) != 1 ||
+			response.Results[0].URL != "https://local.example/needle" {
+			t.Fatalf("response = %#v", response)
+		}
 	})
-	close(release)
-	select {
-	case <-finished:
-	case <-time.After(time.Second):
-		t.Fatal("remote search did not finish")
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(response.Results) != 1 ||
-		response.Results[0].URL != "https://local.example/needle" {
-		t.Fatalf("response = %#v", response)
-	}
 }
 
 func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testing.T) {

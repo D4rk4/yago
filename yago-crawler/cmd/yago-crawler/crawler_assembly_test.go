@@ -122,6 +122,13 @@ func (f *fakeExchange) SubmitIngest(
 	return &crawlrpc.IngestAck{}, nil
 }
 
+func (*fakeExchange) StreamIngest(
+	context.Context,
+	...grpc.CallOption,
+) (grpc.BidiStreamingClient[crawlrpc.IngestBatchMessage, crawlrpc.IngestAck], error) {
+	return nil, errors.New("stream ingest is not configured in this fixture")
+}
+
 func (f *fakeExchange) AckOrder(
 	ctx context.Context,
 	request *crawlrpc.OrderAck,
