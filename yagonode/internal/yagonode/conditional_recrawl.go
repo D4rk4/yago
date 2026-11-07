@@ -101,9 +101,6 @@ func (c conditionalRecrawl) conditionalFetch(
 	ctx context.Context,
 	url string,
 ) (*yagocrawlcontract.ConditionalFetch, error) {
-	if c.documents == nil {
-		return nil, nil
-	}
 	binding, current, err := c.currentBinding(ctx, url)
 	if err != nil || !current {
 		return nil, err

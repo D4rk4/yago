@@ -144,6 +144,7 @@ func (n *conditionalRecrawlNode) dueRequests(
 
 type conditionalPageState struct {
 	document documentstore.Document
+	metadata []yagomodel.URIMetadataRow
 	indexed  int
 	postings int
 }
@@ -163,8 +164,17 @@ func (n *conditionalRecrawlNode) pageState(t *testing.T) conditionalPageState {
 	if err != nil {
 		t.Fatalf("posting count: %v", err)
 	}
+	metadata, err := n.storage.urlDirectory.RowsByHash(
+		ctx,
+		[]yagomodel.Hash{conditionalPageHash(t).Hash()},
+	)
+	if err != nil {
+		t.Fatalf("url metadata: %v", err)
+	}
 
-	return conditionalPageState{document: document, indexed: stats.Documents, postings: postings}
+	return conditionalPageState{
+		document: document, metadata: metadata, indexed: stats.Documents, postings: postings,
+	}
 }
 
 func fullConditionalPage(
@@ -174,10 +184,7 @@ func fullConditionalPage(
 	validators *yagocrawlcontract.HTTPValidators,
 ) yagocrawlcontract.IngestBatch {
 	t.Helper()
-	urlHash, err := yagomodel.HashURL(conditionalPageURL)
-	if err != nil {
-		t.Fatalf("hash page url: %v", err)
-	}
+	urlHash := conditionalPageHash(t)
 
 	return yagocrawlcontract.IngestBatch{
 		SourceURL:          conditionalPageURL,
@@ -193,12 +200,29 @@ func fullConditionalPage(
 			ContentHash:          "sha256:" + text,
 			ExtractionGeneration: yagocrawlcontract.CurrentExtractionGeneration,
 			FetchedAt:            observedAt,
+			Inlinks: []yagocrawlcontract.AnchorText{{
+				URL: "https://example.test/referrer", Text: "synthetic referrer anchor",
+			}},
 		},
 		Postings: []yagomodel.RWIPosting{{
 			WordHash:   yagomodel.WordHash("conditional"),
 			Properties: map[string]string{yagomodel.ColURLHash: urlHash.String()},
 		}},
+		Metadata: []yagomodel.URIMetadataRow{{Properties: map[string]string{
+			yagomodel.URLMetaHash: urlHash.String(),
+			yagomodel.URLMetaURL:  yagomodel.EncodeBase64WireForm(conditionalPageURL),
+		}}},
 	}
+}
+
+func conditionalPageHash(t *testing.T) yagomodel.URLHash {
+	t.Helper()
+	urlHash, err := yagomodel.HashURL(conditionalPageURL)
+	if err != nil {
+		t.Fatalf("hash page url: %v", err)
+	}
+
+	return urlHash
 }
 
 func notModifiedConditionalPage(
@@ -248,8 +272,9 @@ func TestConditionalRecrawlConfirmsAnUnchangedPageWithoutRewritingIt(t *testing.
 		t.Fatalf("issued conditional fetch = %+v", fetch)
 	}
 	before := node.pageState(t)
-	if before.indexed != 1 || before.postings != 1 {
-		t.Fatalf("stored page state = %+v, want one indexed document and one posting", before)
+	if before.indexed != 1 || before.postings != 1 || len(before.metadata) != 1 ||
+		len(before.document.Inlinks) != 1 {
+		t.Fatalf("stored page state = %+v, want one document, posting, URL row, and anchor", before)
 	}
 	observedAt := conditionalBase.Add(61 * time.Minute)
 

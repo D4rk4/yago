@@ -39,11 +39,12 @@ func TestSweepOnceReturnsWhenClaimDueFails(t *testing.T) {
 	}
 
 	sweeper := recrawlSweeper{
-		frontier:  frontier,
-		publisher: &capturingPublisher{},
-		mint:      func() []byte { return []byte("p") },
-		now:       func() time.Time { return sweepBase },
-		batch:     16,
+		frontier:    frontier,
+		conditional: conditionalRecrawl{frontier: frontier, documents: scriptedDocumentDirectory{}},
+		publisher:   &capturingPublisher{},
+		mint:        func() []byte { return []byte("p") },
+		now:         func() time.Time { return sweepBase },
+		batch:       16,
 	}
 	sweeper.sweepOnce(context.Background())
 
@@ -62,11 +63,12 @@ func TestRedispatchSkipsURLWithUnknownProfile(t *testing.T) {
 	}
 	publisher := &capturingPublisher{}
 	sweeper := recrawlSweeper{
-		frontier:  frontier,
-		publisher: publisher,
-		mint:      func() []byte { return []byte("p") },
-		now:       func() time.Time { return sweepBase.Add(2 * time.Hour) },
-		batch:     16,
+		frontier:    frontier,
+		conditional: conditionalRecrawl{frontier: frontier, documents: scriptedDocumentDirectory{}},
+		publisher:   publisher,
+		mint:        func() []byte { return []byte("p") },
+		now:         func() time.Time { return sweepBase.Add(2 * time.Hour) },
+		batch:       16,
 	}
 
 	sweeper.sweepOnce(ctx)
@@ -80,11 +82,12 @@ func TestRedispatchReportsPublishError(t *testing.T) {
 	frontier := openTestFrontier(t)
 	seedDueURL(t, frontier, "https://publish-error.example/")
 	sweeper := recrawlSweeper{
-		frontier:  frontier,
-		publisher: failingPublisher{},
-		mint:      func() []byte { return []byte("p") },
-		now:       func() time.Time { return sweepBase.Add(2 * time.Hour) },
-		batch:     16,
+		frontier:    frontier,
+		conditional: conditionalRecrawl{frontier: frontier, documents: scriptedDocumentDirectory{}},
+		publisher:   failingPublisher{},
+		mint:        func() []byte { return []byte("p") },
+		now:         func() time.Time { return sweepBase.Add(2 * time.Hour) },
+		batch:       16,
 	}
 
 	sweeper.sweepOnce(context.Background())

@@ -1,6 +1,7 @@
 package yagonode
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -200,17 +201,56 @@ func TestConditionalRecrawlNeverSchedulesANeverRecrawlProfile(t *testing.T) {
 	}
 }
 
-func TestConditionalRecrawlFindsAPageStoredUnderItsCanonicalURL(t *testing.T) {
-	node := openConditionalRecrawlNode(t, filepath.Join(t.TempDir(), "node.db"), time.Hour)
-	page := fullConditionalPage(t, conditionalBase, "first text", firstValidators())
-	page.Document.NormalizedURL = ""
-	if outcome := node.submit(t, page); outcome != "ack" {
-		t.Fatalf("full page settlement = %q, want ack", outcome)
-	}
+func TestConditionalRecrawlFollowsAFetchedURLToItsStoredDocument(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		normalizedURL string
+		canonicalURL  string
+		storedURL     string
+	}{
+		{
+			name:          "normalized document URL",
+			normalizedURL: conditionalPageURL + "-final",
+			canonicalURL:  conditionalPageURL + "-canonical",
+			storedURL:     conditionalPageURL + "-final",
+		},
+		{
+			name:         "canonical document URL",
+			canonicalURL: conditionalPageURL + "-canonical",
+			storedURL:    conditionalPageURL + "-canonical",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			node := openConditionalRecrawlNode(
+				t, filepath.Join(t.TempDir(), "node.db"), time.Hour,
+			)
+			page := fullConditionalPage(t, conditionalBase, "first text", firstValidators())
+			page.Document.NormalizedURL = tc.normalizedURL
+			page.Document.CanonicalURL = tc.canonicalURL
+			if outcome := node.submit(t, page); outcome != "ack" {
+				t.Fatalf("full page settlement = %q, want ack", outcome)
+			}
 
-	if fetch := soleConditionalFetch(
-		t, node.dueRequests(t, conditionalBase.Add(time.Hour)),
-	); fetch == nil {
-		t.Fatal("page stored under its canonical URL issued no conditional fetch")
+			binding, bound, err := node.ingest.frontier.ValidatorBinding(ctx, conditionalPageURL)
+			if err != nil || !bound || binding.DocumentURL != tc.storedURL {
+				t.Fatalf(
+					"binding = %+v, %v, %v, want document %q",
+					binding,
+					bound,
+					err,
+					tc.storedURL,
+				)
+			}
+			fetch := node.ingest.conditional.issuedConditionalFetch(ctx, conditionalPageURL)
+			if fetch == nil || fetch.Validators != *firstValidators() {
+				t.Fatalf("issued conditional fetch = %+v, want the first validators", fetch)
+			}
+			if outcome := node.submit(t, notModifiedConditionalPage(
+				fetch.Revision, conditionalBase.Add(time.Hour), "unchanged",
+			)); outcome != "recorded" {
+				t.Fatalf("not-modified settlement = %q, want recorded", outcome)
+			}
+		})
 	}
 }

@@ -57,12 +57,13 @@ func sweepOneDueURL(
 	t.Helper()
 	publisher := &capturingPublisher{}
 	sweeper := recrawlSweeper{
-		frontier:  frontier,
-		publisher: publisher,
-		initiator: yagomodel.Hash("node"),
-		mint:      func() []byte { return []byte("provenance") },
-		now:       func() time.Time { return sweepBase.Add(2 * time.Hour) },
-		batch:     8,
+		frontier:    frontier,
+		conditional: conditionalRecrawl{frontier: frontier, documents: scriptedDocumentDirectory{}},
+		publisher:   publisher,
+		initiator:   yagomodel.Hash("node"),
+		mint:        func() []byte { return []byte("provenance") },
+		now:         func() time.Time { return sweepBase.Add(2 * time.Hour) },
+		batch:       8,
 	}
 	sweeper.sweepOnce(context.Background())
 	orders := publisher.snapshot()

@@ -47,5 +47,8 @@ func (c *IngestConsumer) absorbNotModified(ctx context.Context, delivery IngestD
 	} else {
 		slog.WarnContext(ctx, msgNotModifiedRefused, slog.String("sourceUrl", sourceURL))
 	}
-	_ = settle(ctx)
+	if err := settle(ctx); err != nil {
+		slog.WarnContext(ctx, msgIngestAckFailed,
+			slog.String("sourceUrl", sourceURL), slog.Any("error", err))
+	}
 }

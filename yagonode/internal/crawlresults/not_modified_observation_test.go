@@ -1,8 +1,11 @@
 package crawlresults_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,6 +170,58 @@ func TestNotModifiedObservationIsConfirmedOnlyAfterItIsRecorded(t *testing.T) {
 			}
 			if run.documents.calls+run.urls.calls+run.postings.calls != 0 {
 				t.Fatal("not-modified observation reached the document, URL or posting stores")
+			}
+		})
+	}
+}
+
+func TestNotModifiedSettlementFailureIsReported(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		conditional  scriptedConditionalRecrawl
+		settleErr    error
+		wantReported bool
+	}{
+		{name: "recorded and settled", conditional: scriptedConditionalRecrawl{recorded: true}},
+		{
+			name:         "recorded but unsettled",
+			conditional:  scriptedConditionalRecrawl{recorded: true},
+			settleErr:    errors.New("acknowledgement lost"),
+			wantReported: true,
+		},
+		{name: "refused and settled"},
+		{
+			name:         "refused but unsettled",
+			settleErr:    errors.New("acknowledgement lost"),
+			wantReported: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var warnings bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(
+				&warnings, &slog.HandlerOptions{Level: slog.LevelWarn},
+			)))
+			t.Cleanup(func() {
+				slog.SetDefault(previous)
+				reported := strings.Contains(warnings.String(), `"msg":"ingest batch ack failed"`)
+				if reported != tc.wantReported {
+					t.Errorf("settlement failure reported = %v, want %v", reported, tc.wantReported)
+				}
+			})
+			settled := make(chan string, 1)
+			delivery := settlingDelivery(notModifiedBatch("https://example.org/page"), settled)
+			settle := func(context.Context) error {
+				settled <- "settled"
+
+				return tc.settleErr
+			}
+			delivery.Ack, delivery.AckRecordedNotModified = settle, settle
+
+			newConditionalConsumerRun(&tc.conditional).absorb(t, delivery)
+
+			if outcome := awaitSettlement(t, settled); outcome != "settled" {
+				t.Fatalf("settlement = %q, want settled", outcome)
 			}
 		})
 	}

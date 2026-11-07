@@ -1182,15 +1182,13 @@ it is not an assumed deployment dependency.
   next due time from the observation time and any sitemap `lastmod` hint and keep
   newer valid validators. It SHALL NOT change the stored document, its
   timestamps, its full-text entry, its postings, or its URL metadata.
-* The node SHALL set `not_modified_recorded` only after that record is durable.
-  A replayed observation with the same revision and observation time SHALL be
-  confirmed again without a second change, whatever its observation ID. Every
-  other valid observation SHALL be acknowledged without the flag, a storage
-  failure SHALL ask the crawler to retry, and a stale lease or replaced session
-  SHALL be refused.
+* The node SHALL set `not_modified_recorded` only after that record is
+  committed. While no newer observation has been recorded, a replayed
+  observation with the same revision and observation time SHALL be confirmed
+  again without a second change, whatever its observation ID. Every other valid
+  observation SHALL be acknowledged without the flag, a storage failure SHALL
+  ask the crawler to retry, and a stale lease or replaced session SHALL be
+  refused.
 * Kept validators SHALL be additive fields of the stored schedule record. A
   record without them SHALL encode exactly as before, and an older binary SHALL
-  read a record with them as an unconditional recrawl. Before a rollback to a
-  release without conditional recrawl, operators SHALL drain conditional work:
-  pause recurring schedules, clear pending orders, wait until no order is
-  leased, then stop the crawlers before the node.
+  read a record with them as an unconditional recrawl.

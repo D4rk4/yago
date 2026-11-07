@@ -297,11 +297,12 @@ func TestSweepRedispatchProfileLookupError(t *testing.T) {
 
 	publisher := &capturingPublisher{}
 	sweeper := recrawlSweeper{
-		frontier:  frontier,
-		publisher: publisher,
-		mint:      func() []byte { return []byte("p") },
-		now:       func() time.Time { return sweepBase.Add(2 * time.Hour) },
-		batch:     16,
+		frontier:    frontier,
+		conditional: conditionalRecrawl{frontier: frontier, documents: scriptedDocumentDirectory{}},
+		publisher:   publisher,
+		mint:        func() []byte { return []byte("p") },
+		now:         func() time.Time { return sweepBase.Add(2 * time.Hour) },
+		batch:       16,
 	}
 	sweeper.sweepOnce(context.Background())
 
