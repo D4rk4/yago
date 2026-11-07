@@ -164,9 +164,10 @@ is read, nothing is parsed, and no browser render starts. A `304` the crawler
 did not ask for, or one with malformed validators, is retried once without
 validators inside the same fetch deadline and otherwise fails the fetch. When
 the node does not confirm that it recorded the observation, the crawler fetches
-the page again in full within the same lease. The node confirms only after it
-has committed its record of the observation; it then schedules the page's next recrawl
-and leaves the stored page, its full-text entry, and its postings unchanged.
+the page again in full within the same lease. The node's binding,
+acknowledgement, rejection, replay, and rollback rules are stated in the
+[conditional recrawl section of the contract README](../yagocrawlcontract/README.md#conditional-recrawl)
+and the [node specification](../yagonode/doc/specification.md#non-functional-requirements).
 Every full HTTP response's valid
 entity tag and modification date are reported to the node.
 
@@ -250,14 +251,10 @@ Each generated RWI posting carries the shared URL-derived fields once per page,
 not once per token. The document type, language, URL hash, text and title word
 counts, local and external link counts, and the URL component count are computed
 from the page URL and its extracted statistics before the word postings are
-built. The URL component count (field `n`) reproduces Java YaCy's
-`MultiProtocolURL.urlComps`: the URL is split on the delimiter set
-` /()-:_.,?!'"` plus space after stripping the scheme prefix through `//` only
-when its position is greater than zero, with interior empty components kept and
-trailing empties dropped. The count is stored as a one-byte cardinal that wraps
-to its low byte, so a URL with more than 255 components does not overflow. The
-other generated fields keep their existing saturation widths. The Java revision
-and the synthetic counting inputs are recorded in
+built. The URL component count (field `n`) carries the Java-YaCy-compatible
+count, wrapping to one byte; the exact rule lives in the target architecture
+section of the [node specification](../yagonode/doc/specification.md#target-architecture).
+The Java revision and the synthetic counting inputs are recorded in
 `yagonode/test/fixtures/yacywire/component-count-provenance.md`.
 
 PDF extraction follows the document structure rather than scanning every decoded

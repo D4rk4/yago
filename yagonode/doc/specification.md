@@ -1192,3 +1192,7 @@ it is not an assumed deployment dependency.
 * Kept validators SHALL be additive fields of the stored schedule record. A
   record without them SHALL encode exactly as before, and an older binary SHALL
   read a record with them as an unconditional recrawl.
+
+The wire rules that carry these validators and the not-modified observation are
+stated in the [conditional recrawl section of the contract README](../yagocrawlcontract/README.md#conditional-recrawl),
+where the rollback that needs no drain also lives.
