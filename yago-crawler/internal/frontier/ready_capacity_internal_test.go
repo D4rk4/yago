@@ -201,6 +201,29 @@ func TestReadyAdmissionDoesNotInvokeDispatchScorer(t *testing.T) {
 	frontier.Done(job, successfulPageOutcome())
 }
 
+func TestPendingCandidateWithoutFilterIsAccepted(t *testing.T) {
+	frontier := NewFrontier(1, nil)
+	profile := internalProfile(t)
+	seeded := frontier.SeedRun(
+		t.Context(),
+		internalRequests(profile, "https://example.org/ready", "https://example.org/pending"),
+		[]byte("unfiltered-pending"),
+		profile,
+		nil,
+	)
+
+	frontier.mu.Lock()
+	candidate, accepted := frontier.popPendingCandidateLocked(
+		seeded.RunID,
+		frontier.state.runs[seeded.RunID],
+		nil,
+	)
+	frontier.mu.Unlock()
+	if !accepted || candidate.normURL != "https://example.org/pending" {
+		t.Fatalf("unfiltered pending candidate = %+v/%v", candidate, accepted)
+	}
+}
+
 func TestDefaultRateMillionPageBacklogUsesBoundedEligibilityWork(t *testing.T) {
 	const (
 		capacity = 256

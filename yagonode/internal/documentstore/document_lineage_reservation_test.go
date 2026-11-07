@@ -23,6 +23,7 @@ func TestReservedOutboundAnchorsRequireActiveCoveredLineage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reserve lineages: %v", err)
 	}
+	reservation.documentLineageReservation()
 	update, err := documents.ReplaceReservedOutboundAnchors(
 		t.Context(),
 		reservation,

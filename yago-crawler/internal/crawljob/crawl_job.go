@@ -22,7 +22,9 @@ type CrawlJob struct {
 	ObservedAt       time.Time
 	// CrawlDelay is the profile's requested politeness delay for this job's host.
 	// Zero means the crawler's global default delay applies.
-	CrawlDelay time.Duration
+	CrawlDelay   time.Duration
+	RetryAttempt uint8
+	RetryAfter   time.Time
 	// Formats selects which document format families this job may parse.
 	Formats yagocrawlcontract.FormatToggles
 	// IgnoreTLSAuthority routes this job through the fetch chain that skips

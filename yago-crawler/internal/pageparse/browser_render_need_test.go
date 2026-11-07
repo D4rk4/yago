@@ -86,9 +86,9 @@ func TestBrowserRenderNeededTreatsExtractionFailureAsMissingContent(t *testing.T
 	}
 }
 
-func TestStaticContentUsableCountsTermsAndRunes(t *testing.T) {
-	if !staticContentUsable("one two three four") {
-		t.Fatal("term threshold rejected usable content")
+func TestStaticContentUsableCountsMeaningfulRunes(t *testing.T) {
+	if staticContentUsable("abcdefghijklmn!!!") {
+		t.Fatal("fewer than sixteen meaningful runes satisfied the threshold")
 	}
 	if !staticContentUsable("abcdefghijklmnop") {
 		t.Fatal("rune threshold rejected usable content")

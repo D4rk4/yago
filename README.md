@@ -114,6 +114,8 @@ together, so upgrade a node and its crawlers to the same release.
   grace. A change that cannot apply in place restarts the crawler gracefully.
 - The node keeps the crawl queue, leases, and run state in one transactional
   store, `${YAGO_DATA_DIR}/crawlbroker.db`.
+- The Admin Crawler page separates node orders from worker frontier URLs and
+  shows bounded current and waiting URL samples with active stages.
 - **Format coverage beyond HTML**: PDF, DOCX/XLSX/PPTX, legacy DOC/XLS/PPT,
   ODT/ODS/ODP, RTF, EPUB, plain text/CSV, and Markdown — parsed with
   stdlib-first parsers and validated against real files.

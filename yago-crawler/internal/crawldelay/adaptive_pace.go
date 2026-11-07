@@ -13,10 +13,6 @@ import (
 )
 
 const (
-	// maxHostBackoff caps how long a throttled host is set aside, Heritrix's
-	// retryDelaySeconds default (900s); Retry-After wishes are clamped to it so
-	// a hostile header cannot park a host for days.
-	maxHostBackoff = 15 * time.Minute
 	// parkAfterFailures is how many consecutive throttles or hard fetch errors
 	// park a host at the full backoff cap, Nutch's per-host exception purge
 	// threshold.
@@ -44,8 +40,9 @@ type hostBackoff struct {
 // host forever (Scrapy AutoThrottle and Nutch exponential backoff are the
 // production precedents).
 type AdaptivePace struct {
-	inner    *HostPace
-	observer BackoffObserver
+	inner              *HostPace
+	maximumHostBackoff time.Duration
+	observer           BackoffObserver
 
 	mu      sync.Mutex
 	backoff *lru.Cache[string, hostBackoff]
@@ -56,14 +53,23 @@ type AdaptivePace struct {
 func NewAdaptivePace(
 	inner *HostPace,
 	hostCacheSize int,
+	maximumHostBackoff time.Duration,
 	observer BackoffObserver,
 ) (*AdaptivePace, error) {
+	if maximumHostBackoff <= 0 {
+		return nil, fmt.Errorf("maximum host backoff must be positive")
+	}
 	backoff, err := lru.New[string, hostBackoff](hostCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("adaptive pace host cache: %w", err)
 	}
 
-	return &AdaptivePace{inner: inner, observer: observer, backoff: backoff}, nil
+	return &AdaptivePace{
+		inner:              inner,
+		maximumHostBackoff: maximumHostBackoff,
+		observer:           observer,
+		backoff:            backoff,
+	}, nil
 }
 
 // DueAt is the later of the fixed-pace due time and the host's backoff window.
@@ -76,6 +82,14 @@ func (p *AdaptivePace) DueAt(job crawljob.CrawlJob, now time.Time) time.Time {
 	}
 
 	return due
+}
+
+func (p *AdaptivePace) BackoffUntil(rawURL string) time.Time {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	state, _ := p.backoff.Get(weburl.Host(rawURL))
+
+	return state.until
 }
 
 // Visited delegates to the fixed pace; adaptive state changes only on explicit
@@ -97,8 +111,8 @@ func (p *AdaptivePace) Throttled(rawURL string, retryAfter time.Duration, now ti
 	state, _ := p.backoff.Get(host)
 	penalty := max(2*p.inner.delay, 2*state.penalty, retryAfter)
 	state.failures++
-	if state.failures >= parkAfterFailures || penalty > maxHostBackoff {
-		penalty = maxHostBackoff
+	if state.failures >= parkAfterFailures || penalty > p.maximumHostBackoff {
+		penalty = p.maximumHostBackoff
 	}
 	state.penalty = penalty
 	state.until = now.Add(penalty)

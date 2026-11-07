@@ -36,12 +36,24 @@ yago-node
 
 yago-crawler
   - persistent crawl frontier
-  - HTTP fast fetch path
+  - bounded asynchronous HTTP page workers with a five-second attempt deadline
   - optional browser slow fetch path
   - robots.txt, sitemap, canonicalization, politeness
   - content extraction and deduplication
   - emits DocumentIngest + RWI postings + URL metadata
 ```
+
+Crawler URL fetching and robots retrieval happen in `yago-crawler`; the node
+does not fetch crawl targets. The crawler claims pages through one global worker
+limit that is independent of the active crawl-run limit. Each URL attempt has a
+five-second wall-clock deadline. A timeout settles or retries that URL and frees
+the worker for another due page. Fetched ingest batches remain in the crawler's
+persistent outbox and travel over a bidirectional stream with up to 64
+submissions in flight. A separate receiver processes acknowledgments while the
+sender continues dispatching. A slow ingest acknowledgment does not occupy a
+page worker. Worker heartbeats report active URLs, stages, and elapsed time for
+the Admin crawl pulse. A run remains leased until its pending ingest batches are
+acknowledged.
 
 Each crawler-generated RWI posting carries field `n` (the URL component count)
 once per page. The crawler splits the URL on the delimiter set
@@ -350,7 +362,7 @@ it is not an assumed deployment dependency.
 * Ingest authorization SHALL distinguish confirmed lease loss from operational authorization failures. Only confirmed loss SHALL return FailedPrecondition and revoke a crawler grant; context, storage and other non-lease authorization failures SHALL remain retryable without revoking a valid grant.
 * The served-result denylist SHALL load its immutable snapshot at startup and SHALL publish a changed snapshot after a successful mutation or a durable reconciliation. An add whose durable state cannot be read SHALL fail closed by including the requested entry; an indeterminate remove SHALL retain the prior policy. Request-time filtering SHALL NOT scan persistent storage or iterate every configured domain for each result.
 * Canonicalizable exact URL denylist rules SHALL match the shared canonical URL identity in served results and crawl admission. Persisted raw aliases SHALL remain individually removable, and removing one alias SHALL NOT unblock another retained alias. Domain suffix rules and literal matching for values outside canonicalization SHALL remain supported. Additions SHALL validate both retained raw rules and the canonical outgoing policy against the shared contract limits within the serialized mutation, before durable or visible state changes. Rejected additions SHALL leave both unchanged. Legacy oversized policies SHALL remain readable and removable without automatic pruning. The receiver SHALL verify the existing wire revision before compiling canonical match indexes.
-* Admin Crawler SHALL distinguish pending node orders, leased orders and each run's pending URLs. Clearing pending orders SHALL require an authenticated, CSRF-protected explicit confirmation. After reconciling pending discovery intents, the node SHALL capture one finite deletion boundary, remove only still-pending orders below that boundary in bounded atomic transactions, preserve leases and later arrivals, and report only committed removals alongside any partial failure. Discovery ownership and recovery intents SHALL remain consistent after deletion and reopening; ordinary submission idempotency SHALL remain intact. Indexed documents, schedules and settings SHALL remain unchanged. Per-run cancellation SHALL remain the separate control for a worker's pending URLs.
+* Admin Crawler SHALL distinguish pending node orders, leased orders and each run's pending URLs. The Crawl page SHALL show up to four URLs from the oldest pending node orders, separately from each worker's frontier sample; an unavailable sample SHALL be distinguishable from an empty queue. Clearing pending orders SHALL require an authenticated, CSRF-protected explicit confirmation. After reconciling pending discovery intents, the node SHALL capture one finite deletion boundary, remove only still-pending orders below that boundary in bounded atomic transactions, preserve leases and later arrivals, and report only committed removals alongside any partial failure. Discovery ownership and recovery intents SHALL remain consistent after deletion and reopening; ordinary submission idempotency SHALL remain intact. Indexed documents, schedules and settings SHALL remain unchanged. Per-run cancellation SHALL remain the separate control for a worker's pending URLs.
 * The same durable URL/domain denylist SHALL be the crawler admission policy.
   Before a current crawler opens its order stream, the node SHALL provide one
   canonical revisioned snapshot and the crawler SHALL fail closed until that
@@ -361,6 +373,7 @@ it is not an assumed deployment dependency.
   browser fetch, including its final redirected URL. The policy SHALL remain
   bounded to 4,096 entries and 1 MiB and SHALL NOT introduce a second operator
   setting or environment variable.
+* The crawler SHALL fetch page and robots URLs in `yago-crawler`; the node SHALL NOT fetch crawl targets. A process-wide page-worker limit SHALL bound concurrent frontier claims independently from the active-run limit, and each URL attempt SHALL have a five-second wall-clock deadline. A robots network request SHALL be bounded to two seconds after host admission; concurrent requests for the same origin SHALL share one load. An unreachable robots file SHALL deny that origin and cache the result for at most 24 hours; crawler shutdown cancellation SHALL NOT populate the cache. Deadline expiration SHALL settle or retry that URL and release the worker. The crawler SHALL persist fetched batches to its outbox before settling pages and SHALL dispatch them in a separate sender so node acknowledgment latency cannot occupy page workers. The node SHALL receive bounded heartbeat reports of active URL, stage, and elapsed time, plus up to four next waiting URLs per run and 64 per worker with queue state, wait reason, and eligibility time. The Admin Crawl page SHALL show at most eight current URLs and four next waiting URLs per run. A crawl order MAY remain leased while its durable outbox drains.
 * Optional crawl seeding from web-fallback results SHALL run outside the search response path through two process-wide workers, admit at most 128 pending jobs, and give each admitted job a fresh background context that expires ten seconds after execution begins. A full pending queue SHALL warn and skip only the new optional job. URLs SHALL be normalized before admission, SHALL discard fragments, and SHALL reject credentials, missing hosts, non-HTTP schemes, and identities beyond the document URL limit. Every eligible surfaced URL SHALL receive a stored-document presence check lasting at most 50 milliseconds. An absent or lookup-indeterminate URL SHALL persist a node-internal, one-at-a-time recovery intent before automatic-discovery queue mutation. Its normalized identity SHALL coalesce only pending or leased work. Acknowledgement, terminal failure, or cancellation SHALL stage a durable settlement intent before releasing that identity; retry or startup SHALL complete a partial settlement idempotently so a later surfaced result can retry. Successful ingest SHALL be authorized against the live lease and SHALL attempt to persist that order's profile before recording the fetch. A profile or recrawl-schedule write failure SHALL be logged and SHALL NOT roll back an already indexed document. The discovery root SHALL be the warming fetch; the node SHALL NOT publish a second cache order while that work remains active.
 * Public paging SHALL cache an initial 50-result assembled window plus one materialized lookahead row and extend it on demand in 50-result blocks with the same one-row lookahead up to the 500-result safety horizon. Extensions SHALL preserve the cached prefix order, append only unseen result identities, and keep extending after a short deduplicated window while the backend reports deeper matches. A failure-free response that explicitly closes the backend total or adds no new identity MAY prove exhaustion and reduce the estimate to the materialized prefix. A classified incomplete extension, a response carrying retrieval partial failures, an operational refresh error, or merely reaching the safety horizon SHALL preserve the estimate and remain non-exhaustive. Public portal page links SHALL use only materialized availability, SHALL preserve an explicitly requested non-exhaustive page, and SHALL redirect beyond the last materialized page only after authoritative exhaustion. Each session SHALL publish an immutable visible window so recent-success recovery never waits behind an active deep-page extension. The paging cache SHALL retain at most 128 sessions and 32 MiB in byte-aware LRU order, reconcile extension growth, purge expired entries on access, deeply detach retained payloads, and serve but not retain an entry that exceeds the budget by itself.
 * Persistent full-text index search and document hydration MAY run concurrently with ingest, but index, delete, and batch mutations SHALL be serialized to bound concurrent segment memory and preserve mutation completion order. One batch mutation SHALL persist at most four Bleve shards concurrently, SHALL attempt every touched shard, SHALL wait for every attempt, and SHALL report the lowest-shard failure regardless of completion order. An empty cached-index batch SHALL be a strict no-op without backend delegation or cache invalidation. Every nonempty cached-index batch SHALL invalidate after its mutation attempt even when that attempt reports an error, because an earlier fallback document or Bleve shard can already be durable.
@@ -779,14 +792,23 @@ it is not an assumed deployment dependency.
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.
 * The node SHALL allow operators to configure its storage quota.
 * The serving sharded vault SHALL keep bbolt freelist persistence disabled on
-  ordinary write transactions. A clean close SHALL take exclusive storage
-  quiescence, force transaction synchronization and freelist persistence for
-  each shard, commit exactly one empty checkpoint transaction, and close every
-  shard even when an earlier checkpoint or close fails. A successful durable
-  checkpoint SHALL NOT issue a redundant explicit sync. After a checkpoint
-  failure on a shard that used deferred fsync, close SHALL attempt one
-  best-effort explicit sync and SHALL return every checkpoint, sync, and close
-  failure together. An unclean stop SHALL retain bbolt's scan-based freelist
+  ordinary write transactions. An authenticated online operator checkpoint SHALL
+  take exclusive storage quiescence, force transaction synchronization and
+  freelist persistence for every shard, commit one empty checkpoint transaction
+  per shard, and leave freelist persistence enabled for later writes. It SHALL
+  restore configured deferred-fsync mode before releasing vault operations,
+  attempt every shard, and report each checkpoint and fallback-sync failure. A
+  successful durable checkpoint SHALL NOT issue a redundant explicit sync. A
+  checkpoint cancelled before quiescence SHALL perform no writes; once
+  checkpointing starts it SHALL finish all shards before releasing the vault.
+  The node and listeners SHALL remain running and vault operations SHALL resume
+  after completion. A clean close SHALL take exclusive storage quiescence, force
+  transaction synchronization and freelist persistence for every shard, commit
+  exactly one empty checkpoint transaction, and close every shard even when an
+  earlier checkpoint or close fails. After a checkpoint failure on a shard that
+  used deferred fsync, close SHALL attempt one best-effort explicit sync and
+  SHALL return every checkpoint, sync, and close failure together. An unclean
+  stop before a successful checkpoint SHALL retain bbolt's scan-based freelist
   reconstruction. Top-level node shutdown SHALL wait for active event
   persistence only through its bounded drain and cancellation grace. If the
   writer remains active, shutdown SHALL report an error and skip vault close so
@@ -1057,7 +1079,9 @@ it is not an assumed deployment dependency.
   sharded vault and SHALL NOT count toward `YAGO_STORAGE_QUOTA` or participate
   in main-vault eviction or compaction. The node SHALL expose a live, separately
   configurable soft physical admission boundary for that file, defaulting to
-  4 GiB, with zero disabling the boundary. At or above the boundary, fresh order
+  10% of the effective storage quota and capped by measured free space after
+  the node reserve. An unlimited quota uses 10% of measured free space after
+  reserve; zero disables the boundary. At or above the boundary, fresh order
   enqueue SHALL fail while migration, ingest, lifecycle, recovery, and settlement
   writes remain admitted through the underlying filesystem-pressure policy.
 * Crawl-broker startup SHALL rebuild an in-memory active-lease catalog from the

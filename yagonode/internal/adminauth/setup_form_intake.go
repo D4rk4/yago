@@ -26,7 +26,7 @@ func (s *Service) acceptSetupForm(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	validToken := s.validSetupFormToken(r)
-	clearSetupFormToken(w, r)
+	s.clearSetupFormToken(w, r)
 	if !validToken {
 		http.Error(w, "missing, invalid, or expired setup token", http.StatusForbidden)
 

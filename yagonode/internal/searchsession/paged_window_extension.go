@@ -59,6 +59,7 @@ func (s *stableSearcher) extendWindow(
 		previousLength := len(entry.results)
 		entry.results = appendUnseen(entry.results, resp.Results, retrievalDepth(targetDepth))
 		entry.searchDepth = targetDepth
+		entry.coverage = cloneSessionCoverage(resp.Coverage)
 		entry.failures = mergedSessionFailures(entry.failures, resp.PartialFailures)
 		if len(resp.PartialFailures) == 0 &&
 			(resp.TotalResults <= len(resp.Results) || len(entry.results) == previousLength) {

@@ -110,8 +110,8 @@ func TestReleaseNilAwayBaselineContainsOnlyExactSortedLocations(t *testing.T) {
 		t.Fatalf("read NilAway baseline: %v", err)
 	}
 	locations := strings.Fields(string(contents))
-	if len(locations) != 82 {
-		t.Fatalf("NilAway baseline locations = %d, want 82", len(locations))
+	if len(locations) != 84 {
+		t.Fatalf("NilAway baseline locations = %d, want 84", len(locations))
 	}
 	if err := validateReleaseNilAwayLocations(locations); err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func validateReleaseNilAwayLocations(locations []string) error {
 		return fmt.Errorf("NilAway baseline is not sorted")
 	}
 	exactLocation := regexp.MustCompile(
-		`^(?:yagonode|yago-crawler)/.+\.go:[1-9][0-9]*:[1-9][0-9]*$`,
+		`^(?:yagonode|yago-crawler|yago-crawler2)/.+\.go:[1-9][0-9]*:[1-9][0-9]*$`,
 	)
 	for index, location := range locations {
 		if !exactLocation.MatchString(location) {

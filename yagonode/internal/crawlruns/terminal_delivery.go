@@ -125,6 +125,7 @@ func (r *Registry) RecordTerminal(
 
 		return err
 	}
+	r.recordProcessThroughputLocked(previousRun, runExisted, run, run.Updated)
 	r.terminal.records[progress.RunID] = record
 	r.terminal.owners[identityKey] = progress.RunID
 	for _, removed := range evicted {
@@ -382,6 +383,7 @@ func terminalRunFromProgress(
 		run.FirstSeen = now
 	}
 	run.WorkerID = progress.WorkerID
+	run.ProcessIdentifier = progress.ProcessIdentifier
 	run.ProfileHandle = progress.ProfileHandle
 	run.ProfileName = progress.ProfileName
 	run.State = progress.State

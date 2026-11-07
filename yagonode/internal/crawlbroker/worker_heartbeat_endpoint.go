@@ -3,6 +3,7 @@ package crawlbroker
 import (
 	"context"
 	"errors"
+	"net/url"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -20,6 +21,10 @@ func (s *exchangeServer) Heartbeat(
 	workerSessionID := req.GetWorkerSessionId()
 	if !validCrawlerLeaseIdentity(workerID, workerSessionID) {
 		return nil, status.Error(codes.InvalidArgument, "invalid worker session identity")
+	}
+	activePages, waitingPages, valid := heartbeatCrawlerPages(req)
+	if !valid {
+		return nil, status.Error(codes.InvalidArgument, "invalid worker crawl activity")
 	}
 	urlDenylist, err := s.urlDenylistForHeartbeat(req)
 	if err != nil {
@@ -59,7 +64,14 @@ func (s *exchangeServer) Heartbeat(
 		if err != nil {
 			return err
 		}
-		s.control.recordActiveFetches(workerID, req.ActiveFetches)
+		s.control.recordHeartbeatFetchActivity(
+			workerID,
+			workerSessionID,
+			req.ActiveFetches,
+			req.FetchAdmissionWaiting,
+		)
+		s.control.recordHeartbeatActivePages(workerID, workerSessionID, activePages)
+		s.control.recordHeartbeatWaitingPages(workerID, workerSessionID, waitingPages)
 		s.control.recordStoragePressure(workerID, req)
 		directives, err = s.control.deliverForHeartbeat(
 			ctx,
@@ -79,6 +91,142 @@ func (s *exchangeServer) Heartbeat(
 	s.confirmHeartbeatDeliveries(req, workerID, workerSessionID, renewed)
 
 	return s.heartbeatResult(directives, renewed, leaseTTL, urlDenylist)
+}
+
+func heartbeatCrawlerPages(
+	req *crawlrpc.WorkerHeartbeat,
+) ([]CrawlerActivePage, []CrawlerWaitingPage, bool) {
+	if !validHeartbeatFetchActivity(req) {
+		return nil, nil, false
+	}
+	activePages, valid := activeCrawlerPagesFromHeartbeat(req.GetActivePages())
+	if !valid {
+		return nil, nil, false
+	}
+	waitingPages, valid := waitingCrawlerPagesFromHeartbeat(req.GetWaitingPages())
+	if !valid {
+		return nil, nil, false
+	}
+
+	return activePages, waitingPages, true
+}
+
+func canonicalCrawlerActivityURL(rawURL string) (string, bool) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.User != nil {
+		return "", false
+	}
+	canonicalURL, valid := yagocrawlcontract.CanonicalURL(rawURL)
+	if !valid || canonicalURL != rawURL {
+		return "", false
+	}
+
+	return canonicalURL, true
+}
+
+func activeCrawlerPagesFromHeartbeat(
+	pages []*crawlrpc.ActiveCrawlPage,
+) ([]CrawlerActivePage, bool) {
+	if len(pages) > yagocrawlcontract.MaximumFetchWorkerConcurrency {
+		return nil, false
+	}
+	activePages := make([]CrawlerActivePage, 0, len(pages))
+	for _, page := range pages {
+		if page == nil ||
+			len(page.GetRunId()) > yagocrawlcontract.MaximumCrawlerWaitingPageRunIDBytes ||
+			len(page.GetUrl()) > yagocrawlcontract.MaximumCrawlURLBytes {
+			return nil, false
+		}
+		canonicalURL, valid := canonicalCrawlerActivityURL(page.GetUrl())
+		if !valid || !validCrawlerPageStage(page.GetStage()) {
+			return nil, false
+		}
+		activePages = append(activePages, CrawlerActivePage{
+			RunID:               page.GetRunId(),
+			URL:                 canonicalURL,
+			Stage:               page.GetStage(),
+			ElapsedMilliseconds: page.GetElapsedMilliseconds(),
+		})
+	}
+	return activePages, true
+}
+
+func waitingCrawlerPagesFromHeartbeat(
+	pages []*crawlrpc.WaitingCrawlPage,
+) ([]CrawlerWaitingPage, bool) {
+	if len(pages) > yagocrawlcontract.MaximumCrawlerWaitingPageReports {
+		return nil, false
+	}
+	waitingPages := make([]CrawlerWaitingPage, 0, len(pages))
+	perRunPages := make(map[string]int, len(pages))
+	for _, page := range pages {
+		if page == nil || page.GetRunId() == "" ||
+			len(page.GetRunId()) > yagocrawlcontract.MaximumCrawlerWaitingPageRunIDBytes ||
+			len(page.GetUrl()) > yagocrawlcontract.MaximumCrawlURLBytes ||
+			page.GetAvailableAfterUnixMilliseconds() < 0 {
+			return nil, false
+		}
+		canonicalURL, valid := canonicalCrawlerActivityURL(page.GetUrl())
+		if !valid ||
+			!validWaitingCrawlerPageState(page.GetState()) ||
+			!validWaitingCrawlerPageReason(page.GetReason()) {
+			return nil, false
+		}
+		perRunPages[page.GetRunId()]++
+		if perRunPages[page.GetRunId()] > yagocrawlcontract.MaximumCrawlerWaitingPagesPerRun {
+			return nil, false
+		}
+		waiting := CrawlerWaitingPage{
+			RunID:  page.GetRunId(),
+			URL:    canonicalURL,
+			State:  page.GetState(),
+			Reason: page.GetReason(),
+		}
+		if available := page.GetAvailableAfterUnixMilliseconds(); available > 0 {
+			waiting.AvailableAt = time.UnixMilli(available).UTC()
+		}
+		waitingPages = append(waitingPages, waiting)
+	}
+	return waitingPages, true
+}
+
+func validWaitingCrawlerPageState(state string) bool {
+	switch state {
+	case "queued", "deferred":
+		return true
+	default:
+		return false
+	}
+}
+
+func validWaitingCrawlerPageReason(reason string) bool {
+	switch reason {
+	case "queued", "retry delay", "host politeness", "host concurrency":
+		return true
+	default:
+		return false
+	}
+}
+
+func validCrawlerPageStage(stage string) bool {
+	switch stage {
+	case "robots", "http_fetch", "html_parse", "frontier_enqueue", "ingest_queue", "node_ingest":
+		return true
+	default:
+		return false
+	}
+}
+
+func validHeartbeatFetchActivity(req *crawlrpc.WorkerHeartbeat) bool {
+	if req.ActiveFetches != nil &&
+		*req.ActiveFetches > yagocrawlcontract.MaximumFetchWorkerConcurrency {
+		return false
+	}
+	if req.FetchAdmissionWaiting == nil {
+		return true
+	}
+
+	return req.ActiveFetches != nil && *req.FetchAdmissionWaiting <= *req.ActiveFetches
 }
 
 func (s *exchangeServer) heartbeatResult(

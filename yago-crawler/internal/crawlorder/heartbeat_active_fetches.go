@@ -9,16 +9,17 @@ import (
 )
 
 type grpcOrderReceiverConfig struct {
-	activeFetches       func() uint32
-	terminalSettlements crawlsettlement.Outbox
-	workerSessionID     string
-	leaseGrants         *crawllease.GrantRegistry
-	storageSnapshot     func() yagocrawlcontract.StoragePressureSnapshot
-	storagePolicy       func(yagocrawlcontract.StoragePressurePolicy)
-	urlDenylist         *crawldenylist.Denylist
-	runtimePolicy       func(yagocrawlcontract.CrawlerRuntimePolicy)
-	runtimePolicySource func() yagocrawlcontract.CrawlerRuntimePolicy
-	fetchStartSession   FetchStartSession
+	activeFetches         func() uint32
+	fetchAdmissionWaiters func() uint32
+	terminalSettlements   crawlsettlement.Outbox
+	workerSessionID       string
+	leaseGrants           *crawllease.GrantRegistry
+	storageSnapshot       func() yagocrawlcontract.StoragePressureSnapshot
+	storagePolicy         func(yagocrawlcontract.StoragePressurePolicy)
+	urlDenylist           *crawldenylist.Denylist
+	runtimePolicy         func(yagocrawlcontract.CrawlerRuntimePolicy)
+	runtimePolicySource   func() yagocrawlcontract.CrawlerRuntimePolicy
+	fetchStartSession     FetchStartSession
 }
 
 func WithURLDenylist(denylist *crawldenylist.Denylist) GRPCOrderReceiverOption {
@@ -29,9 +30,24 @@ func WithURLDenylist(denylist *crawldenylist.Denylist) GRPCOrderReceiverOption {
 
 type GRPCOrderReceiverOption func(*grpcOrderReceiverConfig)
 
+type workerSessionHeartbeatReport struct {
+	workerID                 string
+	workerSessionID          string
+	activeFetches            func() uint32
+	fetchAdmissionWaiters    func() uint32
+	activeLeaseIDs           []string
+	acknowledgedDirectiveIDs []uint64
+}
+
 func WithHeartbeatActiveFetches(activeFetches func() uint32) GRPCOrderReceiverOption {
 	return func(config *grpcOrderReceiverConfig) {
 		config.activeFetches = activeFetches
+	}
+}
+
+func WithHeartbeatFetchAdmissionWaiters(waiters func() uint32) GRPCOrderReceiverOption {
+	return func(config *grpcOrderReceiverConfig) {
+		config.fetchAdmissionWaiters = waiters
 	}
 }
 
@@ -70,6 +86,15 @@ func workerHeartbeat(
 	activeFetches func() uint32,
 	acknowledgedDirectiveIDs ...uint64,
 ) *crawlrpc.WorkerHeartbeat {
+	return workerHeartbeatWithWaiters(workerID, activeFetches, nil, acknowledgedDirectiveIDs...)
+}
+
+func workerHeartbeatWithWaiters(
+	workerID string,
+	activeFetches func() uint32,
+	fetchAdmissionWaiters func() uint32,
+	acknowledgedDirectiveIDs ...uint64,
+) *crawlrpc.WorkerHeartbeat {
 	heartbeat := &crawlrpc.WorkerHeartbeat{
 		WorkerId:                 workerID,
 		AcknowledgedDirectiveIds: append([]uint64(nil), acknowledgedDirectiveIDs...),
@@ -78,20 +103,23 @@ func workerHeartbeat(
 		active := activeFetches()
 		heartbeat.ActiveFetches = &active
 	}
+	if fetchAdmissionWaiters != nil {
+		waiting := fetchAdmissionWaiters()
+		heartbeat.FetchAdmissionWaiting = &waiting
+	}
 
 	return heartbeat
 }
 
-func workerSessionHeartbeat(
-	workerID string,
-	workerSessionID string,
-	activeFetches func() uint32,
-	activeLeaseIDs []string,
-	acknowledgedDirectiveIDs ...uint64,
-) *crawlrpc.WorkerHeartbeat {
-	heartbeat := workerHeartbeat(workerID, activeFetches, acknowledgedDirectiveIDs...)
-	heartbeat.WorkerSessionId = workerSessionID
-	heartbeat.ActiveLeaseIds = append([]string(nil), activeLeaseIDs...)
+func workerSessionHeartbeat(report workerSessionHeartbeatReport) *crawlrpc.WorkerHeartbeat {
+	heartbeat := workerHeartbeatWithWaiters(
+		report.workerID,
+		report.activeFetches,
+		report.fetchAdmissionWaiters,
+		report.acknowledgedDirectiveIDs...,
+	)
+	heartbeat.WorkerSessionId = report.workerSessionID
+	heartbeat.ActiveLeaseIds = append([]string(nil), report.activeLeaseIDs...)
 
 	return heartbeat
 }

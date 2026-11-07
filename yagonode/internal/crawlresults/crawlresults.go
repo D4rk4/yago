@@ -30,6 +30,7 @@ type IngestDelivery struct {
 	// delivery without this hook falls back to Ack, preserving the old
 	// behaviour for callers that do not distinguish the two.
 	Reject                 func(ctx context.Context, rule string) error
+	ImportOnly             bool
 	ValidateMutation       func(context.Context) error
 	AuthorizeLeaseSnapshot func(context.Context) error
 	BeginMutation          func(context.Context) (func(), error)

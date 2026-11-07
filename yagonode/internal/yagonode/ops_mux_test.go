@@ -46,3 +46,15 @@ func TestNewOpsMuxServesMetricsWhenPresent(t *testing.T) {
 		t.Fatalf("GET %s = %d, want 200", pathMetrics, got)
 	}
 }
+
+type crawlProcessWithoutOrderImporter struct{ crawlProcess }
+
+func TestCrawlOrderImporterWiringIsOptionalAndAvailable(t *testing.T) {
+	runtime := &crawlRuntime{frontierImport: new(crawlOrderImportService)}
+	if got := crawlOrderImporter(runtime); got != runtime {
+		t.Fatalf("crawl-order importer = %T, want configured crawl runtime", got)
+	}
+	if got := crawlOrderImporter(crawlProcessWithoutOrderImporter{}); got != nil {
+		t.Fatalf("ordinary crawl importer = %T, want nil", got)
+	}
+}

@@ -214,6 +214,9 @@ func (f *Frontier) retireReadyHostLocked(runID uuid.UUID, host string) int {
 		if job.RunID == runID && weburl.Host(job.URL) == host {
 			if run := f.state.runs[runID]; run != nil {
 				run.releaseBoundedResidentPage(job.URL)
+				if job.RetryAttempt == 0 {
+					run.removeFirstPassPending(1)
+				}
 			}
 			settled++
 

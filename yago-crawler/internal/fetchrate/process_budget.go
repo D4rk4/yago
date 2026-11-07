@@ -85,3 +85,7 @@ func (b *ProcessBudget) Wait(ctx context.Context) error {
 func (b *ProcessBudget) Waiting() int {
 	return int(b.waiting.Load())
 }
+
+func (b *ProcessBudget) UpstreamDemand() int {
+	return int(b.waiting.Load()) + 1
+}

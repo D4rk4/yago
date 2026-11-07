@@ -1,6 +1,7 @@
 package yagocrawlcontract
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/D4rk4/yago/yagomodel"
@@ -16,7 +17,16 @@ type CrawlRequest struct {
 	Initiator        yagomodel.Hash
 	AppDate          time.Time
 	LastModified     time.Time
-	ConditionalFetch *ConditionalFetch `json:",omitempty"`
+	SourceMetadata   *CrawlSourceMetadata `json:",omitempty"`
+	ConditionalFetch *ConditionalFetch    `json:",omitempty"`
+}
+
+func ParseCrawlInitiator(raw []byte) (yagomodel.Hash, error) {
+	initiator, err := yagomodel.ParseHash(string(raw))
+	if err != nil {
+		return "", fmt.Errorf("parse crawl initiator: %w", err)
+	}
+	return initiator, nil
 }
 
 type CrawlRequestMode string

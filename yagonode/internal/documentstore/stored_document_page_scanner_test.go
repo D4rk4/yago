@@ -1,6 +1,7 @@
 package documentstore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -25,6 +26,8 @@ type pagedDocumentEngine struct {
 	pageLimit        atomic.Int64
 	lastKeyReads     atomic.Int64
 	pageOverride     *vault.BucketPage
+	pageError        error
+	beforePageRead   func()
 	beforeUpdate     func()
 	lastKeyError     error
 }
@@ -94,6 +97,7 @@ func (t pagedDocumentTxn) Bucket(name vault.Name) vault.EngineBucket {
 		engine:       t.engine,
 		entries:      t.engine.buckets[name],
 		pageOverride: t.engine.pageOverride,
+		pageError:    t.engine.pageError,
 		lastKeyError: t.engine.lastKeyError,
 	}
 }
@@ -104,6 +108,7 @@ type pagedDocumentBucket struct {
 	engine       *pagedDocumentEngine
 	entries      map[string][]byte
 	pageOverride *vault.BucketPage
+	pageError    error
 	lastKeyError error
 }
 
@@ -147,6 +152,12 @@ func (b pagedDocumentBucket) ReadPageAfter(
 	if b.engine != nil {
 		b.engine.pageReads.Add(1)
 		b.engine.pageLimit.Store(int64(limit))
+		if b.engine.beforePageRead != nil {
+			b.engine.beforePageRead()
+		}
+	}
+	if b.pageError != nil {
+		return vault.BucketPage{}, b.pageError
 	}
 	if b.pageOverride != nil {
 		return *b.pageOverride, nil
@@ -324,6 +335,447 @@ func TestStoredDocumentPageScannerFixesRawPageLimit(t *testing.T) {
 			engine.pageLimit.Load(),
 			engine.pageReads.Load(),
 		)
+	}
+}
+
+func TestResumableStoredDocumentScanContinuesAfterSavedDocument(t *testing.T) {
+	directory, receiver, _ := openPagedDocuments(t)
+	receivePagedDocuments(t, receiver,
+		"https://resume.example/a",
+		"https://resume.example/b",
+		"https://resume.example/c",
+	)
+	scanner := directory.(ResumableStoredDocumentPageScanner)
+	documentStore := directory.(documentVault)
+	cursor := ""
+	var first string
+	err := scanner.ScanStoredDocumentPagesFrom(
+		t.Context(),
+		"",
+		func(document *Document, next string, _ bool) (bool, error) {
+			if len(documentStore.scanAdmission) != 1 {
+				t.Fatal("resumable visitor ran without scan admission")
+			}
+			if document != nil {
+				first = document.NormalizedURL
+				cursor = next
+				return false, nil
+			}
+			return true, nil
+		},
+	)
+	if err != nil || first == "" || cursor == "" {
+		t.Fatalf("first scan = %v, document %q, cursor bytes %d", err, first, len(cursor))
+	}
+	if len(documentStore.scanAdmission) != 0 {
+		t.Fatal("scan admission remained held after an interrupted page walk")
+	}
+	receivePagedDocuments(t, receiver, "https://resume.example/after-snapshot")
+	var resumed []string
+	err = scanner.ScanStoredDocumentPagesFrom(
+		t.Context(),
+		cursor,
+		func(document *Document, next string, _ bool) (bool, error) {
+			if document != nil {
+				resumed = append(resumed, document.NormalizedURL)
+			}
+			return true, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resumed) != 2 {
+		t.Fatalf("resumed documents = %q, want the two remaining snapshot documents", resumed)
+	}
+	for _, url := range resumed {
+		if url == first || url == "https://resume.example/after-snapshot" {
+			t.Fatalf("resume repeated or crossed snapshot boundary: %q", resumed)
+		}
+	}
+}
+
+func TestResumableStoredDocumentScanRejectsMalformedCursor(t *testing.T) {
+	directory, _, _ := openPagedDocuments(t)
+	err := directory.(ResumableStoredDocumentPageScanner).ScanStoredDocumentPagesFrom(
+		t.Context(),
+		"{broken",
+		func(*Document, string, bool) (bool, error) { return true, nil },
+	)
+	if err == nil {
+		t.Fatal("malformed cursor was accepted")
+	}
+}
+
+func TestResumableStoredDocumentScanVisitsFinalBoundary(t *testing.T) {
+	directory, receiver, _ := openPagedDocuments(t)
+	receivePagedDocuments(t, receiver, "https://resume-final.example/one")
+	var completed bool
+	err := directory.(ResumableStoredDocumentPageScanner).ScanStoredDocumentPagesFrom(
+		t.Context(),
+		"",
+		func(document *Document, _ string, done bool) (bool, error) {
+			if done {
+				completed = done
+			}
+			return true, nil
+		},
+	)
+	if err != nil || !completed {
+		t.Fatalf("final boundary callback done=%v error=%v", completed, err)
+	}
+}
+
+func TestResumableStoredDocumentScanRejectsInvalidCursorForms(t *testing.T) {
+	directory, _, _ := openPagedDocuments(t)
+	for _, token := range []string{
+		strings.Repeat("x", storedDocumentResumeCursorLimit+1),
+		`{"version":1,"partition":0,"after":null,"boundaries":[null,null],"extra":true}`,
+		`{"version":1,"partition":0,"after":null,"boundaries":[null,null]} {}`,
+		`{"version":1,"partition":-1,"after":null,"boundaries":[null,null]}`,
+	} {
+		if err := directory.(ResumableStoredDocumentPageScanner).ScanStoredDocumentPagesFrom(
+			t.Context(), token, func(*Document, string, bool) (bool, error) { return true, nil },
+		); err == nil {
+			t.Errorf("invalid resume token accepted: %.80q", token)
+		}
+	}
+}
+
+func TestResumableStoredDocumentScanEmptyBoundaryAndReadFailure(t *testing.T) {
+	directory, receiver, engine := openPagedDocuments(t)
+	var final bool
+	err := directory.(ResumableStoredDocumentPageScanner).ScanStoredDocumentPagesFrom(
+		t.Context(), "", func(document *Document, _ string, done bool) (bool, error) {
+			if document == nil {
+				final = done
+			}
+			return true, nil
+		},
+	)
+	if err != nil || !final {
+		t.Fatalf("empty store final callback = %v, error %v", final, err)
+	}
+	receivePagedDocuments(t, receiver, "https://resume-read-error.example/one")
+	sentinel := errors.New("page read failed")
+	engine.pageError = sentinel
+	if err := directory.(ResumableStoredDocumentPageScanner).ScanStoredDocumentPagesFrom(
+		t.Context(), "", func(*Document, string, bool) (bool, error) { return true, nil },
+	); !errors.Is(err, sentinel) {
+		t.Fatalf("page read error = %v, want %v", err, sentinel)
+	}
+	boundaryDirectory, _, boundaryEngine := openPagedDocuments(t)
+	boundaryEngine.lastKeyError = sentinel
+	if err := boundaryDirectory.(ResumableStoredDocumentPageScanner).ScanStoredDocumentPagesFrom(
+		t.Context(), "", func(*Document, string, bool) (bool, error) { return true, nil },
+	); !errors.Is(err, sentinel) {
+		t.Fatalf("snapshot boundary read error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestResumableStoredDocumentScanPropagatesAuthorityReadFailure(t *testing.T) {
+	directory, receiver, engine := openPagedDocuments(t)
+	receivePagedDocuments(t, receiver, "https://resume-authority-error.example/one")
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	engine.beforePageRead = cancel
+	if err := directory.(ResumableStoredDocumentPageScanner).ScanStoredDocumentPagesFrom(
+		ctx, "", func(*Document, string, bool) (bool, error) { return true, nil },
+	); !errors.Is(err, context.Canceled) {
+		t.Fatalf("authoritative page read error = %v, want %v", err, context.Canceled)
+	}
+}
+
+func TestResumableStoredDocumentScanPropagatesVisitorFailures(t *testing.T) {
+	directory, receiver, _ := openPagedDocuments(t)
+	receivePagedDocuments(t, receiver, "https://resume-error.example/one")
+	sentinel := errors.New("visitor failed")
+	if err := directory.(ResumableStoredDocumentPageScanner).ScanStoredDocumentPagesFrom(
+		t.Context(), "", func(*Document, string, bool) (bool, error) { return false, sentinel },
+	); !errors.Is(err, sentinel) {
+		t.Fatalf("visitor error = %v, want %v", err, sentinel)
+	}
+}
+
+func TestResumableStoredDocumentScanAdmissionAndBoundaryErrors(t *testing.T) {
+	directory, receiver, engine := openPagedDocuments(t)
+	documents := directory.(documentVault)
+	documents.scanAdmission <- struct{}{}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := documents.ScanStoredDocumentPagesFrom(
+		ctx, "", func(*Document, string, bool) (bool, error) { return true, nil },
+	); !errors.Is(err, context.Canceled) {
+		t.Fatalf("admission cancellation = %v", err)
+	}
+	<-documents.scanAdmission
+
+	receivePagedDocuments(t, receiver, "https://resume-no-progress.example/one")
+	engine.pageOverride = &vault.BucketPage{More: true}
+	if err := documents.ScanStoredDocumentPagesFrom(
+		t.Context(), "", func(*Document, string, bool) (bool, error) { return true, nil },
+	); err == nil || !strings.Contains(err.Error(), "continuation without entries") {
+		t.Fatalf("empty incomplete page error = %v", err)
+	}
+
+	state := storedDocumentResumeCursor{
+		Version:    storedDocumentResumeCursorVersion,
+		Partition:  2,
+		Boundaries: [][]byte{make([]byte, storedDocumentResumeKeyLimit+1), nil},
+	}
+	if err := documents.scanStoredDocumentPartitions(
+		t.Context(), func(*Document, string, bool) (bool, error) { return true, nil },
+		state, nil,
+	); err == nil {
+		t.Fatal("partition scan encoded an invalid final boundary")
+	}
+}
+
+func TestResumablePageVisitPropagatesDecodeAndVisibilityCancellation(t *testing.T) {
+	directory, receiver, engine := openPagedDocuments(t)
+	receivePagedDocuments(t, receiver, "https://resume-page.example/one")
+	documents := directory.(documentVault)
+	var orderedKey string
+	for key := range engine.buckets[orderedDocumentBucketName] {
+		orderedKey = key
+		break
+	}
+	if orderedKey == "" {
+		t.Fatal("test fixture did not persist an ordered document")
+	}
+	key := vault.Key(orderedKey)
+	stored := engine.buckets[orderedDocumentBucketName][orderedKey]
+	ctx := &errAfterContext{Context: context.Background(), remaining: 3, err: context.Canceled}
+	_, _, err := documents.visitStoredDocumentPage(storedDocumentPageVisit{
+		ctx:   ctx,
+		visit: func(*Document, string, bool) (bool, error) { return true, nil },
+		state: storedDocumentResumeCursor{
+			Version: storedDocumentResumeCursorVersion, Partition: int(orderedDocumentPartition),
+			Boundaries: [][]byte{nil, append([]byte(nil), key...)},
+		},
+		boundary: storedDocumentPartitionBoundary{partition: orderedDocumentPartition},
+		page: storedDocumentRawPage{
+			entries:  []vault.BucketPageEntry{{Key: key, Value: stored}},
+			complete: true,
+		},
+		boundaryCount: 2,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("decode-stage cancellation = %v", err)
+	}
+	visibleCtx := &errAfterContext{
+		Context:   context.Background(),
+		remaining: 4,
+		err:       context.Canceled,
+	}
+	_, _, err = documents.visitStoredDocumentPage(storedDocumentPageVisit{
+		ctx:   visibleCtx,
+		visit: func(*Document, string, bool) (bool, error) { return true, nil },
+		state: storedDocumentResumeCursor{
+			Version: storedDocumentResumeCursorVersion, Partition: int(orderedDocumentPartition),
+			Boundaries: [][]byte{nil, append([]byte(nil), key...)},
+		},
+		boundary: storedDocumentPartitionBoundary{partition: orderedDocumentPartition},
+		page: storedDocumentRawPage{
+			entries:  []vault.BucketPageEntry{{Key: key, Value: stored}},
+			complete: true,
+		},
+		boundaryCount: 2,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("visibility-stage cancellation = %v", err)
+	}
+}
+
+func TestResumablePageVisitSkipsInvisibleDocumentsAndHandlesEmptyPages(t *testing.T) {
+	directory, receiver, engine := openPagedDocuments(t)
+	receivePagedDocuments(t, receiver, "https://resume-page.example/one")
+	documents := directory.(documentVault)
+	var orderedKey string
+	for key := range engine.buckets[orderedDocumentBucketName] {
+		orderedKey = key
+		break
+	}
+	if orderedKey == "" {
+		t.Fatal("test fixture did not persist an ordered document")
+	}
+	key := vault.Key(orderedKey)
+	other, encodeErr := (documentCodec{}).Encode(
+		Document{NormalizedURL: "https://different.example/page"},
+	)
+	if encodeErr != nil {
+		t.Fatalf("encode mismatched document: %v", encodeErr)
+	}
+	engine.pageOverride = &vault.BucketPage{
+		Entries: []vault.BucketPageEntry{{Key: key, Value: other}},
+	}
+	var emptyPageDone bool
+	if err := documents.ScanStoredDocumentPagesFrom(
+		t.Context(), "", func(document *Document, _ string, done bool) (bool, error) {
+			if document == nil && done {
+				emptyPageDone = true
+			}
+			return true, nil
+		},
+	); err != nil || !emptyPageDone {
+		t.Fatalf("invisible page completion=%v error=%v", emptyPageDone, err)
+	}
+	state := storedDocumentResumeCursor{Version: storedDocumentResumeCursorVersion, Partition: 1}
+	returned, stopped, err := documents.visitVisibleStoredDocuments(visibleStoredDocumentVisit{
+		ctx: t.Context(), visit: func(*Document, string, bool) (bool, error) { return true, nil },
+		state: state, boundaryCount: 2,
+	})
+	if err != nil || stopped || returned.Partition != state.Partition ||
+		returned.Version != state.Version ||
+		len(returned.After) != 0 ||
+		len(returned.Boundaries) != 0 {
+		t.Fatalf("empty visible page state=%+v stopped=%v err=%v", returned, stopped, err)
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	resumeState := storedDocumentResumeCursor{
+		Version:    storedDocumentResumeCursorVersion,
+		Partition:  int(orderedDocumentPartition),
+		Boundaries: [][]byte{nil, nil},
+	}
+	if _, err := documents.visitResumableDocument(
+		canceled, func(*Document, string, bool) (bool, error) { return true, nil },
+		nil, resumeState, 2,
+	); !errors.Is(err, context.Canceled) {
+		t.Fatalf("resumable visit cancellation = %v", err)
+	}
+	if _, _, err := documents.scanResumableStoredDocumentPartition(
+		canceled, nil, storedDocumentResumeCursor{
+			Version: storedDocumentResumeCursorVersion, Boundaries: [][]byte{nil, nil},
+		}, []storedDocumentPartitionBoundary{{partition: legacyDocumentPartition}},
+	); !errors.Is(err, context.Canceled) {
+		t.Fatalf("partition cancellation = %v", err)
+	}
+}
+
+func TestResumableCursorHelperBoundariesAndFilteredEntries(t *testing.T) {
+	state := storedDocumentResumeCursor{Partition: 0, After: []byte("a")}
+	complete := resumeCursorAfterPage(state, storedDocumentRawPage{complete: true}, 2)
+	if complete.Partition != 1 || complete.After != nil {
+		t.Fatalf("complete page cursor = %+v", complete)
+	}
+	partial := resumeCursorAfterPage(
+		state,
+		storedDocumentRawPage{cursor: []byte("z")},
+		0,
+	)
+	if partial.Partition != 0 || string(partial.After) != "z" {
+		t.Fatalf("partial page cursor = %+v", partial)
+	}
+	clamped := resumeCursorAfterPage(state, storedDocumentRawPage{complete: true}, 0)
+	if clamped.Partition != 0 {
+		t.Fatalf("cursor passed boundary count: %+v", clamped)
+	}
+	entries := []storedDocumentPageEntry{
+		{
+			key:      []byte("https://visible.example/"),
+			document: Document{NormalizedURL: "https://visible.example/"},
+		},
+		{
+			key:      []byte("https://different.example/"),
+			document: Document{NormalizedURL: "https://not-the-key.example/"},
+		},
+		{
+			key:      []byte("short"),
+			document: Document{NormalizedURL: "https://ignored.example/"},
+		},
+	}
+	legacy, err := resumableVisibleDocuments(t.Context(), legacyDocumentPartition, entries[:2])
+	if err != nil || len(legacy) != 1 {
+		t.Fatalf("legacy visible documents=%d error=%v", len(legacy), err)
+	}
+	ordered, err := resumableVisibleDocuments(t.Context(), orderedDocumentPartition, entries[2:])
+	if err != nil || len(ordered) != 0 {
+		t.Fatalf("ordered malformed entries=%d error=%v", len(ordered), err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := resumableVisibleDocuments(
+		ctx,
+		legacyDocumentPartition,
+		entries,
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
+		t.Fatalf("visible-document context error = %v", err)
+	}
+}
+
+func TestResumableCursorEncodingAndValidationErrors(t *testing.T) {
+	valid := storedDocumentResumeCursor{
+		Version:    storedDocumentResumeCursorVersion,
+		Partition:  0,
+		Boundaries: [][]byte{[]byte("a"), []byte("b")},
+	}
+	if _, err := encodeStoredDocumentResumeCursor(valid); err != nil {
+		t.Fatalf("valid cursor encoding: %v", err)
+	}
+	invalid := []storedDocumentResumeCursor{
+		{Version: 0, Boundaries: [][]byte{nil, nil}},
+		{Version: storedDocumentResumeCursorVersion, Partition: 3, Boundaries: [][]byte{nil, nil}},
+		{
+			Version:    storedDocumentResumeCursorVersion,
+			Partition:  0,
+			After:      make([]byte, storedDocumentResumeKeyLimit+1),
+			Boundaries: [][]byte{nil, nil},
+		},
+		{
+			Version:    storedDocumentResumeCursorVersion,
+			Partition:  0,
+			Boundaries: [][]byte{make([]byte, storedDocumentResumeKeyLimit+1), nil},
+		},
+	}
+	for _, state := range invalid {
+		if err := validateStoredDocumentResumeCursor(state); err == nil {
+			t.Errorf("invalid cursor passed validation: %+v", state)
+		}
+	}
+	if _, err := (documentVault{}).visitResumableDocument(
+		t.Context(), func(*Document, string, bool) (bool, error) { return true, nil },
+		nil, invalid[1], 2,
+	); err == nil {
+		t.Fatal("visitor accepted invalid cursor state")
+	}
+}
+
+func TestStoredDocumentResumeCursorSupportsMaximumMigrationURLKeys(t *testing.T) {
+	key := bytes.Repeat([]byte("x"), storedDocumentResumeKeyLimit)
+	state := storedDocumentResumeCursor{
+		Version:    storedDocumentResumeCursorVersion,
+		Partition:  int(orderedDocumentPartition),
+		After:      append([]byte(nil), key...),
+		Boundaries: [][]byte{append([]byte(nil), key...), append([]byte(nil), key...)},
+	}
+	token, err := encodeStoredDocumentResumeCursor(state)
+	if err != nil {
+		t.Fatalf("encode maximum URL cursor: %v", err)
+	}
+	decoded, err := (documentVault{}).decodeStoredDocumentResumeCursor(t.Context(), token)
+	if err != nil || !bytes.Equal(decoded.After, key) {
+		t.Fatalf("decode maximum URL cursor: %v", err)
+	}
+	state.After = append(append([]byte(nil), key...), 1)
+	if _, err := encodeStoredDocumentResumeCursor(state); err == nil {
+		t.Fatal("cursor accepted an over-limit migration URL key")
+	}
+	state.After = append([]byte(nil), key...)
+	state.After[len(state.After)-1] = 'y'
+	state.Boundaries = [][]byte{append([]byte(nil), key...), append([]byte(nil), key...)}
+	token, err = encodeStoredDocumentResumeCursor(state)
+	if err != nil {
+		t.Fatalf("encode cursor beyond boundary: %v", err)
+	}
+	if _, err := (documentVault{}).decodeStoredDocumentResumeCursor(
+		t.Context(),
+		token,
+	); err == nil {
+		t.Fatal("cursor beyond its high-water key was accepted")
 	}
 }
 

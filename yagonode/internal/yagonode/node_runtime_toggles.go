@@ -47,6 +47,7 @@ type runtimeToggles struct {
 	// boot to vault.SetQuota and holds a func(int64); a storage.quota admin change
 	// flows through it so the new ceiling applies without a restart (ADR-0037 D).
 	storageQuota                 atomic.Value
+	storageQuotaBytes            atomic.Int64
 	storageReservedFree          atomic.Int64
 	storagePressureRecovery      atomic.Int64
 	storagePressurePolicy        atomic.Value
@@ -61,6 +62,7 @@ type runtimeToggles struct {
 	crawlerStorageRecovery       atomic.Int64
 	crawlerStoragePolicy         atomic.Value
 	crawlerNodeStateMaximum      atomic.Value
+	crawlerNodeStateQuotaSink    atomic.Value
 	crawlerRuntimePolicyMu       sync.Mutex
 	crawlerRuntimePolicy         yagocrawlcontract.CrawlerRuntimePolicy
 	crawlerRuntimePolicySink     atomic.Value
@@ -91,6 +93,7 @@ func newRuntimeToggles(config nodeConfig) *runtimeToggles {
 	toggles.autosplit.Store(config.StorageAutosplit)
 	toggles.storageReservedFree.Store(config.StorageReservedFreeBytes)
 	toggles.storagePressureRecovery.Store(config.StoragePressureRecoveryBytes)
+	toggles.storageQuotaBytes.Store(config.StorageQuotaByte)
 	toggles.crawlerStorageReservedFree.Store(config.Crawl.StorageReservedFreeBytes)
 	toggles.crawlerStorageRecovery.Store(config.Crawl.StoragePressureRecoveryBytes)
 	toggles.crawlerDefaultPageBudget.Store(int64(config.Crawl.MaxPagesPerRun))
@@ -178,9 +181,21 @@ func (t *runtimeToggles) ApplyStorageQuota(quotaBytes int64) {
 	if t == nil {
 		return
 	}
+	t.storageQuotaBytes.Store(quotaBytes)
 	if sink, ok := t.storageQuota.Load().(func(int64)); ok {
 		sink(quotaBytes)
 	}
+	if sink, ok := t.crawlerNodeStateQuotaSink.Load().(func(int64)); ok {
+		sink(quotaBytes)
+	}
+}
+
+func (t *runtimeToggles) SetCrawlerNodeStateQuotaSink(sink func(int64)) {
+	if t == nil || sink == nil {
+		return
+	}
+	t.crawlerNodeStateQuotaSink.Store(sink)
+	sink(t.storageQuotaBytes.Load())
 }
 
 // PortalGreeting is the live operator-chosen portal name ("" = default brand).

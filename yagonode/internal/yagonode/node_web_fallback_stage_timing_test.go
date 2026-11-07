@@ -189,12 +189,12 @@ func productionShapeSearchAssembly(client *http.Client) publicSearchAssembly {
 }
 
 func TestPublicSearchReservesUsableWebWindowAfterSlowSwarmAndFuzzyMiss(t *testing.T) {
-	previousExact := webFallbackPrimaryStageBudget
+	previousExact := webFallbackExactStageBudget
 	previousRecovery := recoverySearchBudget
-	webFallbackPrimaryStageBudget = 60 * time.Millisecond
+	webFallbackExactStageBudget = 60 * time.Millisecond
 	recoverySearchBudget = 15 * time.Millisecond
 	t.Cleanup(func() {
-		webFallbackPrimaryStageBudget = previousExact
+		webFallbackExactStageBudget = previousExact
 		recoverySearchBudget = previousRecovery
 	})
 
@@ -235,9 +235,9 @@ func TestPublicSearchReservesUsableWebWindowAfterSlowSwarmAndFuzzyMiss(t *testin
 }
 
 func TestPublicSearchParallelModeIncludesWebBesidePrimaryHit(t *testing.T) {
-	previousExact := webFallbackPrimaryStageBudget
-	webFallbackPrimaryStageBudget = 60 * time.Millisecond
-	t.Cleanup(func() { webFallbackPrimaryStageBudget = previousExact })
+	previousExact := webFallbackParallelExactStageBudget
+	webFallbackParallelExactStageBudget = 60 * time.Millisecond
+	t.Cleanup(func() { webFallbackParallelExactStageBudget = previousExact })
 
 	attempts := &productionShapeWebAttempts{}
 	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
@@ -273,50 +273,46 @@ func TestPublicSearchParallelModeIncludesWebBesidePrimaryHit(t *testing.T) {
 }
 
 func TestPublicSearchParallelModeReturnsWebWhileFuzzyIgnoresCancellation(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		previousRecovery := recoverySearchBudget
-		recoverySearchBudget = 20 * time.Millisecond
-		t.Cleanup(func() { recoverySearchBudget = previousRecovery })
+	previousRecovery := recoverySearchBudget
+	recoverySearchBudget = 20 * time.Millisecond
+	t.Cleanup(func() { recoverySearchBudget = previousRecovery })
 
-		local := productionShapeUncooperativeFuzzy{
-			started:  make(chan struct{}),
-			release:  make(chan struct{}),
-			finished: make(chan struct{}),
-		}
-		attempts := &productionShapeWebAttempts{}
-		client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
-		assembly := productionShapeSearchAssembly(client)
-		assembly.webFallback.Privacy = webFallbackPrivacyAlways
-		searcher := assemblePublicSearcher(local, productionShapeSwarmMiss{}, assembly)
+	local := productionShapeUncooperativeFuzzy{
+		started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{}),
+	}
+	attempts := &productionShapeWebAttempts{}
+	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
+	assembly := productionShapeSearchAssembly(client)
+	assembly.webFallback.Privacy = webFallbackPrivacyAlways
+	searcher := assemblePublicSearcher(local, productionShapeSwarmMiss{}, assembly)
 
-		started := time.Now()
-		response, err := searcher.Search(t.Context(), searchcore.Request{
-			Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if time.Since(started) > 1500*time.Millisecond || len(response.Results) != 1 ||
-			response.Results[0].Source != searchcore.SourceWeb {
-			t.Fatalf("response = %#v", response)
-		}
-		select {
-		case <-local.started:
-		default:
-			t.Fatal("fuzzy search did not start")
-		}
-		select {
-		case <-local.finished:
-			t.Fatal("fuzzy search finished before release")
-		default:
-		}
-		close(local.release)
-		select {
-		case <-local.finished:
-		case <-time.After(time.Second):
-			t.Fatal("fuzzy search did not finish")
-		}
+	started := time.Now()
+	response, err := searcher.Search(t.Context(), searchcore.Request{
+		Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(started) > 1500*time.Millisecond || len(response.Results) != 1 ||
+		response.Results[0].Source != searchcore.SourceWeb {
+		t.Fatalf("response = %#v", response)
+	}
+	select {
+	case <-local.started:
+	default:
+		t.Fatal("fuzzy search did not start")
+	}
+	select {
+	case <-local.finished:
+		t.Fatal("fuzzy search finished before release")
+	default:
+	}
+	close(local.release)
+	select {
+	case <-local.finished:
+	case <-time.After(time.Second):
+		t.Fatal("fuzzy search did not finish")
+	}
 }
 
 func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
@@ -326,16 +322,20 @@ func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
 	if webFallbackSupplementDecisionCeiling+webFallbackMinimumWindow+webFallbackAssemblyReserve > interactiveSearchBudget {
 		t.Fatal("supplement decision leaves no reserved web and assembly time")
 	}
-	if webFallbackPrimaryStageBudget+webFallbackAssemblyReserve > interactiveSearchBudget {
-		t.Fatal("primary stage leaves no assembly time")
+	if webFallbackExactStageBudget+webFallbackMinimumWindow+
+		webFallbackAssemblyReserve+interactiveSearchCancellationGrace > interactiveSearchBudget {
+		t.Fatal("supplement exact stage leaves no web and assembly window")
+	}
+	if webFallbackParallelExactStageBudget+webFallbackAssemblyReserve > interactiveSearchBudget {
+		t.Fatal("parallel primary stage leaves no assembly time")
 	}
 }
 
 func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		previous := webFallbackPrimaryStageBudget
-		webFallbackPrimaryStageBudget = 20 * time.Millisecond
-		t.Cleanup(func() { webFallbackPrimaryStageBudget = previous })
+		previous := webFallbackExactStageBudget
+		webFallbackExactStageBudget = 20 * time.Millisecond
+		t.Cleanup(func() { webFallbackExactStageBudget = previous })
 
 		release := make(chan struct{})
 		finished := make(chan struct{}, 1)
@@ -370,53 +370,51 @@ func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
 }
 
 func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		previous := webFallbackPrimaryStageBudget
-		previousRemoteAdmission := processRemoteSearchAdmission
-		webFallbackPrimaryStageBudget = 20 * time.Millisecond
-		processRemoteSearchAdmission = make(chan struct{}, interactiveSearchConcurrentWork)
-		t.Cleanup(func() {
-			webFallbackPrimaryStageBudget = previous
-			processRemoteSearchAdmission = previousRemoteAdmission
-		})
-
-		// Every attempt leaks one remote branch that ignores cancellation and keeps
-		// its admission slot, so the swarm must stop being reached once the slots are
-		// gone. The round count has to exceed the capacity to show that, and the
-		// capacity follows the processor count, so it cannot be a literal.
-		rounds := interactiveSearchConcurrentWork + 2
-		release := make(chan struct{})
-		finished := make(chan struct{}, rounds)
-		remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
-		attempts := &productionShapeWebAttempts{}
-		client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
-		searcher := assemblePublicSearcher(
-			productionShapeLocalHit{},
-			remote,
-			productionShapeSearchAssembly(client),
-		)
-		for attempt := range rounds {
-			response, err := searcher.Search(t.Context(), searchcore.Request{
-				Query: "drunklab", Source: searchcore.SourceGlobal, Limit: 10,
-			})
-			if err != nil || len(response.Results) == 0 ||
-				response.Results[0].URL != "https://local.example/needle" {
-				t.Fatalf("attempt %d response = %#v, error = %v", attempt+1, response, err)
-			}
-		}
-		if hosts, _ := attempts.snapshot(); len(hosts) == 0 {
-			t.Fatalf("provider hosts = %v", hosts)
-		}
-		if int(remote.calls.Load()) != interactiveSearchConcurrentWork {
-			t.Fatalf("remote calls = %d", remote.calls.Load())
-		}
-		close(release)
-		for range interactiveSearchConcurrentWork {
-			select {
-			case <-finished:
-			case <-time.After(time.Second):
-				t.Fatal("remote search did not finish")
-			}
-		}
+	previous := webFallbackExactStageBudget
+	previousRemoteAdmission := processRemoteSearchAdmission
+	webFallbackExactStageBudget = 20 * time.Millisecond
+	processRemoteSearchAdmission = make(chan struct{}, interactiveSearchConcurrentWork)
+	t.Cleanup(func() {
+		webFallbackExactStageBudget = previous
+		processRemoteSearchAdmission = previousRemoteAdmission
 	})
+
+	// Every attempt leaks one remote branch that ignores cancellation and keeps
+	// its admission slot, so the swarm must stop being reached once the slots are
+	// gone. The round count has to exceed the capacity to show that, and the
+	// capacity follows the processor count, so it cannot be a literal.
+	rounds := interactiveSearchConcurrentWork + 2
+	release := make(chan struct{})
+	finished := make(chan struct{}, rounds)
+	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
+	attempts := &productionShapeWebAttempts{}
+	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
+	searcher := assemblePublicSearcher(
+		productionShapeLocalHit{},
+		remote,
+		productionShapeSearchAssembly(client),
+	)
+	for attempt := range rounds {
+		response, err := searcher.Search(t.Context(), searchcore.Request{
+			Query: "drunklab", Source: searchcore.SourceGlobal, Limit: 10,
+		})
+		if err != nil || len(response.Results) == 0 ||
+			response.Results[0].URL != "https://local.example/needle" {
+			t.Fatalf("attempt %d response = %#v, error = %v", attempt+1, response, err)
+		}
+	}
+	if hosts, _ := attempts.snapshot(); len(hosts) == 0 {
+		t.Fatalf("provider hosts = %v", hosts)
+	}
+	if int(remote.calls.Load()) != interactiveSearchConcurrentWork {
+		t.Fatalf("remote calls = %d", remote.calls.Load())
+	}
+	close(release)
+	for range interactiveSearchConcurrentWork {
+		select {
+		case <-finished:
+		case <-time.After(time.Second):
+			t.Fatal("remote search did not finish")
+		}
+	}
 }

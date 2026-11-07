@@ -1,39 +1,78 @@
 {{define "crawl-monitor"}}
-<div id="crawl-monitor" hx-get="{{.Pagination.RefreshURL}}" hx-trigger="every 5s"
-     hx-swap="outerHTML" role="region" aria-label="Crawl monitor">
+<div id="crawl-monitor" role="region" aria-label="Crawl monitor">
+  {{template "crawl-monitor-live" .}}
+  <details id="crawl-history">
+    <summary>Recent crawl history (up to 10)</summary>
+    {{template "crawl-history-list" .}}
+  </details>
+</div>
+{{end}}
+
+{{define "crawl-monitor-live"}}
+<div id="crawl-live" hx-get="{{.RefreshURL}}" hx-trigger="every 5s"
+     hx-swap="outerHTML" role="region" aria-label="Live crawl status">
   <h2 class="cds-h2">Crawl monitor</h2>
-  <p class="cds-muted">Run totals, immutable effective caps, and rates cover the crawl tasks currently retained in this monitor. Fetched counts accepted response bodies; the failed count additionally includes fetch or processing failures, so one page can increment both after parsing fails. Pending URLs belong to each run’s worker frontier. Pending orders wait in the node queue.</p>
-  <p class="cds-muted">Run Cancel drops only that run’s pending URLs. Clear pending orders leaves leased orders and active fetches alone. Orders accepted after the deletion boundary is set remain queued.</p>
+  <p class="cds-muted">The frontier total sums pending URLs in active crawls' latest worker reports. Workers report about every 5 seconds; each active crawl shows when it last reported. Each card lists up to eight current URLs and four next waiting URLs. Node orders wait here until a crawler claims them. For current fetched and indexed pages per minute and per-worker activity, open <a href="/admin/performance#crawler-pulse">Crawler pulse</a>.</p>
   <p role="status" aria-label="Crawler connection">
     <strong>Crawler connection:</strong>
     <span class="cds-tag cds-tag--{{.CrawlerConnection.Tag}}">{{.CrawlerConnection.State}}</span>
     <span class="cds-muted">{{.CrawlerConnection.Detail}}</span>
   </p>
+  <div class="cds-tile-grid" role="group" aria-label="Crawl queues">
+    <section class="cds-tile">
+      <div class="cds-metric__label">URLs waiting in active crawls</div>
+      <div class="cds-metric__value">{{.Monitor.PendingFrontierURLs}}</div>
+      <div class="cds-muted">Latest reported worker frontier total</div>
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Orders waiting for a crawler</div>
+      <div class="cds-metric__value">{{if .Monitor.QueueAvailable}}{{.Monitor.QueuePending}}{{else}}Unavailable{{end}}</div>
+      {{if .ClearPendingOrders}}<a class="cds-btn cds-btn--danger" href="/admin/crawl/queue/clear">Clear pending orders</a>{{end}}
+    </section>
+    <section class="cds-tile">
+      <div class="cds-metric__label">Orders leased to crawlers</div>
+      <div class="cds-metric__value">{{if .Monitor.QueueAvailable}}{{.Monitor.QueueLeased}}{{else}}Unavailable{{end}}</div>
+    </section>
+  </div>
+  <h3 class="cds-h3">URLs waiting for a crawler</h3>
+  <p class="cds-muted">A bounded sample from the node queue, oldest orders first.</p>
+  {{if .Monitor.PendingOrderURLsKnown}}
+  {{if .Monitor.PendingOrderURLs}}
+  <ul class="cds-crawl-url-list" aria-label="URLs waiting for a crawler">
+    {{range .Monitor.PendingOrderURLs}}
+    <li><span class="cds-tag">queued</span><br><code class="cds-mono cds-crawl-url">{{.}}</code></li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="cds-muted">No URL was found in the pending-order sample.</p>
+  {{end}}
+  {{else}}
+  <p class="cds-muted">Pending URL sample unavailable.</p>
+  {{end}}
+  <p class="cds-muted">Cancel removes a run's pending URLs after in-flight pages finish. Clearing pending orders leaves leased orders and active fetches alone; orders accepted afterward remain queued.</p>
   <p>
     <button class="cds-btn cds-btn--ghost" type="button"
-            hx-get="{{.Pagination.RefreshURL}}" hx-target="#crawl-monitor" hx-swap="outerHTML">Refresh</button>
-    <span class="cds-muted" role="status"><strong>Node order queue:</strong> {{if .Monitor.QueueAvailable}}{{.Monitor.QueuePending}} pending orders, {{.Monitor.QueueLeased}} leased orders{{else}}Unavailable{{end}} — updates every 5s</span>
-    {{if .ClearPendingOrders}}<a class="cds-btn cds-btn--danger" href="/admin/crawl/queue/clear">Clear pending orders</a>{{end}}
+            hx-get="{{.RefreshURL}}" hx-target="#crawl-live" hx-swap="outerHTML">Refresh</button>
   </p>
   <div class="cds-tile-grid" role="group" aria-label="Crawl results and rejections">
     <section class="cds-tile">
-      <div class="cds-metric__label">Fetched</div>
+      <div class="cds-metric__label">Fetched in retained runs</div>
       <div class="cds-metric__value">{{.Monitor.Totals.Fetched}}</div>
     </section>
     <section class="cds-tile">
-      <div class="cds-metric__label">Indexed</div>
+      <div class="cds-metric__label">Indexed in retained runs</div>
       <div class="cds-metric__value">{{.Monitor.Totals.Indexed}}</div>
     </section>
     <section class="cds-tile">
-      <div class="cds-metric__label">Failed</div>
+      <div class="cds-metric__label">Failed in retained runs</div>
       <div class="cds-metric__value">{{.Monitor.Totals.Failed}}</div>
     </section>
     <section class="cds-tile">
-      <div class="cds-metric__label">Robots-denied</div>
+      <div class="cds-metric__label">Robots-denied in retained runs</div>
       <div class="cds-metric__value">{{.Monitor.Totals.RobotsDenied}}</div>
     </section>
     <section class="cds-tile">
-      <div class="cds-metric__label">Duplicates</div>
+      <div class="cds-metric__label">Duplicates in retained runs</div>
       <div class="cds-metric__value">{{.Monitor.Totals.Duplicates}}</div>
     </section>
     {{if .Health.HarvestRate}}
@@ -56,97 +95,96 @@
     </section>
     {{end}}
   </div>
+  <p class="cds-muted">Fetched counts accepted response bodies; a later fetch or processing failure can also increment Failed.</p>
   {{range .Health.Suspects}}
   <p class="cds-inline-notification cds-inline-notification--warn" role="alert">{{.}}</p>
   {{end}}
-  <div class="cds-scroll-x" role="region" aria-label="Crawl tasks" tabindex="0">
-    <table class="cds-table">
-      <thead>
-        <tr>
-          <th scope="col">Profile</th>
-          <th scope="col">State</th>
-          <th scope="col">Fetched</th>
-          <th scope="col">Indexed</th>
-          <th scope="col">Failed</th>
-          <th scope="col">Robots</th>
-          <th scope="col">Duplicates</th>
-          <th scope="col">Pending URLs</th>
-          <th scope="col">Whole-run max (pages)</th>
-          <th scope="col">Per-host max (pages)</th>
-          <th scope="col">Runtime</th>
-          {{if .Controllable}}<th scope="col">Actions</th>{{end}}
-        </tr>
-      </thead>
-      <tbody>
-        {{$root := .}}
-        {{range .Pagination.Runs}}
-        <tr>
-          <td>{{if $root.Details}}<a href="/admin/crawl/run?runId={{.RunID}}">{{.Profile}}</a>{{else}}{{.Profile}}{{end}}</td>
-          <td><span class="cds-tag{{with stateTag .State}} cds-tag--{{.}}{{end}}">{{.State}}</span></td>
-          <td class="cds-mono">{{.Fetched}}</td>
-          <td class="cds-mono">{{.Indexed}}</td>
-          <td class="cds-mono">{{.Failed}}</td>
-          <td class="cds-mono">{{.RobotsDenied}}</td>
-          <td class="cds-mono">{{.Duplicates}}</td>
-          <td class="cds-mono">{{.Pending}}</td>
-          <td class="cds-mono">{{.MaxPagesPerRun}}</td>
-          <td class="cds-mono">{{.MaxPagesPerHost}}</td>
-          <td class="cds-mono">{{.Runtime}}</td>
-          {{if $root.Controllable}}
-          <td class="cds-crawl-actions-cell">
-            {{if eq .State "running"}}
-            <div class="cds-control-row cds-control-row--crawl-actions">
-              <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
-                <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
-                <input type="hidden" name="runId" value="{{.RunID}}">
-                <input type="hidden" name="cpage" value="{{$root.Pagination.Page}}">
-                <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="pause">Pause</button>
-                <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="resume">Resume</button>
-                <button class="cds-btn cds-btn--danger" type="submit" name="action" value="cancel"
-                        hx-post="/admin/crawl/control" hx-include="closest form"
-                        hx-target="#crawl-monitor" hx-swap="outerHTML"
-                        hx-confirm="Cancel this crawl run? Pending URLs in this run are dropped; in-flight fetches finish. Node orders are unchanged.">Cancel</button>
-              </form>
-              <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
-                <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
-                <input type="hidden" name="runId" value="{{.RunID}}">
-                <input type="hidden" name="cpage" value="{{$root.Pagination.Page}}">
-                <input type="hidden" name="action" value="set_rate">
-                <label class="cds-muted" for="crawl-rate-{{.RunID}}">pages/min</label>
-                <input id="crawl-rate-{{.RunID}}" class="cds-input cds-input--rate" type="number"
-                       name="ppm" min="0" step="1" required title="0 means unlimited"
-                       aria-label="Pages per minute for {{.Profile}}; zero means unlimited"
-                       {{if .RateKnown}}value="{{.PagesPerMinute}}"{{end}}>
-                <button class="cds-btn cds-btn--ghost" type="submit">Apply rate</button>
-              </form>
-            </div>
-            {{else}}
-            <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
-              <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
-              <input type="hidden" name="runId" value="{{.RunID}}">
-              <input type="hidden" name="cpage" value="{{$root.Pagination.Page}}">
-              <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="restart"
-                      hx-post="/admin/crawl/control" hx-include="closest form"
-                      hx-target="#crawl-monitor" hx-swap="outerHTML">Restart</button>
-            </form>
-            {{end}}
-          </td>
-          {{end}}
-        </tr>
-        {{else}}
-        <tr><td colspan="{{if .Controllable}}12{{else}}11{{end}}">No crawl runs observed yet.</td></tr>
+  <h2 class="cds-h2">Active crawls</h2>
+  {{if .ActiveRuns}}
+  <div class="cds-tile-grid cds-crawl-run-grid" role="group" aria-label="Active crawls">
+    {{$root := .}}
+    {{range .ActiveRuns}}
+    <section class="cds-tile">
+      <h3 class="cds-h3">{{if $root.Details}}<a href="/admin/crawl/run?runId={{.RunID}}">{{.Profile}}</a>{{else}}{{.Profile}}{{end}}</h3>
+      <p><span class="cds-tag{{with stateTag .State}} cds-tag--{{.}}{{end}}">{{.State}}</span>{{if .Worker}} <span class="cds-muted">Worker {{.Worker}}</span>{{end}}</p>
+      <p><strong>Waiting URLs:</strong> <span class="cds-mono">{{.Pending}}</span></p>
+      <p class="cds-muted">Last report: {{.ReportAge}}</p>
+      <h3 class="cds-h3">Current and next URLs</h3>
+      {{if .URLActivityKnown}}
+      {{if .URLActivity}}
+      <ul class="cds-crawl-url-list">
+        {{range .URLActivity}}
+        <li><span class="cds-tag{{if eq .Kind "fetching"}} cds-tag--info{{end}}">{{.Kind}}</span> <span class="cds-muted">{{.Detail}}{{if .Availability}} · {{.Availability}}{{end}}</span><br><code class="cds-mono cds-crawl-url">{{.URL}}</code></li>
         {{end}}
-      </tbody>
-    </table>
+      </ul>
+      {{if .URLActivityMore}}<p class="cds-muted">{{.URLActivityMore}} additional current URLs are active in this run.</p>{{end}}
+      {{else}}
+      <p class="cds-muted">No current or next URL is reported for this crawl.</p>
+      {{end}}
+      {{else}}
+      <p class="cds-muted">The crawler has not reported a URL sample for this run.</p>
+      {{end}}
+      {{if $root.Controllable}}
+      <div class="cds-control-row cds-control-row--crawl-actions">
+        <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
+          <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
+          <input type="hidden" name="runId" value="{{.RunID}}">
+          <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="pause">Pause</button>
+          <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="resume">Resume</button>
+          <button class="cds-btn cds-btn--danger" type="submit" name="action" value="cancel"
+                  hx-post="/admin/crawl/control" hx-include="closest form"
+                  hx-target="#crawl-live" hx-swap="outerHTML"
+                  hx-confirm="Cancel this crawl run? Pending URLs in this run are dropped; in-flight fetches finish. Node orders are unchanged.">Cancel</button>
+        </form>
+        <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
+          <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
+          <input type="hidden" name="runId" value="{{.RunID}}">
+          <input type="hidden" name="action" value="set_rate">
+          <label class="cds-muted" for="crawl-rate-{{.RunID}}">pages/min</label>
+          <input id="crawl-rate-{{.RunID}}" class="cds-input cds-input--rate" type="number"
+                 name="ppm" min="0" step="1" required title="0 means unlimited"
+                 aria-label="Pages per minute for {{.Profile}}; zero means unlimited"
+                 {{if .RateKnown}}value="{{.PagesPerMinute}}"{{end}}>
+          <button class="cds-btn cds-btn--ghost" type="submit">Apply rate</button>
+        </form>
+      </div>
+      {{end}}
+    </section>
+    {{end}}
   </div>
-  {{with .Pagination}}
-  {{if gt .Pages 1}}
-  <nav class="cds-pager" aria-label="Crawl task pages">
-    {{if .HasPrev}}<a rel="prev" href="{{.PrevURL}}">‹ Previous</a>{{end}}
-    <span class="cds-muted">Page {{.Page}} of {{.Pages}} · tasks {{.Start}}–{{.End}} of {{.Total}}</span>
-    {{if .HasNext}}<a rel="next" href="{{.NextURL}}">Next ›</a>{{end}}
-  </nav>
+  {{else}}
+  {{if .RecentRuns}}
+  <p class="cds-muted">No active crawls reported.</p>
+  {{else}}
+  <p class="cds-muted">No crawl runs observed yet.</p>
   {{end}}
+  {{end}}
+</div>
+{{end}}
+
+{{define "crawl-history-list"}}
+<div id="crawl-history-list" hx-get="{{.RefreshURL}}" hx-trigger="every 5s" hx-swap="outerHTML">
+  {{if .RecentRuns}}
+  <div class="cds-tile-grid" role="group" aria-label="Recent crawl history">
+    {{$root := .}}
+    {{range .RecentRuns}}
+    <section class="cds-tile">
+      <h3 class="cds-h3">{{if $root.Details}}<a href="/admin/crawl/run?runId={{.RunID}}">{{.Profile}}</a>{{else}}{{.Profile}}{{end}}</h3>
+      <p><span class="cds-tag{{with stateTag .State}} cds-tag--{{.}}{{end}}">{{.State}}</span></p>
+      <p>{{.Fetched}} fetched · {{.Indexed}} indexed</p>
+      <p class="cds-muted">Last report: {{.ReportAge}}</p>
+      {{if $root.Controllable}}
+      <form method="post" action="/admin/crawl/control" hx-boost="false" class="cds-inline-form">
+        <input type="hidden" name="csrf_token" value="{{$root.CSRF}}">
+        <input type="hidden" name="runId" value="{{.RunID}}">
+        <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="restart">Restart</button>
+      </form>
+      {{end}}
+    </section>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="cds-muted">No finished or cancelled crawls yet.</p>
   {{end}}
 </div>
 {{end}}

@@ -7,6 +7,8 @@ type pendingHostPages struct {
 	returnedHead int
 	queued       []pendingPage
 	queuedHead   int
+	retries      []pendingPage
+	retriesHead  int
 }
 
 func (r *crawlRun) appendPending(candidate frontierCandidate) {
@@ -18,13 +20,31 @@ func (r *crawlRun) appendPending(candidate frontierCandidate) {
 func (r *crawlRun) prependReturned(host string, pages []pendingPage) {
 	bucket := r.pendingHost(host)
 	existing := bucket.returned[bucket.returnedHead:]
-	combined := make([]pendingPage, 0, len(pages)+len(existing))
-	combined = append(combined, pages...)
-	combined = append(combined, existing...)
+	existingRetries := bucket.retries[bucket.retriesHead:]
+	returned := make([]pendingPage, 0, len(pages)+len(existing))
+	retries := make([]pendingPage, 0, len(pages)+len(existingRetries))
+	for _, page := range pages {
+		if page.retryAttempt == 0 {
+			returned = append(returned, page)
+		} else {
+			retries = append(retries, page)
+		}
+	}
+	returned = append(returned, existing...)
+	retries = append(retries, existingRetries...)
 	clear(bucket.returned)
-	bucket.returned = combined
+	clear(bucket.retries)
+	bucket.returned = returned
 	bucket.returnedHead = 0
+	bucket.retries = retries
+	bucket.retriesHead = 0
 	r.pendingPages += len(pages)
+}
+
+func (r *crawlRun) appendRetry(host string, page pendingPage) {
+	bucket := r.pendingHost(host)
+	bucket.retries = append(bucket.retries, page)
+	r.pendingPages++
 }
 
 func (r *crawlRun) pendingHost(host string) *pendingHostPages {
@@ -75,8 +95,10 @@ func (r *crawlRun) clearPending() int {
 		if bucket == nil {
 			continue
 		}
+		r.removeFirstPassPending(bucket.firstPassPages())
 		clear(bucket.returned)
 		clear(bucket.queued)
+		clear(bucket.retries)
 	}
 	clear(r.pendingHosts)
 	clear(r.pendingByHost)
@@ -94,9 +116,12 @@ func (r *crawlRun) clearPendingHost(host string) int {
 	if bucket == nil {
 		return 0
 	}
-	pages := len(bucket.returned) - bucket.returnedHead + len(bucket.queued) - bucket.queuedHead
+	pages := len(bucket.returned) - bucket.returnedHead +
+		len(bucket.queued) - bucket.queuedHead + len(bucket.retries) - bucket.retriesHead
+	r.removeFirstPassPending(bucket.firstPassPages())
 	clear(bucket.returned)
 	clear(bucket.queued)
+	clear(bucket.retries)
 	delete(r.pendingByHost, host)
 	r.pendingHosts[bucket.slot] = nil
 	r.pendingHostLive--
@@ -104,6 +129,14 @@ func (r *crawlRun) clearPendingHost(host string) int {
 	r.compactPendingHosts()
 
 	return pages
+}
+
+func (r *crawlRun) removeFirstPassPending(count uint64) {
+	if count > r.firstPassPending {
+		r.firstPassPending = 0
+		return
+	}
+	r.firstPassPending -= count
 }
 
 func (r *crawlRun) compactPendingHosts() {
@@ -138,7 +171,10 @@ func (p *pendingHostPages) first() pendingPage {
 		return p.returned[p.returnedHead]
 	}
 
-	return p.queued[p.queuedHead]
+	if p.queuedHead < len(p.queued) {
+		return p.queued[p.queuedHead]
+	}
+	return p.retries[p.retriesHead]
 }
 
 func (p *pendingHostPages) pop() pendingPage {
@@ -148,14 +184,36 @@ func (p *pendingHostPages) pop() pendingPage {
 
 		return page
 	}
+	if p.queuedHead < len(p.queued) {
+		var page pendingPage
+		page, p.queued, p.queuedHead = popPendingPage(p.queued, p.queuedHead)
+
+		return page
+	}
 	var page pendingPage
-	page, p.queued, p.queuedHead = popPendingPage(p.queued, p.queuedHead)
+	page, p.retries, p.retriesHead = popPendingPage(p.retries, p.retriesHead)
 
 	return page
 }
 
 func (p *pendingHostPages) hasPages() bool {
-	return p.returnedHead < len(p.returned) || p.queuedHead < len(p.queued)
+	return p.returnedHead < len(p.returned) || p.queuedHead < len(p.queued) ||
+		p.retriesHead < len(p.retries)
+}
+
+func (p *pendingHostPages) firstPassPages() uint64 {
+	var count uint64
+	for _, pages := range [][]pendingPage{
+		p.returned[p.returnedHead:],
+		p.queued[p.queuedHead:],
+	} {
+		for _, page := range pages {
+			if page.retryAttempt == 0 {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 func pendingPageFromCandidate(candidate frontierCandidate) pendingPage {
@@ -168,5 +226,7 @@ func pendingPageFromCandidate(candidate frontierCandidate) pendingPage {
 		indexAllowed:     candidate.indexAllowed,
 		observationID:    candidate.observationID,
 		observedAt:       candidate.observedAt,
+		retryAttempt:     candidate.retryAttempt,
+		retryAfter:       candidate.retryAfter,
 	}
 }

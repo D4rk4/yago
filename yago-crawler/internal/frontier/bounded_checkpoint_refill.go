@@ -100,6 +100,9 @@ func (f *Frontier) appendBoundedRecoveryBatchLocked(
 		}
 		candidate := checkpointCandidate(page, run.provenanceValue)
 		run.appendPending(candidate)
+		if page.RetryAttempt == 0 {
+			run.firstPassPending++
+		}
 		run.retainBoundedResidentPage(page.URL)
 		if _, known := knownHosts[page.Host]; !known {
 			f.pace.Visited(candidateJob(runID, candidate, profile, run.leaseID), restoredAt)
@@ -132,6 +135,8 @@ func checkpointCandidate(page frontiercheckpoint.Page, provenance []byte) fronti
 		indexAllowed:     page.Index,
 		observationID:    page.ObservationID,
 		observedAt:       page.ObservedAt,
+		retryAttempt:     page.RetryAttempt,
+		retryAfter:       page.RetryAfter,
 	}
 }
 

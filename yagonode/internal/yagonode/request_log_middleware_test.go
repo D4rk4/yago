@@ -35,6 +35,7 @@ func TestRuntimeServerFailureLogsUseDistinctServerSpansAndSafeRoutes(t *testing.
 		{server: "peer protocol", route: "/yacy/test"},
 		{server: "ops", route: "/admin/test"},
 	}
+	slog.InfoContext(t.Context(), "unrelated background event")
 	issueRuntimeServerFailureRequests(
 		t,
 		handlers,
@@ -153,7 +154,7 @@ func assertRuntimeServerFailureLogs(
 	input runtimeServerFailureInput,
 ) {
 	t.Helper()
-	lines := strings.Split(strings.TrimSpace(output), "\n")
+	lines := runtimeServerFailureLogLines(output, traces)
 	if len(lines) != len(requests) {
 		t.Fatalf("request log count = %d, want %d", len(lines), len(requests))
 	}
@@ -177,13 +178,33 @@ func assertRuntimeServerFailureLogs(
 		}
 		serverSpanIDs[serverSpanID] = true
 	}
-	assertRequestLogRedacts(t, output,
+	assertRequestLogRedacts(t, strings.Join(lines, "\n"),
 		input.traceID,
 		input.parentSpanID,
 		input.clientRequestID,
 		input.queryValue,
 		input.authorizationValue,
 	)
+}
+
+func runtimeServerFailureLogLines(
+	output string,
+	traces map[string]tracectx.Trace,
+) []string {
+	spanIDs := make(map[string]struct{}, len(traces))
+	for _, trace := range traces {
+		spanIDs[trace.SpanID] = struct{}{}
+	}
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		for spanID := range spanIDs {
+			if spanID != "" && strings.Contains(line, `"serverSpanId":"`+spanID+`"`) {
+				lines = append(lines, line)
+				break
+			}
+		}
+	}
+	return lines
 }
 
 func assertRuntimeServerFailureLog(

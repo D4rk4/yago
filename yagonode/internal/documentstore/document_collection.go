@@ -8,6 +8,8 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
+const maximumStoredDocumentURLIdentityBytes = yagomodel.MaximumURLIdentityBytes
+
 const (
 	bucketName                   vault.Name = "documents"
 	orderedDocumentBucketName    vault.Name = "documents_ordered"
@@ -56,7 +58,7 @@ func orderedDocumentKey(admission uint64, normalizedURL string) (vault.Key, erro
 	if normalizedURL == "" {
 		return nil, fmt.Errorf("ordered document URL must not be empty")
 	}
-	if len(normalizedURL) > yagomodel.MaximumURLIdentityBytes {
+	if len(normalizedURL) > maximumStoredDocumentURLIdentityBytes {
 		return nil, fmt.Errorf("ordered document URL has %d bytes", len(normalizedURL))
 	}
 	encodedAdmission, err := encodeOrderedDocumentAdmission(admission)
@@ -75,7 +77,7 @@ func decodeOrderedDocumentKey(key vault.Key) (uint64, string, error) {
 		return 0, "", fmt.Errorf("ordered document key has %d bytes", len(key))
 	}
 	normalizedURL := string(key[orderedDocumentAdmissionSize:])
-	if len(normalizedURL) > yagomodel.MaximumURLIdentityBytes {
+	if len(normalizedURL) > maximumStoredDocumentURLIdentityBytes {
 		return 0, "", fmt.Errorf("ordered document URL has %d bytes", len(normalizedURL))
 	}
 	admission, err := decodeOrderedDocumentAdmission(key[:orderedDocumentAdmissionSize])

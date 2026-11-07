@@ -182,16 +182,49 @@ func TestExchangeHeartbeatRecordsOnlyConnectedCrawlerActivity(t *testing.T) {
 	if got := server.control.RuntimeSnapshot(); got.ActiveFetchesKnown {
 		t.Fatalf("legacy heartbeat reported known activity: %+v", got)
 	}
+	if got := server.control.WorkerSnapshots()[0]; got.ActiveFetchesKnown ||
+		got.ProcessIdentifier != testWorkerSessionID || got.ObservedAt.IsZero() {
+		t.Fatalf("legacy worker snapshot = %+v, want process label and unknown activity", got)
+	}
 	if _, err := server.Heartbeat(t.Context(), &crawlrpc.WorkerHeartbeat{
-		WorkerId:        "worker",
-		WorkerSessionId: testWorkerSessionID,
-		ActiveFetches:   activeFetchReport(0),
+		WorkerId:              "worker",
+		WorkerSessionId:       testWorkerSessionID,
+		ActiveFetches:         activeFetchReport(3),
+		FetchAdmissionWaiting: activeFetchReport(2),
 	}); err != nil {
 		t.Fatalf("current heartbeat: %v", err)
 	}
-	if got := server.control.RuntimeSnapshot(); got.ActiveFetches != 0 ||
+	if got := server.control.RuntimeSnapshot(); got.ActiveFetches != 3 ||
 		!got.ActiveFetchesKnown || got.AggregateFetchCapacity != 4 {
 		t.Fatalf("current heartbeat snapshot = %+v", got)
+	}
+	worker := server.control.WorkerSnapshots()[0]
+	if !worker.FetchAdmissionWaitingKnown || worker.FetchAdmissionWaiting != 2 ||
+		worker.ProcessIdentifier != testWorkerSessionID {
+		t.Fatalf("current worker heartbeat = %+v, want two admission waiters", worker)
+	}
+	zero := uint32(0)
+	if _, err := server.Heartbeat(t.Context(), &crawlrpc.WorkerHeartbeat{
+		WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+		ActiveFetches: &zero, FetchAdmissionWaiting: &zero,
+	}); err != nil {
+		t.Fatalf("explicit idle heartbeat: %v", err)
+	}
+	if got := server.control.WorkerSnapshots()[0]; !got.ActiveFetchesKnown ||
+		!got.FetchAdmissionWaitingKnown || got.ActiveFetches != 0 || got.FetchAdmissionWaiting != 0 {
+		t.Fatalf("explicit idle worker heartbeat = %+v, want known zero counts", got)
+	}
+	tooManyWaiters := uint32(1)
+	invalidWaiters := uint32(2)
+	if _, err := server.Heartbeat(t.Context(), &crawlrpc.WorkerHeartbeat{
+		WorkerId: "worker", WorkerSessionId: testWorkerSessionID,
+		ActiveFetches: &tooManyWaiters, FetchAdmissionWaiting: &invalidWaiters,
+	}); err == nil {
+		t.Fatal("heartbeat with more admission waiters than active fetches was accepted")
+	}
+	if got := server.control.WorkerSnapshots()[0]; got.ActiveFetches != 0 ||
+		got.FetchAdmissionWaiting != 0 || !got.FetchAdmissionWaitingKnown {
+		t.Fatalf("invalid heartbeat changed worker snapshot = %+v", got)
 	}
 	server.releaseWorker("worker")
 	if got := server.control.RuntimeSnapshot(); got.ConnectedCrawlers != 0 ||

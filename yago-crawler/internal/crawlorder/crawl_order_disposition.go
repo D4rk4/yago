@@ -3,6 +3,7 @@ package crawlorder
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 )
@@ -21,13 +22,22 @@ func settleCrawlOrder(
 	order yagocrawlcontract.CrawlOrder,
 	delivery CrawlOrderDelivery,
 	disposition crawlOrderDisposition,
+	retryAfterValues ...time.Duration,
 ) bool {
 	var err error
+	retryAfter := time.Duration(0)
+	if len(retryAfterValues) > 0 {
+		retryAfter = retryAfterValues[0]
+	}
 	switch disposition {
 	case crawlOrderRetained:
 		return true
 	case crawlOrderRequeued:
-		err = delivery.Nak(ctx)
+		if retryAfter > 0 && delivery.NakAfter != nil {
+			err = delivery.NakAfter(ctx, retryAfter)
+		} else {
+			err = delivery.Nak(ctx)
+		}
 	case crawlOrderTerminated:
 		err = delivery.Term(ctx)
 	default:

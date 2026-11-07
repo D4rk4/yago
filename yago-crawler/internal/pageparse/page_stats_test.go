@@ -39,12 +39,6 @@ func TestBuildPageStats(t *testing.T) {
 		Text:  "some indexed words here",
 		Links: []string{"https://example.com/a", "https://elsewhere.com/b"},
 	})
-	if len(stats.Tokens) == 0 {
-		t.Error("expected tokens from text")
-	}
-	if len(stats.TitleTokens) == 0 {
-		t.Error("expected title tokens")
-	}
 	if len(stats.LocalLinks) != 1 || len(stats.ExternalLinks) != 1 {
 		t.Errorf("links = %v / %v", stats.LocalLinks, stats.ExternalLinks)
 	}

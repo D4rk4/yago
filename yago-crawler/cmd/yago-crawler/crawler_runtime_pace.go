@@ -7,6 +7,7 @@ import (
 	"github.com/D4rk4/yago/yago-crawler/internal/crawldelay"
 	"github.com/D4rk4/yago/yago-crawler/internal/crawlermetrics"
 	"github.com/D4rk4/yago/yago-crawler/internal/frontiercheckpoint"
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 func assembleCrawlerPace(
@@ -19,7 +20,12 @@ func assembleCrawlerPace(
 	if err != nil {
 		return nil, fmt.Errorf("create crawl pace: %w", err)
 	}
-	pace, err := newCrawlerAdaptivePace(hostPace, crawl.HostCacheSize, metrics)
+	pace, err := newCrawlerAdaptivePace(
+		hostPace,
+		crawl.HostCacheSize,
+		yagocrawlcontract.MaximumCrawlBackoffDelay,
+		metrics,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("create adaptive crawl pace: %w", err)
 	}

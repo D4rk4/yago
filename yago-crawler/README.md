@@ -257,6 +257,11 @@ section of the [node specification](../yagonode/doc/specification.md#target-arch
 The Java revision and the synthetic counting inputs are recorded in
 `yagonode/test/fixtures/yacywire/component-count-provenance.md`.
 
+Crawler RWI postings and URL metadata use the same YaCy-compatible artifact
+builder as the optional migration backfill. Both paths use the single tokenizer
+implementation in `yagomodel`. Imported text is not fetched again to produce
+peer-index records.
+
 PDF extraction follows the document structure rather than scanning every decoded
 stream. When Page objects are available, it selects their referenced `/Contents`
 streams, including indirect arrays, and only Form XObjects reachable from page

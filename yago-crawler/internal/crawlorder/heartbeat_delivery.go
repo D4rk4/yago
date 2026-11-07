@@ -13,19 +13,20 @@ import (
 )
 
 type heartbeatDelivery struct {
-	client              OrderStreamer
-	workerID            string
-	workerSessionID     string
-	control             ControlHandler
-	activeFetches       func() uint32
-	acknowledgments     *controlAcknowledgments
-	leaseGrants         *crawllease.GrantRegistry
-	operation           sync.Locker
-	storageSnapshot     func() yagocrawlcontract.StoragePressureSnapshot
-	storagePolicy       func(yagocrawlcontract.StoragePressurePolicy)
-	urlDenylist         *crawldenylist.Denylist
-	runtimePolicy       func(yagocrawlcontract.CrawlerRuntimePolicy)
-	runtimePolicySource func() yagocrawlcontract.CrawlerRuntimePolicy
+	client                OrderStreamer
+	workerID              string
+	workerSessionID       string
+	control               ControlHandler
+	activeFetches         func() uint32
+	fetchAdmissionWaiters func() uint32
+	acknowledgments       *controlAcknowledgments
+	leaseGrants           *crawllease.GrantRegistry
+	operation             sync.Locker
+	storageSnapshot       func() yagocrawlcontract.StoragePressureSnapshot
+	storagePolicy         func(yagocrawlcontract.StoragePressurePolicy)
+	urlDenylist           *crawldenylist.Denylist
+	runtimePolicy         func(yagocrawlcontract.CrawlerRuntimePolicy)
+	runtimePolicySource   func() yagocrawlcontract.CrawlerRuntimePolicy
 	// requestTimeout bounds one heartbeat request, snapshotted at construction
 	// so the heartbeat goroutine never reads the mutable package default.
 	requestTimeout time.Duration

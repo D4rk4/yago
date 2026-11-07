@@ -114,14 +114,19 @@ func awaitFinishedReport(
 ) *crawlrpc.CrawlProgressReport {
 	t.Helper()
 	timeout := time.After(20 * time.Second)
+	var recentStates []string
 	for {
 		select {
 		case report := <-progress:
+			recentStates = append(recentStates, report.GetState().String())
+			if len(recentStates) > 8 {
+				recentStates = recentStates[len(recentStates)-8:]
+			}
 			if report.GetState() == crawlrpc.CrawlRunState_CRAWL_RUN_STATE_FINISHED {
 				return report
 			}
 		case <-timeout:
-			t.Fatal("crawl run never reported finished")
+			t.Fatalf("crawl run never reported finished; recent states: %v", recentStates)
 
 			return nil
 		}

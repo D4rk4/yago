@@ -84,3 +84,43 @@ func TestSupplementDecisionDelayReservesWebAndAssemblyWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestExactStageReservationPreservesUnconstrainedAndParallelBudgets(t *testing.T) {
+	ceiling := webFallbackExactStageBudget
+	reserve := webFallbackSequentialReserve(webFallbackConfig{Privacy: webFallbackPrivacyEnabled})
+	for _, test := range []struct {
+		name      string
+		remaining time.Duration
+		reserve   time.Duration
+		want      time.Duration
+	}{
+		{name: "unbounded", reserve: reserve, want: ceiling},
+		{name: "ample time", remaining: time.Hour, reserve: reserve, want: ceiling},
+		{name: "short caller deadline", remaining: time.Millisecond, reserve: reserve, want: ceiling},
+		{name: "parallel", remaining: time.Second, want: ceiling},
+		{
+			name:      "reserved window",
+			remaining: reserve + 200*time.Millisecond,
+			reserve:   reserve,
+			want:      200 * time.Millisecond,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			if test.remaining > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, test.remaining)
+				defer cancel()
+			}
+			got := remainingExactStageBudget(ctx, ceiling, test.reserve)
+			if got > test.want || got < test.want-20*time.Millisecond {
+				t.Fatalf("budget=%s want=%s", got, test.want)
+			}
+		})
+	}
+	if got := webFallbackSequentialReserve(
+		webFallbackConfig{Privacy: webFallbackPrivacyAlways},
+	); got != 0 {
+		t.Fatalf("parallel reserve=%s", got)
+	}
+}

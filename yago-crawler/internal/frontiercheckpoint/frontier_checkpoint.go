@@ -44,6 +44,8 @@ type Page struct {
 	URL              string
 	Host             string
 	Depth            int
+	RetryAttempt     uint8
+	RetryAfter       time.Time
 	ProfileHandle    string
 	ObservationID    string
 	ObservedAt       time.Time

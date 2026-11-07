@@ -17,9 +17,9 @@ The contract has a leased work flow and a feedback-bearing ingest flow:
 node --------------------------------------------------> crawler
      <---------- AckOrder (ACK/NAK/TERM) + Heartbeat + progress
 
-          SubmitIngest(IngestBatch)
+          StreamIngest(IngestBatch...)
 node <----------------------------------------------- crawler
-     -----------------------------------------------> accepted/backpressure
+     -----------------------------------------------> asynchronous per-batch acknowledgments
 ```
 
 `CrawlOrder` carries crawl work from the node to crawler instances. The order includes
@@ -115,6 +115,12 @@ measured idle crawler; an absent value identifies a crawler that does not report
 this measurement. The node counts only registered order-stream worker identities
 and removes their measurement after the last matching stream disconnects. Older
 nodes ignore this additive field.
+
+Current crawlers also report optional `fetch_admission_waiting` in the same
+heartbeat. It is present when the worker measures jobs parked on the fleet
+fetch-start or per-process rate governor, including an explicit zero. A present
+value must not exceed `active_fetches`; the node rejects an impossible pair.
+Older crawlers leave it absent and older nodes ignore the additive field.
 
 The node may also return `set_automatic_discovery_priority`. The crawler makes
 one heartbeat attempt bounded to one second before opening its order stream, so
@@ -305,7 +311,11 @@ unlimited dispatch, so the node does not infer worker configuration.
 Invalid order modes, URLs, profiles, deterministic fetch responses, and malformed
 seed documents terminate the lease. An operator cancellation is also terminal.
 Network, server, throttle, timeout, and interrupted expansion failures NAK the
-lease into a durable five-second retry delay. Legacy settlement calls are
+lease into a durable retry delay. The optional `OrderAck.retry_after_nanoseconds`
+sets that delay for a temporarily deferred run, up to the shared 15-minute
+backoff maximum; omitted or zero values retain the five-second default. The
+node persists the deadline on the lease and requeues the order when it expires.
+Legacy settlement calls are
 idempotent for a fixed 24-hour retry horizon: a duplicate terminal ACK succeeds,
 while a stale ACK after NAK or expiry is rejected. Rich terminal progress remains
 durable through delivery and run-control completion. Once finalized, it keeps the
@@ -339,8 +349,18 @@ terminal reports take priority, and another ready run is served before the
 replacement. Intermediate running values may therefore be omitted, while phase
 chains and terminal settlement remain ordered.
 
-`SubmitIngest` is unary, so acceptance or retryable backpressure returns directly
-to the crawler that submitted the batch. There is no shared feedback topic.
+The legacy `SubmitIngest` unary method remains for older crawler clients. The
+replacement crawler uses bidirectional `StreamIngest`: it persists each batch in
+its local outbox, sends up to 64 outstanding submissions, and receives each
+acknowledgment independently while sending continues. There is no shared feedback
+topic. Page workers continue processing frontier URLs without waiting for node
+ingest acknowledgments. The crawl lease stays open until the stream drains that
+run's outbox, preserving ingest authorization. A replacement crawler requires a
+node that implements `StreamIngest`; it does not fall back to unary submission.
+Worker heartbeats may report bounded active URL and stage details plus up to
+four next waiting URLs for each active run, with the frontier state, wait reason,
+and next eligible time. The node validates and shows this sample on the Admin
+Crawl page; older workers may omit the additive fields.
 
 `IngestBatch` JSON is limited to 4 MiB minus 64 KiB of transport headroom, and
 the enclosing gRPC message is limited to 4 MiB. The crawler bounds text, URLs,
@@ -356,10 +376,13 @@ the shared transport ceiling before either retry path can run.
 
 ## Crawl profile scope
 
-The profile carries the subset of YaCy crawl settings that affect URL selection and
-reference generation, including whether links marked `rel=nofollow` may be followed.
-Crawler process settings, such as the browser User-Agent, are not profile fields because
-an order cannot safely override process-wide browser identity.
+The crawl profile is the boundary for focused runs. It carries wide, domain, or
+subpath scope; URL include and exclude rules; indexing URL rules; depth and page
+budgets; and whether `rel=nofollow` links may be followed. Seed URLs and discovered
+links retain the profile handle and depth through frontier admission. Content-based
+filter expressions are not part of the current contract. Crawler process settings,
+such as the browser User-Agent, remain outside the profile because an order cannot
+safely override process-wide browser identity.
 
 Raw HTML bodies, binary image bodies, media indexing, snapshots, vocabulary
 scraping, country and IP filters, HTTP caching, direct document loading, and

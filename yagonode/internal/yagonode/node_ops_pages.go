@@ -138,10 +138,12 @@ func applyCrawlAdminOptions(
 		options.Schedules = newCrawlScheduleSource(assembled.schedules, options.Crawl)
 	}
 	if registry := crawlRunRegistry(assembled.crawl); registry != nil {
-		options.Monitor = newCrawlMonitorSource(registry, crawlDepth.probe)
+		options.Monitor = newCrawlMonitorSource(registry, crawlDepth.probe).
+			withPendingURLs(crawlQueuePendingURLs(assembled.crawl))
 		options.CrawlOrderClearSource = newCrawlOrderClearSource(assembled.crawl)
 		options.CrawlRunDetails = newCrawlRunDetailSource(registry)
 		if control := crawlControlRegistry(assembled.crawl); control != nil {
+			options.CrawlerPulse = newCrawlerPulseSource(control, registry, crawlDepth.probe)
 			options.Control = newCrawlControlSource(
 				registry,
 				control,

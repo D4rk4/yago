@@ -47,7 +47,9 @@ The registry publishes:
   `YAGO_STORAGE_QUOTA`, main-vault eviction, and main-vault compaction and
   has a separately configurable soft physical admission boundary through
   `crawler.node_state_max_bytes` and `YAGO_CRAWLER_NODE_STATE_MAX_BYTES`, which
-  default to 4 GiB and accept zero to disable the boundary. Alert on the
+  default to 10% of the effective storage quota capped by free space after the
+  node reserve. An unlimited quota uses 10% of measured free space after
+  reserve; an explicit size overrides the calculation, and zero disables it. Alert on the
   allocated-file gauge and filesystem free space; bbolt may keep free pages
   after live rows are deleted.
 - **Eviction** — URLs and postings purged under quota pressure and sweeps that
@@ -150,3 +152,24 @@ cannot preserve stale utilization. Multiple crawlers use their aggregate
 capacity and retain the crawler count and per-crawler limit in text. Disabling
 the crawler runtime also removes this row. This live value is not retained in
 the ten-second history and does not trigger a metrics gathering or host scan.
+
+The Performance page's Crawler pulse refreshes its server-rendered fragment
+every five seconds and combines current activity with the run registry's
+five-second cumulative progress reports. It calculates fetched
+and indexed pages per minute independently from tally deltas across up to the
+last 60 seconds; the configured per-run page rate is not used as measured
+throughput. Process totals include deltas from completed runs, so short orders
+remain visible after their run ends. A rate needs two reports and expires when
+its last sample leaves the 60-second window. Rates are grouped by the current
+crawler process session, and the table shows a short process ID beside the
+persistent worker identity. Rates are volatile and are lost on node restart.
+The per-process table keeps missing or stale activity unavailable rather than
+treating it as idle. Its signals are deterministic: queued orders with no
+workers, dominant fetch-admission waits, occupied capacity, or mostly idle
+fetch slots. The page does not change worker limits or crawl policy.
+
+The heartbeat's optional `fetch_admission_waiting` value counts active jobs
+parked on a fetch-start or per-process rate governor. It is reported separately
+from the active count, so a high wait share indicates a rate ceiling rather than
+useful additional concurrency. This field is additive on the node-crawler gRPC
+contract and does not add a Prometheus series or YaCy wire field.

@@ -39,6 +39,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/rankingprofile"
 	"github.com/D4rk4/yago/yagonode/internal/remotecrawl"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
+	"github.com/D4rk4/yago/yagonode/internal/rwibackfill"
 	"github.com/D4rk4/yago/yagonode/internal/safetymodel"
 	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -109,6 +110,7 @@ type node struct {
 	storagePressure *yagocrawlcontract.StoragePressureGate
 	transferTally   *transfertally.Tally
 	peerType        localPeerClassification
+	rwiBackfill     *rwibackfill.Backfill
 }
 
 type nodeTelemetry struct {
@@ -198,24 +200,19 @@ func assembleNode(
 	}()
 	seedlistClient, peerClient := nodePeerClients(config, client)
 	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
-	exchange, err := assembleRuntimePeerExchange(peerExchange{
-		router:                       peerWire.router,
-		identity:                     identity,
-		report:                       peerWire.report,
-		config:                       config,
-		vault:                        vault,
-		client:                       peerClient,
-		seedlistClient:               seedlistClient,
-		peer:                         telemetry.peer,
-		host:                         hostLinkSnapshot,
-		roster:                       peerWire.roster,
-		news:                         peerWire.news,
-		externalReachabilityEvidence: peerWire.reachability,
+	exchange, err := assembleNodePeerExchange(nodePeerExchangeInput{
+		config:         config,
+		vault:          vault,
+		client:         peerClient,
+		seedlistClient: seedlistClient,
+		identity:       identity,
+		telemetry:      telemetry,
+		peerWire:       peerWire,
+		host:           hostLinkSnapshot,
 	})
 	if err != nil {
 		return node{}, err
 	}
-	exchange.externalReachabilityEvidence = peerWire.reachability
 	surfaces, err := assembleNodeSurfaces(assembleSurfacesInput{
 		ctx:                          ctx,
 		config:                       config,
@@ -238,12 +235,17 @@ func assembleNode(
 		return node{}, err
 	}
 	peerWire.queues.bindCrawl(surfaces.crawl)
+	backfill, err := openRuntimeNodeRWIBackfill(vault, storage)
+	if err != nil {
+		return node{}, err
+	}
 	assembled := completeNodeAssembly(nodeAssemblyCompletion{
 		config: config, telemetry: telemetry, identity: identity, storage: storage,
 		mux: peerWire.mux, exchange: exchange, surfaces: surfaces, report: peerWire.report,
 		roster: peerWire.roster, news: peerWire.news, blocks: peerWire.blocks,
 		vault: vault, client: client, tally: peerWire.tally, peerLifecycle: peerWire.lifecycle,
 		rosterVault: peerWire.rosterVault,
+		rwiBackfill: backfill,
 	})
 	assembledLifecycle = true
 
@@ -478,6 +480,7 @@ type nodeParts struct {
 	peerEvents    *peerReputationObserver
 	peerLifecycle *nodePeerLifecycle
 	corpusPass    *corpusSignalRefresh
+	rwiBackfill   *rwibackfill.Backfill
 	tally         *transfertally.Tally
 	events        *events.Recorder
 	peerType      localPeerClassification
@@ -553,6 +556,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		peerLifecycle: parts.peerLifecycle,
 		transferTally: parts.tally,
 		peerType:      parts.peerType,
+		rwiBackfill:   parts.rwiBackfill,
 	}
 }
 

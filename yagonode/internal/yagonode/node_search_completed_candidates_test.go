@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
@@ -43,39 +42,37 @@ func (unfinishedRelaxationIndex) SearchEvidence(
 }
 
 func TestPublicSearchKeepsStrictCandidatesAfterRelaxationDeadline(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		previous := webFallbackPrimaryStageBudget
-		webFallbackPrimaryStageBudget = 100 * time.Millisecond
-		t.Cleanup(func() { webFallbackPrimaryStageBudget = previous })
-		var webCalls atomic.Int32
-		client := &http.Client{
-			Transport: fallbackRoundTrip(func(*http.Request) (*http.Response, error) {
-				webCalls.Add(1)
-				return nil, fmt.Errorf("provider unavailable")
-			}),
-		}
-		assembly := productionShapeSearchAssembly(client)
-		assembly.webFallback.Backend = "bing"
-		index := unfinishedRelaxationIndex{}
-		assembly.storage.searchIndex = index
-		search := assemblePublicSearcher(
-			newLocalRankingSearcher(index, nil, nil),
-			productionShapeSwarmMiss{},
-			assembly,
-		)
-		response, err := search.Search(t.Context(), searchcore.Request{
-			Query: "alpha beta gamma", Source: searchcore.SourceGlobal, Limit: 1,
-		})
-		if err != nil || len(response.Results) != 1 || !response.Results[0].StoredLocally() ||
-			response.Results[0].URL != "https://example.org/strict" || len(response.PartialFailures) == 0 ||
-			webCalls.Load() != 1 {
-			t.Fatalf(
-				"results=%+v failures=%+v web calls=%d error=%v",
-				response.Results,
-				response.PartialFailures,
-				webCalls.Load(),
-				err,
-			)
-		}
+	previous := webFallbackExactStageBudget
+	webFallbackExactStageBudget = 100 * time.Millisecond
+	t.Cleanup(func() { webFallbackExactStageBudget = previous })
+	var webCalls atomic.Int32
+	client := &http.Client{
+		Transport: fallbackRoundTrip(func(*http.Request) (*http.Response, error) {
+			webCalls.Add(1)
+			return nil, fmt.Errorf("provider unavailable")
+		}),
+	}
+	assembly := productionShapeSearchAssembly(client)
+	assembly.webFallback.Backend = "bing"
+	index := unfinishedRelaxationIndex{}
+	assembly.storage.searchIndex = index
+	search := assemblePublicSearcher(
+		newLocalRankingSearcher(index, nil, nil),
+		productionShapeSwarmMiss{},
+		assembly,
+	)
+	response, err := search.Search(t.Context(), searchcore.Request{
+		Query: "alpha beta gamma", Source: searchcore.SourceGlobal, Limit: 1,
 	})
+	if err != nil || len(response.Results) != 1 || !response.Results[0].StoredLocally() ||
+		response.Results[0].URL != "https://example.org/strict" || len(response.PartialFailures) == 0 ||
+		webCalls.Load() != 1 {
+		t.Fatalf(
+			"results=%+v failures=%+v web calls=%d error=%v",
+			response.Results,
+			response.PartialFailures,
+			webCalls.Load(),
+			err,
+		)
+	}
 }

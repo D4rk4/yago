@@ -1,8 +1,7 @@
 package pageindex
 
 import (
-	"maps"
-	"strconv"
+	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/pageparse"
 	"github.com/D4rk4/yago/yago-crawler/internal/stopwords"
@@ -10,19 +9,17 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 )
 
-// BuildPostings turns a page's token stream into RWI postings, one per
-// distinct content word. Stopwords produce no postings (SEARCH-39): the
-// node's query side never requires them, so shipping their postings only
-// bloated the index. Other tokens keep their position in the original
-// stream, stopwords included, so proximity semantics are unchanged.
-func BuildPostings(
+func BuildRWIPageArtifacts(
 	page pageparse.ParsedPage,
 	stats pageparse.PageStats,
-) []yagomodel.RWIPosting {
+	loadedAt time.Time,
+) yagomodel.RWIPageArtifacts {
+	tokens := yagomodel.TokenizeRWIText(page.Text, yagocrawlcontract.MaximumDocumentWords)
+	titleTokens := yagomodel.TokenizeRWIText(page.Title, 255)
 	frequency := make(map[string]int)
 	firstPosition := make(map[string]int)
 	order := make([]string, 0)
-	for position, token := range stats.Tokens {
+	for position, token := range tokens {
 		if stopwords.IsStopword(token) {
 			continue
 		}
@@ -33,65 +30,47 @@ func BuildPostings(
 			firstPosition[token] = position
 			order = append(order, token)
 			frequency[token] = 1
-
 			continue
 		}
 		frequency[token]++
 	}
-
-	urlHash, _ := yagomodel.HashURL(page.URL)
-	language := NormalizeLanguage(page.Language)
-	componentCount := componentCardinal(urlComponentCount(page.URL))
-
-	shared := map[string]string{
-		yagomodel.ColURLHash:           urlHash.String(),
-		yagomodel.ColLanguage:          language,
-		yagomodel.ColURLComponentCount: componentCount,
-		yagomodel.ColDocType: strconv.FormatUint(
-			uint64(yagomodel.DocTypeText),
-			10,
-		),
-		yagomodel.ColTextWordCount: yagomodel.FormatRWICardinal(
-			cardinalValue(len(stats.Tokens), maxUint16),
-		),
-		yagomodel.ColTitleWordCount: yagomodel.FormatRWICardinal(
-			cardinalValue(len(stats.TitleTokens), maxUint8),
-		),
-		yagomodel.ColLocalLinkCount: yagomodel.FormatRWICardinal(
-			cardinalValue(len(stats.LocalLinks), maxUint8),
-		),
-		yagomodel.ColExternalLinkCount: yagomodel.FormatRWICardinal(
-			cardinalValue(len(stats.ExternalLinks), maxUint8),
-		),
-	}
-
-	postings := make([]yagomodel.RWIPosting, 0, len(order))
-	for _, token := range order {
-		properties := make(map[string]string, len(shared)+2)
-		maps.Copy(properties, shared)
-		hits := cardinalValue(frequency[token], maxUint8)
-		position := cardinalValue(firstPosition[token], maxUint16)
-		properties[yagomodel.ColHitCount] = yagomodel.FormatRWICardinal(hits)
-		properties[yagomodel.ColTextPosition] = yagomodel.FormatRWICardinal(position)
-		postings = append(postings, yagomodel.RWIPosting{
-			WordHash:   yagomodel.WordHash(token),
-			Properties: properties,
+	words := make([]yagomodel.RWIWord, 0, len(order))
+	for _, word := range order {
+		words = append(words, yagomodel.RWIWord{
+			Word:          word,
+			Frequency:     frequency[word],
+			FirstPosition: firstPosition[word],
 		})
 	}
-	return postings
+	artifacts := yagomodel.BuildRWIPageArtifacts(yagomodel.RWIPage{
+		URL:               page.URL,
+		Title:             page.Title,
+		Language:          NormalizeLanguage(page.Language),
+		WordCount:         len(tokens),
+		TitleWordCount:    len(titleTokens),
+		TextBytes:         len(page.Text),
+		LocalLinkCount:    len(stats.LocalLinks),
+		ExternalLinkCount: len(stats.ExternalLinks),
+		Words:             words,
+		LoadedAt:          loadedAt,
+		ModifiedAt:        loadedAt,
+		FreshUntil:        loadedAt,
+	}, yagocrawlcontract.MaximumIngestPostings)
+	addURLComponentCountToPostings(artifacts.Postings, page.URL)
+
+	return artifacts
 }
 
-const (
-	maxUint8  = 0xff
-	maxUint16 = 0xffff
-)
+func BuildPostings(page pageparse.ParsedPage, stats pageparse.PageStats) []yagomodel.RWIPosting {
+	artifacts := BuildRWIPageArtifacts(page, stats, time.Time{})
+	return artifacts.Postings
+}
 
-func cardinalValue(value, maximum int) uint64 {
-	if value < 0 {
-		return 0
-	}
-	if value > maximum {
-		value = maximum
-	}
-	return uint64(value)
+func BuildMetadata(
+	page pageparse.ParsedPage,
+	stats pageparse.PageStats,
+	loadedAt time.Time,
+) yagomodel.URIMetadataRow {
+	artifacts := BuildRWIPageArtifacts(page, stats, loadedAt)
+	return artifacts.Metadata
 }

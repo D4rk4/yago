@@ -1,5 +1,5 @@
 GO ?= go
-MODULES := yagonode yagomodel yagoproto yagocrawlcontract yagoegress yago-crawler
+MODULES := yagonode yagomodel yagoproto yagocrawlcontract yagoegress yago-crawler yago-crawler2
 COVER_PROFILE := coverage.out
 COVERAGE_MIN ?= 100
 COVER_EXCLUDE := /internal/vaulttest/|/test/e2e/|/crawlrpc/
@@ -107,7 +107,7 @@ arch: $(TOOLS_STAMP)
 race:
 	@set -e; for m in $(MODULES); do \
 		echo "==> race $$m"; \
-		( cd $$m && $(GO) test -race ./... ); \
+		( cd $$m && $(GO) test -p=1 -parallel=8 -race ./... ); \
 	done
 
 test: race
@@ -145,7 +145,7 @@ cover-check:
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
 		( cd $$m && \
-			if ! $(GO) test -race -coverprofile=$(COVER_PROFILE) ./... > $(COVER_PROFILE).log 2>&1; then \
+			if ! $(GO) test -p=1 -parallel=8 -race -coverprofile=$(COVER_PROFILE) ./... > $(COVER_PROFILE).log 2>&1; then \
 				cat $(COVER_PROFILE).log; \
 				echo "cover-check: test run failed in $$m"; \
 				exit 1; \
@@ -190,7 +190,7 @@ e2e-crawler-image:
 	DOCKER_BUILDKIT=1 $(E2E_CONTAINER_CLI) build \
 		--build-arg SOURCE_REVISION=$(SOURCE_REVISION) \
 		--build-arg VERSION=$(PRODUCT_VERSION) \
-		-f yago-crawler/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
+		-f yago-crawler2/Dockerfile -t $(E2E_CRAWLER_IMAGE) .
 
 e2e-node: e2e-node-image
 	cd yagonode/test/e2e && GOWORK=off $(E2E_DOCKER_ENV) YAGO_NODE_IMAGE=$(E2E_NODE_IMAGE) \

@@ -104,3 +104,9 @@ version from `PATH`.
 | [0083](0083-shuffle-tests-and-smoke-fuzz-targets.md) | Shuffle tests and smoke fuzz targets | Accepted |
 | [0084](0084-supplement-incomplete-primary-search-with-bounded-web-results.md) | Supplement incomplete primary search with bounded web results | Accepted |
 | [0085](0085-defer-inbound-anchor-target-refresh-and-commit-shards-concurrently.md) | Defer inbound-anchor target refresh and commit shards concurrently | Accepted |
+| [0086](0086-return-useful-shard-samples-and-cache-complete-searches.md) | Return useful shard samples and cache complete searches | Accepted |
+| [0087](0087-use-playwright-for-browser-search-acceptance.md) | Use Playwright for browser search acceptance | Accepted |
+| [0088](0088-create-independent-crawler-module.md) | Create independent crawler module | Accepted |
+| [0089](0089-parse-robots-rules-in-independent-crawler.md) | Parse robots rules in independent crawler | Accepted |
+| [0090](0090-asynchronous-crawler-page-workers.md) | Asynchronous crawler page workers | Accepted |
+| [0091](0091-randomize-deadline-bounded-shard-retrieval.md) | Randomize deadline-bounded shard retrieval | Accepted |

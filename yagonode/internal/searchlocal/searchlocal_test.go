@@ -18,6 +18,25 @@ type fakeIndex struct {
 	got      searchindex.SearchRequest
 }
 
+type fakeProgressiveIndex struct {
+	*fakeIndex
+	progress searchindex.SearchProgress
+	result   searchindex.SearchResultSet
+	err      error
+}
+
+func (i *fakeProgressiveIndex) SearchProgressively(
+	_ context.Context,
+	_ searchindex.SearchRequest,
+	notify func(searchindex.SearchProgress),
+) (searchindex.SearchResultSet, error) {
+	if notify != nil {
+		notify(i.progress)
+	}
+
+	return i.result, i.err
+}
+
 func (i *fakeIndex) Index(context.Context, documentstore.Document) error { return nil }
 
 func (i *fakeIndex) Delete(context.Context, string) error { return nil }
@@ -82,6 +101,198 @@ func TestSearcherTranslatesAndFiltersResults(t *testing.T) {
 		t.Fatalf("response = %#v", resp)
 	}
 	assertTranslatedResult(t, resp.Results[0])
+}
+
+func TestProgressiveSearcherReportsIncompleteCoverageUntilAllShardsFinish(t *testing.T) {
+	partial := searchindex.SearchResultSet{
+		Total: 1,
+		Results: []searchindex.SearchResult{{
+			DocumentID: "result", Title: "Sample result", URL: "https://example.test/page",
+		}},
+		Incomplete: true, CompletedShards: 1, SampledShards: 1, TotalShards: 8,
+	}
+	index := &fakeProgressiveIndex{
+		fakeIndex: &fakeIndex{},
+		progress: searchindex.SearchProgress{
+			Results: partial, CompletedShards: 1, SampledShards: 1, TotalShards: 8,
+		},
+		result: partial,
+		err:    context.DeadlineExceeded,
+	}
+	var progress searchcore.SearchProgress
+	ctx := searchcore.WithSearchProgressObserver(
+		t.Context(),
+		func(update searchcore.SearchProgress) {
+			progress = update
+		},
+	)
+	response, err := NewProgressiveSearcherWithRanking(index, nil, nil).Search(
+		ctx,
+		searchcore.Request{
+			Query: "Sample", Terms: []string{"Sample"}, Limit: 10,
+		},
+	)
+	if err != nil || progress.SampledShards != 1 || progress.Response.Coverage == nil ||
+		progress.Response.Coverage.SampledShards != 1 || progress.Response.Coverage.Complete ||
+		progress.Response.Coverage.CompletedShards != 1 || len(progress.Response.PartialFailures) != 0 ||
+		response.Coverage == nil || response.Coverage.SampledShards != 1 || response.Coverage.Complete ||
+		response.Coverage.CompletedShards != 1 || len(response.PartialFailures) != 0 ||
+		len(response.Results) != 1 {
+		t.Fatalf("progress=%+v response=%+v err=%v", progress, response, err)
+	}
+}
+
+func TestProgressiveSearcherReturnsSampledDeadlineResultsWithoutFailure(t *testing.T) {
+	partial := searchindex.SearchResultSet{
+		Total: 1,
+		Results: []searchindex.SearchResult{{
+			DocumentID: "sample", Title: "Sampled result", URL: "https://example.test/sample",
+		}},
+		Incomplete: true, CompletedShards: 5, SampledShards: 3, TotalShards: 8,
+	}
+	index := &fakeProgressiveIndex{
+		fakeIndex: &fakeIndex{},
+		progress: searchindex.SearchProgress{
+			Results: partial, CompletedShards: 5, SampledShards: 3, TotalShards: 8,
+		},
+		result: partial,
+		err:    context.DeadlineExceeded,
+	}
+	var progress searchcore.SearchProgress
+	ctx := searchcore.WithSearchProgressObserver(
+		t.Context(),
+		func(update searchcore.SearchProgress) {
+			progress = update
+		},
+	)
+	response, err := NewProgressiveSearcherWithRanking(index, nil, nil).Search(
+		ctx,
+		searchcore.Request{Query: "Sample", Terms: []string{"Sample"}, Limit: 10},
+	)
+	if err != nil || len(progress.Response.PartialFailures) != 0 ||
+		len(response.Results) != 1 || len(response.PartialFailures) != 0 ||
+		response.Coverage == nil || response.Coverage.Complete ||
+		response.Coverage.SampledShards != 3 || response.Coverage.CompletedShards != 5 {
+		t.Fatalf("progress=%+v response=%+v err=%v", progress, response, err)
+	}
+}
+
+func TestProgressiveSearcherKeepsEmptyDeadlineAsCoverageOnly(t *testing.T) {
+	partial := searchindex.SearchResultSet{
+		Incomplete: true, TotalShards: 8,
+	}
+	index := &fakeProgressiveIndex{
+		fakeIndex: &fakeIndex{}, result: partial, err: context.DeadlineExceeded,
+	}
+	response, err := NewProgressiveSearcherWithRanking(index, nil, nil).Search(
+		t.Context(), searchcore.Request{Query: "Sample", Terms: []string{"Sample"}, Limit: 10},
+	)
+	if err != nil || len(response.Results) != 0 || len(response.PartialFailures) != 0 ||
+		response.Coverage == nil || response.Coverage.Complete || response.Coverage.TotalShards != 8 {
+		t.Fatalf("response=%+v err=%v", response, err)
+	}
+}
+
+func TestProgressiveSearcherKeepsActualShardFailureVisibleWithSampledResults(t *testing.T) {
+	shardFailure := errors.New("shard read failed")
+	partial := searchindex.SearchResultSet{
+		Total: 1,
+		Results: []searchindex.SearchResult{{
+			DocumentID: "sample", Title: "Sampled result", URL: "https://example.test/sample",
+		}},
+		Incomplete: true, CompletedShards: 5, SampledShards: 3, TotalShards: 8,
+	}
+	index := &fakeProgressiveIndex{
+		fakeIndex: &fakeIndex{}, result: partial, err: shardFailure,
+	}
+	response, err := NewProgressiveSearcherWithRanking(index, nil, nil).Search(
+		t.Context(), searchcore.Request{Query: "Sample", Terms: []string{"Sample"}, Limit: 10},
+	)
+	if err != nil || len(response.Results) != 1 || len(response.PartialFailures) != 1 ||
+		response.PartialFailures[0].Source != searchcore.PartialFailureSourceLocalSearch ||
+		response.PartialFailures[0].Diagnostic.Cause != searchcore.FailureCauseBackend {
+		t.Fatalf("response=%+v err=%v", response, err)
+	}
+}
+
+func TestProgressiveSearcherRejectsIndexesWithoutProgressiveSupport(t *testing.T) {
+	_, err := NewProgressiveSearcherWithRanking(&fakeIndex{}, nil, nil).Search(
+		t.Context(), searchcore.Request{Query: "sample", Limit: 1},
+	)
+	if err == nil || err.Error() != "progressive search unavailable" {
+		t.Fatalf("unsupported progressive search error=%v", err)
+	}
+}
+
+func TestProgressiveSearcherSkipsUnrenderableProgressUpdate(t *testing.T) {
+	partial := searchindex.SearchResultSet{Results: []searchindex.SearchResult{{
+		DocumentID: "partial", URL: "https://example.test/",
+	}}}
+	index := &fakeProgressiveIndex{
+		fakeIndex: &fakeIndex{},
+		progress:  searchindex.SearchProgress{Results: partial},
+		result:    partial,
+	}
+	ctx := searchcore.WithSearchProgressObserver(t.Context(), func(searchcore.SearchProgress) {
+		t.Error("invalid progress response was reported")
+	})
+	_, err := NewProgressiveSearcherWithRanking(index, nil, nil).Search(ctx, searchcore.Request{
+		Query: "sample", Limit: 1, URLMaskFilter: "[",
+	})
+	if err == nil {
+		t.Fatal("invalid result filter was accepted")
+	}
+}
+
+func TestOrdinarySearcherReturnsIndexErrorsWithoutResults(t *testing.T) {
+	sentinel := errors.New("index unavailable")
+	_, err := NewSearcher(&fakeIndex{err: sentinel}).Search(
+		t.Context(), searchcore.Request{Query: "sample", Limit: 1},
+	)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("index error=%v", err)
+	}
+}
+
+func TestProgressiveSearchFailureCauseHandlesMissingError(t *testing.T) {
+	if got := progressiveSearchFailureCause(nil); got != searchcore.FailureCauseUnknown {
+		t.Fatalf("nil error cause=%q", got)
+	}
+}
+
+func TestProgressiveSearcherCapsProgressCountToPublicResultHorizon(t *testing.T) {
+	partial := searchindex.SearchResultSet{
+		Total: 4_000,
+		Results: []searchindex.SearchResult{{
+			DocumentID: "result", Title: "Sample result", URL: "https://example.test/page",
+		}},
+		Incomplete: true, CompletedShards: 1, TotalShards: 8,
+	}
+	index := &fakeProgressiveIndex{
+		fakeIndex: &fakeIndex{},
+		progress: searchindex.SearchProgress{
+			Results: partial, CompletedShards: 1, TotalShards: 8,
+		},
+		result: partial,
+		err:    context.DeadlineExceeded,
+	}
+	var progress searchcore.SearchProgress
+	ctx := searchcore.WithSearchProgressObserver(
+		t.Context(),
+		func(update searchcore.SearchProgress) {
+			progress = update
+		},
+	)
+	_, err := NewProgressiveSearcherWithRanking(index, nil, nil).Search(
+		ctx,
+		searchcore.Request{
+			Query: "Sample", Terms: []string{"Sample"}, Limit: 10,
+		},
+	)
+	if err != nil || progress.Response.TotalResults != searchcore.MaximumPublicResultHorizon ||
+		progress.Response.Coverage == nil || progress.Response.Coverage.CompletedShards != 1 {
+		t.Fatalf("progress=%+v err=%v", progress, err)
+	}
 }
 
 func translatedSearchIndex(published time.Time) *fakeIndex {

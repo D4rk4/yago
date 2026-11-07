@@ -65,6 +65,13 @@ func (f *Frontier) fillReadyLocked(
 	excluded map[uuid.UUID]struct{},
 	accept func(crawljob.CrawlJob) bool,
 ) {
+	firstPassPending := f.hasFirstPassWorkLocked()
+	selectable := func(job crawljob.CrawlJob) bool {
+		if firstPassPending && job.RetryAttempt > 0 {
+			return false
+		}
+		return accept == nil || accept(job)
+	}
 	buckets := f.pendingReadyBucketsLocked(excluded)
 	f.sortReadyBucketsLocked(buckets)
 	for ready := 0; ready < len(buckets); ready++ {
@@ -72,7 +79,7 @@ func (f *Frontier) fillReadyLocked(
 			if len(f.state.ready) >= f.maxReady {
 				return
 			}
-			f.promotePendingRunLocked(buckets[ready][index], ready, buckets, accept)
+			f.promotePendingRunLocked(buckets[ready][index], ready, buckets, selectable)
 		}
 	}
 }
@@ -167,6 +174,8 @@ func pendingCandidate(run *crawlRun, host string, pending pendingPage) frontierC
 		indexAllowed:     pending.indexAllowed,
 		observationID:    pending.observationID,
 		observedAt:       pending.observedAt,
+		retryAttempt:     pending.retryAttempt,
+		retryAfter:       pending.retryAfter,
 	}
 }
 
@@ -272,6 +281,9 @@ func (f *Frontier) cancelQueuedLocked(provenance string) []runFinish {
 		if string(job.Provenance) == provenance {
 			if run := f.state.runs[job.RunID]; run != nil {
 				run.releaseBoundedResidentPage(job.URL)
+				if job.RetryAttempt == 0 {
+					run.removeFirstPassPending(1)
+				}
 			}
 			settled[job.RunID]++
 
@@ -332,6 +344,8 @@ func candidateJob(
 		ConditionalFetch:         candidate.conditionalFetch,
 		ObservationID:            candidate.observationID,
 		ObservedAt:               candidate.observedAt,
+		RetryAttempt:             candidate.retryAttempt,
+		RetryAfter:               candidate.retryAfter,
 		CrawlDelay:               profile.Profile.CrawlDelay,
 		IgnoreTLSAuthority:       profile.Profile.IgnoreTLSAuthority,
 		IgnoreRobots:             profile.Profile.IgnoreRobots,
@@ -354,5 +368,7 @@ func candidateFromJob(job crawljob.CrawlJob) frontierCandidate {
 		indexAllowed:     job.Index,
 		observationID:    job.ObservationID,
 		observedAt:       job.ObservedAt,
+		retryAttempt:     job.RetryAttempt,
+		retryAfter:       job.RetryAfter,
 	}
 }

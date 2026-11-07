@@ -65,7 +65,7 @@ func assembleCrawlerExecution(start crawlerExecutionStart) (crawlerExecution, er
 		Session:         fetchStartSession,
 		PagesPerSecond:  fetchBudget.PagesPerSecond,
 		PermitCapacity:  workerConcurrency.Current,
-		UpstreamDemand:  func() int { return fetchBudget.Waiting() + 1 },
+		UpstreamDemand:  fetchBudget.UpstreamDemand,
 	})
 	activeRuns := crawlorder.NewActiveRunAdmission(crawl.MaxActiveRuns)
 	execution := crawlerExecution{
@@ -117,6 +117,7 @@ func assembleCrawlerOrderReceiver(
 		start.config.WorkerID,
 		control,
 		crawlorder.WithHeartbeatActiveFetches(start.metrics.ActiveFetchWorkerJobs),
+		crawlorder.WithHeartbeatFetchAdmissionWaiters(start.metrics.FetchAdmissionWaiters),
 		crawlorder.WithHeartbeatStoragePressure(
 			start.growthAdmission.Snapshot,
 			start.growthAdmission.SetPolicy,
