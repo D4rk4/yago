@@ -263,6 +263,9 @@ vendors:
       - github.com/blevesearch/bleve/v2
       - github.com/blevesearch/bleve/v2/**
       - github.com/blevesearch/bleve_index_api
+      - github.com/blevesearch/scorch_segment_api/v2
+  roaring:
+    in: github.com/RoaringBitmap/roaring/v2
   vellum:
     in: github.com/blevesearch/vellum
   snowballstem:
@@ -660,6 +663,7 @@ deps:
       - filetypeclass
     canUse:
       - bleve
+      - roaring
       - xxhash
       - whatlanggo
       - vellum

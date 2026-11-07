@@ -104,3 +104,5 @@ version from `PATH`.
 | [0083](0083-shuffle-tests-and-smoke-fuzz-targets.md) | Shuffle tests and smoke fuzz targets | Accepted |
 | [0084](0084-supplement-incomplete-primary-search-with-bounded-web-results.md) | Supplement incomplete primary search with bounded web results | Accepted |
 | [0085](0085-defer-inbound-anchor-target-refresh-and-commit-shards-concurrently.md) | Defer inbound-anchor target refresh and commit shards concurrently | Accepted |
+| [0086](0086-use-roaring-bitmaps-for-shared-live-term-postings.md) | Use roaring bitmaps for shared live term postings | Accepted |
+| [0087](0087-read-shared-term-postings-through-the-segment-api.md) | Read shared term postings through the segment API | Accepted |

@@ -99,6 +99,7 @@ func newBleveSearchDeadlineReader(
 	ctx context.Context,
 	reader bleveindex.IndexReader,
 ) bleveindex.IndexReader {
+	reader = withBleveSearchSnapshot(reader)
 	bounded := bleveSearchDeadlineReader{IndexReader: reader, ctx: ctx}
 	fuzzy, fuzzyAvailable := reader.(bleveindex.IndexReaderFuzzy)
 	bm25, bm25Available := reader.(bleveindex.BM25Reader)

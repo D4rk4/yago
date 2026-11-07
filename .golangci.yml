@@ -66,6 +66,10 @@ linters:
         source: ^func [(]probe [*]bleveSearchDeadlineIndexReaderProbe[)] TermFieldReader[(]$
         linters:
           - revive
+      - path: yagonode/internal/searchindex/bleve_search_snapshot.go
+        source: ^func [(]snapshot [*]bleveSearchSnapshot[)] TermFieldReader[(]$
+        linters:
+          - revive
 
 formatters:
   enable:
