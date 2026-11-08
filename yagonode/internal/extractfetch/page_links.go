@@ -26,13 +26,16 @@ func (f *Fetcher) FetchPage(ctx context.Context, rawURL string) (Page, error) {
 	if err != nil {
 		return Page{}, err
 	}
-	content := extract(doc)
+	if doc.html == nil {
+		return Page{Text: doc.plainText}, nil
+	}
+	content := extract(doc.html)
 
 	return Page{
 		Title:  content.Title,
 		Text:   content.Text,
-		Links:  collectLinks(doc, rawURL),
-		Images: collectImages(doc, rawURL),
+		Links:  collectLinks(doc.html, rawURL),
+		Images: collectImages(doc.html, rawURL),
 	}, nil
 }
 

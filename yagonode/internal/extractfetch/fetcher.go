@@ -50,15 +50,23 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (Content, error) {
 	if err != nil {
 		return Content{}, err
 	}
+	if doc.html == nil {
+		return Content{Text: doc.plainText}, nil
+	}
 
-	content := extract(doc)
-	content.Images = collectImages(doc, rawURL)
+	content := extract(doc.html)
+	content.Images = collectImages(doc.html, rawURL)
 
 	return content, nil
 }
 
+type fetchedDocument struct {
+	html      *html.Node
+	plainText string
+}
+
 // fetchDocument retrieves and parses the URL under the fetcher's bounds.
-func (f *Fetcher) fetchDocument(ctx context.Context, rawURL string) (*html.Node, error) {
+func (f *Fetcher) fetchDocument(ctx context.Context, rawURL string) (fetchedDocument, error) {
 	if f.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, f.timeout)
@@ -66,39 +74,51 @@ func (f *Fetcher) fetchDocument(ctx context.Context, rawURL string) (*html.Node,
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build extract request: %w", err)
+		return fetchedDocument{}, fmt.Errorf("build extract request: %w", err)
 	}
 	req.Header.Set("User-Agent", fetchUserAgent)
 
 	resp, err := f.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch %s: %w", rawURL, err)
+		return fetchedDocument{}, fmt.Errorf("fetch %s: %w", rawURL, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch %s: status %d", rawURL, resp.StatusCode)
+		return fetchedDocument{}, fmt.Errorf("fetch %s: status %d", rawURL, resp.StatusCode)
 	}
-	if !isHTML(resp.Header.Get("Content-Type")) {
-		return nil, fmt.Errorf("fetch %s: unsupported content type", rawURL)
+	contentType := resp.Header.Get("Content-Type")
+	limited := &io.LimitedReader{R: resp.Body, N: f.maxBytes + 1}
+	if isPlainText(contentType) {
+		return f.readPlainText(limited, rawURL)
+	}
+	if !isHTML(contentType) {
+		return fetchedDocument{}, fmt.Errorf("fetch %s: unsupported content type", rawURL)
 	}
 
-	limited := &io.LimitedReader{R: resp.Body, N: f.maxBytes + 1}
 	doc, err := html.Parse(limited)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", rawURL, err)
+		return fetchedDocument{}, fmt.Errorf("parse %s: %w", rawURL, err)
 	}
 	if limited.N == 0 {
-		return nil, fmt.Errorf("fetch %s: response exceeds %d bytes", rawURL, f.maxBytes)
+		return fetchedDocument{}, f.responseTooLarge(rawURL)
 	}
 
-	return doc, nil
+	return fetchedDocument{html: doc}, nil
+}
+
+func (f *Fetcher) responseTooLarge(rawURL string) error {
+	return fmt.Errorf("fetch %s: response exceeds %d bytes", rawURL, f.maxBytes)
 }
 
 func isHTML(contentType string) bool {
 	if contentType == "" {
 		return true
 	}
-	media := strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
+	media := mediaType(contentType)
 
 	return media == "text/html" || media == "application/xhtml+xml"
+}
+
+func mediaType(contentType string) string {
+	return strings.ToLower(strings.TrimSpace(strings.SplitN(contentType, ";", 2)[0]))
 }
