@@ -390,9 +390,9 @@ func hasIndexableText(text string) bool {
 	return false
 }
 
-// pdfInfoTitle reads the document-info /Title string when present — a
+// pdfFirstTitleEntry reads the first /Title string in body — a
 // parenthesized literal or a <hex> string (how UTF-16 titles are written).
-func pdfInfoTitle(body []byte) string {
+func pdfFirstTitleEntry(body []byte) string {
 	index := bytes.Index(body, []byte("/Title"))
 	if index < 0 {
 		return ""
