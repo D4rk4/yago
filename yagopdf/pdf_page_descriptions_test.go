@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 import (
 	"bytes"
@@ -40,7 +40,7 @@ func TestPDFPageDescriptionSkipsBinaryObjectsAndKeepsToUnicode(t *testing.T) {
 	if len(streams) != 1 {
 		t.Fatalf("selected page streams = %d, want 1", len(streams))
 	}
-	page, parsed := parsePDF("https://a.example/slides.pdf", "application/pdf", pdf.Bytes())
+	page, parsed := ReadPDF(pdf.Bytes())
 	if !parsed || !strings.Contains(page.Text, "firmly useful page text") {
 		t.Fatalf("structured pdf = %v %q", parsed, page.Text)
 	}
@@ -65,7 +65,7 @@ func TestPDFPageDescriptionResolvesArraysAndForms(t *testing.T) {
 		`BT (object container payload) Tj ET`)
 	pdf.WriteString("%%EOF")
 
-	page, parsed := parsePDF("https://a.example/sections.pdf", "application/pdf", pdf.Bytes())
+	page, parsed := ReadPDF(pdf.Bytes())
 	if !parsed {
 		t.Fatal("page with indirect content array must parse")
 	}
@@ -97,7 +97,7 @@ func TestPDFPageDescriptionFollowsReachableNestedForms(t *testing.T) {
 	pdf.WriteString("11 0 obj\n<< /XObject 12 0 R >>\nendobj\n")
 	pdf.WriteString("12 0 obj\n<< /Outer 3 0 R /Image 6 0 R >>\nendobj\n%%EOF")
 
-	page, parsed := parsePDF("https://a.example/forms.pdf", "application/pdf", pdf.Bytes())
+	page, parsed := ReadPDF(pdf.Bytes())
 	if !parsed {
 		t.Fatal("page with nested forms did not parse")
 	}
@@ -128,7 +128,7 @@ func TestPDFUnreferencedFormsCannotStarvePageContent(t *testing.T) {
 	writePDFStreamObject(t, &pdf, 2, "", `BT (late page content survives) Tj ET`)
 	pdf.WriteString("%%EOF")
 
-	page, parsed := parsePDF("https://a.example/form-cap.pdf", "application/pdf", pdf.Bytes())
+	page, parsed := ReadPDF(pdf.Bytes())
 	if !parsed || !strings.Contains(page.Text, "late page content survives") {
 		t.Fatalf("cap-starved page = %t/%q", parsed, page.Text)
 	}
@@ -363,7 +363,7 @@ func TestPDFFallbackDescriptionSkipsReferencedFontPrograms(t *testing.T) {
 	writePDFStreamObject(t, &pdf, 4, "", `BT (fallback page text) Tj ET`)
 	pdf.WriteString("%%EOF")
 
-	page, parsed := parsePDF("https://a.example/fallback.pdf", "application/pdf", pdf.Bytes())
+	page, parsed := ReadPDF(pdf.Bytes())
 	if !parsed || !strings.Contains(page.Text, "fallback page text") {
 		t.Fatalf("fallback pdf = %v %q", parsed, page.Text)
 	}

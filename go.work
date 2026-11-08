@@ -6,5 +6,6 @@ use (
 	./yagoegress
 	./yagomodel
 	./yagonode
+	./yagopdf
 	./yagoproto
 )

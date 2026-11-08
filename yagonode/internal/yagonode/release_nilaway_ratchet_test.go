@@ -134,7 +134,7 @@ func validateReleaseNilAwayLocations(locations []string) error {
 		return fmt.Errorf("NilAway baseline is not sorted")
 	}
 	exactLocation := regexp.MustCompile(
-		`^(?:yagonode|yago-crawler)/.+\.go:[1-9][0-9]*:[1-9][0-9]*$`,
+		`^(?:yagonode|yago-crawler|yagopdf)/.+\.go:[1-9][0-9]*:[1-9][0-9]*$`,
 	)
 	for index, location := range locations {
 		if !exactLocation.MatchString(location) {

@@ -74,7 +74,7 @@ func binarySamples() map[string]familySample {
 		"pdf": {
 			url: "https://a.example/doc.pdf", mime: "application/pdf",
 			body: func(t *testing.T) []byte {
-				return buildLegacyPDF(t, "BT (Legacy pdf body sentence) Tj ET")
+				return pdfWithText(t, "", "BT (Legacy pdf body sentence) Tj ET")
 			},
 			wantText: "Legacy pdf body sentence",
 		},

@@ -246,6 +246,10 @@ vendors:
     in:
       - github.com/D4rk4/yago/yagoegress
       - github.com/D4rk4/yago/yagoegress/**
+  yagopdf:
+    in:
+      - github.com/D4rk4/yago/yagopdf
+      - github.com/D4rk4/yago/yagopdf/**
   bbolt:
     in: go.etcd.io/bbolt
   raymond:
@@ -832,6 +836,7 @@ deps:
       - extractfetch
     canUse:
       - xnet
+      - yagopdf
   nodestatus:
     mayDependOn:
       - nodestatus

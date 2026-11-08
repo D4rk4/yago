@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 import (
 	"bytes"

@@ -6,6 +6,7 @@ require (
 	github.com/D4rk4/yago/yagocrawlcontract v0.0.0
 	github.com/D4rk4/yago/yagoegress v0.0.0
 	github.com/D4rk4/yago/yagomodel v0.0.0
+	github.com/D4rk4/yago/yagopdf v0.0.0
 	github.com/D4rk4/yago/yagoproto v0.0.0
 	github.com/FastFilter/xorfilter v0.5.1
 	github.com/RoaringBitmap/roaring/v2 v2.14.5
@@ -65,5 +66,7 @@ replace github.com/D4rk4/yago/yagocrawlcontract => ../yagocrawlcontract
 replace github.com/D4rk4/yago/yagoegress => ../yagoegress
 
 replace github.com/D4rk4/yago/yagomodel => ../yagomodel
+
+replace github.com/D4rk4/yago/yagopdf => ../yagopdf
 
 replace github.com/D4rk4/yago/yagoproto => ../yagoproto

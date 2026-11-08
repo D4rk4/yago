@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 import (
 	"bytes"
@@ -60,8 +60,7 @@ endcmap
 `
 
 func TestParsePDFAppliesToUnicode(t *testing.T) {
-	page, parsed := parsePDF("https://a.example/1706.03762", "application/pdf",
-		subsetFontPDF(t, subsetCMap))
+	page, parsed := ReadPDF(subsetFontPDF(t, subsetCMap))
 	if !parsed || !strings.Contains(page.Text, "firmly established") {
 		t.Fatalf("subset font text = %v %q", parsed, page.Text)
 	}

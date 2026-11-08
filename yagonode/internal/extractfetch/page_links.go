@@ -27,7 +27,7 @@ func (f *Fetcher) FetchPage(ctx context.Context, rawURL string) (Page, error) {
 		return Page{}, err
 	}
 	if doc.html == nil {
-		return Page{Text: doc.plainText}, nil
+		return Page{Title: doc.title, Text: doc.plainText}, nil
 	}
 	content := extract(doc.html)
 

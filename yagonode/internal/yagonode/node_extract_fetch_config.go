@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/extractfetch"
 )
 
 const (
@@ -11,8 +13,8 @@ const (
 	envExtractFetchTimeout  = "YAGO_EXTRACT_FETCH_TIMEOUT"
 	envExtractFetchMaxBytes = "YAGO_EXTRACT_FETCH_MAX_BYTES"
 
-	defaultExtractFetchTimeout        = 10 * time.Second
-	defaultExtractFetchMaxBytes int64 = 2 << 20
+	defaultExtractFetchTimeout  = 10 * time.Second
+	defaultExtractFetchMaxBytes = extractfetch.MaximumResponseBytes
 )
 
 // extractFetchConfig holds the optional fetch-on-extract settings for the

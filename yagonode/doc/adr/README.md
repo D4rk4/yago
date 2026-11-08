@@ -106,3 +106,4 @@ version from `PATH`.
 | [0085](0085-defer-inbound-anchor-target-refresh-and-commit-shards-concurrently.md) | Defer inbound-anchor target refresh and commit shards concurrently | Accepted |
 | [0086](0086-use-roaring-bitmaps-for-shared-live-term-postings.md) | Use roaring bitmaps for shared live term postings | Accepted |
 | [0087](0087-read-shared-term-postings-through-the-segment-api.md) | Read shared term postings through the segment API | Accepted |
+| [0088](0088-share-pdf-text-reading-between-node-and-crawler.md) | Share PDF text reading between node and crawler | Accepted |

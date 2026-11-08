@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 import (
 	"bytes"
@@ -8,8 +8,6 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
-
-	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 func pdfWithText(t *testing.T, title, content string) []byte {
@@ -34,49 +32,40 @@ func pdfWithText(t *testing.T, title, content string) []byte {
 	return pdf.Bytes()
 }
 
-func TestParsePDFExtractsShownText(t *testing.T) {
+func TestReadPDFExtractsShownText(t *testing.T) {
 	content := `BT /F1 12 Tf 72 700 Td (Hello searchable world) Tj T* ` +
 		`[(Second) -250 (segment \(nested\) here)] TJ ET junk (outside block)`
-	body := pdfWithText(t, "Doc title", content)
-	page, parsed := Parse(
-		"https://a.example/report.pdf", "application/pdf", body,
-		yagocrawlcontract.DefaultFormatToggles(),
-	)
-	if !parsed || page.Title != "Doc title" {
-		t.Fatalf("pdf parse = %v %+v", parsed, page)
+	document, parsed := ReadPDF(pdfWithText(t, "Doc title", content))
+	if !parsed || document.Title != "Doc title" {
+		t.Fatalf("pdf read = %v %+v", parsed, document)
 	}
 	for _, want := range []string{
 		"Hello searchable world", "Second", "segment (nested) here",
 	} {
-		if !strings.Contains(page.Text, want) {
-			t.Fatalf("pdf missing %q in %q", want, page.Text)
+		if !strings.Contains(document.Text, want) {
+			t.Fatalf("pdf missing %q in %q", want, document.Text)
 		}
 	}
-	if strings.Contains(page.Text, "outside block") {
+	if strings.Contains(document.Text, "outside block") {
 		t.Fatal("literals outside BT..ET must not index")
 	}
 }
 
-func TestParsePDFRejectsGarbageAndMissingText(t *testing.T) {
-	toggles := yagocrawlcontract.DefaultFormatToggles()
-	if _, parsed := Parse(
-		"https://a.example/fake.pdf", "application/pdf", []byte("not a pdf"), toggles,
-	); parsed {
+func TestReadPDFRejectsGarbageAndMissingText(t *testing.T) {
+	if _, parsed := ReadPDF([]byte("not a pdf")); parsed {
 		t.Fatal("non-pdf body must stay unparsed")
+	}
+	if _, parsed := ReadPDF([]byte("%!PS\n(PostScript literal text) show\n")); parsed {
+		t.Fatal("postscript body must not read as pdf")
 	}
 	// CID-like garbage: a text block whose literals hold no letters.
 	body := pdfWithText(t, "", `BT [(\001\002\003) (\004\005)] TJ ET`)
-	if _, parsed := Parse("https://a.example/cid.pdf", "application/pdf", body, toggles); parsed {
+	if _, parsed := ReadPDF(body); parsed {
 		t.Fatal("letterless pdf text must stay unparsed")
 	}
 	// A PDF whose stream is not flate-compressed yields nothing.
 	raw := []byte("%PDF-1.4\nstream\nBT (Plain) Tj ET\nendstream\n%%EOF")
-	if _, parsed := Parse(
-		"https://a.example/rawstream.pdf",
-		"application/pdf",
-		raw,
-		toggles,
-	); parsed {
+	if _, parsed := ReadPDF(raw); parsed {
 		t.Fatal("non-flate stream must yield no text")
 	}
 	// A stream without a terminator ends the walk.
@@ -97,11 +86,10 @@ func TestParsePDFRejectsGarbageAndMissingText(t *testing.T) {
 	if got := pdfInfoTitle([]byte("%PDF-1.4\n")); got != "" {
 		t.Fatalf("infoless pdf title = %q", got)
 	}
-	// A title falls back to the first text line when Info is absent.
-	body = pdfWithText(t, "", "BT (Fallback title line) Tj ET")
-	page, parsed := Parse("https://a.example/untitled.pdf", "application/pdf", body, toggles)
-	if !parsed || page.Title != "Fallback title line" {
-		t.Fatalf("fallback title = %v %+v", parsed, page)
+	// A PDF without an Info title reports an empty title.
+	document, parsed := ReadPDF(pdfWithText(t, "", "BT (Untitled body line) Tj ET"))
+	if !parsed || document.Title != "" || document.Text != "Untitled body line" {
+		t.Fatalf("untitled pdf = %v %+v", parsed, document)
 	}
 	// An unterminated BT block ends the content walk.
 	out := newPDFTextCollector(pdfMaxTextBytes)
@@ -111,33 +99,20 @@ func TestParsePDFRejectsGarbageAndMissingText(t *testing.T) {
 	}
 }
 
-func TestParsePostScript(t *testing.T) {
-	toggles := yagocrawlcontract.DefaultFormatToggles()
+func TestReadPostScript(t *testing.T) {
 	ps := "%!PS-Adobe-3.0\n/Helvetica findfont 12 scalefont setfont\n" +
 		"72 700 moveto (PostScript shown text) show\n(Another line) show\nshowpage\n"
-	page, parsed := Parse("https://a.example/doc.ps", "application/postscript", []byte(ps), toggles)
-	if !parsed || !strings.Contains(page.Text, "PostScript shown text") ||
-		!strings.Contains(page.Text, "Another line") {
-		t.Fatalf("ps parse = %v %+v", parsed, page)
+	document, parsed := ReadPostScript([]byte(ps))
+	if !parsed || document.Title != "" ||
+		!strings.Contains(document.Text, "PostScript shown text") ||
+		!strings.Contains(document.Text, "Another line") {
+		t.Fatalf("ps read = %v %+v", parsed, document)
 	}
-
-	if _, parsed := Parse(
-		"https://a.example/fake.ps", "application/postscript", []byte("binary"), toggles,
-	); parsed {
+	if _, parsed := ReadPostScript([]byte("binary")); parsed {
 		t.Fatal("non-ps body must stay unparsed")
 	}
-	if _, parsed := Parse(
-		"https://a.example/empty.ps", "application/postscript", []byte("%!PS\nshowpage\n"), toggles,
-	); parsed {
+	if _, parsed := ReadPostScript([]byte("%!PS\nshowpage\n")); parsed {
 		t.Fatal("textless ps must stay unparsed")
-	}
-
-	// A PDF-extension body carrying PostScript routes to the PS extractor.
-	if page, parsed := parsePDF(
-		"https://a.example/mislabeled.pdf", "",
-		[]byte("%!PS\n(Routed as postscript literal text) show\n"),
-	); !parsed || !strings.Contains(page.Text, "Routed as postscript") {
-		t.Fatalf("ps routing = %v %+v", parsed, page)
 	}
 }
 
@@ -182,10 +157,7 @@ func TestPDFBoundsAndNesting(t *testing.T) {
 	// Text-cap break: a stream expanding beyond the text cap stops the walk.
 	big := "BT (" + strings.Repeat("aaaa bbbb ", pdfMaxTextBytes/9) + ") Tj ET"
 	body := pdfWithText(t, "", big)
-	if _, parsed := Parse(
-		"https://a.example/huge.pdf", "application/pdf", body,
-		yagocrawlcontract.DefaultFormatToggles(),
-	); !parsed {
+	if _, parsed := ReadPDF(body); !parsed {
 		t.Fatal("huge pdf must still parse")
 	}
 
@@ -247,8 +219,7 @@ func buildLegacyPDF(t *testing.T, content string) []byte {
 // too, while an image-only filter chain stays unparsed.
 func TestParsePDFDecodesLegacyFilterChains(t *testing.T) {
 	content := "BT (Navy Public Service Award announcement) Tj ET"
-	page, parsed := parsePDF("http://a.example/legacy.pdf", "application/pdf",
-		buildLegacyPDF(t, content))
+	page, parsed := ReadPDF(buildLegacyPDF(t, content))
 	if !parsed || !strings.Contains(page.Text, "Navy Public Service Award") {
 		t.Fatalf("legacy pdf: parsed=%v text=%q", parsed, page.Text)
 	}
@@ -258,7 +229,7 @@ func TestParsePDFDecodesLegacyFilterChains(t *testing.T) {
 	hexPDF.WriteString("%PDF-1.2\n<< /Filter /ASCIIHexDecode >>\nstream\n")
 	hexPDF.WriteString(hexContent + ">")
 	hexPDF.WriteString("\nendstream\n%%EOF")
-	hexPage, hexParsed := parsePDF("http://a.example/hex.pdf", "application/pdf", hexPDF.Bytes())
+	hexPage, hexParsed := ReadPDF(hexPDF.Bytes())
 	if !hexParsed || !strings.Contains(hexPage.Text, "hex encoded body") {
 		t.Fatalf("hex pdf: parsed=%v text=%q", hexParsed, hexPage.Text)
 	}
@@ -267,9 +238,7 @@ func TestParsePDFDecodesLegacyFilterChains(t *testing.T) {
 	imagePDF.WriteString("%PDF-1.4\n<< /Filter /DCTDecode >>\nstream\n")
 	imagePDF.WriteString("\xff\xd8\xff jpeg bytes")
 	imagePDF.WriteString("\nendstream\n%%EOF")
-	if _, imageParsed := parsePDF(
-		"http://a.example/scan.pdf", "application/pdf", imagePDF.Bytes(),
-	); imageParsed {
+	if _, imageParsed := ReadPDF(imagePDF.Bytes()); imageParsed {
 		t.Fatal("image-only pdf must stay unparsed")
 	}
 }
@@ -350,8 +319,7 @@ func TestParsePDFReadsTeXOutput(t *testing.T) {
 		`-375(\015ux)-375(trapping)]TJ ET` + "\n" +
 		`BT [<41725869763A32343132> -400 <2E3037373932>]TJ ET` + "\n" +
 		`BT /Span << /ActualText (hidden) >> BDC [(shown)]TJ EMC ET`
-	page, parsed := parsePDF("https://a.example/2412.07792", "application/pdf",
-		pdfTeXStyle(t, content))
+	page, parsed := ReadPDF(pdfTeXStyle(t, content))
 	if !parsed {
 		t.Fatal("tex-style pdf must parse")
 	}

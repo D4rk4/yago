@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 import (
 	"bytes"
@@ -183,11 +183,7 @@ func TestPDFCMapQuotaBoundsRangeExpansion(t *testing.T) {
 
 func TestPDFTextLimitHoldsThroughParse(t *testing.T) {
 	content := "BT (" + strings.Repeat("Aé", pdfMaxTextBytes/2) + ") Tj ET"
-	page, parsed := parsePDF(
-		"https://example.test/bounded.pdf",
-		"application/pdf",
-		pdfWithText(t, "", content),
-	)
+	page, parsed := ReadPDF(pdfWithText(t, "", content))
 	if !parsed {
 		t.Fatal("bounded PDF did not parse")
 	}

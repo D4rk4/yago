@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 func pdfTextTablesWithQuota(body []byte, quota *pdfDecodeQuota) map[string]*pdfCMap {
 	if len(body) > pdfMaxObjScanBytes {

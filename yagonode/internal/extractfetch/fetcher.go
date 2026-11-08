@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	defaultMaxBytes      int64 = 2 << 20
 	MaximumResponseBytes int64 = 4 << 20
 	fetchUserAgent             = "Mozilla/5.0 (compatible; yago-extract/1.0; " +
 		"+https://github.com/D4rk4/yago)"
@@ -36,7 +35,7 @@ type Fetcher struct {
 
 func New(client *http.Client, timeout time.Duration, maxBytes int64) *Fetcher {
 	if maxBytes <= 0 {
-		maxBytes = defaultMaxBytes
+		maxBytes = MaximumResponseBytes
 	}
 	if maxBytes > MaximumResponseBytes {
 		panic(fmt.Sprintf("extract response limit exceeds %d bytes", MaximumResponseBytes))
@@ -51,7 +50,7 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (Content, error) {
 		return Content{}, err
 	}
 	if doc.html == nil {
-		return Content{Text: doc.plainText}, nil
+		return Content{Title: doc.title, Text: doc.plainText}, nil
 	}
 
 	content := extract(doc.html)
@@ -62,6 +61,7 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (Content, error) {
 
 type fetchedDocument struct {
 	html      *html.Node
+	title     string
 	plainText string
 }
 
@@ -90,6 +90,9 @@ func (f *Fetcher) fetchDocument(ctx context.Context, rawURL string) (fetchedDocu
 	limited := &io.LimitedReader{R: resp.Body, N: f.maxBytes + 1}
 	if isPlainText(contentType) {
 		return f.readPlainText(limited, rawURL)
+	}
+	if isPDF(contentType) {
+		return f.readPDF(limited, rawURL)
 	}
 	if !isHTML(contentType) {
 		return fetchedDocument{}, fmt.Errorf("fetch %s: unsupported content type", rawURL)

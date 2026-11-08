@@ -85,8 +85,14 @@ func TestFetcherRejectsResponseSizePlusOne(t *testing.T) {
 }
 
 func TestFetcherRejectsConfiguredResponseSizeAboveCeiling(t *testing.T) {
+	if got := New(nil, 0, 0).maxBytes; got != MaximumResponseBytes {
+		t.Fatalf("unset limit = %d", got)
+	}
 	if got := New(nil, 0, MaximumResponseBytes).maxBytes; got != MaximumResponseBytes {
 		t.Fatalf("exact maximum = %d", got)
+	}
+	if got := New(nil, 0, 1).maxBytes; got != 1 {
+		t.Fatalf("configured limit = %d", got)
 	}
 	rejected := false
 	func() {

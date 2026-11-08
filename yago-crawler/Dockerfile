@@ -15,6 +15,7 @@ COPY yagonode/go.mod yagonode/go.sum yagonode/
 COPY yagocrawlcontract/go.mod yagocrawlcontract/
 COPY yago-crawler/go.mod yago-crawler/
 COPY yagoegress/go.mod yagoegress/
+COPY yagopdf/go.mod yagopdf/
 COPY yagomodel/go.mod yagomodel/
 COPY yagoproto/go.mod yagoproto/
 COPY deploy/download-go-modules.sh deploy/

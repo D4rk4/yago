@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 import (
 	"bytes"
@@ -11,8 +11,6 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf16"
-
-	"github.com/D4rk4/yago/yago-crawler/internal/pageparse"
 )
 
 const (
@@ -22,19 +20,19 @@ const (
 	pdfMaxTextBytes            = 1 << 20
 )
 
-// parsePDF extracts a PDF's embedded text (no OCR, like YaCy): FlateDecode
+type Document struct {
+	Title string
+	Text  string
+}
+
+// ReadPDF extracts a PDF's embedded text (no OCR, like YaCy): FlateDecode
 // content streams inflate through the stdlib and their BT..ET text blocks
 // yield the string operands of the Tj/TJ/'/" show operators. Simple encodings
 // (the vast majority of crawlable PDFs) decode readably; CID-keyed fonts
-// produce no text and the document stays unparsed rather than indexing noise.
-// The document Info title indexes when present. PostScript shares the literal
-// extractor over its uncompressed source.
-func parsePDF(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
-	if urlExtension(rawURL) == "ps" || bytes.HasPrefix(body, []byte("%!PS")) {
-		return parsePostScript(rawURL, body)
-	}
+// produce no text and the document reports false rather than returning noise.
+func ReadPDF(body []byte) (Document, bool) {
 	if !bytes.HasPrefix(body, []byte("%PDF")) {
-		return pageparse.ParsedPage{URL: rawURL}, false
+		return Document{}, false
 	}
 	quota := newPDFDecodeQuota(pdfMaxDecodedDocumentBytes)
 	tables := pdfTextTablesWithQuota(body, quota)
@@ -42,14 +40,10 @@ func parsePDF(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 		pdfCollapseHorizontalWhitespace(pdfPageText(body, tables, quota, pdfMaxTextBytes)),
 	))
 	if !hasIndexableText(extracted) {
-		return pageparse.ParsedPage{URL: rawURL}, false
-	}
-	title := pdfInfoTitle(body)
-	if title == "" {
-		title = textTitle(extracted)
+		return Document{}, false
 	}
 
-	return pageparse.ParsedPage{URL: rawURL, Title: title, Text: extracted}, true
+	return Document{Title: pdfInfoTitle(body), Text: extracted}, true
 }
 
 func pdfContentStreamsWithQuota(body []byte, quota *pdfDecodeQuota) [][]byte {
@@ -420,22 +414,19 @@ func pdfInfoTitle(body []byte) string {
 	return strings.TrimSpace(title.String())
 }
 
-// parsePostScript extracts the parenthesized text literals of a PostScript
-// program — the operands of its show operators.
-func parsePostScript(rawURL string, body []byte) (pageparse.ParsedPage, bool) {
+// ReadPostScript extracts the parenthesized text literals of a PostScript
+// program — the operands of its show operators. PostScript carries no
+// document-info title.
+func ReadPostScript(body []byte) (Document, bool) {
 	if !bytes.HasPrefix(body, []byte("%!")) {
-		return pageparse.ParsedPage{URL: rawURL}, false
+		return Document{}, false
 	}
 	var out strings.Builder
 	writeShownStrings(&out, body, nil, nil)
 	extracted := strings.TrimSpace(collapseBlankRuns(out.String()))
 	if !hasIndexableText(extracted) {
-		return pageparse.ParsedPage{URL: rawURL}, false
+		return Document{}, false
 	}
 
-	return pageparse.ParsedPage{
-		URL:   rawURL,
-		Title: textTitle(extracted),
-		Text:  extracted,
-	}, true
+	return Document{Text: extracted}, true
 }

@@ -309,6 +309,7 @@ flowchart LR
 | `yagocrawlcontract` | the shared node↔crawler data model and gRPC contract |
 | `yagomodel` / `yagoproto` | the YaCy wire model and protocol helpers — reusable on their own |
 | `yagoegress` | the shared dial-time SSRF egress guard |
+| `yagopdf` | the shared PDF and PostScript text reader |
 
 Architecture decisions live in [ADRs](yagonode/doc/adr/README.md), including
 the deliberate no-gos; the full feature ledger with per-feature test pointers
@@ -327,7 +328,7 @@ commit. All build and analysis tools are pinned and installed under
 `.toolchain/` by `make tools`. `make verify` runs lint, gosec, NilAway,
 API-compatibility checks against the previous release, govulncheck,
 race-detector and shuffled tests, fuzz smoke runs, and an exact coverage check
-across all six modules. The E2E targets rebuild both images from the working
+across all seven modules. The E2E targets rebuild both images from the working
 tree, so stale local images cannot pass the gate.
 
 ## 📚 Documentation

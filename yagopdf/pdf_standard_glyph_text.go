@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 var pdfStandardGlyphText = map[string]string{
 	"AE":               "Æ",

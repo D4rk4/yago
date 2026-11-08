@@ -52,7 +52,7 @@ func TestFetchPageBoundsAndErrors(t *testing.T) {
 		t.Fatalf("links cap = %d, want %d", len(page.Links), pageMaxLinks)
 	}
 
-	if _, err := New(htmlClient("x", "application/pdf"), time.Second, 0).
+	if _, err := New(htmlClient("x", "application/zip"), time.Second, 0).
 		FetchPage(context.Background(), "https://site.example/"); err == nil {
 		t.Fatal("non-html page must fail")
 	}

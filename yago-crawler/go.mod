@@ -6,6 +6,7 @@ require (
 	github.com/D4rk4/yago/yagocrawlcontract v0.0.0
 	github.com/D4rk4/yago/yagoegress v0.0.0
 	github.com/D4rk4/yago/yagomodel v0.0.0
+	github.com/D4rk4/yago/yagopdf v0.0.0
 	github.com/RadhiFadlillah/whatlanggo v0.0.0-20240916001553-aac1f0f737fc
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c
 	github.com/google/uuid v1.6.0
@@ -60,3 +61,5 @@ replace github.com/D4rk4/yago/yagocrawlcontract => ../yagocrawlcontract
 replace github.com/D4rk4/yago/yagoegress => ../yagoegress
 
 replace github.com/D4rk4/yago/yagomodel => ../yagomodel
+
+replace github.com/D4rk4/yago/yagopdf => ../yagopdf

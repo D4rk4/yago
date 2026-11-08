@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 import (
 	"bytes"
@@ -39,7 +39,7 @@ func TestPDFSimpleFontControlGlyphsAndLayoutSpaces(t *testing.T) {
 		`BT /F#31 12 Tf (\b\t\n\f\r  Layout  phrase) Tj `+
 			`/F2 (\b\t\n\f\r) Tj /Missing 12 Tf (plausible noise) Tj ET`,
 	)
-	page, parsed := parsePDF("https://example.test/layout.pdf", "application/pdf", body)
+	page, parsed := ReadPDF(body)
 	if !parsed || !strings.Contains(page.Text, "Clean Layout phrase Clean") {
 		t.Fatalf("simple font text = %t %q", parsed, page.Text)
 	}
@@ -365,11 +365,7 @@ func TestPDFUnknownSelectedFontsFailClosed(t *testing.T) {
 			pdf.WriteString(" >> >> /Contents 2 0 R >>\nendobj\n")
 			writePDFStreamObject(t, &pdf, 2, "", "BT /F1 12 Tf (plausible raw glyph noise) Tj ET")
 			pdf.WriteString("%%EOF")
-			page, parsed := parsePDF(
-				"https://example.test/unknown-font.pdf",
-				"application/pdf",
-				pdf.Bytes(),
-			)
+			page, parsed := ReadPDF(pdf.Bytes())
 			if parsed || page.Text != "" {
 				t.Fatalf("unknown font parsed = %t %q", parsed, page.Text)
 			}

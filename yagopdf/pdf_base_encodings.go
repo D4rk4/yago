@@ -1,4 +1,4 @@
-package formatparse
+package yagopdf
 
 func pdfBaseEncodingTable(name string) map[uint32]string {
 	table := map[uint32]string{}

@@ -88,6 +88,10 @@ vendors:
     in:
       - github.com/D4rk4/yago/yagoegress
       - github.com/D4rk4/yago/yagoegress/**
+  yagopdf:
+    in:
+      - github.com/D4rk4/yago/yagopdf
+      - github.com/D4rk4/yago/yagopdf/**
   xnet-html:
     in:
       - golang.org/x/net/html
@@ -260,6 +264,7 @@ deps:
       - pageparse
     canUse:
       - yagocrawlcontract
+      - yagopdf
   stopwords:
     mayDependOn:
       - stopwords
