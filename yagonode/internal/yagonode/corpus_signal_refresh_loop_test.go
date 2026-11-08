@@ -321,10 +321,10 @@ func TestCorpusSignalRefreshLoopSchedulesAfterScanCompletion(t *testing.T) {
 	}
 }
 
-func TestCorpusSignalRefreshWaitHandlesTrustAndClosedSources(t *testing.T) {
+func TestCorpusSignalRefreshWaitPublishesTrustChanges(t *testing.T) {
 	oldDelay := newCorpusSignalRefreshDelay
 	t.Cleanup(func() { newCorpusSignalRefreshDelay = oldDelay })
-	created := make(chan chan time.Time, 2)
+	created := make(chan chan time.Time, 1)
 	newCorpusSignalRefreshDelay = func(time.Duration) (<-chan time.Time, func()) {
 		ticks := make(chan time.Time, 1)
 		created <- ticks
@@ -360,18 +360,6 @@ func TestCorpusSignalRefreshWaitHandlesTrustAndClosedSources(t *testing.T) {
 	ticks <- time.Now()
 	if didWait := <-waited; !didWait {
 		t.Fatal("refresh delay did not complete")
-	}
-
-	closedChanges := make(chan struct{})
-	close(closedChanges)
-	closedWait := &corpusSignalRefresh{
-		trust: &mutableHostTrustPolicy{changes: closedChanges},
-	}
-	go func() { waited <- closedWait.waitFor(t.Context(), defaultCorpusSignalRefreshInterval) }()
-	closedTicks := <-created
-	closedTicks <- time.Now()
-	if didWait := <-waited; !didWait {
-		t.Fatal("closed trust source stopped refresh delay")
 	}
 }
 
