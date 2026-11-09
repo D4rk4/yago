@@ -10,7 +10,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
-	"unicode/utf16"
+	"unicode"
 )
 
 const (
@@ -18,6 +18,7 @@ const (
 	pdfMaxStreamBytes          = 8 << 20
 	pdfMaxDecodedDocumentBytes = 32 << 20
 	pdfMaxTextBytes            = 1 << 20
+	pdfMaxTitleBytes           = 4 << 10
 )
 
 type Document struct {
@@ -25,19 +26,18 @@ type Document struct {
 	Text  string
 }
 
-// ReadPDF extracts a PDF's embedded text (no OCR, like YaCy): FlateDecode
-// content streams inflate through the stdlib and their BT..ET text blocks
-// yield the string operands of the Tj/TJ/'/" show operators. Simple encodings
-// (the vast majority of crawlable PDFs) decode readably; CID-keyed fonts
-// produce no text and the document reports false rather than returning noise.
 func ReadPDF(body []byte) (Document, bool) {
 	if !bytes.HasPrefix(body, []byte("%PDF")) {
 		return Document{}, false
 	}
+	body, readable := pdfDecryptedBody(body)
+	if !readable {
+		return Document{}, false
+	}
 	quota := newPDFDecodeQuota(pdfMaxDecodedDocumentBytes)
-	tables := pdfTextTablesWithQuota(body, quota)
+	body = pdfWithUnpackedObjectStreams(body, quota)
 	extracted := strings.TrimSpace(collapseBlankRuns(
-		pdfCollapseHorizontalWhitespace(pdfPageText(body, tables, quota, pdfMaxTextBytes)),
+		pdfCollapseHorizontalWhitespace(pdfPageText(body, quota, pdfMaxTextBytes)),
 	))
 	if !hasIndexableText(extracted) {
 		return Document{}, false
@@ -74,7 +74,7 @@ func pdfContentStreamsWithQuota(body []byte, quota *pdfDecodeQuota) [][]byte {
 func pdfFilterChain(dict []byte) []string {
 	index := bytes.Index(dict, []byte("/Filter"))
 	if index < 0 {
-		return []string{"FlateDecode"}
+		return nil
 	}
 	rest := bytes.TrimLeft(dict[index+len("/Filter"):], " \t\r\n")
 	if len(rest) > 0 && rest[0] == '[' {
@@ -86,11 +86,8 @@ func pdfFilterChain(dict []byte) []string {
 		for _, name := range names {
 			filters = append(filters, string(name[1]))
 		}
-		if len(filters) > 0 {
-			return filters
-		}
 
-		return []string{"FlateDecode"}
+		return filters
 	}
 	if name := pdfLeadingNamePattern.FindSubmatch(rest); name != nil {
 		return []string{string(name[1])}
@@ -154,10 +151,6 @@ func pdfASCII85Within(raw []byte, limit int) ([]byte, error) {
 	return data, nil
 }
 
-func pdfASCIIHex(raw []byte) ([]byte, error) {
-	return pdfASCIIHexWithin(raw, pdfMaxStreamBytes)
-}
-
 func pdfASCIIHexWithin(raw []byte, limit int) ([]byte, error) {
 	limit = max(0, limit)
 	maximumDigits := limit * 2
@@ -193,19 +186,6 @@ func pdfLZWWithin(raw []byte, limit int) ([]byte, error) {
 	return data, nil
 }
 
-func writeShownStrings(
-	out *strings.Builder,
-	block []byte,
-	tables map[string]*pdfCMap,
-	current *pdfCMap,
-) *pdfCMap {
-	bounded := newPDFTextCollector(max(0, pdfMaxTextBytes-out.Len()))
-	current = pdfWriteShownStrings(bounded, block, tables, current)
-	out.WriteString(bounded.String())
-
-	return current
-}
-
 // pdfName reads the name token starting at data[0]=='/'.
 func pdfName(data []byte) (string, int) {
 	end := 1
@@ -220,86 +200,6 @@ func pdfName(data []byte) (string, int) {
 	}
 
 	return string(data[1:end]), end - 1
-}
-
-// pdfArrayKernSpace reads the negative number starting at data[0]=='-' and
-// reports whether it is an inter-word kern: TJ offsets are thousandths of an
-// em, small values glue a word's fragments, values beyond -180 are gaps.
-func pdfArrayKernSpace(data []byte, inArray bool) (int, bool) {
-	if !inArray {
-		return 0, false
-	}
-	value := 0
-	end := 1
-	for ; end < len(data) && data[end] >= '0' && data[end] <= '9'; end++ {
-		if value < 10000 {
-			value = value*10 + int(data[end]-'0')
-		}
-	}
-
-	return end - 1, value >= 180
-}
-
-// pdfSkipDictionary returns the offset just past the <<..>> dictionary that
-// starts at data[0]; an unterminated dictionary consumes the rest.
-func pdfSkipDictionary(data []byte) int {
-	if end := bytes.Index(data, []byte(">>")); end >= 0 {
-		return end + 1
-	}
-
-	return len(data)
-}
-
-// pdfRawHexString reads one <..> hex string's raw bytes.
-func pdfRawHexString(data []byte) ([]byte, int) {
-	end := bytes.IndexByte(data, '>')
-	if end < 0 {
-		return nil, len(data)
-	}
-	decoded, err := pdfASCIIHex(data[1:end])
-	if err != nil {
-		return nil, end
-	}
-
-	return decoded, end
-}
-
-// pdfRawStringLiteral reads one parenthesized literal starting at
-// data[0]=='(', resolving escapes, octal codes, and nested parentheses into
-// the string's raw bytes and reporting the bytes consumed.
-func pdfRawStringLiteral(data []byte) ([]byte, int) {
-	raw := make([]byte, 0, 32)
-	depth := 0
-	for i := 0; i < len(data); i++ {
-		switch data[i] {
-		case '\\':
-			escaped, consumed := pdfEscapedBytes(data[i+1:])
-			raw = append(raw, escaped...)
-			i += consumed
-		case '(':
-			depth++
-			if depth > 1 {
-				raw = append(raw, '(')
-			}
-		case ')':
-			depth--
-			if depth == 0 {
-				return raw, i
-			}
-			raw = append(raw, ')')
-		case '\r':
-			raw = append(raw, '\n')
-			if i+1 < len(data) && data[i+1] == '\n' {
-				i++
-			}
-		case '\n':
-			raw = append(raw, '\n')
-		default:
-			raw = append(raw, data[i])
-		}
-	}
-
-	return raw, len(data)
 }
 
 func pdfEscapedBytes(rest []byte) ([]byte, int) {
@@ -337,49 +237,12 @@ func pdfEscapedBytes(rest []byte) ([]byte, int) {
 	}
 }
 
-func pdfDecodeStringBytes(raw []byte) string {
-	if len(raw) >= 2 && raw[0] == 0xFE && raw[1] == 0xFF {
-		return pdfUTF16Text(raw[2:])
-	}
-	var out strings.Builder
-	for _, b := range raw {
-		switch {
-		case printableASCII(b):
-			out.WriteByte(b)
-		case b == '\t' || b == '\n' || b == '\r':
-			out.WriteByte(' ')
-		case b >= 0xA0:
-			out.WriteRune(rune(b))
-		}
-	}
-
-	return out.String()
-}
-
-// pdfUTF16Text decodes UTF-16BE string bytes, keeping printable runes.
-func pdfUTF16Text(raw []byte) string {
-	units := make([]uint16, 0, len(raw)/2)
-	for i := 0; i+1 < len(raw); i += 2 {
-		units = append(units, uint16(raw[i])<<8|uint16(raw[i+1]))
-	}
-	var out strings.Builder
-	for _, r := range utf16.Decode(units) {
-		if r >= 0x20 && r != 0x7F {
-			out.WriteRune(r)
-		} else {
-			out.WriteByte(' ')
-		}
-	}
-
-	return out.String()
-}
-
 // hasIndexableText requires a minimum of real letters so CID-font garbage
 // does not index.
 func hasIndexableText(text string) bool {
 	letters := 0
 	for _, r := range text {
-		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' {
+		if unicode.IsLetter(r) {
 			letters++
 		}
 		if letters >= 8 {
@@ -390,30 +253,6 @@ func hasIndexableText(text string) bool {
 	return false
 }
 
-// pdfFirstTitleEntry reads the first /Title string in body — a
-// parenthesized literal or a <hex> string (how UTF-16 titles are written).
-func pdfFirstTitleEntry(body []byte) string {
-	index := bytes.Index(body, []byte("/Title"))
-	if index < 0 {
-		return ""
-	}
-	rest := body[index+len("/Title"):]
-	open := bytes.IndexAny(rest[:min(len(rest), 9)], "(<")
-	if open < 0 {
-		return ""
-	}
-	title := newPDFTextCollector(pdfMaxTextBytes)
-	if rest[open] == '(' {
-		raw, _ := pdfRawStringLiteralWithin(rest[open:], title.rawOperandLimit())
-		pdfWriteDecodedStringBytes(title, raw)
-	} else {
-		raw, _ := pdfRawHexStringWithin(rest[open:], title.rawOperandLimit())
-		pdfWriteDecodedStringBytes(title, raw)
-	}
-
-	return strings.TrimSpace(title.String())
-}
-
 // ReadPostScript extracts the parenthesized text literals of a PostScript
 // program — the operands of its show operators. PostScript carries no
 // document-info title.
@@ -421,8 +260,8 @@ func ReadPostScript(body []byte) (Document, bool) {
 	if !bytes.HasPrefix(body, []byte("%!")) {
 		return Document{}, false
 	}
-	var out strings.Builder
-	writeShownStrings(&out, body, nil, nil)
+	out := newPDFTextCollector(pdfMaxTextBytes)
+	pdfWritePostScriptText(out, body)
 	extracted := strings.TrimSpace(collapseBlankRuns(out.String()))
 	if !hasIndexableText(extracted) {
 		return Document{}, false

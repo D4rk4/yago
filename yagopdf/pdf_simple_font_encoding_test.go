@@ -334,25 +334,6 @@ func TestPDFNameSyntax(t *testing.T) {
 	}
 }
 
-func TestPDFFontSelectionSyntax(t *testing.T) {
-	for _, input := range []string{"/F1 12 Tf ", "/F#31 -1.25 Tf/", "/F1 +12. Tf"} {
-		name, consumed, valid := pdfFontSelection([]byte(input))
-		if !valid || name != "F1" || consumed <= len(name) {
-			t.Fatalf("font selection %q = %q/%d/%t", input, name, consumed, valid)
-		}
-	}
-	for _, input := range []string{
-		"", "/", "/F1 Tf", "/F1 . Tf", "/F1 12", "/F1 12 Tj", "/F1 12 TfX", "/F1 1.2.3 Tf",
-	} {
-		if name, _, valid := pdfFontSelection([]byte(input)); valid {
-			t.Fatalf("invalid font selection %q = %q/%t", input, name, valid)
-		}
-	}
-	if end, valid := pdfFontSizeEnd([]byte("12"), 0); end != 2 || !valid {
-		t.Fatalf("terminal font size = %d/%t", end, valid)
-	}
-}
-
 func TestPDFUnknownSelectedFontsFailClosed(t *testing.T) {
 	for name, font := range map[string]string{
 		"direct":     "<< /Type /Font /Subtype /Type1 /Encoding /WinAnsiEncoding >>",
@@ -459,9 +440,6 @@ func TestPDFTextTableLayeringConflictAndCap(t *testing.T) {
 	); len(tables) != 0 {
 		t.Fatalf("long resource name tables = %#v", tables)
 	}
-	if names, _ := pdfFontObjectReferences([]byte(longName)); len(names) != 0 {
-		t.Fatalf("long generic font names = %#v", names)
-	}
 	oversized := append([]byte(
 		"/F 1 0 R\n1 0 obj\n<< /Type /Font "+
 			"/Encoding /WinAnsiEncoding >>\nendobj\n",
@@ -525,7 +503,7 @@ func TestPDFLiteralLineEndingsAreCanonicalBytes(t *testing.T) {
 	if oddFallback.String() != "mapped" {
 		t.Fatalf("odd selected-font fallback = %q", oddFallback.String())
 	}
-	if got := pdfMapString(
+	if got := shownFontText(
 		[]byte{'A'},
 		&pdfCMap{
 			codeLen: 1,
@@ -538,13 +516,13 @@ func TestPDFLiteralLineEndingsAreCanonicalBytes(t *testing.T) {
 	); got != "mapped" {
 		t.Fatalf("fallback map text = %q", got)
 	}
-	if got := pdfMapString(
+	if got := shownFontText(
 		[]byte{'A'},
 		&pdfCMap{codeLen: 2, text: map[uint32]string{}, omitUnmapped: true},
 	); got != "" {
 		t.Fatalf("odd map tail = %q", got)
 	}
-	if got := pdfMapString(
+	if got := shownFontText(
 		[]byte{'A'},
 		&pdfCMap{
 			codeLen:      2,

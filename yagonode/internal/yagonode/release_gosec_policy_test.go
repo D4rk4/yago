@@ -69,6 +69,8 @@ func validateGosecExclusionPolicy(policy gosecExclusionPolicy) error {
 		".*yagonode/internal/shardvault/shardvault\\.go":              "G115",
 		".*yagonode/internal/shardvault/split\\.go":                   "G115",
 		".*yagonode/internal/snippetmark/snippetmark\\.go":            "G203",
+		".*yagopdf/pdf_object_ciphers\\.go":                           "G401,G405,G501,G503",
+		".*yagopdf/pdf_standard_security_keys\\.go":                   "G401,G501",
 	}
 	remaining := maps.Clone(expected)
 	for _, boundary := range policy.Boundaries {

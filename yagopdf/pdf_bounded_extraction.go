@@ -28,13 +28,21 @@ func newPDFCMapQuota(entries int, text int) *pdfCMapQuota {
 }
 
 func (q *pdfCMapQuota) put(table *pdfCMap, code uint32, text string) bool {
+	if !q.reserve(text) {
+		return false
+	}
+	table.text[code] = text
+
+	return true
+}
+
+func (q *pdfCMapQuota) reserve(text string) bool {
 	if q.remainingEntries == 0 || len(text) > q.remainingTextBytes {
 		q.remainingEntries = 0
 		q.remainingTextBytes = 0
 
 		return false
 	}
-	table.text[code] = text
 	q.remainingEntries--
 	q.remainingTextBytes -= len(text)
 
@@ -129,6 +137,15 @@ func (c *pdfTextCollector) writeRune(value rune) {
 	if value < 0 || value > utf8.MaxRune || value >= 0xD800 && value <= 0xDFFF {
 		value = utf8.RuneError
 	}
+	if letters, ligature := pdfLatinLigatureText(value); ligature {
+		c.writeString(letters)
+
+		return
+	}
+	value, admitted := pdfAdmittedTextRune(value)
+	if !admitted {
+		return
+	}
 	width := utf8.RuneLen(value)
 	if width > c.remaining {
 		c.sealed = true
@@ -140,125 +157,13 @@ func (c *pdfTextCollector) writeRune(value rune) {
 }
 
 func (c *pdfTextCollector) writeString(value string) {
-	if c.complete() || value == "" {
-		return
+	for _, character := range value {
+		c.writeRune(character)
 	}
-	length := min(len(value), c.remaining)
-	if length < len(value) {
-		for length > 0 && !utf8.RuneStart(value[length]) {
-			length--
-		}
-		c.sealed = true
-	}
-	_, _ = c.text.WriteString(value[:length])
-	c.remaining -= length
 }
 
 func (c *pdfTextCollector) String() string {
 	return c.text.String()
-}
-
-func pdfPageText(
-	body []byte,
-	tables map[string]*pdfCMap,
-	quota *pdfDecodeQuota,
-	textLimit int,
-) string {
-	text := newPDFTextCollector(textLimit)
-	for _, stream := range pdfPageDescriptionStreams(body) {
-		if quota.exhausted() || text.complete() {
-			break
-		}
-		decoded, ok := quota.decode(stream)
-		if !ok || len(decoded) == 0 {
-			continue
-		}
-		pdfWriteContentText(text, decoded, tables)
-	}
-
-	return text.String()
-}
-
-func pdfWriteContentText(
-	out *pdfTextCollector,
-	content []byte,
-	tables map[string]*pdfCMap,
-) {
-	var current *pdfCMap
-	at := 0
-	for !out.complete() {
-		begin := bytes.Index(content[at:], []byte("BT"))
-		if begin < 0 {
-			return
-		}
-		blockStart := at + begin + 2
-		end := bytes.Index(content[blockStart:], []byte("ET"))
-		if end < 0 {
-			return
-		}
-		current = pdfWriteShownStrings(
-			out,
-			content[blockStart:blockStart+end],
-			tables,
-			current,
-		)
-		out.writeByte('\n')
-		at = blockStart + end + 2
-	}
-}
-
-func pdfWriteShownStrings(
-	out *pdfTextCollector,
-	block []byte,
-	tables map[string]*pdfCMap,
-	current *pdfCMap,
-) *pdfCMap {
-	inArray := false
-	for at := 0; at < len(block) && !out.complete(); at++ {
-		switch block[at] {
-		case '(':
-			raw, consumed := pdfRawStringLiteralWithin(block[at:], out.rawOperandLimit())
-			pdfWriteShownText(out, raw, current)
-			at += consumed
-			if !inArray {
-				out.writeByte(' ')
-			}
-		case '<':
-			if at+1 < len(block) && block[at+1] == '<' {
-				at += pdfSkipDictionary(block[at:])
-
-				continue
-			}
-			raw, consumed := pdfRawHexStringWithin(block[at:], out.rawOperandLimit())
-			pdfWriteShownText(out, raw, current)
-			at += consumed
-			if !inArray {
-				out.writeByte(' ')
-			}
-		case '[':
-			inArray = true
-		case ']':
-			inArray = false
-			out.writeByte(' ')
-		case '-':
-			if consumed, space := pdfArrayKernSpace(block[at:], inArray); space {
-				out.writeByte(' ')
-				at += consumed
-			}
-		case '/':
-			selected, consumed, changed := pdfTextFontSelection(block[at:], tables, current)
-			if changed {
-				current = selected
-				at += max(1, consumed) - 1
-
-				continue
-			}
-			_, consumed, _ = pdfDecodedNameToken(block[at:], pdfMaxPDFNameBytes)
-			at += max(1, consumed) - 1
-		}
-	}
-
-	return current
 }
 
 func pdfRawStringLiteralWithin(data []byte, limit int) ([]byte, int) {
@@ -334,7 +239,7 @@ func pdfWriteShownText(out *pdfTextCollector, raw []byte, current *pdfCMap) {
 		for _, value := range raw[at : at+step] {
 			code = code<<8 | uint32(value)
 		}
-		if text, ok := current.text[code]; ok {
+		if text, ok := current.codeText(code); ok {
 			out.writeString(text)
 
 			continue
@@ -383,10 +288,6 @@ func pdfWriteUTF16Text(out *pdfTextCollector, raw []byte) {
 				index += 2
 			}
 		}
-		if value >= 0x20 && value != 0x7F {
-			out.writeRune(value)
-		} else {
-			out.writeByte(' ')
-		}
+		out.writeRune(value)
 	}
 }

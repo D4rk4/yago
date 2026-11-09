@@ -52,14 +52,14 @@ func TestPDFInfoTitlePrefersTrailerDocumentInformation(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "no information reference falls back to first title",
+			name: "no information reference refuses outline title",
 			body: outline + "trailer\n<< /Size 2 >>\n",
-			want: "Contents",
+			want: "",
 		},
 		{
-			name: "information without reference falls back to first title",
+			name: "information without reference refuses outline title",
 			body: outline + "trailer\n<< /Info (inline) >>\n",
-			want: "Contents",
+			want: "",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

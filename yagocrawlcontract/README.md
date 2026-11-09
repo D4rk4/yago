@@ -46,7 +46,7 @@ deliveries and recognize a committed retry after an acknowledgement is lost.
 Older batches without those fields remain accepted: observation time falls back
 to `Document.FetchedAt`, and the node derives a stable identity from the batch.
 Every newly parsed document carries `CurrentExtractionGeneration`, currently
-`1`. Increment that constant whenever a material parser or extractor change
+`2`. Increment that constant whenever a material parser or extractor change
 requires stored documents to be fetched and extracted again. Zero means an older
 payload that predates extraction generations and is omitted when encoded. The
 field is additive JSON inside the existing protobuf batch envelope, so older JSON

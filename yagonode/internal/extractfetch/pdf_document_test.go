@@ -22,7 +22,7 @@ func pdfBody(t *testing.T, title, content string) string {
 	pdf.WriteString("3 0 obj\n<< /Type /Page /Contents 2 0 R >>\nendobj\n")
 	pdf.WriteString("2 0 obj\n<< /Filter /FlateDecode >>\nstream\r\n")
 	pdf.Write(compressed.Bytes())
-	pdf.WriteString("\nendstream\nendobj\n%%EOF")
+	pdf.WriteString("\nendstream\nendobj\ntrailer\n<< /Info 1 0 R >>\n%%EOF")
 
 	return pdf.String()
 }

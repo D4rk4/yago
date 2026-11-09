@@ -15,6 +15,7 @@ APIDIFF := $(TOOLS_BIN)/apidiff
 GOVULNCHECK := $(TOOLS_BIN)/govulncheck
 NILAWAY_BASELINE := $(CURDIR)/tools/nilaway-baseline
 API_COMPATIBILITY_BASELINE := $(CURDIR)/tools/api-compatibility-baseline
+API_COMPATIBILITY_EXCEPTIONS := $(CURDIR)/tools/api-compatibility-exceptions
 TEST_SHUFFLE_SEED := $(shell cat $(CURDIR)/tools/test-shuffle-seed)
 FUZZ_SMOKE_TIME ?= 5s
 
@@ -84,7 +85,7 @@ nilaway: $(TOOLS_STAMP)
 
 api-compatibility: $(TOOLS_STAMP)
 	@./tools/check-api-compatibility $(APIDIFF) $(API_COMPATIBILITY_BASELINE) \
-		yagomodel yagoproto yagocrawlcontract yagoegress
+		$(API_COMPATIBILITY_EXCEPTIONS) yagomodel yagoproto yagocrawlcontract yagoegress
 
 govulncheck: $(TOOLS_STAMP)
 	@set -e; for m in $(MODULES); do \

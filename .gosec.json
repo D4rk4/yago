@@ -71,6 +71,14 @@
     {
       "path": ".*yagonode/internal/snippetmark/snippetmark\\.go",
       "rules": ["G203"]
+    },
+    {
+      "path": ".*yagopdf/pdf_object_ciphers\\.go",
+      "rules": ["G401", "G405", "G501", "G503"]
+    },
+    {
+      "path": ".*yagopdf/pdf_standard_security_keys\\.go",
+      "rules": ["G401", "G501"]
     }
   ]
 }

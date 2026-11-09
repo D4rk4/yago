@@ -16,7 +16,7 @@ func TestPDFPageTextSharesDecodedQuotaAcrossStreams(t *testing.T) {
 	writePDFStreamObject(t, &pdf, 2, "", second)
 	pdf.WriteString("%%EOF")
 	quota := newPDFDecodeQuota(len(first))
-	text := pdfPageText(pdf.Bytes(), nil, quota, pdfMaxTextBytes)
+	text := pdfPageText(pdf.Bytes(), quota, pdfMaxTextBytes)
 	if !strings.Contains(text, "first bounded searchable section") {
 		t.Fatalf("first stream text = %q", text)
 	}
@@ -50,10 +50,10 @@ func TestPDFObjectStreamsShareDecodedQuota(t *testing.T) {
 	pdf.WriteString("%%EOF")
 	quota := newPDFDecodeQuota(len(content))
 	lookup := newPDFObjectLookup(pdf.Bytes())
-	if decoded := pdfObjectStreamWithQuota(lookup.value, "1", quota); string(decoded) != content {
+	if decoded := pdfObjectStreamWithQuota(lookup.value, "1 0", quota); string(decoded) != content {
 		t.Fatalf("first object stream = %q", decoded)
 	}
-	if decoded := pdfObjectStreamWithQuota(lookup.value, "2", quota); decoded != nil {
+	if decoded := pdfObjectStreamWithQuota(lookup.value, "2 0", quota); decoded != nil {
 		t.Fatalf("second object stream = %q", decoded)
 	}
 	if !quota.exhausted() {
@@ -69,12 +69,9 @@ func TestPDFShownStringStopsAtValidUTF8Prefix(t *testing.T) {
 		t.Fatalf("bounded raw literal = %d/%d", len(raw), consumed)
 	}
 	text := newPDFTextCollector(limit)
-	pdfWriteShownStrings(
-		text,
-		[]byte(literal),
-		nil,
-		&pdfCMap{codeLen: 1, text: map[uint32]string{'A': "€"}},
-	)
+	pdfWriteContentText(text, []byte("BT /F1 12 Tf "+literal+" ET"), map[string]*pdfCMap{
+		"F1": {codeLen: 1, text: map[uint32]string{'A': "€"}},
+	})
 	if text.String() != "€€€" || len(text.String()) > limit || !utf8.ValidString(text.String()) {
 		t.Fatalf("bounded mapped text = %q (%d bytes)", text.String(), len(text.String()))
 	}
@@ -143,7 +140,7 @@ func TestPDFBoundedTextDecodesMappedAndUTF16Values(t *testing.T) {
 		0xD8, 0x3D, 0xDE, 0x00,
 		0xD8, 0x00,
 	})
-	if decoded.String() != "H 😀�" || !utf8.ValidString(decoded.String()) {
+	if decoded.String() != "H\t😀�" || !utf8.ValidString(decoded.String()) {
 		t.Fatalf("bounded UTF-16 text = %q", decoded.String())
 	}
 	control := newPDFTextCollector(3)
@@ -153,21 +150,31 @@ func TestPDFBoundedTextDecodesMappedAndUTF16Values(t *testing.T) {
 	}
 }
 
-func TestPDFCMapQuotaBoundsRangeExpansion(t *testing.T) {
+func TestPDFCMapQuotaBoundsRanges(t *testing.T) {
 	quota := newPDFCMapQuota(10, 4)
 	table := pdfParseCMapWithQuota([]byte(
 		"beginbfrange\n<41> <45> <00410042>\nendbfrange\n",
 	), quota)
-	if table == nil || len(table.text) != 2 || table.text[0x41] != "AB" ||
-		table.text[0x42] != "AC" {
+	first, firstMapped := table.codeText(0x41)
+	last, lastMapped := table.codeText(0x45)
+	if !firstMapped || first != "AB" || !lastMapped || last != "AF" {
 		t.Fatalf("bounded CMap = %#v", table)
 	}
-	if quota.remainingEntries != 0 || quota.remainingTextBytes != 0 {
+	if _, mapped := table.codeText(0x46); mapped {
+		t.Fatal("code past the range must stay unmapped")
+	}
+	if quota.remainingEntries != 9 || quota.remainingTextBytes != 2 {
 		t.Fatalf(
 			"remaining CMap quota = %d entries/%d bytes",
 			quota.remainingEntries,
 			quota.remainingTextBytes,
 		)
+	}
+	exhausted := newPDFCMapQuota(10, 1)
+	if table := pdfParseCMapWithQuota([]byte(
+		"beginbfrange\n<41> <45> <00410042>\nendbfrange\n",
+	), exhausted); table != nil || exhausted.remainingEntries != 0 {
+		t.Fatalf("over-budget range = %#v, %d entries left", table, exhausted.remainingEntries)
 	}
 	if table := pdfParseCMapWithQuota([]byte(
 		"beginbfrange\n<41> <41> <0>\nendbfrange\n",
@@ -197,10 +204,10 @@ func TestPDFTextLimitHoldsThroughParse(t *testing.T) {
 }
 
 func TestPDFTitleLimitKeepsValidUTF8(t *testing.T) {
-	body := []byte("%PDF-1.7\n<< /Title (" +
-		strings.Repeat("Aé", pdfMaxTextBytes/2) + ") >>")
+	body := []byte("%PDF-1.7\n1 0 obj << /Title (" +
+		strings.Repeat("Aé", pdfMaxTextBytes/2) + ") >> endobj\ntrailer << /Info 1 0 R >>\n")
 	title := pdfInfoTitle(body)
-	if len(title) > pdfMaxTextBytes || !utf8.ValidString(title) {
+	if len(title) == 0 || len(title) > pdfMaxTitleBytes || !utf8.ValidString(title) {
 		t.Fatalf("title = %d bytes, valid UTF-8 = %t", len(title), utf8.ValidString(title))
 	}
 }

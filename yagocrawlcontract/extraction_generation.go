@@ -1,3 +1,3 @@
 package yagocrawlcontract
 
-const CurrentExtractionGeneration uint64 = 1
+const CurrentExtractionGeneration uint64 = 2

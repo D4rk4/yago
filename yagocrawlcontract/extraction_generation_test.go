@@ -17,7 +17,7 @@ func TestIngestBatchExtractionGenerationRoundTripAndLegacyCompatibility(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(raw, []byte(`"ExtractionGeneration":1`)) {
+	if !bytes.Contains(raw, []byte(`"ExtractionGeneration":2`)) {
 		t.Fatalf("encoded generation = %s", raw)
 	}
 	got, err := UnmarshalIngestBatch(raw)

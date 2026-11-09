@@ -501,7 +501,7 @@ The node can drive a crawl fleet over gRPC: it serves a `CrawlExchange` endpoint
 
 ### Extraction-generation refresh
 
-Newly parsed documents carry extraction generation `1`; stored payloads that
+Newly parsed documents carry extraction generation `2`; stored payloads that
 predate the field read as generation `0`. When a material parser or extractor
 change advances the current generation, Admin → Index offers an explicit action
 that examines an operator-selected 1–100 raw storage records per submission

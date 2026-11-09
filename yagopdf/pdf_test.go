@@ -27,7 +27,7 @@ func pdfWithText(t *testing.T, title, content string) []byte {
 	pdf.WriteString("4 0 obj\n<< /Type /Font /Encoding /WinAnsiEncoding >>\nendobj\n")
 	pdf.WriteString("2 0 obj\n<< /Filter /FlateDecode >>\nstream\r\n")
 	pdf.Write(z.Bytes())
-	pdf.WriteString("\nendstream\nendobj\n%%EOF")
+	pdf.WriteString("\nendstream\nendobj\ntrailer\n<< /Info 1 0 R >>\n%%EOF")
 
 	return pdf.Bytes()
 }
@@ -63,10 +63,21 @@ func TestReadPDFRejectsGarbageAndMissingText(t *testing.T) {
 	if _, parsed := ReadPDF(body); parsed {
 		t.Fatal("letterless pdf text must stay unparsed")
 	}
-	// A PDF whose stream is not flate-compressed yields nothing.
-	raw := []byte("%PDF-1.4\nstream\nBT (Plain) Tj ET\nendstream\n%%EOF")
-	if _, parsed := ReadPDF(raw); parsed {
-		t.Fatal("non-flate stream must yield no text")
+	unsupported := []byte(
+		"%PDF-1.4\n<< /Filter /DCTDecode >>\nstream\nBT (Plain words here) Tj ET\nendstream\n%%EOF",
+	)
+	if _, parsed := ReadPDF(unsupported); parsed {
+		t.Fatal("unsupported-filter stream must yield no text")
+	}
+	corrupt := []byte(
+		"%PDF-1.4\n<< /Filter /FlateDecode >>\nstream\nBT (Plain words here) Tj ET\nendstream\n%%EOF",
+	)
+	if _, parsed := ReadPDF(corrupt); parsed {
+		t.Fatal("corrupt flate stream must yield no text")
+	}
+	unfiltered := []byte("%PDF-1.4\nstream\nBT (Plain words here) Tj ET\nendstream\n%%EOF")
+	if document, parsed := ReadPDF(unfiltered); !parsed || document.Text != "Plain words here" {
+		t.Fatalf("unfiltered stream = %v %+v", parsed, document)
 	}
 	// A stream without a terminator ends the walk.
 	unterminated := []byte("%PDF-1.4\nstream\nabcdef")
@@ -165,7 +176,7 @@ func TestPDFBoundsAndNesting(t *testing.T) {
 	var z bytes.Buffer
 	writer := zlib.NewWriter(&z)
 	_ = writer.Close()
-	empty := []byte("%PDF-1.4\nstream\n")
+	empty := []byte("%PDF-1.4\n<< /Filter /FlateDecode >>\nstream\n")
 	empty = append(empty, z.Bytes()...)
 	empty = append(empty, []byte("\nendstream")...)
 	if streams := pdfContentStreamsWithQuota(
@@ -253,7 +264,7 @@ func TestPDFFilterChain(t *testing.T) {
 		dict string
 		want []string
 	}{
-		{"missing filter entry", "<< /Length 5 >>", []string{"FlateDecode"}},
+		{"missing filter entry", "<< /Length 5 >>", nil},
 		{"empty filter entry", "/Filter", []string{"FlateDecode"}},
 		{"single bare name", "/Filter /FlateDecode", []string{"FlateDecode"}},
 		{
@@ -272,7 +283,7 @@ func TestPDFFilterChain(t *testing.T) {
 			"<< /Filter [ /ASCII85Decode ] /Length 5 >>",
 			[]string{"ASCII85Decode"},
 		},
-		{"empty bracketed chain", "/Filter [ ] /Length 5", []string{"FlateDecode"}},
+		{"empty bracketed chain", "/Filter [ ] /Length 5", nil},
 		{"indirect reference value", "/Filter 5 0 R /Length 5", []string{"FlateDecode"}},
 	}
 	for _, testCase := range cases {
@@ -345,7 +356,7 @@ func TestParsePDFReadsTeXOutput(t *testing.T) {
 // escapes drop.
 func TestPDFStringDecodingEdges(t *testing.T) {
 	utf16Hello := "\xFE\xFF\x00H\x00i\x00\x09\xD8\x3D\xDE\x00"
-	if got := pdfDecodeStringBytes([]byte(utf16Hello)); got != "Hi \U0001F600" {
+	if got := pdfDecodeStringBytes([]byte(utf16Hello)); got != "Hi\t\U0001F600" {
 		t.Fatalf("utf16 string = %q", got)
 	}
 	if got := pdfDecodeStringBytes([]byte{'c', 'a', 'f', 0xE9}); got != "café" {
@@ -401,26 +412,8 @@ func TestPDFShownStringHelpers(t *testing.T) {
 	if got, _ := pdfRawHexString([]byte("<zz>")); pdfDecodeStringBytes(got) != "" {
 		t.Fatalf("junk hex = %q", got)
 	}
-	if got := pdfSkipDictionary([]byte("<< /K /V >> tail")); got != len("<< /K /V >") {
-		t.Fatalf("dict skip = %d", got)
-	}
-	if got := pdfSkipDictionary([]byte("<< never closed")); got != len("<< never closed") {
-		t.Fatalf("open dict skip = %d", got)
-	}
-	if _, space := pdfArrayKernSpace([]byte("-400"), false); space {
-		t.Fatal("kern outside an array must not space")
-	}
-	if _, space := pdfArrayKernSpace([]byte("-31(x)"), true); space {
-		t.Fatal("small kern must not space")
-	}
-	consumed, space := pdfArrayKernSpace([]byte("-99999999999(x)"), true)
-	if !space || consumed != len("-99999999999")-1 {
-		t.Fatalf("huge kern = %d %v", consumed, space)
-	}
-	var out strings.Builder
-	if current := writeShownStrings(&out, []byte("BT <41> Tj ET"), nil, nil); current != nil {
-		t.Fatalf("unexpected selected font = %#v", current)
-	}
+	out := newPDFTextCollector(pdfMaxTextBytes)
+	pdfWriteContentText(out, []byte("BT <41> Tj ET"), nil)
 	if !strings.Contains(out.String(), "A") {
 		t.Fatalf("hex show outside array = %q", out.String())
 	}
@@ -429,7 +422,8 @@ func TestPDFShownStringHelpers(t *testing.T) {
 // TestPDFHexTitle pins the UTF-16 document title path: pdfTeX and Word write
 // /Title as a BOM-led hex string.
 func TestPDFHexTitle(t *testing.T) {
-	body := []byte("%PDF-1.7\n1 0 obj\n<< /Title <FEFF0054006900740072006500> >>\nendobj\n")
+	body := []byte("%PDF-1.7\n1 0 obj\n<< /Title <FEFF0054006900740072006500> >>\nendobj\n" +
+		"trailer << /Info 1 0 R >>\n")
 	if got := pdfInfoTitle(body); got != "Titre" {
 		t.Fatalf("hex title = %q", got)
 	}

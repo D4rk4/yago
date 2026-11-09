@@ -26,7 +26,7 @@ func pdfWithText(t *testing.T, title, content string) []byte {
 	pdf.WriteString("4 0 obj\n<< /Type /Font /Encoding /WinAnsiEncoding >>\nendobj\n")
 	pdf.WriteString("2 0 obj\n<< /Filter /FlateDecode >>\nstream\r\n")
 	pdf.Write(z.Bytes())
-	pdf.WriteString("\nendstream\nendobj\n%%EOF")
+	pdf.WriteString("\nendstream\nendobj\ntrailer\n<< /Info 1 0 R >>\n%%EOF")
 
 	return pdf.Bytes()
 }

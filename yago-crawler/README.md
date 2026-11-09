@@ -257,34 +257,33 @@ section of the [node specification](../yagonode/doc/specification.md#target-arch
 The Java revision and the synthetic counting inputs are recorded in
 `yagonode/test/fixtures/yacywire/component-count-provenance.md`.
 
-PDF extraction follows the document structure rather than scanning every decoded
-stream. When Page objects are available, it selects their referenced `/Contents`
-streams, including indirect arrays, and only Form XObjects reachable from page
-resources. A PDF whose Page objects cannot be resolved uses a bounded fallback
-that excludes known non-page and binary stream classes. Image data, embedded font
-programs, metadata, object containers, cross-reference streams, embedded files,
-and CMaps are excluded from text extraction. This prevents binary payloads such
-as those in the reported Berkeley `battelle_ucb07.pdf` from entering cached text
-or the index.
+PDF and PostScript files are read by the shared `yagopdf` reader, the same
+reader the node uses for fetch-on-extract. A file is treated as PostScript when
+its URL ends in `.ps` or its body starts with `%!PS`. The reader takes text only
+from the pages of the document's current page tree and the forms those pages
+use; images, fonts, metadata, outlines, annotations, and attachments never
+become indexed text. It unpacks compressed object streams, resolves fonts per
+page, adds spaces and line breaks from the text layout, and writes valid UTF-8
+with Latin ligatures split into letters and control characters removed. An
+encrypted PDF is read only when it opens without a password and allows text
+extraction. The PDF title comes only from the document information dictionary;
+when that title is empty, the crawler uses the first line of text.
 
-For a simple font, an embedded `/ToUnicode` entry has precedence for each code it
-defines. A missing code may use a bounded single-byte fallback that resolves the
-font's `/Encoding` as a predefined name or as an inline or indirect dictionary,
-copies a supported `/BaseEncoding`, and applies `/Differences` without exceeding
-the 256-code space or the document's existing object and byte budgets. Glyph
-names map through the standard Adobe Glyph List rules, including variant suffixes,
-composed names, and valid `uni` or `u` scalar names. An unknown glyph, malformed
-sequence, unresolved reference, or exhausted decoder budget leaves the code
-unmapped; a selected custom font is never interpreted as raw ASCII, Latin-1, or
-TeX ligature bytes merely because its mapping is unavailable.
-
-CMap, font-encoding, and page/Form decoding share one 32 MiB document budget, and
-extracted UTF-8 text stops at 1 MiB. Repository tests use bounded synthetic PDFs,
-including the custom-encoding shape of Cisco's live ENCS document; external PDFs
-remain verification-only downloads. The bounded extraction-generation action on
-Admin → Index can queue a normal recrawl to replace text that an older extractor
-already stored for either reported PDF. Extraction remains embedded-text only and
-performs no OCR.
+Each PDF is read within fixed bounds: at most 256 content streams, 8 MiB of
+decoded data per stream and 32 MiB per document, 1 MiB of text, and a 4 KiB
+title. Content past a bound is not read; text read before it is still indexed.
+A PDF that needs a password, forbids text extraction, uses another security
+handler, has no text layer, or yields fewer than eight letters produces no
+indexed document; crawl progress counts it as failed with the reason that the
+content parser produced no indexable document. Extraction reads only an
+existing text layer and performs no OCR, so a scanned page without one yields
+no text. Type 3 fonts and composite fonts that use a predefined CJK character
+map without a Unicode map usually yield little or no text. Text follows content
+stream order, so multi-column, table, vertical, and right-to-left layouts may be
+indexed out of visual order. Form field values are not extracted. The bounded
+extraction-generation action on Admin → Index can queue a normal recrawl to
+replace text that an older extractor stored. The
+[`yagopdf` README](../yagopdf/README.md) has the full reader reference.
 
 Crawl requests can start from normal URLs, XML sitemaps, sitemap indexes, plain
 text sitelists, or a host's `robots.txt`. Sitemap and sitelist starts are fetched

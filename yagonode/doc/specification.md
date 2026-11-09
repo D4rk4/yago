@@ -665,13 +665,28 @@ it is not an assumed deployment dependency.
   and SHALL NOT change YaCy peer wire shapes. A material parser or extractor
   change that requires existing content to be fetched again SHALL advance the
   shared generation.
-* When PDF page structure is available, text extraction SHALL select referenced
-  Page `/Contents` streams and only Form XObjects reachable from page resources
-  instead of scanning every decoded stream. A document whose Page objects cannot
-  be resolved MAY use a bounded fallback after excluding known non-page and binary
-  stream classes. Image data, embedded font programs, metadata, object containers,
-  cross-reference streams, embedded files, and CMaps SHALL NOT become indexed page
-  text.
+* When PDF page structure is available, text extraction SHALL select the
+  content streams of Pages in the current page tree and only Form XObjects
+  reachable from their resources instead of scanning every decoded stream. A
+  document whose Page objects cannot be resolved MAY use a bounded fallback after
+  excluding known non-page, binary, script, attachment, and form-data streams.
+  Image data, embedded font programs, metadata, object containers,
+  cross-reference streams, embedded files, CMaps, outlines, and annotations SHALL
+  NOT become indexed page text. When a stream's direct `/Length` ends at its
+  `endstream` keyword, the stream data SHALL end there, so stream bytes cannot
+  add or replace objects.
+* Objects stored in object streams SHALL be unpacked within the document budget
+  before page, font, and title lookup. Nested object streams SHALL NOT be
+  unpacked.
+* A PDF protected by the Standard security handler, revisions 2 through 6 with
+  RC4 or AES, SHALL be read only when the empty user password opens it and its
+  permissions allow text extraction. Any other encrypted PDF SHALL be reported as
+  unreadable; no password guessing or bypass SHALL be attempted.
+* Text SHALL be read only from show operators inside `BT` ... `ET` blocks, with
+  operators recognized as whole content-stream tokens. Font names SHALL resolve
+  through the resources of the page or form being read. Spaces and line breaks
+  SHALL follow the text position derived from the text and graphics matrices,
+  font size, spacing, scaling, and glyph widths.
 * For each simple PDF font code, an embedded `/ToUnicode` mapping SHALL take
   precedence. When that code has no usable mapping, the crawler MAY use a bounded
   single-byte decoder that resolves `/Encoding` as a predefined name or an inline
@@ -683,11 +698,20 @@ it is not an assumed deployment dependency.
   glyph names, unresolved references, and exhausted budgets SHALL leave affected
   codes unmapped. A selected font without a trusted mapping SHALL NOT fall back to
   raw character-code, Latin-1, or heuristic ligature text.
-* CMap, font-encoding, and page/Form stream decoding SHALL share a 32 MiB
-  per-document work budget, and extracted UTF-8 text SHALL stop at 1 MiB. Existing
-  documents SHALL refresh through the normal recrawl lifecycle; repository
-  regressions SHALL use bounded synthetic fixtures, external PDFs MAY be used for
-  verification only, and the crawler SHALL NOT perform OCR implicitly.
+* Extracted text SHALL be valid UTF-8. Latin ligatures U+FB00 through U+FB06
+  SHALL be written as their component letters; control characters other than tab
+  and line feed, bidirectional formatting marks, and noncharacters SHALL be
+  removed. A document SHALL count as readable only with at least eight letters in
+  any script.
+* The PDF title SHALL come only from `/Title` in the document information
+  dictionary named by the newest trailer or cross-reference stream, limited to
+  4 KiB of UTF-8. Without that dictionary or its `/Title`, the PDF title SHALL be
+  empty.
+* CMap, font-encoding, object-stream, and page/Form stream decoding SHALL share a
+  32 MiB per-document work budget, and extracted UTF-8 text SHALL stop at 1 MiB.
+  Existing documents SHALL refresh through the normal recrawl lifecycle;
+  repository regressions SHALL use synthetic fixtures, external PDFs MAY be used
+  for verification only, and extraction SHALL NOT perform OCR.
 * The node SHALL support a full-text search backend abstraction with indexing, deletion, search, and stats operations.
 * The node SHALL use an embedded pure-Go Bleve full-text backend, tuned for web search, behind that abstraction.
 * The embedded pure-Go full-text fallback, when selected, SHALL persist its own

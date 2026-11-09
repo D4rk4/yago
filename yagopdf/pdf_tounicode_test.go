@@ -33,7 +33,7 @@ func subsetFontPDF(t *testing.T, cmap string) []byte {
 		"/Encoding << /BaseEncoding /WinAnsiEncoding /Differences [2 /X] >> " +
 		"/ToUnicode 6 0 R >>\nendobj\n")
 	compressed := zlibBytes(t, cmap)
-	fmt.Fprintf(&pdf, "6 0 obj\n<< /Length %d >>\nstream\n", len(compressed))
+	fmt.Fprintf(&pdf, "6 0 obj\n<< /Filter /FlateDecode /Length %d >>\nstream\n", len(compressed))
 	pdf.Write(compressed)
 	pdf.WriteString("\nendstream\nendobj\n")
 	content := zlibBytes(t, `BT /F1 10 Tf (\002rmly established) Tj ET`)
@@ -66,126 +66,6 @@ func TestParsePDFAppliesToUnicode(t *testing.T) {
 	}
 }
 
-// TestPDFToUnicodeTableShapes pins the table builder's guardrails: conflicting
-// font names drop, shared CMap objects parse once, fontless and cmapless
-// bodies yield nothing, and the object scan cap holds.
-func TestPDFToUnicodeTableShapes(t *testing.T) {
-	body := subsetFontPDF(t, subsetCMap)
-	tables := pdfToUnicodeTablesWithQuota(body, newPDFDecodeQuota(pdfMaxDecodedDocumentBytes))
-	if tables["F1"] == nil || tables["F1"].text[0x02] != "fi" {
-		t.Fatalf("tables = %+v", tables)
-	}
-	if tables["F1"].text[0x42] != "Б" {
-		t.Fatalf("bfrange increment = %q", tables["F1"].text[0x42])
-	}
-	shared := append([]byte{}, body...)
-	shared = append(shared, []byte("\n8 0 obj\n<< /Font << /F2 5 0 R >> >>\nendobj\n")...)
-	sharedTables := pdfToUnicodeTablesWithQuota(
-		shared,
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	)
-	if sharedTables["F1"] == nil || sharedTables["F1"] != sharedTables["F2"] {
-		t.Fatal("shared cmap object must reuse one table")
-	}
-	conflict := append([]byte{}, body...)
-	conflict = append(conflict, []byte("\n/F1 9 0 R\n9 0 obj\n<< /ToUnicode 6 0 R >>\nendobj\n")...)
-	if got := pdfToUnicodeTablesWithQuota(
-		conflict,
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	); got["F1"] != nil {
-		t.Fatalf("conflicting name must drop, got %+v", got["F1"])
-	}
-	if got := pdfToUnicodeTablesWithQuota(
-		[]byte("%PDF-1.5\nno fonts here"),
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	); len(
-		got,
-	) != 0 {
-		t.Fatalf("fontless pdf tables = %d", len(got))
-	}
-	if got := pdfToUnicodeTablesWithQuota(
-		[]byte("/F1 5 0 R\n5 0 obj\n<< /Type /Font >>\nendobj"),
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	); len(
-		got,
-	) != 0 {
-		t.Fatalf("cmapless font tables = %d", len(got))
-	}
-	if got := pdfToUnicodeTablesWithQuota(
-		subsetFontPDF(t, "begincmap endcmap"),
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	); len(
-		got,
-	) != 0 {
-		t.Fatalf("mapless cmap tables = %d", len(got))
-	}
-	huge := append(make([]byte, 0, pdfMaxObjScanBytes+16), body...)
-	huge = append(huge, bytes.Repeat([]byte{' '}, pdfMaxObjScanBytes+16-len(huge))...)
-	if got := pdfToUnicodeTablesWithQuota(
-		huge,
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	); got["F1"] == nil {
-		t.Fatal("oversized body must still scan its head")
-	}
-}
-
-// TestPDFToUnicodeTableCap pins the font-table cap: names beyond the cap stay
-// untabled instead of growing without bound.
-func TestPDFToUnicodeTableCap(t *testing.T) {
-	var pdf bytes.Buffer
-	pdf.WriteString("%PDF-1.5\n")
-	for i := 0; i < pdfMaxFontTables+8; i++ {
-		fmt.Fprintf(&pdf, "/N%d %d 0 R\n", i, 100+i)
-		fmt.Fprintf(&pdf, "%d 0 obj\n<< /ToUnicode 900 0 R >>\nendobj\n", 100+i)
-	}
-	compressed := zlibBytes(t, subsetCMap)
-	fmt.Fprintf(&pdf, "900 0 obj\n<< /Length %d >>\nstream\n", len(compressed))
-	pdf.Write(compressed)
-	pdf.WriteString("\nendstream\nendobj\n")
-	tables := pdfToUnicodeTablesWithQuota(
-		pdf.Bytes(),
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	)
-	if len(tables) != pdfMaxFontTables {
-		t.Fatalf("tables = %d, want %d", len(tables), pdfMaxFontTables)
-	}
-}
-
-func TestPDFToUnicodeObjectLookupWorkIsLinear(t *testing.T) {
-	var pdf bytes.Buffer
-	pdf.WriteString("%PDF-1.7\n")
-	for index := 0; index < pdfMaxIndirectObjects; index++ {
-		object := 10_000 + index
-		fmt.Fprintf(&pdf, "/F%d %d 0 R\n", index, object)
-		fmt.Fprintf(&pdf, "%d 0 obj\n<< /Type /Font >>\nendobj\n", object)
-	}
-	body := pdf.Bytes()
-	lookup := newPDFObjectLookup(body)
-	fontNames, objectOf := pdfFontObjectReferences(body)
-	reads := 0
-	tables := pdfToUnicodeTablesFromObjects(
-		fontNames,
-		objectOf,
-		func(reference string) []byte {
-			reads++
-
-			return lookup.value(reference)
-		},
-		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
-	)
-	if len(lookup.objects) != pdfMaxIndirectObjects ||
-		len(fontNames) != pdfMaxIndirectObjects ||
-		reads != pdfMaxIndirectObjects || len(tables) != 0 {
-		t.Fatalf(
-			"lookup work = %d objects/%d fonts/%d reads/%d tables",
-			len(lookup.objects),
-			len(fontNames),
-			reads,
-			len(tables),
-		)
-	}
-}
-
 func TestPDFObjectResolutionEdges(t *testing.T) {
 	body := []byte("106 0 obj\n<< /A /B >>\nendobj\n6 0 obj\n<< /C /D >>\nendobj\n")
 	lookup := newPDFObjectLookup(body)
@@ -200,14 +80,14 @@ func TestPDFObjectResolutionEdges(t *testing.T) {
 	}
 	if got := pdfObjectStreamWithQuota(
 		lookup.value,
-		"7",
+		"7 0",
 		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	); got != nil {
 		t.Fatalf("missing object stream = %q", got)
 	}
 	if got := pdfObjectStreamWithQuota(
 		lookup.value,
-		"6",
+		"6 0",
 		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	); got != nil {
 		t.Fatalf("streamless object = %q", got)
@@ -215,33 +95,33 @@ func TestPDFObjectResolutionEdges(t *testing.T) {
 	raw := []byte("8 0 obj\n<< >>\nstream\r\nplain\nendstream\nendobj")
 	if got := pdfObjectStreamWithQuota(
 		newPDFObjectLookup(raw).value,
-		"8",
+		"8 0",
+		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
+	); string(got) != "plain\n" {
+		t.Fatalf("unfiltered stream = %q", got)
+	}
+	unsupported := []byte("8 0 obj\n<< /Filter /DCTDecode >>\nstream\r\nplain\nendstream\nendobj")
+	if got := pdfObjectStreamWithQuota(
+		newPDFObjectLookup(unsupported).value,
+		"8 0",
 		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	); got != nil {
-		t.Fatalf("non-flate stream = %q", got)
+		t.Fatalf("unsupported filter stream = %q", got)
 	}
 	unterminated := []byte("9 0 obj\n<< >>\nstream\nabc")
 	if got := pdfObjectStreamWithQuota(
 		newPDFObjectLookup(unterminated).value,
-		"9",
+		"9 0",
 		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	); got != nil {
 		t.Fatalf("unterminated stream = %q", got)
 	}
 	if got := pdfObjectStreamWithQuota(
 		func(string) []byte { return []byte("<< >>\nstream\nunterminated") },
-		"9",
+		"9 0",
 		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	); got != nil {
 		t.Fatalf("unterminated direct stream = %q", got)
-	}
-	fontNoDict := []byte("3 0 obj\nstream\n/ToUnicode 4 0 R\nendstream\nendobj")
-	fontLookup := newPDFObjectLookup(fontNoDict)
-	if got := pdfToUnicodeObjectOf(fontLookup.value, "3"); got != "" {
-		t.Fatalf("stream-only tounicode = %q", got)
-	}
-	if got := pdfToUnicodeObjectOf(fontLookup.value, "4"); got != "" {
-		t.Fatalf("missing font object = %q", got)
 	}
 }
 
@@ -274,21 +154,54 @@ endbfchar
 	if table == nil || table.codeLen != 2 {
 		t.Fatalf("table = %+v", table)
 	}
-	if table.text[0x41] != "" || table.text[0x44] != "" || table.text[0x46] != "" {
-		t.Fatalf("skipped rows leaked: %+v", table.text)
+	for _, skipped := range []uint32{0x41, 0x44, 0x46} {
+		if text, mapped := table.codeText(skipped); mapped {
+			t.Fatalf("skipped row %#x leaked %q", skipped, text)
+		}
 	}
-	if table.text[0x45] != "W" {
-		t.Fatalf("bfchar = %q", table.text[0x45])
+	if text, _ := table.codeText(0x45); text != "W" {
+		t.Fatalf("bfchar = %q", text)
 	}
-	var capped strings.Builder
-	capped.WriteString("1 beginbfrange\n<0000> <FFFF> <0041>\nendbfrange\n")
-	cappedTable := pdfParseCMapWithQuota(
-		[]byte(capped.String()),
+}
+
+func TestPDFCMapRanges(t *testing.T) {
+	identityQuota := newPDFCMapQuota(pdfMaxCMapEntries, pdfMaxCMapTextBytes)
+	identity := pdfParseCMapWithQuota(
+		[]byte(
+			"1 beginbfrange\n<0000> <FFFF> <0000>\n<0041> <0042> <0058>\n<0100> <0100> <0059>\nendbfrange\n",
+		),
+		identityQuota,
+	)
+	for code, want := range map[uint32]string{0x0041: "A", 0x0436: "ж", 0xFFFD: "\uFFFD"} {
+		if text, mapped := identity.codeText(code); !mapped || text != want {
+			t.Fatalf("identity range %#x = %q %t, want %q", code, text, mapped, want)
+		}
+	}
+	if text, mapped := identity.codeText(0xD800); mapped {
+		t.Fatalf("surrogate code mapped to %q", text)
+	}
+	if len(identity.text) != 0 || len(identity.ranges) != 1 ||
+		identityQuota.remainingEntries != pdfMaxCMapEntries-3 {
+		t.Fatalf("identity range storage = %d entries, %d ranges, %d quota left",
+			len(identity.text), len(identity.ranges), identityQuota.remainingEntries)
+	}
+	disjoint := pdfParseCMapWithQuota(
+		[]byte(
+			"1 beginbfrange\n<0100> <0100> <0059>\n<0041> <0050> <0061>\n<0045> <0046> <0058>\nendbfrange\n",
+		),
 		newPDFCMapQuota(pdfMaxCMapEntries, pdfMaxCMapTextBytes),
 	)
-	if len(cappedTable.text) != pdfMaxCMapEntries {
-		t.Fatalf("range cap = %d", len(cappedTable.text))
+	for code, want := range map[uint32]string{0x45: "e", 0x50: "p", 0x100: "Y"} {
+		if text, mapped := disjoint.codeText(code); !mapped || text != want {
+			t.Fatalf("disjoint range %#x = %q %t, want %q", code, text, mapped, want)
+		}
 	}
+	if _, mapped := disjoint.codeText(0x51); mapped {
+		t.Fatal("gap between disjoint ranges must stay unmapped")
+	}
+}
+
+func TestPDFCMapEntryCap(t *testing.T) {
 	var charCapped strings.Builder
 	charCapped.WriteString("beginbfchar\n")
 	for i := 0; i < pdfMaxCMapEntries+8; i++ {
@@ -349,38 +262,45 @@ func TestPDFCMapUnicodeValidation(t *testing.T) {
 			t.Fatalf("invalid increment %q/%d = %q/%t", text, delta, incremented, valid)
 		}
 	}
+}
+
+func TestPDFCMapUnicodeRangeValidation(t *testing.T) {
 	invalid := pdfParseCMapWithQuota([]byte(
 		"beginbfchar\n<41> <D800>\n<42> <0042>\nendbfchar\n"+
 			"beginbfrange\n<43> <45> <D7FF>\nendbfrange\n",
 	), newPDFCMapQuota(pdfMaxCMapEntries, pdfMaxCMapTextBytes))
-	if invalid == nil || invalid.text['A'] != "" || invalid.text['B'] != "B" ||
-		invalid.text['C'] != "\uD7FF" || invalid.text['D'] != "" || invalid.text['E'] != "" {
-		t.Fatalf("validated CMap = %#v", invalid)
+	for code, want := range map[uint32]string{'A': "", 'B': "B", 'C': "\uD7FF", 'D': "", 'E': ""} {
+		if text, _ := invalid.codeText(code); text != want {
+			t.Fatalf("validated CMap %q = %q, want %q", rune(code), text, want)
+		}
 	}
 	quota := newPDFCMapQuota(8, 64)
 	bounded := pdfParseCMapWithQuota(
 		[]byte("beginbfrange\n<0000> <FFFFFFFF> <D7FF>\nendbfrange\n"),
 		quota,
 	)
-	if bounded == nil || len(bounded.text) != 1 || quota.remainingEntries != 0 {
-		t.Fatalf("invalid range bound = %#v/%d", bounded, quota.remainingEntries)
+	if text, _ := bounded.codeText(0x2801); text != "\U00010000" || quota.remainingEntries != 7 {
+		t.Fatalf("wide range = %q, %d entries left", text, quota.remainingEntries)
+	}
+	if text, mapped := bounded.codeText(1); mapped {
+		t.Fatalf("surrogate step of a wide range mapped to %q", text)
 	}
 	tables := pdfTextTablesWithQuota(
 		subsetFontPDF(t, "beginbfchar\n<02> <D800>\nendbfchar\n"),
 		newPDFDecodeQuota(pdfMaxDecodedDocumentBytes),
 	)
-	if table := tables["F1"]; table == nil || pdfMapString([]byte{0x02}, table) != "X" {
+	if table := tables["F1"]; table == nil || shownFontText([]byte{0x02}, table) != "X" {
 		t.Fatalf("invalid ToUnicode fallback = %#v", table)
 	}
 }
 
-func TestPDFMapString(t *testing.T) {
+func TestPDFShownFontText(t *testing.T) {
 	single := &pdfCMap{codeLen: 1, text: map[uint32]string{0x02: "fi"}}
-	if got := pdfMapString([]byte{0x02, 'r', 'm'}, single); got != "firm" {
+	if got := shownFontText([]byte{0x02, 'r', 'm'}, single); got != "firm" {
 		t.Fatalf("single-byte map = %q", got)
 	}
 	double := &pdfCMap{codeLen: 2, text: map[uint32]string{0x0041: "Ы"}}
-	if got := pdfMapString([]byte{0x00, 0x41, 'Z'}, double); got != "ЫZ" {
+	if got := shownFontText([]byte{0x00, 0x41, 'Z'}, double); got != "ЫZ" {
 		t.Fatalf("double-byte map = %q", got)
 	}
 }
@@ -393,4 +313,11 @@ func TestPDFNameToken(t *testing.T) {
 	if name, _ := pdfName([]byte("/")); name != "" {
 		t.Fatalf("bare slash = %q", name)
 	}
+}
+
+func shownFontText(raw []byte, table *pdfCMap) string {
+	collector := newPDFTextCollector(pdfMaxTextBytes)
+	pdfWriteShownText(collector, raw, table)
+
+	return collector.String()
 }
