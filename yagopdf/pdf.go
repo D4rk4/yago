@@ -27,6 +27,10 @@ type Document struct {
 }
 
 func ReadPDF(body []byte) (Document, bool) {
+	return pdfReadDocument(body, nil)
+}
+
+func pdfReadDocument(body []byte, abandoned <-chan struct{}) (Document, bool) {
 	if !bytes.HasPrefix(body, []byte("%PDF")) {
 		return Document{}, false
 	}
@@ -35,6 +39,7 @@ func ReadPDF(body []byte) (Document, bool) {
 		return Document{}, false
 	}
 	quota := newPDFDecodeQuota(pdfMaxDecodedDocumentBytes)
+	quota.abandoned = abandoned
 	body = pdfWithUnpackedObjectStreams(body, quota)
 	extracted := strings.TrimSpace(collapseBlankRuns(
 		pdfCollapseHorizontalWhitespace(pdfPageText(body, quota, pdfMaxTextBytes)),
@@ -257,10 +262,15 @@ func hasIndexableText(text string) bool {
 // program — the operands of its show operators. PostScript carries no
 // document-info title.
 func ReadPostScript(body []byte) (Document, bool) {
+	return postScriptReadDocument(body, nil)
+}
+
+func postScriptReadDocument(body []byte, abandoned <-chan struct{}) (Document, bool) {
 	if !bytes.HasPrefix(body, []byte("%!")) {
 		return Document{}, false
 	}
 	out := newPDFTextCollector(pdfMaxTextBytes)
+	out.abandoned = abandoned
 	pdfWritePostScriptText(out, body)
 	extracted := strings.TrimSpace(collapseBlankRuns(out.String()))
 	if !hasIndexableText(extracted) {

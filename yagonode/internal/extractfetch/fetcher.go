@@ -92,7 +92,7 @@ func (f *Fetcher) fetchDocument(ctx context.Context, rawURL string) (fetchedDocu
 		return f.readPlainText(limited, rawURL)
 	}
 	if isPDF(contentType) {
-		return f.readPDF(limited, rawURL)
+		return f.readPDF(ctx, limited, rawURL)
 	}
 	if !isHTML(contentType) {
 		return fetchedDocument{}, fmt.Errorf("fetch %s: unsupported content type", rawURL)

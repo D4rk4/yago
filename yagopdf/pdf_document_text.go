@@ -4,6 +4,7 @@ func pdfPageText(body []byte, quota *pdfDecodeQuota, textLimit int) string {
 	lookup := newPDFObjectLookup(body)
 	fonts := newPDFFontResources(lookup, quota)
 	text := newPDFTextCollector(textLimit)
+	text.abandoned = quota.abandoned
 	var interpreter *pdfTextInterpreter
 	var scope string
 	for _, stream := range pdfPageDescriptionStreamsFromLookup(body, lookup) {

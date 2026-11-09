@@ -270,8 +270,10 @@ extraction. The PDF title comes only from the document information dictionary;
 when that title is empty, the crawler uses the first line of text.
 
 Each PDF is read within fixed bounds: at most 256 content streams, 8 MiB of
-decoded data per stream and 32 MiB per document, 1 MiB of text, and a 4 KiB
-title. Content past a bound is not read; text read before it is still indexed.
+decoded data per stream and 32 MiB per document, 1 MiB of text, a 4 KiB title,
+and 5 seconds of reading time. Content past a size bound is not read; text read
+before it is still indexed. A PDF or PostScript file still being read after 5
+seconds produces no indexed document.
 A PDF that needs a password, forbids text extraction, uses another security
 handler, has no text layer, or yields fewer than eight letters produces no
 indexed document; crawl progress counts it as failed with the reason that the

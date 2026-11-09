@@ -11,6 +11,15 @@ password, forbids text extraction, or yields fewer than eight letters of text.
 `ReadPostScript` returns the text shown by a PostScript program; PostScript has
 no title.
 
+`ReadPDFContext` and `ReadPostScriptContext` read the same way but stop when the
+caller's context is cancelled or its deadline passes. They then return the
+context error instead of partial text. A file that is simply unreadable returns
+`ErrNoReadableText`, so a caller can tell an unreadable file from one it gave up
+on. Reading stops on the caller's own goroutine; no background work is left
+running. Decoding and text reading notice the stop quickly. Locating objects,
+decrypting, and walking the page tree run to completion first; their cost is
+bounded by the file size.
+
 ## What is read
 
 - **Pages.** Text comes from the content streams of the pages in the document's

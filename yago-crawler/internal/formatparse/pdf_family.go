@@ -1,8 +1,6 @@
 package formatparse
 
 import (
-	"bytes"
-
 	"github.com/D4rk4/yago/yago-crawler/internal/pageparse"
 	"github.com/D4rk4/yago/yagopdf"
 )
@@ -21,9 +19,7 @@ func parsePDF(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 }
 
 func readPDFOrPostScript(rawURL string, body []byte) (yagopdf.Document, bool) {
-	if urlExtension(rawURL) == "ps" || bytes.HasPrefix(body, []byte("%!PS")) {
-		return yagopdf.ReadPostScript(body)
-	}
+	document, err := readPDFOrPostScriptWithin(pdfReadingTimeLimit, rawURL, body)
 
-	return yagopdf.ReadPDF(body)
+	return document, err == nil
 }

@@ -9,6 +9,7 @@ import (
 
 type pdfDecodeQuota struct {
 	remainingBytes int
+	abandoned      <-chan struct{}
 }
 
 type pdfCMapQuota struct {
@@ -50,6 +51,8 @@ func (q *pdfCMapQuota) reserve(text string) bool {
 }
 
 func (q *pdfDecodeQuota) exhausted() bool {
+	q.observeAbandonment()
+
 	return q.remainingBytes == 0
 }
 
@@ -65,6 +68,7 @@ func (q *pdfDecodeQuota) consume(work int) bool {
 }
 
 func (q *pdfDecodeQuota) decode(stream pdfEncodedStream) ([]byte, bool) {
+	q.observeAbandonment()
 	decoded, decodedWorkBytes, ok := pdfDecodeChainWithin(
 		stream.encoded,
 		pdfFilterChain(stream.dictionary),
@@ -104,6 +108,8 @@ type pdfTextCollector struct {
 	text      strings.Builder
 	remaining int
 	sealed    bool
+	abandoned <-chan struct{}
+	unchecked int
 }
 
 func newPDFTextCollector(limit int) *pdfTextCollector {
@@ -111,6 +117,8 @@ func newPDFTextCollector(limit int) *pdfTextCollector {
 }
 
 func (c *pdfTextCollector) complete() bool {
+	c.observeAbandonment()
+
 	return c.sealed || c.remaining == 0
 }
 

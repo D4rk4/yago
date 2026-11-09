@@ -16,6 +16,7 @@ type pdfObjectStream struct {
 
 func pdfWithUnpackedObjectStreams(body []byte, quota *pdfDecodeQuota) []byte {
 	budget := newPDFDecodeQuota(min(quota.remainingBytes, pdfMaxUnpackedObjectStreamBytes))
+	budget.abandoned = quota.abandoned
 	available := budget.remainingBytes
 	var unpacked bytes.Buffer
 	copied := 0

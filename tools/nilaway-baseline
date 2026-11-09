@@ -79,12 +79,12 @@ yagonode/internal/spellcheck/symspell.go:182:10
 yagonode/internal/websearch/ddgs_provider.go:197:30
 yagonode/internal/websearch/web_seed_admission.go:95:3
 yagonode/internal/yagonode/node_login_processor_model.go:33:14
-yagopdf/pdf_bounded_extraction.go:213:36
+yagopdf/pdf_bounded_extraction.go:221:36
 yagopdf/pdf_dictionary_syntax.go:14:22
 yagopdf/pdf_dictionary_syntax.go:154:10
 yagopdf/pdf_encryption_trailer.go:22:42
 yagopdf/pdf_font_glyph_widths.go:108:10
-yagopdf/pdf_object_streams.go:132:38
+yagopdf/pdf_object_streams.go:133:38
 yagopdf/pdf_page_tree.go:45:32
 yagopdf/pdf_standard_security_keys.go:124:37
 yagopdf/pdf_standard_security_keys.go:132:24

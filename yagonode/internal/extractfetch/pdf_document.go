@@ -1,6 +1,7 @@
 package extractfetch
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -11,14 +12,18 @@ func isPDF(contentType string) bool {
 	return mediaType(contentType) == "application/pdf"
 }
 
-func (f *Fetcher) readPDF(limited *io.LimitedReader, rawURL string) (fetchedDocument, error) {
+func (f *Fetcher) readPDF(
+	ctx context.Context,
+	limited *io.LimitedReader,
+	rawURL string,
+) (fetchedDocument, error) {
 	body, err := f.readBoundedBody(limited, rawURL)
 	if err != nil {
 		return fetchedDocument{}, err
 	}
-	document, readable := yagopdf.ReadPDF(body)
-	if !readable {
-		return fetchedDocument{}, fmt.Errorf("parse %s: no readable PDF text", rawURL)
+	document, err := yagopdf.ReadPDFContext(ctx, body)
+	if err != nil {
+		return fetchedDocument{}, fmt.Errorf("parse PDF %s: %w", rawURL, err)
 	}
 
 	return fetchedDocument{title: document.Title, plainText: document.Text}, nil

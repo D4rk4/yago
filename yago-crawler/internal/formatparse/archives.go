@@ -8,6 +8,7 @@ import (
 	"compress/gzip"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yago-crawler/internal/pageparse"
 	"github.com/D4rk4/yago/yagocrawlcontract"
@@ -18,6 +19,8 @@ const (
 	archiveMaxEntryBytes = 8 << 20
 	archiveMaxTotalBytes = 64 << 20
 	archiveMaxTextBytes  = 1 << 20
+
+	archiveReadingTimeLimit = 5 * time.Second
 )
 
 // parseArchive unpacks a container and dispatches each inner file to the
@@ -26,6 +29,14 @@ const (
 // nested archives are not descended into, so archive bombs stop at one level.
 // xz/txz need a decompressor dependency and stay unparsed until its ADR.
 func parseArchive(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
+	return parseArchiveWithin(archiveReadingTimeLimit, rawURL, body)
+}
+
+func parseArchiveWithin(
+	limit time.Duration,
+	rawURL string,
+	body []byte,
+) (pageparse.ParsedPage, bool) {
 	entries := archiveEntries(rawURL, body)
 	if len(entries) == 0 {
 		return pageparse.ParsedPage{URL: rawURL}, false
@@ -34,7 +45,11 @@ func parseArchive(rawURL, _ string, body []byte) (pageparse.ParsedPage, bool) {
 	toggles := yagocrawlcontract.DefaultFormatToggles()
 	var text strings.Builder
 	links := make([]string, 0, 8)
-	for _, entry := range entries {
+	started := time.Now()
+	for index, entry := range entries {
+		if index > 0 && time.Since(started) > limit {
+			break
+		}
 		page, parsed := Parse(rawURL+"!/"+entry.name, "", entry.data, toggles)
 		if !parsed {
 			text.WriteString(entry.name + "\n")

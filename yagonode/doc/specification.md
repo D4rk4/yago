@@ -709,8 +709,12 @@ it is not an assumed deployment dependency.
   empty.
 * CMap, font-encoding, object-stream, and page/Form stream decoding SHALL share a
   32 MiB per-document work budget, and extracted UTF-8 text SHALL stop at 1 MiB.
-  Existing documents SHALL refresh through the normal recrawl lifecycle;
-  repository regressions SHALL use synthetic fixtures, external PDFs MAY be used
+  Stream decoding and text reading SHALL stop on the reading goroutine when the
+  caller's deadline passes: at the fetch-on-extract timeout, at the peer snippet
+  rescue budget, and after 5 seconds in the crawler. A stopped read SHALL be
+  reported apart from an unreadable document and SHALL yield no text. Archive
+  containers SHALL dispatch no new entry after 5 seconds. Existing documents
+  SHALL refresh through the normal recrawl lifecycle; repository regressions SHALL use synthetic fixtures, external PDFs MAY be used
   for verification only, and extraction SHALL NOT perform OCR.
 * The node SHALL support a full-text search backend abstraction with indexing, deletion, search, and stats operations.
 * The node SHALL use an embedded pure-Go Bleve full-text backend, tuned for web search, behind that abstraction.
