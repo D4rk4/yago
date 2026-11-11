@@ -59,6 +59,20 @@ func (v *Vault) QuotaBytes() int64 {
 	return lease.engine.QuotaBytes()
 }
 
+func (v *Vault) SetVaultUpdateObserver(observer VaultUpdateObserver) {
+	lease, err := v.acquireEngineLease()
+	if err != nil {
+		return
+	}
+	defer lease.release()
+	setter, ok := lease.engine.(interface {
+		SetVaultUpdateObserver(VaultUpdateObserver)
+	})
+	if ok {
+		setter.SetVaultUpdateObserver(observer)
+	}
+}
+
 func (v *Vault) UsedBytes(ctx context.Context) (int64, error) {
 	lease, err := v.acquireEngineLease()
 	if err != nil {

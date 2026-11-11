@@ -18,6 +18,12 @@ The endpoint can also be turned off entirely: `YAGO_METRICS_ENABLED` defaults to
 `true`, and setting it to `false` unmounts `/metrics` so it returns 404 while the
 collectors still run harmlessly in the background.
 
+Existing Bleve indexes open before full segment consolidation or read-cache
+loading. The node begins those tasks after binding its listeners. Structured
+`bleve read segment consolidation` and `bleve read cache loading` log events show
+their start and completion, including shard, segment, and byte totals where
+available. Searches remain available while the page cache warms.
+
 ## Metric groups
 
 The registry publishes:
@@ -75,12 +81,40 @@ The registry publishes:
   results from the crawl fleet (`crawl_ingest_batches_total`,
   `crawl_ingest_deferrals_total`, `crawl_ingest_content_bytes_total`,
   `crawl_ingest_urls_total`, `crawl_ingest_postings_total`).
+- **Crawler run outcomes** — terminal-run totals for document candidates,
+  accepted mutations, removals, pages with no document mutation, node rejections,
+  pending ingest, and unclassified historical pages (`crawl_run_outcomes_total`).
+  Fixed-cardinality rejection and no-mutation reason totals use
+  `crawl_page_outcome_reasons_total{class,reason}`. The `/admin/crawl` monitor
+  shows the current crawler-reported tallies; Prometheus counters advance when
+  runs reach a terminal state.
 - **Crawl search-index writes** — successful documents, failed write attempts,
   and one duration observation per Bleve batch or fallback write attempt
   (`crawl_search_index_documents_total`,
   `crawl_search_index_write_failures_total`,
   `crawl_search_index_write_duration_seconds`). A failed attempt contributes no
   successful document count, and these series carry no URL or error labels.
+- **Crawl ingest stages** — fixed-bucket duration histograms for queue wait,
+  delivery authorization and admission, observation history, lineage
+  reservation, document canonicalization, content-cluster preparation, evidence
+  preparation, lease acquisition, transition reads and recovery, candidate
+  planning, projection-lease expansion, transition commit, output completion,
+  cluster replacement, existing-cluster projection refresh and finalization,
+  document-vault writes, search-index writes, outbound-anchor updates and
+  document replacements, their index callbacks, fallback projections, target
+  document visits, publication finalization, URL metadata writes, stale-posting
+  sweeps, RWI posting writes, and recrawl recording
+  (`crawl_ingest_stage_duration_seconds{stage}`). Stage labels use only this
+  fixed vocabulary and never contain URLs or hosts. Compare each stage's
+  five-minute p50 and p95 to see where ingest time accumulates, for example:
+  `histogram_quantile(0.95, sum by (le, stage) (rate(crawl_ingest_stage_duration_seconds_bucket[5m])))`.
+  Outbound-anchor document replacement includes its index callback; compare
+  `outbound_anchor_document_replacement` with
+  `outbound_anchor_index_callback` to separate the callback from the remaining
+  replacement work.
+  Transition commit measures grouped reconciliation after replay evidence has
+  been durably stored; failed partial shard commits remain eligible for replay.
+- **Vault update phases** — `vault_update_phase_duration_seconds{phase,attempt}` separates read-yield, writer-admission, global-gate, transaction callback, lazy shard-transaction opening, commit validation, per-shard commit, total commit, and total update durations. `attempt` distinguishes the initial pass, the concurrent fast path, the contended retry, and the full update. Shard-transaction and shard-commit observations are emitted once per touched shard and are nested within the transaction and commit totals; phase and attempt labels are fixed and contain no shard identifiers or crawl data.
 - **Remote crawl** — opt-in YaCy delegation decisions by the fixed `action` and
   `outcome` vocabulary (`remote_crawl_decisions_total`). A decision with items
   advances by its bounded item count; a rejection or empty decision advances by

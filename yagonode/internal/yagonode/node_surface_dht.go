@@ -14,7 +14,7 @@ func buildSurfaceDHT(in assembleSurfacesInput, runtime crawlProcess) dhtOutbound
 			tally: in.tally,
 		},
 		events:               in.telemetry.recorder,
-		crawl:                crawlQueueDepthSource{probe: crawlQueueProbe(runtime)},
+		crawl:                crawlQueueDepthSource{},
 		index:                indexQueueDepthSource{probe: indexQueueProbe(runtime)},
 		externalReachability: in.externalReachabilityEvidence,
 	})

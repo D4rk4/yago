@@ -100,7 +100,8 @@ module graph as indirect dependencies of bleve:
    the vault; the old files are kept as `.migrated.bak` until the operator
    removes them.
 6. **Startup and clean restart**: keep bbolt freelist persistence disabled on
-   the serving write path. Close the shard pool under exclusive quiescence and
+   the serving write path. Join every storage-using background loop, then close
+   the shard pool under exclusive quiescence and
    persist each in-memory freelist with one empty, fully synced write
    transaction before closing that shard. A successful checkpoint needs no
    second sync. If it fails after deferred-fsync operation, attempt one

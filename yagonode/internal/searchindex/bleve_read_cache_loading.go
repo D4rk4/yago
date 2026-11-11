@@ -64,12 +64,12 @@ func loadBleveReadCache(ctx context.Context, indexes []bleve.Index) error {
 		shards[position] = scorchBleveReadCacheShard{index: index}
 	}
 	loading := bleveReadCacheLoading{shards: shards, open: openBleveReadCacheSegment}
-	slog.DebugContext(ctx, bleveReadCacheLoadingStartedMessage, slog.Int("shards", len(shards)))
+	slog.InfoContext(ctx, bleveReadCacheLoadingStartedMessage, slog.Int("shards", len(shards)))
 	report, err := loading.run(ctx)
 	if err != nil {
 		return err
 	}
-	slog.DebugContext(ctx, bleveReadCacheLoadingCompletedMessage,
+	slog.InfoContext(ctx, bleveReadCacheLoadingCompletedMessage,
 		slog.Int("shards", len(shards)),
 		slog.Int("segments", report.segments),
 		slog.Uint64("bytes", report.bytes),

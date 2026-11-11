@@ -56,7 +56,7 @@ services:
       YAGO_METRICS_ENABLED: ${YAGO_METRICS_ENABLED:-true}
       YAGO_INDEX_REMOTE_RESULTS: ${YAGO_INDEX_REMOTE_RESULTS:-true}
       YAGO_SEARCH_LINKS_NEW_TAB: ${YAGO_SEARCH_LINKS_NEW_TAB:-false}
-      YAGO_SEARCH_CLICK_CAPTURE: ${YAGO_SEARCH_CLICK_CAPTURE:-false}
+      YAGO_SEARCH_CLICK_CAPTURE: ${YAGO_SEARCH_CLICK_CAPTURE:-true}
       YAGO_SEARCH_SESSION_TTL: ${YAGO_SEARCH_SESSION_TTL:-5m}
       YAGO_SEARCH_REMOTE_PEER_TIMEOUT: ${YAGO_SEARCH_REMOTE_PEER_TIMEOUT:-1200ms}
       YAGO_SEARCH_REMOTE_TIMEOUT: ${YAGO_SEARCH_REMOTE_TIMEOUT:-1300ms}
@@ -149,7 +149,7 @@ services:
   yago-crawler:
     build:
       context: .
-      dockerfile: yago-crawler2/Dockerfile
+      dockerfile: yago-crawler/Dockerfile
       args:
         SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
         VERSION: ${VERSION:-}
@@ -160,6 +160,7 @@ services:
     environment:
       YAGO_DATA_DIR: ${YAGO_DATA_DIR:-/opt/yago/data}
       YAGO_CRAWLER_NODE_RPC_ADDR: ${YAGO_CRAWLER_NODE_RPC_ADDR:-yago-node:9091}
+      YAGO_CRAWLER_NODE_API_KEY: ${YAGO_CRAWLER_NODE_API_KEY:?create a crawl:write API key in the node admin console}
       YAGO_CRAWLER_WORKER_ID: ${YAGO_CRAWLER_WORKER_ID:-}
     volumes:
       - yago-crawler-data:/opt/yago/data

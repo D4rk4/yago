@@ -34,6 +34,43 @@ service CrawlExchange {
   rpc ReportProgress(CrawlProgressReport) returns (CrawlProgressAck);
 }
 
+service CrawlerDataExchange {
+  rpc ReadSearchDemand(SearchDemandRequest) returns (SearchDemandPage);
+  rpc StreamDocumentMutations(stream DocumentMutation) returns (stream DocumentMutationAck);
+}
+
+message SearchDemandRequest {
+  string cursor = 1;
+  uint32 page_size = 2;
+}
+
+message SearchDemandRecord {
+  string topic = 1;
+  string url = 2;
+  uint64 shown = 3;
+  uint64 clicked = 4;
+  int64 last_seen_unix_nano = 5;
+  int64 last_clicked_unix_nano = 6;
+  int64 focused_at_unix_nano = 7;
+}
+
+message SearchDemandPage {
+  repeated SearchDemandRecord records = 1;
+  string next_cursor = 2;
+}
+
+message DocumentMutation {
+  string mutation_id = 1;
+  bytes batch_json = 2;
+}
+
+message DocumentMutationAck {
+  string mutation_id = 1;
+  bool rejected = 2;
+  string rejection_rule = 3;
+  int32 error_code = 4;
+}
+
 message WorkerRegistration {
   string worker_id = 1;
   string worker_session_id = 2;
@@ -243,6 +280,18 @@ message CrawlRunTally {
   uint64 robots_denied = 4;
   uint64 duplicates = 5;
   uint64 pending = 6;
+  uint64 document_candidates = 7;
+  uint64 removal_mutations = 8;
+  uint64 not_indexable = 9;
+  uint64 node_rejected = 10;
+  uint64 pending_ingest = 11;
+  repeated CrawlOutcomeCount outcome_counts = 12;
+}
+
+message CrawlOutcomeCount {
+  string class = 1;
+  string reason = 2;
+  uint64 pages = 3;
 }
 
 message CrawlURLOutcome {

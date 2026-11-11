@@ -63,7 +63,7 @@ func bindDefinitions() []bindDefinition {
 		{
 			key:         bindKeyCrawler,
 			title:       "Crawler exchange (gRPC)",
-			description: "The crawler order, progress, ingest, and fleet-control listener.",
+			description: "The crawler data exchange, progress, document ingest, and runtime-policy listener.",
 			optional:    true,
 			current:     func(config nodeConfig) string { return config.Crawl.ListenAddr },
 			apply: func(config nodeConfig, addr string) nodeConfig {

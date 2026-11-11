@@ -21,14 +21,11 @@ const (
 func registerQueueDepthMetrics(
 	endpoints *metrics.HTTPEndpointMetrics,
 	assembled node,
-) crawlQueueDepthSource {
-	crawlDepth := crawlQueueDepthSource{probe: crawlQueueProbe(assembled.crawl)}
+) {
 	metrics.NewQueueDepthMetrics(
 		endpoints.Registry(),
-		newQueueDepthSource(assembled.dht.gateStatus, crawlDepth),
+		newQueueDepthSource(assembled.dht.gateStatus, crawlQueueDepthSource{}),
 	)
-
-	return crawlDepth
 }
 
 // adminSearchSuggest backs the admin console's search autocomplete with the
@@ -55,7 +52,7 @@ func buildOpsMux(
 	recorder *events.Recorder,
 	sources consoleAdminSources,
 ) *http.ServeMux {
-	crawlDepth := registerQueueDepthMetrics(endpoints, assembled)
+	registerQueueDepthMetrics(endpoints, assembled)
 	opsMux := newOpsMux(
 		metricsHandler(endpoints, config.MetricsEnabled),
 		assembled.readiness,
@@ -100,7 +97,6 @@ func buildOpsMux(
 		SearchLinksNewTab: config.SearchLinksNewTab,
 		Restart:           sources.restart,
 		SearchSuggest:     adminSearchSuggest(assembled),
-		CrawlFormats:      crawlFormatsAdmin(assembled.crawl),
 		PublicBaseURL:     config.PublicBaseURL,
 		PublicAddr:        config.PublicAddr,
 		Theme:             newPortalThemeAdmin(assembled.theme),
@@ -108,13 +104,9 @@ func buildOpsMux(
 	if importer, ok := assembled.crawl.(adminui.IndexImporter); ok {
 		options.IndexImport = importer
 	}
-	if importer := crawlOrderImporter(assembled.crawl); importer != nil {
-		options.CrawlOrderImport = importer
-	}
 	options.RWIBackfill = newNodeRWIBackfillAdmin(assembled.rwiBackfill)
 	applyOpsPageOptions(&options, config, assembled, sources)
 	applyIndexAdminOptions(&options, assembled)
-	applyExtractionRecrawlOption(&options, assembled)
 	if assembled.roster != nil {
 		options.PeerDetail = newPeerDetailSource(assembled.roster, blocks)
 	}
@@ -124,8 +116,7 @@ func buildOpsMux(
 	if assembled.news != nil {
 		options.PeerNews = newPeerNewsSource(assembled.news)
 	}
-	applyCrawlAdminOptions(&options, assembled, crawlDepth)
-	applySavedCrawlProfileAdminOptions(&options, assembled, recorder)
+	applyCrawlAdminOptions(&options, assembled)
 	mountOpsConsole(opsMux, options, recorder)
 
 	return opsMux
@@ -244,9 +235,6 @@ func newOpsMux(
 // mountOpsExtras attaches the optional ops-listener endpoints an assembled
 // node may carry.
 func mountOpsExtras(opsMux *http.ServeMux, assembled node) {
-	if assembled.crawl != nil {
-		assembled.crawl.mountDispatch(opsMux)
-	}
 	if assembled.searchExplain != nil {
 		opsMux.Handle(pathSearchExplain, assembled.searchExplain)
 	}

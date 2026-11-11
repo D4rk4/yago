@@ -99,6 +99,20 @@ func (r *ControlRegistry) register(workerID string, processIdentifiers ...string
 	}
 }
 
+func (r *ControlRegistry) registerDataExchangeWorker(workerID string) {
+	if workerID == "" {
+		return
+	}
+	r.mu.Lock()
+	if r.workers[workerID] == 0 {
+		r.workers[workerID] = 1
+		delete(r.activeFetches, workerID)
+		delete(r.storageStates, workerID)
+		delete(r.initialized, workerID)
+	}
+	r.mu.Unlock()
+}
+
 func (r *ControlRegistry) SetFetchWorkers(fetchWorkers int) int {
 	if fetchWorkers < 1 || fetchWorkers > yagocrawlcontract.MaximumFetchWorkerConcurrency {
 		return 0

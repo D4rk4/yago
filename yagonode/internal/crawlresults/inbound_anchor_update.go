@@ -68,6 +68,7 @@ func (c *IngestConsumer) replaceOutboundAnchors(
 	}
 	var update documentstore.AnchorUpdate
 	var err error
+	finishProjection := c.measureIngestStage(IngestStageOutboundAnchorProjection)
 	switch {
 	case reservation == nil:
 		update, err = c.anchors.ReplaceOutboundAnchors(ctx, sets)
@@ -80,6 +81,7 @@ func (c *IngestConsumer) replaceOutboundAnchors(
 			sets,
 		)
 	}
+	finishProjection()
 	defer c.anchors.ReleaseOutboundAnchors(update.Finalizations)
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "inbound anchor store", err)
@@ -92,6 +94,7 @@ func (c *IngestConsumer) replaceOutboundAnchors(
 		return true
 	}
 	if c.index != nil {
+		finishIndexVisit := c.measureIngestStage(IngestStageOutboundAnchorIndexVisit)
 		if err := c.anchors.VisitOutboundAnchorDocuments(
 			ctx,
 			update.Finalizations,
@@ -99,16 +102,21 @@ func (c *IngestConsumer) replaceOutboundAnchors(
 				return c.indexDocuments(ctx, documents)
 			},
 		); err != nil {
+			finishIndexVisit()
 			c.redeliverGroup(ctx, deliveries, "inbound anchor index", err)
 
 			return true
 		}
+		finishIndexVisit()
 	}
+	finishFinalization := c.measureIngestStage(IngestStageOutboundAnchorFinalization)
 	if err := c.anchors.FinalizeOutboundAnchors(ctx, update.Finalizations); err != nil {
+		finishFinalization()
 		c.redeliverGroup(ctx, deliveries, "inbound anchor finalization", err)
 
 		return true
 	}
+	finishFinalization()
 
 	return false
 }

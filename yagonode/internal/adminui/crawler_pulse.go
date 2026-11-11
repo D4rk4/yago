@@ -53,6 +53,7 @@ type crawlerWorkerPulseView struct {
 	ProcessLabel string
 	Active       string
 	ActivePages  []crawlerActivePageView
+	WaitingPages []crawlerWaitingPageView
 	Fetched      string
 	Indexed      string
 	LastReport   string
@@ -62,6 +63,13 @@ type crawlerActivePageView struct {
 	URL     string
 	Stage   string
 	Elapsed string
+}
+
+type crawlerWaitingPageView struct {
+	URL         string
+	State       string
+	Reason      string
+	AvailableAt string
 }
 
 type crawlerPulseView struct {
@@ -129,6 +137,7 @@ func buildCrawlerWorkerPulseView(worker CrawlerWorkerPulse, now time.Time) crawl
 		ProcessLabel: worker.ProcessLabel,
 		Active:       pulseActiveFetches(worker),
 		ActivePages:  crawlerActivePageViews(worker.ActivePages),
+		WaitingPages: crawlerWaitingPageViews(worker.WaitingPages),
 		Fetched:      pulseWorkerRate(worker, worker.FetchedPagesPerMinute),
 		Indexed:      pulseWorkerRate(worker, worker.IndexedPagesPerMinute),
 		LastReport:   "Unavailable",
@@ -141,6 +150,20 @@ func buildCrawlerWorkerPulseView(worker CrawlerWorkerPulse, now time.Time) crawl
 	}
 
 	return row
+}
+
+func crawlerWaitingPageViews(pages []CrawlerWaitingPage) []crawlerWaitingPageView {
+	views := make([]crawlerWaitingPageView, 0, len(pages))
+	for _, page := range pages {
+		availableAt := "ready"
+		if !page.AvailableAt.IsZero() {
+			availableAt = page.AvailableAt.UTC().Format("15:04:05 UTC")
+		}
+		views = append(views, crawlerWaitingPageView{
+			URL: page.URL, State: page.State, Reason: page.Reason, AvailableAt: availableAt,
+		})
+	}
+	return views
 }
 
 func crawlerActivePageViews(pages []CrawlerActivePage) []crawlerActivePageView {
@@ -253,7 +276,7 @@ func pulseAge(age time.Duration) string {
 func crawlerPulseHints(pulse CrawlerPulse, measurements crawlerPulseMeasurements) []string {
 	hints := make([]string, 0, 2)
 	if pulse.QueueKnown && pulse.QueuePending > 0 && len(pulse.Workers) == 0 {
-		hints = append(hints, "Crawl orders are queued with no connected crawler workers.")
+		hints = append(hints, "The crawler reports pending pages, but no current worker heartbeat is available.")
 	}
 	if len(pulse.Workers) > 0 && measurements.knownActivity == 0 &&
 		measurements.unknownActivity > 0 {
@@ -277,7 +300,7 @@ func crawlerPulseHints(pulse CrawlerPulse, measurements crawlerPulseMeasurements
 	if measurements.fetchCapacity > 0 && measurements.activeTotal >= measurements.fetchCapacity {
 		hints = append(
 			hints,
-			"Queued orders remain while all reported fetch slots are occupied; additional worker capacity may help.",
+			"Pending URLs remain while all reported fetch slots are occupied; additional worker capacity may help.",
 		)
 		return hints
 	}
@@ -285,7 +308,7 @@ func crawlerPulseHints(pulse CrawlerPulse, measurements crawlerPulseMeasurements
 		measurements.activeTotal*2 < measurements.fetchCapacity {
 		hints = append(
 			hints,
-			"Queued orders remain while most reported fetch slots are idle; inspect worker health and per-host politeness.",
+			"Pending URLs remain while most reported fetch slots are idle; inspect worker health and per-host politeness.",
 		)
 	}
 

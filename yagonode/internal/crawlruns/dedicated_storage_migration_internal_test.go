@@ -81,7 +81,7 @@ func TestLegacyStorageMigrationCopiesTerminalDeliveryIntoBolt(t *testing.T) {
 		t.Fatalf("open target runs: %v", err)
 	}
 	runs := targetRuns.Recent()
-	if len(runs) != 1 || runs[0].RunID != progress.RunID || runs[0].Tally != progress.Tally {
+	if len(runs) != 1 || runs[0].RunID != progress.RunID || !runs[0].Tally.Equal(progress.Tally) {
 		t.Fatalf("migrated runs = %+v", runs)
 	}
 
@@ -98,7 +98,7 @@ func TestLegacyStorageMigrationCopiesTerminalDeliveryIntoBolt(t *testing.T) {
 		t.Fatalf("open retained legacy runs: %v", err)
 	}
 	runs = retainedRuns.Recent()
-	if len(runs) != 1 || runs[0].RunID != progress.RunID || runs[0].Tally != progress.Tally {
+	if len(runs) != 1 || runs[0].RunID != progress.RunID || !runs[0].Tally.Equal(progress.Tally) {
 		t.Fatalf("retained legacy runs = %+v", runs)
 	}
 }

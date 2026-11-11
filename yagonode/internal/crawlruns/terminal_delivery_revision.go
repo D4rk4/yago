@@ -47,5 +47,5 @@ func (r *Registry) reviseTerminalDeliveryLocked(
 }
 
 func (record terminalDeliveryRecord) sameDelivery(durable terminalDeliveryRecord) bool {
-	return bytes.Equal(durable.Identity, record.Identity) && durable.Progress == record.Progress
+	return bytes.Equal(durable.Identity, record.Identity) && durable.Progress.Equal(record.Progress)
 }

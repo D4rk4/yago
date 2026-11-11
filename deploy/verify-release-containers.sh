@@ -26,7 +26,7 @@ DOCKER_BUILDKIT=1 docker build \
 	--provenance=false \
 	--build-arg "VERSION=${version}" \
 	--build-arg "SOURCE_REVISION=${source_revision}" \
-	-f yago-crawler2/Dockerfile \
+	-f yago-crawler/Dockerfile \
 	-t "$crawler_image" \
 	.
 

@@ -225,7 +225,7 @@ func TestPerformancePageRendersCrawlerPulseAndMeasuredRates(t *testing.T) {
 		}},
 	})
 	response := do(t, console, "/admin/performance")
-	for _, want := range []string{"Crawler pulse", "Fetched pages per minute", "Indexed pages per minute", "worker-test", "a1b2c3d4", "Process ID", "3 / 8", "24.5", "20.0", "Queued orders remain"} {
+	for _, want := range []string{"Crawler pulse", "Fetched pages per minute", "Indexed pages per minute", "worker-test", "a1b2c3d4", "Process ID", "3 / 8", "24.5", "20.0", "Pending URLs remain"} {
 		if !strings.Contains(response.body, want) {
 			t.Errorf("performance page missing %q", want)
 		}

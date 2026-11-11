@@ -218,6 +218,7 @@ type engine struct {
 	// read-vs-ingest contention, exported through ReadDeferred.
 	readDeferBudget atomic.Int64
 	readDeferNanos  atomic.Int64
+	updateObserver  atomic.Pointer[vaultUpdateObserverHolder]
 	// deferFsync records whether the shards run in deferred-fsync mode (bbolt
 	// NoSync): commits skip the per-commit disk flush and runDeferredSyncLoop
 	// flushes them on a cadence instead (ADR-0038). It is set once at boot,
@@ -287,45 +288,78 @@ func (e *engine) Provision(name vault.Name) error {
 }
 
 func (e *engine) Update(ctx context.Context, fn func(vault.EngineTxn) error) error {
-	e.yieldToReads(ctx)
-	if err := e.writeAdmission.enterConcurrent(ctx); err != nil {
-		return err
+	whole := updateObservation{
+		observer: e.updateObserver.Load(),
+		attempt:  vault.UpdateAttemptComplete,
 	}
-	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
-		e.writeAdmission.leaveConcurrent()
+	finishTotal := whole.measure(vault.UpdatePhaseTotal)
+	defer finishTotal()
+	initial := whole.withAttempt(vault.UpdateAttemptInitial)
+	finishReadYield := initial.measure(vault.UpdatePhaseReadYield)
+	e.yieldToReads(ctx)
+	finishReadYield()
+	concurrent := whole.withAttempt(vault.UpdateAttemptConcurrent)
+	finishAdmission := concurrent.measure(vault.UpdatePhaseWriterAdmission)
+	if err := e.writeAdmission.enterConcurrent(ctx); err != nil {
+		finishAdmission()
 
 		return err
 	}
-	err := e.runUpdate(fn, true)
+	finishAdmission()
+	finishGlobalGate := concurrent.measure(vault.UpdatePhaseGlobalGate)
+	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
+		e.writeAdmission.leaveConcurrent()
+		finishGlobalGate()
+
+		return err
+	}
+	finishGlobalGate()
+	err := e.runUpdate(fn, true, concurrent)
 	e.globalGate.RUnlock()
 	e.writeAdmission.leaveConcurrent()
 	if !errors.Is(err, errShardContended) {
 		return err
 	}
 
+	contended := whole.withAttempt(vault.UpdateAttemptContended)
+	finishAdmission = contended.measure(vault.UpdatePhaseWriterAdmission)
 	if err := e.writeAdmission.enterContended(ctx); err != nil {
+		finishAdmission()
+
 		return err
 	}
+	finishAdmission()
 	defer e.writeAdmission.leaveContended()
+	finishGlobalGate = contended.measure(vault.UpdatePhaseGlobalGate)
 	if err := acquireGlobalRead(ctx, &e.globalGate); err != nil {
+		finishGlobalGate()
+
 		return err
 	}
+	finishGlobalGate()
 	defer e.globalGate.RUnlock()
 
-	return e.runUpdate(fn, false)
+	return e.runUpdate(fn, false, contended)
 }
 
 // runUpdate executes one update attempt; tryLocks selects the fast path that
 // takes per-shard locks and aborts on contention.
-func (e *engine) runUpdate(fn func(vault.EngineTxn) error, tryLocks bool) error {
+func (e *engine) runUpdate(
+	fn func(vault.EngineTxn) error,
+	tryLocks bool,
+	observation updateObservation,
+) error {
 	txn := &shardTxn{
 		engine:   e,
 		writable: true,
 		tryLocks: tryLocks,
 		open:     make([]*bolt.Tx, len(e.shards)),
+		observe:  observation,
 	}
 	defer txn.releaseLocks()
+	finishTransaction := observation.measure(vault.UpdatePhaseTransaction)
 	err := fn(txn)
+	finishTransaction()
 	if txn.accessErr != nil {
 		err = txn.accessErr
 	}
@@ -340,7 +374,10 @@ func (e *engine) runUpdate(fn func(vault.EngineTxn) error, tryLocks bool) error 
 
 		return err
 	}
-	if err := txn.commit(); err != nil {
+	finishCommit := observation.measure(vault.UpdatePhaseCommit)
+	err = txn.commit()
+	finishCommit()
+	if err != nil {
 		if storageAtCapacityError(err) {
 			return vault.ErrAtCapacity
 		}
@@ -553,6 +590,7 @@ type shardTxn struct {
 	held      []int
 	open      []*bolt.Tx
 	accessErr error
+	observe   updateObservation
 }
 
 func (t *shardTxn) Writable() bool { return t.writable }
@@ -577,7 +615,9 @@ func (t *shardTxn) shard(index int) (*bolt.Tx, error) {
 		}
 		t.held = append(t.held, index)
 	}
+	finishShardTransaction := t.observe.measure(vault.UpdatePhaseShardTransaction)
 	tx, err := t.engine.shards[index].Begin(t.writable)
+	finishShardTransaction()
 	if err != nil {
 		return nil, fmt.Errorf("begin shard %d: %w", index, err)
 	}
@@ -595,16 +635,19 @@ func (t *shardTxn) releaseLocks() {
 }
 
 func (t *shardTxn) commit() error {
+	finishValidation := t.observe.measure(vault.UpdatePhaseCommitValidation)
 	for shard, tx := range t.open {
 		if tx == nil {
 			continue
 		}
 		if err := validateStructuralRootTransaction(tx); err != nil {
+			finishValidation()
 			t.rollback()
 
 			return fmt.Errorf("validate shard %d before commit: %w", shard+1, err)
 		}
 	}
+	finishValidation()
 	var failed error
 	for _, tx := range t.open {
 		if tx == nil {
@@ -615,7 +658,10 @@ func (t *shardTxn) commit() error {
 
 			continue
 		}
-		if err := commitTx(tx); err != nil {
+		finishShardCommit := t.observe.measure(vault.UpdatePhaseShardCommit)
+		err := commitTx(tx)
+		finishShardCommit()
+		if err != nil {
 			failed = err
 			_ = tx.Rollback()
 		}

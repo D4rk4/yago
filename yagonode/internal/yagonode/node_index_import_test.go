@@ -12,7 +12,6 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
-	"github.com/D4rk4/yago/yagonode/internal/recrawlfrontier"
 )
 
 type importDocumentDirectory map[string]documentstore.Document
@@ -283,7 +282,6 @@ func TestDocumentImportUsesBoundedConcurrentIngestAndSerializesDuplicateURLs(t *
 	service := &documentImportService{
 		documents: documents,
 		ingest:    submitter,
-		frontier:  new(importScheduleFixture),
 		profile:   importTestProfile(),
 	}
 	const duplicateURL = "https://same.example/page"
@@ -331,7 +329,6 @@ func TestDocumentImportUsesBatchedDestinationSnapshotAndPreservesDuplicates(t *t
 	service := &documentImportService{
 		documents: documents,
 		ingest:    submitter,
-		frontier:  new(importScheduleFixture),
 		profile:   importTestProfile(),
 	}
 	results, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
@@ -382,7 +379,6 @@ func TestDocumentImportRejectsIncompleteDestinationSnapshot(t *testing.T) {
 	service := &documentImportService{
 		documents: documents,
 		ingest:    new(importSubmitterFixture),
-		frontier:  new(importScheduleFixture),
 		profile:   importTestProfile(),
 	}
 	if _, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
@@ -393,19 +389,14 @@ func TestDocumentImportRejectsIncompleteDestinationSnapshot(t *testing.T) {
 }
 
 func TestDocumentImportReturnsEmptyResultsForEmptyBatch(t *testing.T) {
-	profiles := new(importScheduleFixture)
 	service := &documentImportService{
 		documents: importDocumentDirectory{},
 		ingest:    new(importSubmitterFixture),
-		frontier:  profiles,
 		profile:   importTestProfile(),
 	}
 	results, err := service.ImportDocuments(t.Context(), nil)
 	if err != nil || len(results) != 0 {
 		t.Fatalf("empty import = %#v, %v", results, err)
-	}
-	if len(profiles.profiles) != 1 {
-		t.Fatalf("migration profiles registered = %d, want one", len(profiles.profiles))
 	}
 }
 
@@ -418,7 +409,6 @@ func TestDocumentImportStopsWhenBatchedDestinationReadFails(t *testing.T) {
 	service := &documentImportService{
 		documents: documents,
 		ingest:    submitter,
-		frontier:  new(importScheduleFixture),
 		profile:   importTestProfile(),
 	}
 	if _, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
@@ -432,53 +422,6 @@ func TestDocumentImportStopsWhenBatchedDestinationReadFails(t *testing.T) {
 			len(submitter.batches),
 		)
 	}
-}
-
-type importScheduleFixture struct {
-	urls          []string
-	profiles      []string
-	profileErr    error
-	scheduleError error
-}
-
-type batchImportScheduleFixture struct {
-	*importScheduleFixture
-	batches [][]recrawlfrontier.RecrawlSchedule
-}
-
-func (f *batchImportScheduleFixture) ScheduleRecrawlsAtIfAbsent(
-	_ context.Context,
-	_ string,
-	schedules []recrawlfrontier.RecrawlSchedule,
-	_ time.Duration,
-) error {
-	if f.scheduleError != nil {
-		return f.scheduleError
-	}
-	f.batches = append(f.batches, append([]recrawlfrontier.RecrawlSchedule(nil), schedules...))
-	for _, schedule := range schedules {
-		f.urls = append(f.urls, schedule.URL)
-	}
-	return nil
-}
-
-func (f *importScheduleFixture) RecordProfile(
-	_ context.Context,
-	profile yagocrawlcontract.CrawlProfile,
-	_ yagocrawlcontract.CrawlOrderPriority,
-) error {
-	f.profiles = append(f.profiles, profile.Handle)
-	return f.profileErr
-}
-
-func (f *importScheduleFixture) ScheduleAtIfAbsent(
-	_ context.Context,
-	url, _ string,
-	_ time.Time,
-	_ time.Duration,
-) (bool, error) {
-	f.urls = append(f.urls, url)
-	return true, f.scheduleError
 }
 
 func TestDocumentImportDeduplicatesReplayAndPreservesConflictingDestination(t *testing.T) {
@@ -506,11 +449,9 @@ func TestDocumentImportDeduplicatesReplayAndPreservesConflictingDestination(t *t
 		},
 	}
 	submitter := &importSubmitterFixture{docs: directory}
-	schedules := new(importScheduleFixture)
 	service := &documentImportService{
 		documents: directory,
 		ingest:    submitter,
-		frontier:  schedules,
 		profile:   importTestProfile(),
 	}
 	canonicalConflict := importTestRecord(
@@ -547,120 +488,6 @@ func TestDocumentImportDeduplicatesReplayAndPreservesConflictingDestination(t *t
 	if directory[canonicalURL].ContentHash != "canonical-destination" {
 		t.Fatal("alias import changed the existing canonical destination document")
 	}
-	if len(schedules.urls) != 0 {
-		t.Fatalf("unscheduled documents entered the recrawl frontier: %#v", schedules.urls)
-	}
-	if len(schedules.profiles) != 1 {
-		t.Fatalf("migration profile registrations = %d, want exactly one", len(schedules.profiles))
-	}
-}
-
-func TestDocumentImportSchedulesOnlyExplicitVisitAndReplaysIdempotently(t *testing.T) {
-	const url = "https://scheduled.example/page"
-	nextVisit := time.Now().UTC().Add(-time.Minute)
-	documents := importDocumentDirectory{}
-	submitter := &importSubmitterFixture{docs: documents}
-	service := &documentImportService{
-		documents: documents,
-		ingest:    submitter,
-		frontier:  new(importScheduleFixture),
-		profile:   importTestProfile(),
-	}
-	record := importTestRecord("row-1", url, "hash-1", &nextVisit)
-	for attempt := 0; attempt < 2; attempt++ {
-		if _, err := service.ImportDocuments(
-			t.Context(),
-			[]adminui.IndexImportRecord{record},
-		); err != nil {
-			t.Fatalf("attempt %d: %v", attempt, err)
-		}
-	}
-	if got := len(service.frontier.(*importScheduleFixture).urls); got != 2 {
-		t.Fatalf(
-			"schedule attempts = %d, want idempotent scheduling attempted on both retries",
-			got,
-		)
-	}
-	if service.frontier.(*importScheduleFixture).urls[0] != url {
-		t.Fatal("unexpected scheduled URL")
-	}
-	if len(submitter.batches) != 1 {
-		t.Fatalf("replayed import submitted %d documents, want 1", len(submitter.batches))
-	}
-	if got := len(service.frontier.(*importScheduleFixture).profiles); got != 1 {
-		t.Fatalf("profile registration attempts = %d, want one", got)
-	}
-}
-
-func TestDocumentImportSchedulesEligibleRecrawlsOncePerImportBatch(t *testing.T) {
-	const (
-		presentURL  = "https://already.example/page"
-		conflictURL = "https://conflict.example/page"
-		newURL      = "https://new.example/page"
-	)
-	documents := importDocumentDirectory{
-		presentURL:  {NormalizedURL: presentURL, ContentHash: "same"},
-		conflictURL: {NormalizedURL: conflictURL, ContentHash: "destination"},
-	}
-	schedules := &batchImportScheduleFixture{importScheduleFixture: new(importScheduleFixture)}
-	service := &documentImportService{
-		documents: documents,
-		ingest:    &importSubmitterFixture{docs: documents},
-		frontier:  schedules,
-		profile:   importTestProfile(),
-	}
-	visit := time.Now().UTC().Add(time.Hour)
-	results, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
-		importTestRecord("same", presentURL, "same", &visit),
-		importTestRecord("new", newURL, "new", &visit),
-		importTestRecord("conflict", conflictURL, "source", &visit),
-		importTestRecord("no-schedule", "https://unscheduled.example/page", "other", nil),
-	})
-	if err != nil {
-		t.Fatalf("ImportDocuments: %v", err)
-	}
-	if results[0].Status != "already-present" || results[1].Status != "imported" ||
-		results[2].Status != "conflict" || results[3].Status != "imported" {
-		t.Fatalf("import results = %#v", results)
-	}
-	if len(schedules.batches) != 1 || len(schedules.batches[0]) != 2 {
-		t.Fatalf("recrawl schedule batches = %#v", schedules.batches)
-	}
-	if schedules.batches[0][0].URL != presentURL || schedules.batches[0][1].URL != newURL {
-		t.Fatalf("recrawl schedules = %#v", schedules.batches[0])
-	}
-	if documents[conflictURL].ContentHash != "destination" {
-		t.Fatal("conflicting source record replaced the destination document")
-	}
-}
-
-func TestDocumentImportReturnsBulkScheduleFailureForIdempotentRetry(t *testing.T) {
-	const url = "https://schedule-retry.example/page"
-	documents := importDocumentDirectory{}
-	schedules := &batchImportScheduleFixture{
-		importScheduleFixture: &importScheduleFixture{
-			scheduleError: errors.New("frontier unavailable"),
-		},
-	}
-	service := &documentImportService{
-		documents: documents,
-		ingest:    &importSubmitterFixture{docs: documents},
-		frontier:  schedules,
-		profile:   importTestProfile(),
-	}
-	visit := time.Now().UTC().Add(time.Hour)
-	results, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
-		importTestRecord("retry-row", url, "hash", &visit),
-	})
-	if err == nil || len(results) != 0 {
-		t.Fatalf("ImportDocuments = %#v, %v; want retryable schedule failure", results, err)
-	}
-	if documents[url].ContentHash != "hash" {
-		t.Fatal("document ingest was rolled back after recrawl scheduling failed")
-	}
-	if len(schedules.batches) != 0 {
-		t.Fatalf("failed schedule batches = %#v", schedules.batches)
-	}
 }
 
 func TestDocumentImportReturnsIngestFailureWithoutAdvancingCaller(t *testing.T) {
@@ -671,7 +498,6 @@ func TestDocumentImportReturnsIngestFailureWithoutAdvancingCaller(t *testing.T) 
 	service := &documentImportService{
 		documents: importDocumentDirectory{},
 		ingest:    submitter,
-		frontier:  new(importScheduleFixture),
 		profile:   importTestProfile(),
 	}
 	if _, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
@@ -684,44 +510,28 @@ func TestDocumentImportReturnsIngestFailureWithoutAdvancingCaller(t *testing.T) 
 	}
 }
 
-func TestDocumentImportReportsProfileLookupAndRegistrationFailures(t *testing.T) {
-	t.Run("profile registration", func(t *testing.T) {
-		service := &documentImportService{
-			documents: importDocumentDirectory{},
-			ingest:    new(importSubmitterFixture),
-			frontier:  &importScheduleFixture{profileErr: errors.New("profile store unavailable")},
-			profile:   importTestProfile(),
-		}
-		if _, err := service.ImportDocuments(t.Context(), nil); err == nil {
-			t.Fatal("profile registration failure was hidden")
-		}
-	})
-	t.Run("existing document lookup", func(t *testing.T) {
-		service := &documentImportService{
-			documents: failingImportDocumentDirectory{
-				err: errors.New("document store unavailable"),
-			},
-			ingest:   new(importSubmitterFixture),
-			frontier: new(importScheduleFixture),
-			profile:  importTestProfile(),
-		}
-		if _, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
-			importTestRecord("row", "https://lookup.example/", "hash", nil),
-		}); err == nil {
-			t.Fatal("destination lookup failure was hidden")
-		}
-	})
+func TestDocumentImportReportsExistingDocumentLookupFailures(t *testing.T) {
+	service := &documentImportService{
+		documents: failingImportDocumentDirectory{
+			err: errors.New("document store unavailable"),
+		},
+		ingest:  new(importSubmitterFixture),
+		profile: importTestProfile(),
+	}
+	if _, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
+		importTestRecord("row", "https://lookup.example/", "hash", nil),
+	}); err == nil {
+		t.Fatal("destination lookup failure was hidden")
+	}
 }
 
 func TestDocumentImportHonorsCancellationBeforeEachRecord(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	service := &documentImportService{
-		documents:       importDocumentDirectory{},
-		ingest:          new(importSubmitterFixture),
-		frontier:        new(importScheduleFixture),
-		profile:         importTestProfile(),
-		profileRecorded: true,
+		documents: importDocumentDirectory{},
+		ingest:    new(importSubmitterFixture),
+		profile:   importTestProfile(),
 	}
 	if _, err := service.ImportDocuments(ctx, []adminui.IndexImportRecord{
 		importTestRecord("row", "https://cancel.example/", "hash", nil),
@@ -733,11 +543,9 @@ func TestDocumentImportHonorsCancellationBeforeEachRecord(t *testing.T) {
 func TestDocumentImportReportsCancellationAfterIngestCompletes(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	service := &documentImportService{
-		documents:       importDocumentDirectory{},
-		ingest:          cancelingImportSubmitter{cancel: cancel},
-		frontier:        new(importScheduleFixture),
-		profile:         importTestProfile(),
-		profileRecorded: true,
+		documents: importDocumentDirectory{},
+		ingest:    cancelingImportSubmitter{cancel: cancel},
+		profile:   importTestProfile(),
 	}
 	if _, err := service.ImportDocuments(ctx, []adminui.IndexImportRecord{
 		importTestRecord("row", "https://cancel-after-ingest.example/", "hash", nil),
@@ -762,76 +570,6 @@ func TestImportDocumentRejectsCanceledContextBeforeLookup(t *testing.T) {
 	}
 }
 
-func TestDocumentImportDoesNotScheduleConflictingDestination(t *testing.T) {
-	service := &documentImportService{
-		frontier: new(importScheduleFixture),
-		profile:  importTestProfile(),
-	}
-	visit := time.Now().UTC().Add(time.Hour)
-	if err := service.scheduleImportBatch(t.Context(), []adminui.IndexImportRecord{
-		importTestRecord("eligible", "https://eligible.example/", "matching", &visit),
-		importTestRecord("conflict", "https://conflict.example/", "source", &visit),
-	}, []adminui.IndexImportResult{
-		{ID: "eligible", Status: "imported"},
-		{ID: "conflict", Status: "conflict"},
-	}); err != nil {
-		t.Fatalf("schedule conflicting import: %v", err)
-	}
-	if got := service.frontier.(*importScheduleFixture).urls; len(got) != 1 ||
-		got[0] != "https://eligible.example/" {
-		t.Fatalf("scheduled documents = %#v, want only the eligible URL", got)
-	}
-}
-
-func TestDocumentImportReportsRecrawlScheduleFailures(t *testing.T) {
-	tests := []struct {
-		name      string
-		document  documentstore.Document
-		content   string
-		wantCalls int
-	}{
-		{
-			name: "already present",
-			document: documentstore.Document{
-				NormalizedURL: "https://scheduled-existing.example/",
-				ContentHash:   "same",
-			},
-			content: "same",
-		},
-		{name: "new import", content: "new", wantCalls: 1},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			const url = "https://scheduled-existing.example/"
-			documents := importDocumentDirectory{}
-			if test.document.NormalizedURL != "" {
-				documents[url] = test.document
-			}
-			submitter := &importSubmitterFixture{docs: documents}
-			schedule := &importScheduleFixture{scheduleError: errors.New("frontier unavailable")}
-			service := &documentImportService{
-				documents: documents,
-				ingest:    submitter,
-				frontier:  schedule,
-				profile:   importTestProfile(),
-			}
-			nextVisit := time.Now().UTC().Add(time.Hour)
-			_, err := service.ImportDocuments(t.Context(), []adminui.IndexImportRecord{
-				importTestRecord("row", url, test.content, &nextVisit),
-			})
-			if err == nil {
-				t.Fatal("recrawl schedule failure was hidden")
-			}
-			if got := len(submitter.batches); got != test.wantCalls {
-				t.Fatalf("submitted batches = %d, want %d", got, test.wantCalls)
-			}
-			if len(schedule.urls) != 1 {
-				t.Fatalf("schedule attempts = %d, want one", len(schedule.urls))
-			}
-		})
-	}
-}
-
 func TestCrawlRuntimeImportDocumentsDelegatesResultsAndErrors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -846,7 +584,6 @@ func TestCrawlRuntimeImportDocumentsDelegatesResultsAndErrors(t *testing.T) {
 			service := &documentImportService{
 				documents: importDocumentDirectory{},
 				ingest:    submitter,
-				frontier:  new(importScheduleFixture),
 				profile:   importTestProfile(),
 			}
 			runtime := &crawlRuntime{indexImport: service}
@@ -872,8 +609,8 @@ func importTestProfile() yagocrawlcontract.CrawlProfile {
 
 func TestNewDocumentImportServiceConfiguresAnImportOnlyProfile(t *testing.T) {
 	documents := importDocumentDirectory{}
-	service := newDocumentImportService(documents, nil, nil)
-	if service.documents == nil || service.profile.Name != "Document migration recrawl" ||
+	service := newDocumentImportService(documents, nil)
+	if service.documents == nil || service.profile.Name != "Document migration" ||
 		service.profile.Scope != yagocrawlcontract.ScopeWide ||
 		service.profile.URLMustMatch != yagocrawlcontract.MatchAll ||
 		service.profile.MaxPagesPerHost != 1 || !service.profile.AllowQueryURLs {
@@ -881,9 +618,6 @@ func TestNewDocumentImportServiceConfiguresAnImportOnlyProfile(t *testing.T) {
 	}
 	if ingest, ok := service.ingest.(*crawlbroker.IngestReceiver); !ok || ingest != nil {
 		t.Fatal("constructor replaced the supplied ingest dependency")
-	}
-	if frontier, ok := service.frontier.(*recrawlfrontier.Frontier); !ok || frontier != nil {
-		t.Fatal("constructor replaced the supplied frontier dependency")
 	}
 }
 

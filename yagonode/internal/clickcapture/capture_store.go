@@ -244,12 +244,22 @@ func (s *Store) RecordClick(
 	urlIdentity string,
 	position int,
 ) error {
+	_, err := s.RecordClickWithDetails(ctx, token, urlIdentity, position)
+	return err
+}
+
+func (s *Store) RecordClickWithDetails(
+	ctx context.Context,
+	token string,
+	urlIdentity string,
+	position int,
+) (ValidatedClick, error) {
 	if err := s.preparations.awaitPersistence(ctx, token); err != nil {
-		return err
+		return ValidatedClick{}, err
 	}
 	click, err := s.issuer.ValidateClick(token, urlIdentity, position)
 	if err != nil {
-		return err
+		return ValidatedClick{}, err
 	}
 	if err := s.vault.Update(ctx, func(tx *vault.Txn) error {
 		record, ok, readErr := s.records.Get(tx, vault.Key(click.Query))
@@ -283,10 +293,10 @@ func (s *Store) RecordClick(
 
 		return s.records.Put(tx, vault.Key(click.Query), record)
 	}); err != nil {
-		return fmt.Errorf("record validated click: %w", err)
+		return ValidatedClick{}, fmt.Errorf("record validated click: %w", err)
 	}
 
-	return nil
+	return click, nil
 }
 
 func (s *Store) recordImpression(ctx context.Context, claims impressionClaims) error {

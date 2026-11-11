@@ -14,6 +14,10 @@ type SearchIndex interface {
 	Stats(ctx context.Context) (IndexStats, error)
 }
 
+type ReadCacheWarmer interface {
+	WarmReadCache(ctx context.Context) error
+}
+
 type ProgressiveSearchIndex interface {
 	SearchProgressively(
 		ctx context.Context,

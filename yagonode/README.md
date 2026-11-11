@@ -25,24 +25,40 @@ and
 [`doc/adr/0086-return-useful-shard-samples-and-cache-complete-searches.md`](doc/adr/0086-return-useful-shard-samples-and-cache-complete-searches.md)
 for the design and resource bounds.
 
-An administrator can save the shard freelists from Configuration → Storage while the node remains running. Vault reads and writes pause until all shards finish; later writes keep freelists current, which adds disk work.
+On graceful shutdown, the node joins its storage-using background workers before
+closing the vault and checkpoints each shard's freelist. A subsequent clean
+startup can load those freelists directly; a crash or skipped checkpoint can
+require a full shard scan.
+
+An existing Bleve index opens without a full read-cache scan or forced segment
+merge. After the node binds its listeners, those read-preparation tasks run in
+the background while searches read required pages on demand.
+
+An administrator can also save the shard freelists from Configuration → Storage
+while the node remains running. Vault reads and writes pause until all shards
+finish; the node then resumes with freelist persistence enabled for later writes.
 
 The authenticated Admin console is available at `/admin/` on the ops listener.
 The Performance page shows per-process fetched and indexed rates, current worker
-activity, fetch-admission waits, queued orders, and evidence-based signals.
-Rates include pages completed by short crawl runs during the 60-second window.
-The Crawler page shows the latest reported pending URL total across active runs
-separately from node orders waiting for or leased to crawlers. It lists active
-crawls with their worker report age, up to four URLs from the oldest pending
-node orders, and each worker's current and next URL sample with readable stages
-and wait reasons. It keeps the ten most recent terminal runs under a collapsed
-history section.
-The node keeps crawl orders in `${YAGO_DATA_DIR}/crawlbroker.db`. Its soft
-ceiling defaults to `auto`: 10% of the effective storage quota, capped by free
-space after the configured node reserve; with unlimited quota it uses 10% of
-measured free space after reserve. A byte size in `YAGO_CRAWLER_NODE_STATE_MAX_BYTES`
-or Admin setting `crawler.node_state_max_bytes` selects a fixed ceiling, while
-zero disables it.
+activity, fetch-admission waits, the crawler's reported pending frontier, and
+evidence-based signals. Rates come from cumulative crawler progress reports.
+Authenticated `/metrics` also reports per-stage crawl-ingest latency, including
+content-cluster replacement and the refreshes it applies to existing cluster
+members, so queue wait, storage, search indexing, URL metadata, and posting
+writes can be compared directly. Transition-commit timing covers grouped
+reconciliation after replay evidence is durable. Vault update phases report read
+yield, writer admission, global-gate wait, transaction work, shard transaction
+opening, commit validation, each touched-shard commit, and total commit time.
+These nested samples use fixed phase and attempt labels without shard or URL
+identifiers.
+The Crawler page accepts focused URL and topic demand and displays the crawler's
+reported pending total, current URL, waiting URL samples, report age, and fetched
+page outcomes. The outcome view separates document candidates, accepted and
+rejected mutations, pages fetched without a document mutation, pending ingest,
+and older pages whose outcomes were not recorded. The node
+does not keep a crawl-order queue or decide which URLs to fetch. It records search
+demand and accepts authenticated document mutations; `yago-crawler` owns URL
+selection, retries, recrawl timing, robots policy, and host politeness.
 Through a public HTTPS hostname, route `/admin/*` and `/api/admin/*` to the ops
 listener and keep that listener private; configure the reverse proxy's address
 in `YAGO_TRUSTED_PROXIES` so login cookies receive the Secure attribute.

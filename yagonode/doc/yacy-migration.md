@@ -22,9 +22,8 @@ or write either engine's on-disk index files.
    URL metadata, queue state, storage headroom, and peer behavior. Keep the
    source data and existing DHT controls unchanged until that gate passes.
 
-HTTP(S), FTP, and SMB indexed identities are retained. Only HTTP(S) records can
-carry an active Yago recrawl schedule; other source freshness values remain
-metadata because Yago's recrawl worker is HTTP(S)-only.
+HTTP(S), FTP, and SMB indexed identities are retained. Source freshness values remain document metadata. Document import does not
+create crawler demand or a recrawl schedule.
 
 Legacy YaCy HTTP URLs with percent-encoded whitespace, a narrowly recognized
 invalid host character, or a malformed percent escape in the host, path, or

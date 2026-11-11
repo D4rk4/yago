@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
@@ -12,7 +13,6 @@ import (
 type crawlerPulseSource struct {
 	control crawlerWorkerActivitySource
 	runs    crawlerRunThroughputSource
-	probe   func(context.Context) (crawlbroker.QueueDepth, error)
 }
 
 type crawlerWorkerActivitySource interface {
@@ -27,9 +27,8 @@ type crawlerRunThroughputSource interface {
 func newCrawlerPulseSource(
 	control crawlerWorkerActivitySource,
 	runs crawlerRunThroughputSource,
-	probe func(context.Context) (crawlbroker.QueueDepth, error),
 ) adminui.CrawlerPulseSource {
-	return crawlerPulseSource{control: control, runs: runs, probe: probe}
+	return crawlerPulseSource{control: control, runs: runs}
 }
 
 func (s crawlerPulseSource) CrawlerPulse(ctx context.Context) adminui.CrawlerPulse {
@@ -52,6 +51,10 @@ func (s crawlerPulseSource) CrawlerPulse(ctx context.Context) adminui.CrawlerPul
 		Workers:   make([]adminui.CrawlerWorkerPulse, 0, len(workers)),
 	}
 	for _, worker := range workers {
+		if worker.ObservedAt.IsZero() || time.Since(worker.ObservedAt) >
+			3*yagocrawlcontract.DefaultWorkerHeartbeatInterval {
+			continue
+		}
 		activePages := make([]adminui.CrawlerActivePage, 0, len(worker.ActivePages))
 		for _, activePage := range worker.ActivePages {
 			activePages = append(activePages, adminui.CrawlerActivePage{
@@ -96,9 +99,20 @@ func (s crawlerPulseSource) CrawlerPulse(ctx context.Context) adminui.CrawlerPul
 		}
 		pulse.Workers = append(pulse.Workers, row)
 	}
-	if s.probe != nil {
-		if depth, err := s.probe(ctx); err == nil {
-			pulse.QueuePending = depth.Pending
+	if running, ok := s.runs.(interface{ Recent() []crawlruns.Run }); ok {
+		for _, run := range running.Recent() {
+			if run.State != yagocrawlcontract.CrawlRunRunning || run.Updated.IsZero() ||
+				time.Since(run.Updated) >
+					3*yagocrawlcontract.DefaultWorkerHeartbeatInterval {
+				continue
+			}
+			pending := run.Tally.Pending
+			maximum := uint64(^uint(0) >> 1)
+			if pending > maximum-uint64(pulse.QueuePending) {
+				pulse.QueuePending = int(maximum)
+			} else {
+				pulse.QueuePending += int(pending)
+			}
 			pulse.QueueKnown = true
 		}
 	}

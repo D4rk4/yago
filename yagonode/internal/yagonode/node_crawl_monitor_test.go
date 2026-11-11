@@ -2,18 +2,14 @@ package yagonode
 
 import (
 	"context"
-	"errors"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
-	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 )
-
-var errMonitorProbe = errors.New("probe failed")
 
 func recordRun(reg *crawlruns.Registry, progress yagocrawlcontract.CrawlRunProgress) {
 	reg.Record(context.Background(), progress)
@@ -62,9 +58,7 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 		State:       yagocrawlcontract.CrawlRunRunning,
 		Tally:       yagocrawlcontract.CrawlRunTally{Pending: 7},
 	})
-	source := newCrawlMonitorSource(reg, func(context.Context) (crawlbroker.QueueDepth, error) {
-		return crawlbroker.QueueDepth{Pending: 3, Leased: 1}, nil
-	})
+	source := newCrawlMonitorSource(reg)
 
 	monitor := source.Monitor(context.Background())
 	if len(monitor.Runs) != 3 {
@@ -89,14 +83,47 @@ func TestCrawlMonitorSourceSnapshot(t *testing.T) {
 	if run.MaxPagesPerHost != "250" || run.MaxPagesPerRun != "900" {
 		t.Fatalf("run limits = %q/%q", run.MaxPagesPerHost, run.MaxPagesPerRun)
 	}
-	if !monitor.QueueAvailable || monitor.QueuePending != 3 || monitor.QueueLeased != 1 {
-		t.Fatalf("queue = %d/%d, want 3/1", monitor.QueuePending, monitor.QueueLeased)
+	if monitor.QueueAvailable {
+		t.Fatal("node-owned crawl-order depth must not be reported")
 	}
 	if monitor.PendingFrontierURLs != 13 {
 		t.Fatalf(
 			"pending frontier URLs = %d, want 13 from running runs only",
 			monitor.PendingFrontierURLs,
 		)
+	}
+}
+
+func TestCrawlMonitorSeparatesNewOutcomesFromLegacyUnknownPages(t *testing.T) {
+	reg := crawlruns.New(8)
+	recordRun(reg, yagocrawlcontract.CrawlRunProgress{
+		RunID: "legacy", State: yagocrawlcontract.CrawlRunFinished,
+		Tally: yagocrawlcontract.CrawlRunTally{Fetched: 103321, Indexed: 16237},
+	})
+	recordRun(reg, yagocrawlcontract.CrawlRunProgress{
+		RunID: "classified", State: yagocrawlcontract.CrawlRunRunning,
+		Tally: yagocrawlcontract.CrawlRunTally{
+			Fetched: 10, Indexed: 5, DocumentCandidates: 7, RemovalMutations: 1,
+			NotIndexable: 2, NodeRejected: 2, PendingIngest: 1,
+			OutcomeCounts: []yagocrawlcontract.CrawlOutcomeCount{
+				{Class: "not_indexable", Reason: "sitemap", Pages: 2},
+				{Class: "node_rejected", Reason: "too-few-words", Pages: 2},
+			},
+		},
+	})
+
+	monitor := newCrawlMonitorSource(reg).Monitor(context.Background())
+	if monitor.Totals.UnknownOutcome != 87084 || monitor.Totals.PendingIngest != 1 ||
+		monitor.Totals.NotIndexable != 2 || monitor.Totals.NodeRejected != 2 ||
+		monitor.Totals.DocumentCandidates != 7 || monitor.Totals.RemovalMutations != 1 {
+		t.Fatalf("classified totals = %+v", monitor.Totals)
+	}
+	if len(monitor.Totals.OutcomeCounts) != 2 ||
+		monitor.Totals.OutcomeCounts[0].Class != "node_rejected" ||
+		monitor.Totals.OutcomeCounts[0].Reason != "too-few-words" ||
+		monitor.Totals.OutcomeCounts[1].Class != "not_indexable" ||
+		monitor.Totals.OutcomeCounts[1].Reason != "sitemap" {
+		t.Fatalf("outcome reasons = %+v", monitor.Totals.OutcomeCounts)
 	}
 }
 
@@ -122,62 +149,12 @@ func TestCrawlRunViewFormatsUnlimitedAndUnavailableLimits(t *testing.T) {
 	}
 }
 
-func TestCrawlMonitorSourceProbeErrorIsUnavailable(t *testing.T) {
-	reg := crawlruns.New(8)
-	recordRun(reg, yagocrawlcontract.CrawlRunProgress{
-		RunID: "r1",
-		State: yagocrawlcontract.CrawlRunRunning,
-	})
-	source := newCrawlMonitorSource(reg, func(context.Context) (crawlbroker.QueueDepth, error) {
-		return crawlbroker.QueueDepth{}, errMonitorProbe
-	})
-
-	monitor := source.Monitor(context.Background())
-	if len(monitor.Runs) != 1 {
-		t.Fatalf("runs = %d, want 1 despite probe error", len(monitor.Runs))
-	}
-	if monitor.QueueAvailable {
-		t.Fatal("failed queue probe should be unavailable")
-	}
-}
-
-func TestCrawlMonitorSourceNilProbe(t *testing.T) {
-	source := newCrawlMonitorSource(crawlruns.New(8), nil)
+func TestCrawlMonitorSourceHasNoNodeOrderQueue(t *testing.T) {
+	source := newCrawlMonitorSource(crawlruns.New(8))
 
 	monitor := source.Monitor(context.Background())
 	if monitor.QueueAvailable || monitor.QueuePending != 0 || len(monitor.Runs) != 0 {
 		t.Fatalf("nil-probe monitor = %+v, want empty", monitor)
-	}
-}
-
-func TestCrawlMonitorSourceReadsPendingOrderURLs(t *testing.T) {
-	urls := []string{"https://example.org/queued"}
-	source := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
-		func(context.Context) ([]string, error) { return urls, nil },
-	)
-	monitor := source.Monitor(context.Background())
-	if !monitor.PendingOrderURLsKnown || len(monitor.PendingOrderURLs) != 1 ||
-		monitor.PendingOrderURLs[0] != urls[0] {
-		t.Fatalf("pending URL sample = %+v/%v, want known sample %v",
-			monitor.PendingOrderURLs, monitor.PendingOrderURLsKnown, urls)
-	}
-}
-
-func TestCrawlMonitorSourceKeepsEmptyAndUnavailablePendingURLSamplesDistinct(t *testing.T) {
-	empty := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
-		func(context.Context) ([]string, error) { return []string{}, nil },
-	).Monitor(context.Background())
-	if !empty.PendingOrderURLsKnown || len(empty.PendingOrderURLs) != 0 {
-		t.Fatalf("empty pending URL sample = %+v/%v, want known empty",
-			empty.PendingOrderURLs, empty.PendingOrderURLsKnown)
-	}
-
-	unavailable := newCrawlMonitorSource(crawlruns.New(8), nil).withPendingURLs(
-		func(context.Context) ([]string, error) { return nil, errMonitorProbe },
-	).Monitor(context.Background())
-	if unavailable.PendingOrderURLsKnown || len(unavailable.PendingOrderURLs) != 0 {
-		t.Fatalf("failed pending URL sample = %+v/%v, want unavailable",
-			unavailable.PendingOrderURLs, unavailable.PendingOrderURLsKnown)
 	}
 }
 
@@ -194,7 +171,7 @@ func TestCrawlMonitorRuntimeUsesCurrentTimeOnlyForActiveRuns(t *testing.T) {
 		RunID: "finished", ProfileName: "finished", State: yagocrawlcontract.CrawlRunFinished,
 	})
 	finished := reg.Recent()[0]
-	source := newCrawlMonitorSource(reg, nil)
+	source := newCrawlMonitorSource(reg)
 	source.now = func() time.Time { return activeStart.Add(2 * time.Hour) }
 
 	monitor := source.Monitor(t.Context())
@@ -228,11 +205,11 @@ func TestCrawlMonitorTotalsSaturateInsteadOfWrapping(t *testing.T) {
 		},
 	})
 
-	totals := newCrawlMonitorSource(reg, nil).Monitor(t.Context()).Totals
+	totals := newCrawlMonitorSource(reg).Monitor(t.Context()).Totals
 	if totals.Fetched != math.MaxUint64 || totals.Indexed != math.MaxUint64 ||
 		totals.Failed != math.MaxUint64 || totals.RobotsDenied != math.MaxUint64 ||
 		totals.Duplicates != math.MaxUint64 ||
-		newCrawlMonitorSource(reg, nil).Monitor(t.Context()).PendingFrontierURLs != math.MaxUint64 {
+		newCrawlMonitorSource(reg).Monitor(t.Context()).PendingFrontierURLs != math.MaxUint64 {
 		t.Fatalf("saturated totals = %+v", totals)
 	}
 }

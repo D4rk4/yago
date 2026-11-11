@@ -54,7 +54,6 @@ func completeNodeAssembly(in nodeAssemblyCompletion) node {
 		peerBlock:     in.blocks,
 		denylist:      in.surfaces.denylist,
 		activity:      in.surfaces.activity,
-		schedules:     in.surfaces.schedules,
 		theme:         in.surfaces.theme,
 		identity:      in.identity,
 		ranking:       in.surfaces.ranking,

@@ -179,25 +179,28 @@ func (r *ControlRegistry) RuntimeSnapshot() CrawlerRuntimeSnapshot {
 	defer r.mu.Unlock()
 
 	snapshot := CrawlerRuntimeSnapshot{
-		ConnectedCrawlers:     len(r.workers),
 		ActiveFetchesKnown:    true,
 		FetchLimitPerCrawler:  int(r.fetchWorkers),
 		StoragePressurePolicy: r.storagePressurePolicy,
 	}
 	minimumSet := false
-	storageStatesKnown := len(r.workers) > 0
+	storageStatesKnown := true
 	now := r.now()
 	for workerID := range r.workers {
 		active, known := r.activeFetches[workerID]
-		if !known || !active.activeKnown ||
+		if !known || active.observedAt.IsZero() ||
 			now.After(active.observedAt.Add(crawlerHeartbeatReportLifetime)) {
+			snapshot.ActiveFetchesKnown = false
+			continue
+		}
+		snapshot.ConnectedCrawlers++
+		if !active.activeKnown {
 			snapshot.ActiveFetchesKnown = false
 		} else {
 			snapshot.ActiveFetches += int(active.active)
 		}
 		storage, known := r.storageStates[workerID]
 		if !known || now.After(storage.observedAt.Add(crawlerHeartbeatReportLifetime)) {
-			delete(r.storageStates, workerID)
 			storageStatesKnown = false
 			snapshot.StorageUnreportedCrawlers++
 
@@ -217,7 +220,7 @@ func (r *ControlRegistry) RuntimeSnapshot() CrawlerRuntimeSnapshot {
 			minimumSet = true
 		}
 	}
-	snapshot.StorageStatesKnown = storageStatesKnown
+	snapshot.StorageStatesKnown = snapshot.ConnectedCrawlers > 0 && storageStatesKnown
 	snapshot.AggregateFetchCapacity = snapshot.ConnectedCrawlers * snapshot.FetchLimitPerCrawler
 
 	return snapshot

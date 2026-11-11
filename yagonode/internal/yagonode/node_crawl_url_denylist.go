@@ -7,7 +7,10 @@ import (
 )
 
 func (r *crawlRuntime) useCrawlURLDenylist(store *urldenylist.Store) {
-	r.broker.SetURLDenylistSource(crawlURLDenylistSource(store))
+	source := crawlURLDenylistSource(store)
+	if r.exchange != nil {
+		r.exchange.SetURLDenylistSource(source)
+	}
 }
 
 func crawlURLDenylistSource(

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/crawlresults"
@@ -82,6 +83,7 @@ func (r *IngestReceiver) SubmitImport(
 		CrawlProfile:  &profile,
 		ImportOnly:    true,
 		BatchJSONSize: len(encoded),
+		SubmittedAt:   time.Now(),
 		Ack: func(context.Context) error {
 			finish()
 			result <- ingestOutcome{}

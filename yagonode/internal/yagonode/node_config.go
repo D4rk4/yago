@@ -524,9 +524,7 @@ func loadDerivedBoolToggles(getenv func(string) string) (derivedBoolToggles, err
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSearchLinksNewTab, err)
 	}
-	// Off by default: capturing result clicks to mine implicit judgments persists
-	// query-to-clicked-URL associations, so an operator opts in (YagoRank RANK-00b).
-	searchClickCapture, err := boolEnv(getenv, envSearchClickCapture, false)
+	searchClickCapture, err := boolEnv(getenv, envSearchClickCapture, true)
 	if err != nil {
 		return derivedBoolToggles{}, fmt.Errorf("%s: %w", envSearchClickCapture, err)
 	}

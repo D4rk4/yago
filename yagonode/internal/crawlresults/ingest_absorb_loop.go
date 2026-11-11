@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagomodel"
@@ -31,13 +32,19 @@ func (c *IngestConsumer) Run(ctx context.Context) {
 			if !ok {
 				return
 			}
-			c.absorbGroup(ctx, c.drainPending(ctx, delivery))
+			started := time.Now()
+			group := c.drainPending(ctx, delivery)
+			c.observeSubmittedIngestQueue(group)
+			c.absorbGroup(ctx, group)
+			c.observeIngestStage(IngestStageConsumerBatch, time.Since(started))
 		}
 	}
 }
 
 func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
+	finishAuthorization := c.measureIngestStage(IngestStageDeliveryAuthorization)
 	release, authorized := authorizeIngestDelivery(ctx, delivery)
+	finishAuthorization()
 	if !authorized {
 		return
 	}
@@ -47,18 +54,28 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 
 		return
 	}
-	if !c.passesGates(ctx, delivery) {
+	finishAdmission := c.measureIngestStage(IngestStageDeliveryAdmission)
+	passedGates := c.passesGates(ctx, delivery)
+	finishAdmission()
+	if !passedGates {
 		return
 	}
-	if !c.admitStorageGrowth(ctx, []IngestDelivery{delivery}) {
+	finishAdmission = c.measureIngestStage(IngestStageStorageAdmission)
+	admitted := c.admitStorageGrowth(ctx, []IngestDelivery{delivery})
+	finishAdmission()
+	if !admitted {
 		return
 	}
+	finishObservation := c.measureIngestStage(IngestStageObservationHistory)
 	current := c.beginObservations(ctx, []IngestDelivery{delivery})
+	finishObservation()
 	if len(current) == 0 {
 		return
 	}
 	delivery = current[0]
+	finishReservation := c.measureIngestStage(IngestStageLineageReservation)
 	reservation, err := c.reserveIngestDocumentLineages(ctx, []IngestDelivery{delivery})
+	finishReservation()
 	if err != nil {
 		c.redeliver(ctx, delivery, delivery.Batch.SourceURL, "document lineage reservation", err)
 
@@ -84,10 +101,15 @@ func (c *IngestConsumer) absorb(ctx context.Context, delivery IngestDelivery) {
 // is acked. A purge failure redelivers so the tombstone is retried; a malformed
 // source URL is a poison batch and is dropped.
 func (c *IngestConsumer) absorbRemoval(ctx context.Context, delivery IngestDelivery) {
-	if !c.passesGates(ctx, delivery) {
+	finishAdmission := c.measureIngestStage(IngestStageDeliveryAdmission)
+	passedGates := c.passesGates(ctx, delivery)
+	finishAdmission()
+	if !passedGates {
 		return
 	}
+	finishObservation := c.measureIngestStage(IngestStageObservationHistory)
 	current := c.beginObservations(ctx, []IngestDelivery{delivery})
+	finishObservation()
 	if len(current) == 0 {
 		return
 	}
@@ -118,7 +140,10 @@ func (c *IngestConsumer) purgeRemoval(ctx context.Context, delivery IngestDelive
 
 		return
 	}
-	if !c.completeObservations(ctx, []IngestDelivery{delivery}) {
+	finishObservation := c.measureIngestStage(IngestStageObservationHistory)
+	observationsComplete := c.completeObservations(ctx, []IngestDelivery{delivery})
+	finishObservation()
+	if !observationsComplete {
 		return
 	}
 	if err := delivery.Ack(ctx); err != nil {
@@ -174,24 +199,35 @@ func (c *IngestConsumer) absorbReservedTail(
 	reservation documentstore.DocumentLineageReservation,
 ) {
 	batch := delivery.Batch
-	if c.updateReservedInboundAnchors(ctx, []IngestDelivery{delivery}, reservation) {
+	finishAnchors := c.measureIngestStage(IngestStageOutboundAnchorUpdate)
+	anchorsDeferred := c.updateReservedInboundAnchors(ctx, []IngestDelivery{delivery}, reservation)
+	finishAnchors()
+	if anchorsDeferred {
 		return
 	}
+	started := time.Now()
 	urlReceipt, err := c.urls.Receive(ctx, batch.Metadata)
 	if err != nil {
+		c.observeIngestStage(IngestStageURLMetadataWrite, time.Since(started))
 		c.redeliver(ctx, delivery, batch.SourceURL, "url metadata store", err)
 		return
 	}
+	c.observeIngestStage(IngestStageURLMetadataWrite, time.Since(started))
 	if urlReceipt.Busy {
 		c.redeliver(ctx, delivery, batch.SourceURL, "url metadata at capacity", nil)
 		return
 	}
 
+	started = time.Now()
 	if err := c.sweepStale(ctx, batch); err != nil {
+		c.observeIngestStage(IngestStageStalePostingSweep, time.Since(started))
 		c.redeliver(ctx, delivery, batch.SourceURL, "stale posting sweep", err)
 		return
 	}
+	c.observeIngestStage(IngestStageStalePostingSweep, time.Since(started))
+	started = time.Now()
 	postingReceipt, err := c.postings.Receive(ctx, batch.Postings)
+	c.observeIngestStage(IngestStageRWIPostingWrite, time.Since(started))
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "posting store", err)
 		return
@@ -201,8 +237,13 @@ func (c *IngestConsumer) absorbReservedTail(
 		return
 	}
 
+	finishRecrawl := c.measureIngestStage(IngestStageRecrawlSchedule)
 	c.recordFetch(ctx, delivery)
-	if !c.completeObservations(ctx, []IngestDelivery{delivery}) {
+	finishRecrawl()
+	finishObservation := c.measureIngestStage(IngestStageObservationHistory)
+	observationsComplete := c.completeObservations(ctx, []IngestDelivery{delivery})
+	finishObservation()
+	if !observationsComplete {
 		return
 	}
 	if c.observer != nil {
@@ -247,21 +288,25 @@ func (c *IngestConsumer) storeReservedDocument(
 	}
 
 	doc := documentFromIngestWithSafety(batch.Document, c.safety)
+	finishCanonicalization := c.measureIngestStage(IngestStageDocumentCanonicalization)
 	docs, err := c.canonicalIngestDocuments(
 		ctx,
 		reservation,
 		[]documentstore.Document{doc},
 	)
+	finishCanonicalization()
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "document canonicalization", err)
 
 		return true
 	}
+	finishClusterPreparation := c.measureIngestStage(IngestStageContentClusterPreparation)
 	projection, err := c.prepareIngestDocumentClusters(
 		ctx,
 		[]IngestDelivery{delivery},
 		docs,
 	)
+	finishClusterPreparation()
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster", err)
 
@@ -269,7 +314,9 @@ func (c *IngestConsumer) storeReservedDocument(
 	}
 	defer projection.release()
 	docs = projection.documents
+	started := time.Now()
 	receipt, err := c.documents.Receive(ctx, docs)
+	c.observeIngestStage(IngestStageDocumentWrite, time.Since(started))
 	if err != nil {
 		c.redeliver(ctx, delivery, batch.SourceURL, "document store", err)
 		return true
@@ -288,8 +335,11 @@ func (c *IngestConsumer) storeReservedDocument(
 			return true
 		}
 	}
-	if err := projection.finalize(ctx); err != nil {
-		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster finalization", err)
+	finishClusterFinalization := c.measureIngestStage(IngestStageContentClusterFinalization)
+	finalizationErr := projection.finalize(ctx)
+	finishClusterFinalization()
+	if finalizationErr != nil {
+		c.redeliver(ctx, delivery, batch.SourceURL, "content cluster finalization", finalizationErr)
 
 		return true
 	}

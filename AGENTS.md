@@ -93,7 +93,7 @@ Code quality: Do not write spaghetti code. Keep control flow, state ownership, a
 
 Module boundaries: Keep YaCy value types in `yagomodel`, wire protocol DTOs and endpoint vocabulary in `yagoproto`, node runtime/storage/P2P/search/ops behavior in `yagonode`, crawler worker behavior in `yago-crawler`, and node-crawler message contracts in `yagocrawlcontract`. Do not mix crawler runtime code into the node except through the contract and narrow node-side crawl orchestration.
 
-Crawler product identity: The new crawler implementation lives in the uniquely named `yago-crawler2` module and import path. Its command and binary, systemd and Compose service, container image, and GHCR repository remain `yago-crawler`. The previous implementation remains in `yago-crawler` only as a non-production reference until its removal is planned. Crawler environment variables use the `YAGO_CRAWLER_` prefix. The legacy `yagocrawler` and `YAGOCRAWLER_` spellings may appear only in immutable historical release facts or explicit upgrade-migration code and documentation; do not add runtime aliases or new references under those names.
+Crawler product identity: The canonical module directory and import path, command, binary, systemd and Compose service, container image, and GHCR repository are all `yago-crawler`. Crawler environment variables use the `YAGO_CRAWLER_` prefix. The legacy `yagocrawler` and `YAGOCRAWLER_` spellings may appear only in immutable historical release facts or explicit upgrade-migration code and documentation; do not add runtime aliases or new references under those names.
 
 Logging: Use stable message constants; put variable data in key/value fields. Happy paths: DEBUG. Sad paths: WARN if recoverable, ERROR if action is needed.
 

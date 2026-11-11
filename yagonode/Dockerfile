@@ -14,7 +14,6 @@ COPY go.work go.work.sum ./
 COPY yagonode/go.mod yagonode/go.sum yagonode/
 COPY yagocrawlcontract/go.mod yagocrawlcontract/
 COPY yago-crawler/go.mod yago-crawler/
-COPY yago-crawler2/go.mod yago-crawler2/
 COPY yagoegress/go.mod yagoegress/
 COPY yagomodel/go.mod yagomodel/
 COPY yagoproto/go.mod yagoproto/

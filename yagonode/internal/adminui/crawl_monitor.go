@@ -40,16 +40,28 @@ type CrawlRunURLActivity struct {
 // pages that produced a result (fetched, indexed) and those that were rejected
 // (failed, denied by robots, or skipped as duplicates).
 type CrawlTotals struct {
-	Fetched      uint64
-	Indexed      uint64
-	Failed       uint64
-	RobotsDenied uint64
-	Duplicates   uint64
+	Fetched            uint64
+	Indexed            uint64
+	Failed             uint64
+	RobotsDenied       uint64
+	Duplicates         uint64
+	DocumentCandidates uint64
+	RemovalMutations   uint64
+	NotIndexable       uint64
+	NodeRejected       uint64
+	PendingIngest      uint64
+	UnknownOutcome     uint64
+	OutcomeCounts      []CrawlOutcomeCount
+}
+
+type CrawlOutcomeCount struct {
+	Class  string
+	Reason string
+	Pages  uint64
 }
 
 // CrawlMonitor is the crawl monitor snapshot: the known runs newest-first, the
-// results/rejections rollup across them, and the broker's outstanding order
-// backlog.
+// results/rejections rollup across them, and crawler-reported frontier status.
 type CrawlMonitor struct {
 	Runs                  []CrawlRunView
 	Totals                CrawlTotals

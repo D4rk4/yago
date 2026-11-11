@@ -2,10 +2,10 @@ package yagonode
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 )
@@ -25,10 +25,15 @@ func (f crawlerWorkerActivityFixture) RuntimeSnapshot() crawlbroker.CrawlerRunti
 
 type crawlerRunThroughputFixture struct {
 	workers []crawlruns.WorkerThroughput
+	runs    []crawlruns.Run
 }
 
 func (f crawlerRunThroughputFixture) Throughput(time.Duration) []crawlruns.WorkerThroughput {
 	return f.workers
+}
+
+func (f crawlerRunThroughputFixture) Recent() []crawlruns.Run {
+	return f.runs
 }
 
 func TestCrawlerProcessLabelBoundsIdentifierDisplay(t *testing.T) {
@@ -60,16 +65,20 @@ func TestCrawlerPulseSourceCombinesCurrentProcessRatesAndQueueDepth(t *testing.T
 			}},
 			runtime: crawlbroker.CrawlerRuntimeSnapshot{FetchLimitPerCrawler: 8},
 		},
-		crawlerRunThroughputFixture{workers: []crawlruns.WorkerThroughput{{
-			WorkerID:              "worker-a",
-			ProcessIdentifier:     "a1b2c3d4e5f6",
-			FetchedPagesPerMinute: 24.5,
-			IndexedPagesPerMinute: 20,
-			RateKnown:             true,
-			ObservedAt:            now,
-		}}},
-		func(context.Context) (crawlbroker.QueueDepth, error) {
-			return crawlbroker.QueueDepth{Pending: 4}, nil
+		crawlerRunThroughputFixture{
+			workers: []crawlruns.WorkerThroughput{{
+				WorkerID:              "worker-a",
+				ProcessIdentifier:     "a1b2c3d4e5f6",
+				FetchedPagesPerMinute: 24.5,
+				IndexedPagesPerMinute: 20,
+				RateKnown:             true,
+				ObservedAt:            now,
+			}},
+			runs: []crawlruns.Run{{
+				State:   yagocrawlcontract.CrawlRunRunning,
+				Tally:   yagocrawlcontract.CrawlRunTally{Pending: 4},
+				Updated: now,
+			}},
 		},
 	)
 	pulse := source.CrawlerPulse(context.Background())
@@ -103,9 +112,6 @@ func TestCrawlerPulseSourceDoesNotApplyOldProcessRatesOrFailedQueueProbe(t *test
 			IndexedPagesPerMinute: 90,
 			RateKnown:             true,
 		}}},
-		probe: func(context.Context) (crawlbroker.QueueDepth, error) {
-			return crawlbroker.QueueDepth{}, errors.New("queue unavailable")
-		},
 	}
 	pulse := source.CrawlerPulse(context.Background())
 	if pulse.QueueKnown || pulse.QueuePending != 0 || len(pulse.Workers) != 1 {
@@ -116,8 +122,4 @@ func TestCrawlerPulseSourceDoesNotApplyOldProcessRatesOrFailedQueueProbe(t *test
 		t.Fatalf("current process used stale rates = %+v", worker)
 	}
 
-	source.probe = nil
-	if pulse := source.CrawlerPulse(context.Background()); pulse.QueueKnown {
-		t.Fatalf("pulse without a queue probe = %+v, want unknown queue", pulse)
-	}
 }

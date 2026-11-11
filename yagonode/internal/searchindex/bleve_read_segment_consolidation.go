@@ -88,7 +88,7 @@ func (c bleveReadSegmentConsolidation) run(ctx context.Context) error {
 	if err := c.checkHeadroom(); err != nil {
 		return err
 	}
-	slog.DebugContext(ctx, bleveReadSegmentConsolidationStartedMessage,
+	slog.InfoContext(ctx, bleveReadSegmentConsolidationStartedMessage,
 		slog.Int("shards", len(c.shards)),
 		slog.Uint64("segments", before),
 	)
@@ -101,7 +101,7 @@ func (c bleveReadSegmentConsolidation) run(ctx context.Context) error {
 		}
 		after += state.segments
 	}
-	slog.DebugContext(ctx, bleveReadSegmentConsolidationCompletedMessage,
+	slog.InfoContext(ctx, bleveReadSegmentConsolidationCompletedMessage,
 		slog.Int("shards", len(c.shards)),
 		slog.Uint64("segmentsBefore", before),
 		slog.Uint64("segmentsAfter", after),

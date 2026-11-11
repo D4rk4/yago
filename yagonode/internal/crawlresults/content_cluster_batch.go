@@ -15,6 +15,14 @@ type contentClusterBatch interface {
 	) ([]contentcluster.EvidenceReplacement, error)
 }
 
+type observedContentClusterBatch interface {
+	ReplaceBatchObserved(
+		context.Context,
+		[]contentcluster.Evidence,
+		contentcluster.EvidenceStageObserver,
+	) ([]contentcluster.EvidenceReplacement, error)
+}
+
 func (c *IngestConsumer) replaceDocumentClusterBatch(
 	ctx context.Context,
 	docs []documentstore.Document,
@@ -24,7 +32,13 @@ func (c *IngestConsumer) replaceDocumentClusterBatch(
 	for position, doc := range docs {
 		evidence[position] = documentClusterEvidence(doc)
 	}
-	replacements, err := clusters.ReplaceBatch(ctx, evidence)
+	var replacements []contentcluster.EvidenceReplacement
+	var err error
+	if observed, ok := clusters.(observedContentClusterBatch); ok {
+		replacements, err = observed.ReplaceBatchObserved(ctx, evidence, c)
+	} else {
+		replacements, err = clusters.ReplaceBatch(ctx, evidence)
+	}
 	if err != nil {
 		return documentClusterReplacement{}, fmt.Errorf("replace content clusters: %w", err)
 	}

@@ -44,12 +44,16 @@ const (
 type BleveDiskIndex struct {
 	mu                  sync.RWMutex
 	mutationMu          sync.Mutex
+	readWarmupOnce      sync.Once
 	unconfirmedWrites   unconfirmedIndexWrites
 	updatedAtMu         sync.RWMutex
 	shards              []bleve.Index
 	alias               bleve.Index
 	documents           documentstore.DocumentDirectory
 	documentPresence    documentstore.DocumentPresence
+	readCacheRoot       string
+	readCacheAdmission  BleveRebuildGrowthAdmission
+	readWarmupError     error
 	updatedAt           time.Time
 	closed              bool
 	multilingual        bool
@@ -147,6 +151,8 @@ func NewBleveDiskIndex(
 		alias:               newBleveDiskSearchAlias(shards),
 		documents:           directory,
 		documentPresence:    documentPresence,
+		readCacheRoot:       path,
+		readCacheAdmission:  rebuildAdmission,
 		updatedAt:           updatedAt,
 		multilingual:        supportsMultilingualAnalyzers(shards[0]),
 		analyzerScope:       supportsAnalyzerScope(shards[0]),
@@ -177,12 +183,6 @@ func NewBleveDiskIndex(
 		}
 		rebuildCoordinator.complete(ctx)
 	}
-	if err := out.prepareBleveReads(ctx, path, rebuildAdmission); err != nil {
-		closeBleveShards(shards)
-
-		return nil, err
-	}
-
 	return out, nil
 }
 

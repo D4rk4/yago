@@ -4,8 +4,6 @@ import "github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 
 type crawlRuntimeSettingsSource interface {
 	controlRegistry() *crawlbroker.ControlRegistry
-	automaticDiscoveryQueue() *crawlbroker.DurableOrderQueue
-	SetMaxPagesPerRun(int)
 }
 
 func (t *runtimeToggles) SetCrawlerFetchWorkersSink(sink func(int)) {
@@ -106,7 +104,9 @@ func attachCrawlRuntimeSettings(runtime crawlProcess, toggles *runtimeToggles) {
 		return
 	}
 	control := source.controlRegistry()
-	queue := source.automaticDiscoveryQueue()
+	if control == nil {
+		return
+	}
 	toggles.SetCrawlerFetchWorkersSink(func(workers int) {
 		control.SetFetchWorkers(workers)
 	})
@@ -119,15 +119,9 @@ func attachCrawlRuntimeSettings(runtime crawlProcess, toggles *runtimeToggles) {
 	toggles.SetCrawlerMaximumActiveRunsSink(func(maximum int) {
 		control.SetMaximumActiveRuns(maximum)
 	})
-	toggles.SetCrawlerMaxPagesPerRunSink(source.SetMaxPagesPerRun)
 	toggles.SetCrawlerRuntimePolicySink(control.SetRuntimePolicy)
 	toggles.SetCrawlerStoragePressureSink(control.SetStoragePressurePolicy)
 	toggles.SetAutomaticDiscoveryPrioritySink(func(enabled bool) {
-		queue.SetAutomaticDiscoveryPriority(enabled)
 		control.SetAutomaticDiscoveryPriority(enabled)
 	})
-}
-
-func (r *crawlRuntime) automaticDiscoveryQueue() *crawlbroker.DurableOrderQueue {
-	return r.broker.Orders
 }

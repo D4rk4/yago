@@ -19,6 +19,13 @@ RWI is a compatibility and exchange layer, not the primary local search engine.
 Local search uses the document store plus the full-text backend abstraction;
 the embedded pure-Go Bleve implementation is the committed production backend.
 
+Opening an existing Bleve index SHALL open its shard handles without synchronously
+forcing segment consolidation or scanning every active segment into the operating
+system page cache. Once the node has bound its listeners, it MAY consolidate
+segments and warm read caches asynchronously. These tasks SHALL NOT block
+readiness or ordinary searches. A cold search SHALL load the storage pages it
+needs through normal index reads.
+
 ## Target Architecture
 
 ```text
@@ -43,17 +50,34 @@ yago-crawler
   - emits DocumentIngest + RWI postings + URL metadata
 ```
 
-Crawler URL fetching and robots retrieval happen in `yago-crawler`; the node
-does not fetch crawl targets. The crawler claims pages through one global worker
-limit that is independent of the active crawl-run limit. Each URL attempt has a
-five-second wall-clock deadline. A timeout settles or retries that URL and frees
-the worker for another due page. Fetched ingest batches remain in the crawler's
-persistent outbox and travel over a bidirectional stream with up to 64
-submissions in flight. A separate receiver processes acknowledgments while the
-sender continues dispatching. A slow ingest acknowledgment does not occupy a
-page worker. Worker heartbeats report active URLs, stages, and elapsed time for
-the Admin crawl pulse. A run remains leased until its pending ingest batches are
-acknowledged.
+`yago-crawler` owns URL discovery, its persistent frontier, retry and recrawl
+selection, robots policy, host politeness, fetching, content extraction, and
+removal decisions. `yago-node` serves search and stores search-demand signals;
+it does not enqueue URLs, maintain a crawl frontier, or set recrawl times. Search
+exposure and click records are keyed by topic and canonical URL, with aggregate
+counts and latest activity times. Focused seeds use the same record shape and
+receive a priority signal.
+
+The crawler reads search demand through the authenticated
+`CrawlerDataExchange.ReadSearchDemand` RPC. It applies a 30-day demand half-life
+and chooses which URLs and domains to visit. It stores fetched document
+mutations in its own durable outbox and asynchronously submits them through
+`StreamDocumentMutations`. The node validates the crawler API key, applies
+upserts and removals to the document, full-text, URL-metadata, and RWI stores,
+then acknowledges each mutation. The node does not require a crawl-order lease
+to accept those mutations.
+
+The legacy `CrawlExchange` order and lease messages remain during transition for
+older workers. The current `yago-crawler` does not consume that queue. New work
+uses search-demand records and focused-seed signals; no node order producer is
+part of the current crawler flow. Successful Admin crawl submissions record
+each seed URL using the crawl name as the topic, or a fixed operator-focus topic
+when no name is supplied. The crawler decides how those focused records affect
+its frontier. A focused URL whose latest focus is newer than its last completion
+is eligible for another attempt; a completion after that focus prevents a
+redundant repeat. If restored node demand has a lower sequence than the
+crawler's saved cursor, the worker restarts its incremental read. Ordinary
+search demand continues to use the crawler's recrawl interval.
 
 Search, document storage, peer protocol, crawler orchestration, and Admin UI
 remain narrow internal components. A future process split requires its own ADR
@@ -348,7 +372,7 @@ it is not an assumed deployment dependency.
 * Ingest authorization SHALL distinguish confirmed lease loss from operational authorization failures. Only confirmed loss SHALL return FailedPrecondition and revoke a crawler grant; context, storage and other non-lease authorization failures SHALL remain retryable without revoking a valid grant.
 * The served-result denylist SHALL load its immutable snapshot at startup and SHALL publish a changed snapshot after a successful mutation or a durable reconciliation. An add whose durable state cannot be read SHALL fail closed by including the requested entry; an indeterminate remove SHALL retain the prior policy. Request-time filtering SHALL NOT scan persistent storage or iterate every configured domain for each result.
 * Canonicalizable exact URL denylist rules SHALL match the shared canonical URL identity in served results and crawl admission. Persisted raw aliases SHALL remain individually removable, and removing one alias SHALL NOT unblock another retained alias. Domain suffix rules and literal matching for values outside canonicalization SHALL remain supported. Additions SHALL validate both retained raw rules and the canonical outgoing policy against the shared contract limits within the serialized mutation, before durable or visible state changes. Rejected additions SHALL leave both unchanged. Legacy oversized policies SHALL remain readable and removable without automatic pruning. The receiver SHALL verify the existing wire revision before compiling canonical match indexes.
-* Admin Crawler SHALL distinguish pending node orders, leased orders and each run's pending URLs. The Crawl page SHALL show up to four URLs from the oldest pending node orders, separately from each worker's frontier sample; an unavailable sample SHALL be distinguishable from an empty queue. Clearing pending orders SHALL require an authenticated, CSRF-protected explicit confirmation. After reconciling pending discovery intents, the node SHALL capture one finite deletion boundary, remove only still-pending orders below that boundary in bounded atomic transactions, preserve leases and later arrivals, and report only committed removals alongside any partial failure. Discovery ownership and recovery intents SHALL remain consistent after deletion and reopening; ordinary submission idempotency SHALL remain intact. Indexed documents, schedules and settings SHALL remain unchanged. Per-run cancellation SHALL remain the separate control for a worker's pending URLs.
+* Admin Crawler SHALL show pending URL totals and bounded active/waiting URL samples reported by the crawler's persistent frontier. A stale worker report SHALL be shown as stale and SHALL NOT be presented as a live queue measurement. The node SHALL NOT show or clear a node-owned crawl-order queue.
 * The same durable URL/domain denylist SHALL be the crawler admission policy.
   Before a current crawler opens its order stream, the node SHALL provide one
   canonical revisioned snapshot and the crawler SHALL fail closed until that
@@ -359,8 +383,12 @@ it is not an assumed deployment dependency.
   browser fetch, including its final redirected URL. The policy SHALL remain
   bounded to 4,096 entries and 1 MiB and SHALL NOT introduce a second operator
   setting or environment variable.
-* The crawler SHALL fetch page and robots URLs in `yago-crawler`; the node SHALL NOT fetch crawl targets. A process-wide page-worker limit SHALL bound concurrent frontier claims independently from the active-run limit, and each URL attempt SHALL have a five-second wall-clock deadline. A robots network request SHALL be bounded to two seconds after host admission; concurrent requests for the same origin SHALL share one load. An unreachable robots file SHALL deny that origin and cache the result for at most 24 hours; crawler shutdown cancellation SHALL NOT populate the cache. Deadline expiration SHALL settle or retry that URL and release the worker. The crawler SHALL persist fetched batches to its outbox before settling pages and SHALL dispatch them in a separate sender so node acknowledgment latency cannot occupy page workers. The node SHALL receive bounded heartbeat reports of active URL, stage, and elapsed time, plus up to four next waiting URLs per run and 64 per worker with queue state, wait reason, and eligibility time. The Admin Crawl page SHALL show at most eight current URLs and four next waiting URLs per run. A crawl order MAY remain leased while its durable outbox drains.
-* Optional crawl seeding from web-fallback results SHALL run outside the search response path through two process-wide workers, admit at most 128 pending jobs, and give each admitted job a fresh background context that expires ten seconds after execution begins. A full pending queue SHALL warn and skip only the new optional job. URLs SHALL be normalized before admission, SHALL discard fragments, and SHALL reject credentials, missing hosts, non-HTTP schemes, and identities beyond the document URL limit. Every eligible surfaced URL SHALL receive a stored-document presence check lasting at most 50 milliseconds. An absent or lookup-indeterminate URL SHALL persist a node-internal, one-at-a-time recovery intent before automatic-discovery queue mutation. Its normalized identity SHALL coalesce only pending or leased work. Acknowledgement, terminal failure, or cancellation SHALL stage a durable settlement intent before releasing that identity; retry or startup SHALL complete a partial settlement idempotently so a later surfaced result can retry. Successful ingest SHALL be authorized against the live lease and SHALL attempt to persist that order's profile before recording the fetch. A profile or recrawl-schedule write failure SHALL be logged and SHALL NOT roll back an already indexed document. The discovery root SHALL be the warming fetch; the node SHALL NOT publish a second cache order while that work remains active.
+* The crawler SHALL fetch page and robots URLs in `yago-crawler`; the node SHALL NOT fetch crawl targets. A process-wide page-worker limit SHALL bound concurrent frontier claims independently from the active-run limit, and each URL attempt SHALL have a five-second wall-clock deadline. A robots network request SHALL be bounded to two seconds after host admission; concurrent requests for the same origin SHALL share one load. An unreachable robots file SHALL deny that origin and cache the result for at most 24 hours; crawler shutdown cancellation SHALL NOT populate the cache. Deadline expiration SHALL settle or retry that URL and release the worker. The crawler SHALL persist fetched batches to its outbox before settling pages and SHALL dispatch them in a separate sender so node acknowledgment latency cannot occupy page workers. The node SHALL receive bounded heartbeat reports of active URL, stage, and elapsed time, plus up to four next waiting URLs per run and 64 per worker with queue state, wait reason, and eligibility time. The Admin Crawl page SHALL show at most eight current URLs and four next waiting URLs per run. A fetched page remains in the crawler-owned frontier until its durable outbox mutation is acknowledged; no crawl-order lease is involved.
+* Search-result URLs SHALL update aggregate search-demand records keyed by topic and
+  canonical URL. Clicks SHALL update the same records. Optional web-search results
+  SHALL write demand asynchronously outside the response deadline. A crawler SHALL
+  read demand using an incremental cursor and SHALL decide which URLs to enqueue.
+  No node search path SHALL publish a crawl order or wait for a crawl worker.
 * Public paging SHALL cache an initial 50-result assembled window plus one materialized lookahead row and extend it on demand in 50-result blocks with the same one-row lookahead up to the 500-result safety horizon. Extensions SHALL preserve the cached prefix order, append only unseen result identities, and keep extending after a short deduplicated window while the backend reports deeper matches. A failure-free response that explicitly closes the backend total or adds no new identity MAY prove exhaustion and reduce the estimate to the materialized prefix. A classified incomplete extension, a response carrying retrieval partial failures, an operational refresh error, or merely reaching the safety horizon SHALL preserve the estimate and remain non-exhaustive. Public portal page links SHALL use only materialized availability, SHALL preserve an explicitly requested non-exhaustive page, and SHALL redirect beyond the last materialized page only after authoritative exhaustion. Each session SHALL publish an immutable visible window so recent-success recovery never waits behind an active deep-page extension. The paging cache SHALL retain at most 128 sessions and 32 MiB in byte-aware LRU order, reconcile extension growth, purge expired entries on access, deeply detach retained payloads, and serve but not retain an entry that exceeds the budget by itself.
 * Persistent full-text index search and document hydration MAY run concurrently with ingest, but index, delete, and batch mutations SHALL be serialized to bound concurrent segment memory and preserve mutation completion order. One batch mutation SHALL persist at most four Bleve shards concurrently, SHALL attempt every touched shard, SHALL wait for every attempt, and SHALL report the lowest-shard failure regardless of completion order. An empty cached-index batch SHALL be a strict no-op without backend delegation or cache invalidation. Every nonempty cached-index batch SHALL invalidate after its mutation attempt even when that attempt reports an error, because an earlier fallback document or Bleve shard can already be durable.
 * Before search listeners open, the persistent Bleve backend SHALL warm the `_analyzer`, title, headings, anchors, body, and URL term dictionaries on every shard by reading field cardinality without a query term, result collection, document hydration, or corpus scan. The warmup SHALL stop opening dictionaries when its fixed 15-second context expires and SHALL aggregate recoverable dictionary open or close failures into one warning.
@@ -383,6 +411,7 @@ it is not an assumed deployment dependency.
 * Duplicate consolidation SHALL use persistent content identities and clusters. Similar unclustered results SHALL NOT be hard-deleted by request-time text fingerprints.
 * Document ingest SHALL cluster and index the canonical committed document, including merged lifecycle dates and inbound anchors. Every accepted duplicate URL SHALL remain stored. Admin deletion, quota eviction, redirect purge, and crawl tombstones SHALL remove the document's index, outbound-anchor, and cluster lineage and SHALL refresh any surviving representative.
 * A retained published URL fingerprint SHALL be the bounded repair source for its derived content-cluster membership. Normal lookup and candidate matching SHALL treat a missing cluster projection, or one whose visible members omit that URL, as absent. The next replacement or deletion of that URL SHALL use the ordinary durable transition under the existing URL, candidate, and projection reservations to restore or clear its membership. Repair SHALL inspect only the touched fingerprint and bounded cluster members, SHALL NOT scan the cluster collection, and SHALL NOT let structural absence alone defer unrelated rows in the same ingest microbatch. A replacement SHALL reuse the prior cluster only while visible membership after earlier plans in the same batch leaves member capacity and otherwise SHALL choose a deterministic distinct cluster. Malformed stored rows SHALL remain errors.
+* Replacement and deletion SHALL persist replay evidence before changing content-cluster projections. Reconciliation SHALL prepare postings, publish the fingerprint, and clean prior projections in one idempotent vault update; the persisted evidence SHALL remain available through dependent document and search-index writes until finalization. A partial cross-shard update SHALL be repaired by replaying that evidence.
 * Existing URL-keyed document rows SHALL remain readable after upgrade without a bulk migration. New URL admission SHALL append an uncounted composite admission-and-URL row before publishing its URL locator. A missing, malformed, orphaned, or identity-mismatched row SHALL NOT poison later ingest; it SHALL remain invisible and a later ingest SHALL repair it through a new row before replacing the stale locator. Candidate presence checks SHALL validate the expected composite key without decoding the document body. URL and scan-boundary waits SHALL honor cancellation.
 * Stored-document exclusion SHALL use fair exact normalized-URL boundaries rather
   than a fixed hash-stripe set. Multi-URL callers SHALL remove repeated identities
@@ -391,7 +420,7 @@ it is not an assumed deployment dependency.
   registry SHALL retain at most 4,096 idle boundaries while allowing referenced
   boundaries to remain until their final release.
 * Crawl ingest SHALL order live pages and tombstones by their stable observation identity and time per source URL across separate deliveries. It SHALL persist the newest completed observation after its side effects and before acknowledgement, skip older observations, and acknowledge a committed retry without replaying its effects.
-* The node SHALL coalesce at most 64 ready crawl-ingest deliveries and 64 MiB of their encoded JSON in arrival order for grouped document, index, metadata, posting, stale-sweep, and recrawl work. A partial group SHALL wait no longer than ten milliseconds and SHALL stop waiting when its context is cancelled.
+* The node SHALL coalesce at most 64 ready crawl-ingest deliveries and 64 MiB of their encoded JSON in arrival order for grouped document, index, metadata, posting, and stale-sweep work. A partial group SHALL wait no longer than ten milliseconds and SHALL stop waiting when its context is cancelled.
 * One grouped crawl ingest SHALL replace outbound-anchor sources in ordered groups of at most 16. Each replacement SHALL aggregate all changed-source contributions once, project affected stored documents in sorted pages of at most 16 exact target URLs, and SHALL hold no unrelated URL boundary. A projected stored target SHALL be offered to the index only when its stored inbound anchors change, a replaced source previously published it, or its retained inbound anchors include a replaced source; a target whose retained anchors stay unchanged and contain no replaced source SHALL NOT be re-indexed. A target mutation transaction SHALL contain at most 32 physical rows and 8 MiB of encoded keys and values; byte pressure MAY split one target page across transactions. After every target page has been stored and its documents offered to the index, the at-most-16 sorted final publication rows SHALL be divided into deterministic subtransactions whose conservative encoded ceiling is at most 64 MiB; one source row above that ceiling SHALL fail before target projection. A storage-capacity, page, or index failure SHALL leave every prior publication authoritative. A later publication-subtransaction failure MAY leave earlier source rows committed and later rows unchanged. Either failure SHALL redeliver the original ingest group before later metadata, postings, or acknowledgements advance; replay SHALL recompute the remaining aggregate and converge idempotently.
 * An outbound-anchor replacement SHALL change only the inbound anchors contributed by its replaced sources. Anchor text submitted with a stored target document from any other source SHALL remain on that document until a later submission of the target replaces it; submitted anchor text from a replaced source SHALL be superseded by that source's current anchors.
 * Safety filtering, persistent cluster consolidation, diversity, host crowding, requested date ordering, and paging SHALL run once after learned scoring.
@@ -414,184 +443,43 @@ it is not an assumed deployment dependency.
 * The node SHALL export YaCy-compatible peer profile properties from its configured data directory when a profile file exists.
 * Shared-blacklist export SHALL admit at most four requests before form parsing and SHALL share a 16 MiB aggregate budget across configuration input, owned list names, list input, and encoded output. Peer-profile export SHALL admit at most four requests, read at most 1 MiB, retain at most 1,024 properties and 1 MiB of owned property data, and encode at most 2 MiB. Either route SHALL return its compatible empty success response instead of partial data after overflow or cancellation.
 * The node SHALL export a YaCy-compatible host-link index counted from stored document outlinks per source host, bounded during the shared background corpus pass, retained in its atomic checkpoint, and served from an immutable snapshot without scanning document storage in a peer request.
-* The node SHALL run configured crawl jobs and ingest crawler-produced documents, metadata, and postings.
-* Before crawler ingest performs any storage side effect, the node SHALL
-  snapshot-authorize the exact worker, process session, lease, and run under the
-  lease-mutation boundary. It SHALL release that boundary before document,
-  search-index, URL-metadata, posting, stale-sweep, or recrawl storage begins. A
-  failed snapshot SHALL reject the submission before storage. A successful
-  snapshot SHALL be the linearization point for the idempotent absorption and
-  SHALL NOT retain a lease lock while storage completes.
-* The crawler SHALL use separate gRPC connections for control traffic and bulk
-  ingest. Orders, heartbeats, settlement, and progress SHALL NOT share the
-  transport connection used for ingest payloads.
-* A crawl order MAY carry explicit automatic-discovery priority. The node SHALL
-  persist that priority through lease, requeue, and restart without deriving it
-  from a profile name. When discovery priority is enabled, the node SHALL select
-  no more than three automatic-discovery orders before a waiting normal order;
-  when disabled, it SHALL preserve one global FIFO admission order across both
-  priority classes. A current crawler SHALL retain the explicit priority on each
-  frontier run and dispatch no more than three due automatic-discovery pages
-  before a due normal page. This page selection SHALL remain work-conserving,
-  SHALL retain run fairness and value scoring within each class, and SHALL use
-  the existing class-neutral scheduler when priority is disabled.
-  Every pending payload SHALL remain in the established canonical order bucket;
-  secondary priority indexes SHALL contain keys only. An older node SHALL be
-  able to drain the complete queue in global FIFO order, and the current node
-  SHALL reconcile orders admitted during a downgrade and ignore or remove stale
-  index keys for orders already consumed. It SHALL recover the priority of an
-  unsettled lease created by the older node from the retained order payload.
-* Each swarm- or web-discovery maximum-pages setting SHALL cap the complete
-  automatic crawl task, including every admitted host. The ordinary crawler
-  whole-run maximum MAY reduce that task cap but SHALL NOT increase it. The
-  automatic task cap SHALL also remain its per-host ceiling.
-* The node SHALL carry the current named swarm- and web-discovery depth,
-  per-host, and whole-run ceilings in its typed crawler runtime policy. A
-  current crawler SHALL apply those ceilings when compiling a matching
-  automatic-discovery order without changing the stored profile handle or
-  order identity. A reduced whole-run ceiling SHALL request graceful worker
-  session recovery and SHALL bound pending, leased, and checkpointed work, not
-  only orders created after the setting change. Manual and recrawl profiles
-  SHALL retain their recorded budgets.
-* Recovery of a historical automatic-discovery checkpoint whose missing,
-  unlimited, or broader whole-run value exceeds its positive per-host ceiling
-  SHALL derive the stricter task cap. Excess pending pages SHALL be removed
-  newest-first in bounded atomic batches so the oldest work remains. Completed
-  totals, visited history, and host admission totals SHALL remain truthful.
-  Durable discarded-page accounting SHALL make repeated crash and restart
-  recovery idempotent. If already completed work meets the cap, recovery SHALL
-  remove every pending page and settle the run successfully.
-* The node and crawler SHALL expose the same automatic-discovery-priority
-  bootstrap value. Before opening its order stream, the crawler SHALL make one
-  heartbeat attempt bounded to one second. A successful response SHALL apply the persisted
-  node value before intake. A failed attempt SHALL leave the crawler bootstrap
-  in effect until a periodic heartbeat succeeds and applies the node value live.
-* The node SHALL expose a live 1–256 page-fetch-worker setting per connected
-  crawler process. It SHALL deliver the latest value over the heartbeat control
-  plane, including after a crawler reconnects. The crawler SHALL stop new intake,
-  drain the current fetch group, and apply the latest requested size without a
-  process restart. This setting SHALL NOT be described or enforced as a limit on
-  crawl runs or queued tasks.
-* The node SHALL interpret `crawler.max_pages_per_second` as one live
-  fleet-wide page-fetch start ceiling across every connected crawler process and
-  active crawl task. Zero SHALL remain unlimited. At a finite value the node
-  SHALL issue non-bursting fetch-start leases with server-relative windows,
-  rotate waiting worker sessions, and SHALL NOT reclaim a missed slot. Each
-  base window SHALL span the smaller of the current slot interval and a
-  250-millisecond reservation horizon. A crawler SHALL measure its preceding
-  completed lease RPC from request start through response receipt, cap that
-  delivery allowance at one second, and freeze it for the complete next
-  sequence. `FetchStartLeaseRequest.permit_delivery_allowance_nanoseconds` SHALL
-  be additive field 6. The node SHALL add the reported allowance to that
-  sequence's base windows and SHALL reserve the complete enlarged final window
-  before another batch. An omitted or zero allowance SHALL retain the
-  base-window behavior. A
-  crawler SHALL conservatively intersect each window using the response receive
-  time for opening and the request send time for closing, and SHALL preserve the
-  configured interval between permits actually consumed. A delivery spike beyond
-  the preceding allowance MAY empty a window, but SHALL NOT create catch-up
-  capacity; its measured allowance applies to the following sequence. The
-  crawler SHALL also discard an expired,
-  disconnected, or stale-generation window. Its local process budget SHALL remain an additional
-  smoother before the authoritative fleet admission. Lease demand SHALL include
-  only context-live queued fetches and SHALL be bounded by the current 1–256
-  worker setting. Node restart SHALL hold a finite schedule quiet for one lease
-  lifetime. Changing from unlimited to finite or decreasing a finite value SHALL
-  fence every active order stream before a new-rate permit is used. Increasing a
-  finite value MAY retain a capable stream but SHALL fence an incapable one.
-  `WorkerRegistration.fetch_start_leases` SHALL advertise capability. A finite
-  node SHALL reject a stream without it, and a current crawler SHALL fail closed
-  when a legacy node returns `Unimplemented`; legacy local behavior MAY continue
-  only while the configured value is zero.
-* The node SHALL expose a separate live 1–256 active-crawl-task limit per
-  connected crawler process, defaulting to 32. The crawler SHALL hold one slot
-  from prepared-order admission through terminal completion. Excess ordinary
-  and recovered orders SHALL wait without activating another frontier or
-  periodic progress reporter. Increasing the value SHALL wake waiting work;
-  decreasing it SHALL preserve already active tasks and block replacements until
-  occupancy falls below the new limit. This setting SHALL remain independent of
-  page-fetch workers, per-run rate, host politeness, and queued order capacity.
-* A current crawler heartbeat SHALL carry optional presence for its number of
-  occupied page-fetch worker jobs from job start through fetch, parsing, and
-  result publication. An explicit zero SHALL remain distinguishable from an
-  absent legacy measurement. The node SHALL accept activity only from a worker
-  with a registered order stream, count each worker identity once across
-  overlapping streams, and remove its activity after the last matching stream
-  disconnects. A runtime with no connected crawler SHALL expose known zero
-  activity against its configured per-crawler limit. A mixed fleet with any
-  connected crawler omitting the measurement SHALL expose activity as unknown.
-  Aggregate capacity SHALL equal connected worker identities multiplied by the
-  live per-crawler setting. Older nodes SHALL ignore the additive heartbeat
-  field, and current nodes SHALL treat an omitted measurement as unknown.
-* Crawl progress submission SHALL be nonblocking and ordered by run phase.
-  Periodic phases SHALL be distributed across the reporting interval, at most
-  one progress RPC SHALL run per worker, an in-flight generation SHALL remain
-  immutable, and later adjacent running snapshots for the same run MAY coalesce
-  into one pending replacement. Ready terminal heads SHALL take priority, a
-  replacement SHALL NOT bypass another ready run, and terminal snapshots
-  admitted to the queue SHALL retry with bounded jittered backoff. A NAK
-  redelivery MAY reopen the same run identity, and admitted phases SHALL retain
-  their `terminal → running → terminal` order through graceful-shutdown drain
-  attempts. At the hard queue capacity, a terminal phase SHALL evict only an
-  expendable singleton running phase; if every slot belongs to a protected phase
-  chain, the new phase SHALL be logged and dropped without collapsing that chain.
-* After exact lease, worker, session, and run authorization, the node SHALL reuse
-  that authorized run target for control reconciliation and progress recording.
-  It SHALL NOT scan the complete lease bucket a second time for the same running
-  report. It SHALL cache the successful worker assignment for that active run,
-  skip persistent directive reconciliation for later reports from the same
-  worker, reconcile a worker migration before replacing the assignment, and
-  remove the assignment only after successful run completion. Human-facing run
-  identities derived from byte provenance, including
-  crawler progress warnings, SHALL use lowercase hexadecimal text rather than raw
-  bytes.
-* The node crawl-run registry SHALL retain every active run. Its configured
-  capacity SHALL bound only recent terminal history. Active-run accounting SHALL
-  update with each accepted state transition without scanning the registry, and
-  terminal eviction SHALL be deterministic by update time and run identity.
-* Every retained per-URL crawl outcome SHALL have exactly one terminal class:
-  fetched, indexed, failed, robots denied, duplicate, or skipped. Aggregate
-  fetched and failed counters SHALL NOT be mutually exclusive: an accepted
-  response body that later fails parsing or processing SHALL increment both once.
-  The Admin failure rate SHALL divide failed by fetched plus failed and SHALL
-  remain bounded from zero through 100 percent. Protocol attempts and retries
-  within one page job SHALL NOT create additional aggregate outcomes.
-* The crawler Prometheus surface SHALL expose parser failures separately from
-  fetch failures. `yacy_crawler_parse_failures_total` SHALL advance once when an
-  accepted response body produces no indexable document through any enabled
-  parser; it SHALL NOT count transport failure or browser retry attempts.
-* A crawler report SHALL retain at most 64 recent per-URL outcomes. Each URL SHALL
-  be at most 2,048 bytes and each stable operator reason SHALL be at most 160
-  bytes. Reasons SHALL identify URL parsing, fetch or robots rejection,
-  unsupported content, parsing, indexing, ingest delivery, page directives,
-  profile policy, redirect admission, or document removal without carrying page
-  content or raw provider or parser errors. An unavailable HTTP status SHALL be
-  rendered explicitly as unavailable rather than as zero.
-* Running progress SHALL carry the immutable effective whole-run and per-host page
-  maxima separately and SHALL mark the pair unavailable when legacy evidence is
-  absent. Terminal settlement SHALL derive both maxima from the authoritative
-  leased order rather than trusting terminal client fields. Admin run summaries
-  and detail views SHALL preserve the same separate values; zero whole-run maximum
-  and the contract's unlimited per-host sentinel SHALL render as unlimited.
-* Five consecutive typed host-availability failures within one crawl run SHALL
-  retire only that host's remaining queued pages. A served response SHALL reset
-  the host evidence. URL-specific gone, unsupported-media, ordinary client,
-  robots, cancellation, and permanent egress-policy outcomes SHALL NOT retire a
-  healthy host. A single-host run SHALL then finish normally, while a multi-host
-  run SHALL continue its remaining hosts.
-* Recording a crawl state transition SHALL NOT wait for durable event-log I/O.
-  Event persistence SHALL use a bounded asynchronous queue and a bounded
-  node-shutdown grace. After the five-second queue-drain grace expires, the node
-  SHALL cancel the persistence worker and wait no more than five additional
-  seconds for writer quiescence. If the writer remains active, the node SHALL
-  report an error, skip vault close rather than race an active transaction, and
-  exit through the scan-based recovery path on its next startup.
+* The node SHALL record search exposure and click demand as aggregate topic and
+  canonical-URL records. It SHALL retain shown and clicked totals plus the latest
+  activity times. A focused seed SHALL use the same record shape with an explicit
+  focus time. A successful Admin crawl submission SHALL record each submitted
+  seed with the crawl name as its topic, or a fixed operator-focus topic when the
+  name is blank. Search-demand records SHALL contain no account or browser identity,
+  and ordinary logs SHALL NOT include query text or submitted URLs.
+* The node SHALL expose search demand through the authenticated
+  `CrawlerDataExchange.ReadSearchDemand` RPC with bounded, cursor-based pages.
+  The crawler API key SHALL require `crawl:write`. The node SHALL NOT choose URL
+  priority, enqueue crawl URLs, own crawler retry state, or write a recrawl time.
+* The crawler SHALL own demand weighting, scope selection, frontier persistence,
+  fetch ordering, retry and recrawl timing, robots policy, politeness, and content
+  removal decisions. The current demand score SHALL decay with a 30-day half-life;
+  records without activity in the prior 150 days SHALL not initiate fetch work.
+* Fetched page data SHALL be persisted in the crawler's durable outbox before
+  transmission. `StreamDocumentMutations` SHALL accept bounded, authenticated,
+  idempotent document upserts and URL removals without requiring a crawl-order
+  lease or profile. The node SHALL apply accepted mutations to the document,
+  full-text, URL-metadata, and RWI stores before acknowledging them. The crawler
+  SHALL retry unacknowledged mutations after reconnecting.
+* The current crawler SHALL send a removal tombstone for permanent HTTP 404 and
+  410 outcomes. The node SHALL remove the affected document, URL metadata,
+  postings, and references as one idempotent ingest operation. Other removal
+  reasons remain crawler policy and SHALL be represented by a typed tombstone
+  reason before automatic deletion is added.
+* The node's existing `CrawlExchange` order, lease, heartbeat, and progress
+  messages SHALL remain available only during compatibility transition for older
+  workers. The current `yago-crawler` SHALL not consume that queue. New search
+  exposure and focused-seed requests SHALL reach the crawler through the demand
+  feed, never through a node-selected URL order.
 * Node HTTP shutdown SHALL reserve part of its fixed total deadline for forced
   connection close and bounded handler drain. An elapsed graceful phase SHALL
   count as a clean stop only when forced close and handler drain both complete;
   unexpected shutdown, close, and drain failures SHALL remain errors.
-* The node SHALL let local crawl dispatch jobs mark start seeds as normal URLs,
-  explicit sitemaps, or explicit sitelists.
+* Focused crawl requests SHALL be stored as URL and topic demand. The crawler
+  SHALL choose frontier state and any later link or sitemap expansion.
 * Before frontier admission, the crawler SHALL reject a discovered link whose URL path unambiguously names a disabled parser family or a known unsupported container format. Explicit seeds SHALL remain eligible for one fetch, and extensionless routes, unknown suffixes, and suffix-like query values SHALL remain eligible so response media type can decide routing.
 * The node SHALL reject remote crawl work unless a configured policy explicitly allows it.
 * The node SHALL return YaCy-compatible empty remote-crawl responses while remote crawl work is disabled.
@@ -776,25 +664,27 @@ it is not an assumed deployment dependency.
 * The node SHALL support bounded quoted-phrase preference plus ordered and unordered proximity evidence through the local stored-position path.
 * The node SHALL expose machine-readable compatibility status for implemented and missing YaCy surfaces.
 * The node SHALL allow operators to configure its storage quota.
-* The serving sharded vault SHALL keep bbolt freelist persistence disabled on
-  ordinary write transactions. An authenticated online operator checkpoint SHALL
+* Before closing the sharded vault, the node SHALL stop and join every
+  storage-using background loop, including both peer-presence workers.
+* The serving sharded vault SHALL open with bbolt freelist persistence disabled
+  on ordinary write transactions. An authenticated operator checkpoint SHALL
   take exclusive storage quiescence, force transaction synchronization and
   freelist persistence for every shard, commit one empty checkpoint transaction
-  per shard, and leave freelist persistence enabled for later writes. It SHALL
-  restore configured deferred-fsync mode before releasing vault operations,
-  attempt every shard, and report each checkpoint and fallback-sync failure. A
-  successful durable checkpoint SHALL NOT issue a redundant explicit sync. A
-  checkpoint cancelled before quiescence SHALL perform no writes; once
-  checkpointing starts it SHALL finish all shards before releasing the vault.
-  The node and listeners SHALL remain running and vault operations SHALL resume
-  after completion. A clean close SHALL take exclusive storage quiescence, force
-  transaction synchronization and freelist persistence for every shard, commit
-  exactly one empty checkpoint transaction, and close every shard even when an
-  earlier checkpoint or close fails. After a checkpoint failure on a shard that
-  used deferred fsync, close SHALL attempt one best-effort explicit sync and
-  SHALL return every checkpoint, sync, and close failure together. An unclean
-  stop before a successful checkpoint SHALL retain bbolt's scan-based freelist
-  reconstruction. Top-level node shutdown SHALL wait for active event
+  per shard, and leave freelist persistence enabled for subsequent writes. It
+  SHALL restore the configured deferred-fsync mode before releasing vault
+  operations, attempt every shard, and report each checkpoint and fallback-sync
+  failure. A successful durable checkpoint SHALL NOT issue a redundant explicit
+  sync. A checkpoint request cancelled before quiescence SHALL perform no writes;
+  once checkpointing starts it SHALL finish all shards before releasing the
+  vault. The operation SHALL keep the node running and resume vault operations
+  after completion. A clean close SHALL also take exclusive storage quiescence,
+  force transaction synchronization and freelist persistence for each shard,
+  commit exactly one empty checkpoint transaction, and close every shard even
+  when an earlier checkpoint or close fails. After a checkpoint failure on a
+  shard that used deferred fsync, close SHALL attempt one best-effort explicit
+  sync and SHALL return every checkpoint, sync, and close failure together. An
+  unclean stop before a successful checkpoint SHALL retain bbolt's scan-based
+  freelist reconstruction. Top-level node shutdown SHALL wait for active event
   persistence only through its bounded drain and cancellation grace. If the
   writer remains active, shutdown SHALL report an error and skip vault close so
   process exit retains scan-based recovery; it SHALL NOT close over an active
@@ -883,13 +773,9 @@ it is not an assumed deployment dependency.
   refresh. It SHALL show the connected crawler count and SHALL state that queued
   orders remain pending when no crawler is connected. Color SHALL NOT be the
   only carrier of the connection state.
-* The admin Crawler page SHALL provide durable named crawl-profile create, update,
-  apply, list, and delete operations. The library SHALL retain at most 128 profiles;
-  names SHALL contain at most 80 UTF-8 bytes and be unique after canonical case and
-  whitespace normalization. Saved profiles SHALL contain crawl behavior but SHALL
-  NOT contain seed URLs. Applying a saved profile SHALL populate a new dispatch;
-  updating or deleting it SHALL affect only future dispatches and SHALL NOT mutate
-  an active run.
+* The admin Crawler page SHALL submit focused URL and topic demand without storing
+  named crawl profiles or creating crawl-order dispatches. The crawler SHALL apply
+  its current runtime policy when demand enters its persistent frontier.
 * The admin Crawler monitor SHALL link every retained run to a detail view that
   displays its separate whole-run and per-host maxima plus its bounded recent URL
   outcomes. Both views SHALL keep wide tables inside an explicitly focusable
@@ -915,22 +801,9 @@ it is not an assumed deployment dependency.
   one exact document-store lookup. The view SHALL bound extracted content to 32
   KiB and each stored collection to 50 entries while reporting full stored totals
   and the document's stored and current extraction generations.
-* The admin Index page SHALL expose extraction refresh only as an explicit
-  operator action when document reading and crawler dispatch are available. One
-  submission SHALL examine an explicit 1-through-100 raw storage-record limit,
-  SHALL queue only visible documents whose extraction generation is below the
-  current generation, and SHALL skip current or newer documents. It SHALL report
-  examined records, visible documents, outdated documents, skipped documents,
-  newly queued URLs, already accepted URLs, and whether continuation remains.
-* An extraction-refresh pass SHALL capture the initial high keys of both legacy
-  and admission-ordered document partitions and carry those boundaries plus its
-  position in a bounded continuation token. The captured ends SHALL prevent
-  continuous ingest from extending the pass but SHALL NOT be described as a
-  transactional snapshot. A failed dispatch SHALL retain the input position for
-  retry. A stale batch SHALL enter the existing durable crawl dispatcher with an
-  idempotency identity bound to the operator action and continuation. The node
-  SHALL NOT scan or queue extraction refresh automatically and SHALL expose no
-  environment or runtime-setting knob for it.
+* Index administration SHALL NOT use a node crawl dispatcher for extraction refresh
+  or migration work. Any future recrawl action SHALL submit crawler demand through
+  the same authenticated data-exchange boundary used by focused URL seeds.
 * Overview and Index SHALL use the local full-text backend's document count as
   the authoritative local index population. Overview SHALL report YaCy URL
   metadata records as a separately labelled population.
@@ -970,201 +843,74 @@ it is not an assumed deployment dependency.
 * The crawler SHALL protect against DNS rebinding by validating destinations at admission and fetch time.
 * The crawler SHALL expand explicit XML sitemap URL sets, sitemap indexes, and
   plain text sitelists into bounded normal URL crawl requests before frontier
-  admission.
-* The crawler SHALL terminate invalid crawl orders, deterministic malformed seed
-  content, permanent admission failures, and explicit operator cancellation. It
-  SHALL NAK retryable network, server, throttle, timeout, expansion, and ingest
-  delivery failures. Graceful process shutdown SHALL retain unfinished checkpoint
-  state and leave its session-aware lease unsettled for same-worker adoption even
-  after the process-session deadline;
-  it SHALL NOT turn an operator cancellation into redelivery. Transient order
-  settlement failures SHALL retry idempotently while heartbeats remain live and
-  stop within a bounded shutdown window.
-* A NAK SHALL durably clear the lease owner and defer global availability for five
-  seconds. The lease sweeper SHALL service that deadline without immediate
-  redelivery or sub-second polling. Node restart SHALL preserve an unexpired retry
-  deadline. A legacy terminal settlement SHALL remain idempotently replayable for
-  24 hours after settlement and SHALL fail at that horizon even when asynchronous
-  cleanup has not yet removed its row. A tokenized rich terminal snapshot SHALL
-  enter a fixed 24-hour confirmation window only after terminal progress delivery
-  is confirmed; an ACK SHALL additionally require durable run-control completion.
-  An unfinalized snapshot SHALL NOT enter expiry. Expiry SHALL atomically perform
-  any still-pending requeue and remove the finalized settlement in batches of at
-  most 256, while a later valid token confirmation SHALL remain idempotently
-  successful. An acknowledgement for a lease already requeued by legacy NAK or
-  expiry SHALL be rejected.
-* A rich terminal acknowledgement or confirmation whose exact settlement the node
-  no longer holds, or whose definition differs from the recorded one, SHALL be
-  answered with `NotFound`. Lease loss to another session SHALL remain
-  `FailedPrecondition`. The crawler SHALL discard its outbox row once on
-  `NotFound` and SHALL keep retrying after `FailedPrecondition` or a transient
-  failure.
-* The node SHALL preserve every session-aware crawl-order lease, its stable-worker
-  ownership, and its lease identity across deadline expiry and node restart.
-  Startup SHALL requeue only expired deferred or legacy sessionless leases, and a
-  reconnecting process with the same stable worker identity SHALL atomically adopt,
-  renew, and receive its leases before new pending work. Each crawler data
-  directory SHALL persist one stable worker identity, while each process SHALL
-  create a new session identity. The node SHALL reject a concurrent live-session
-  takeover before cancellation, adoption, or registry mutation and SHALL fence
-  heartbeat, ingest, progress, and settlement mutations by the current worker,
-  process session, and lease. Run-targeted controls SHALL survive an offline worker
-  and be delivered after reconnect; worker-wide controls MAY remain live-only.
-  Every crawler heartbeat RPC SHALL have a one-second client deadline. If an
-  active lease is omitted, expires, or otherwise loses its local grant, the
-  crawler SHALL cancel and reconnect its order stream so the same worker can
-  adopt the parked lease without waiting for another transport failure. A
-  frontier job that no longer has its exact local lease grant SHALL suspend only
-  that lease-bound in-memory run, retain its checkpoint, and release its
-  active-run admission. It SHALL NOT suspend a run already rebound to another
-  confirmed lease. An
-  ordinary delivery SHALL consume one session-scoped delivery credit after its
-  durable claim. The node SHALL NOT claim or send the next order for that session
-  until a successful heartbeat renews the current lease or a successful
-  session-authorized disposition proves receipt of and completes that exact
-  lease. The current crawler SHALL confirm an ordinary lease before decoding its
-  payload and SHALL reconnect if settlement of an undecodable payload fails. The
-  node SHALL hold neither a database transaction nor a worker-session registry
-  lock while awaiting confirmation.
-* One crawler order-stream attempt SHALL carry its own cancellation through
-  decoding, lease confirmation, and delivery to local active-run admission. A
-  node-reported process-session loss SHALL interrupt a confirmed delivery blocked
-  at that admission boundary, terminate the obsolete attempt, and allow the live
-  crawler to open a replacement stream that adopts its durable leases. A crawler
-  process restart SHALL retain its checkpoint-backed worker identity, create a
-  replacement process session, and adopt the same worker's unfinished leases.
-* One worker session SHALL retain at most 1,024 active leases. The first recovery
-  frame SHALL declare the complete adopted-session lease manifest exactly once.
-  The node SHALL partition that manifest into ordered recovery batches of at most
-  16 and SHALL send no remainder of a batch until a successful targeted heartbeat
-  renews exactly every lease in that batch. The crawler SHALL retain the declared
-  manifest independently of current batch payloads, accept every later batch as a
-  nonrepeating subset, reject undeclared or repeated leases, require exact manifest
-  completion before ordinary streaming, and retain no complete recovery set of
-  order payloads. An ordinary frame SHALL close the recovery prefix permanently
-  for that stream.
-* A current heartbeat SHALL carry optional presence that distinguishes delivery
-  confirmation from lease keepalive. Explicit false SHALL renew its submitted
-  active set without releasing delivery credit. Explicit true SHALL release only
-  an expected delivery whose renewed lease set matches exactly. An absent marker
-  SHALL retain the legacy subset-confirmation rule for older crawlers. Periodic
-  heartbeats SHALL continue to carry the complete active lease set with explicit
-  false. A current crawler SHALL accept the older single-batch or unmarked replay
-  shape up to the 1,024-lease contract ceiling, and an older node SHALL ignore the
-  additive marker and manifest fields.
-* When its crawl runtime is enabled, the node SHALL keep crawl orders, priority
-  indexes, idempotency, leases, settlement history, controls, and terminal-run
-  delivery state in one atomic bbolt database at
-  `${YAGO_DATA_DIR}/crawlbroker.db`. The file SHALL be separate from the main
-  sharded vault and SHALL NOT count toward `YAGO_STORAGE_QUOTA` or participate
-  in main-vault eviction or compaction. The node SHALL expose a live, separately
-  configurable soft physical admission boundary for that file, defaulting to
-  10% of the effective storage quota and capped by measured free space after
-  the node reserve. An unlimited quota uses 10% of measured free space after
-  reserve; zero disables the boundary. At or above the boundary, fresh order
-  enqueue SHALL fail while migration, ingest, lifecycle, recovery, and settlement
-  writes remain admitted through the underlying filesystem-pressure policy.
-* Crawl-broker startup SHALL rebuild an in-memory active-lease catalog from the
-  durable lease bucket. Capacity checks SHALL use an O(1) worker/session lookup,
-  and committed claim, adoption, settlement, defer, and requeue transitions SHALL
-  update the catalog while the durable bucket remains authoritative across
-  restart.
-* The dedicated bbolt engine SHALL serialize write admission. An RPC waiting for
-  writer admission SHALL stop when its context ends, and an admitted write SHALL
-  check cancellation before its transaction callback and again before commit so
-  cancelled work rolls back. Provisioning that has no request context MAY wait
-  unboundedly. Read transactions retain their existing behavior.
-* The first dedicated-state startup SHALL retain-migrate one frozen version-1
-  bucket set from the legacy node vault before listeners open. It SHALL copy at
-  most 256 ordered rows per target transaction, commit each migration cursor
-  atomically with its page, verify source and target fingerprints, and commit a
-  marker bound to the migration version and bucket set. An interrupted migration
-  SHALL resume; a conflicting row, fingerprint mismatch, or marker mismatch
-  SHALL fail startup. An absent source bucket SHALL be treated as empty without
-  provisioning or otherwise mutating the source, and an engine that cannot
-  report bucket presence SHALL fail closed. The source SHALL remain unchanged
-  after cutover. The migration SHALL copy, not claim to repair, any historically
-  inconsistent legacy state.
-* A completed dedicated migration SHALL make `crawlbroker.db` authoritative for
-  later current starts. Operators SHALL NOT delete only that file or downgrade
-  in place: either action can read the retained stale cutover rows and resurrect
-  settled work. Rollback requires a coordinated stopped backup of the complete
-  node and crawler data with matching older binaries. Opening the dedicated file
-  SHALL wait no more than five seconds for its exclusive lock. A graceful node
-  stop SHALL close the broker before the file; after a crash, restart SHALL expose
-  only committed bbolt transactions. Pending and deferred work, controls,
-  settlement history, and session-aware leases SHALL retain their existing
-  restart rules. Creating a missing or zero-length dedicated file SHALL reserve
-  bounded initialization headroom through a fresh serialized pressure check; a
-  valid existing file SHALL remain openable under pressure for recovery.
-* The node SHALL expose dedicated crawler-state live-use and allocated-file
-  gauges as `crawl_broker_state_used_bytes` and
-  `crawl_broker_state_file_bytes`. The allocated size MAY remain above live use
-  after deletions.
-* Before exposing work for dispatch, the crawler SHALL persist the complete ordered
-  seed manifest and admission cursor, exact normalized visited set, ordered
-  outstanding pages, per-host admission and pace state, controls, run completion,
-  redirect ownership, per-page ingest observation identity, and terminal
-  settlement outbox. A process restart SHALL resume that state without fetching a
-  committed page again or reparsing a completely published seed manifest.
-* The crawler SHALL expose a soft physical boundary for
-  `${YAGO_DATA_DIR}/crawler/frontier-v1.db`, defaulting to 4 GiB, with zero
-  disabling it. A current node SHALL carry the authoritative live value in
-  optional crawler runtime-policy field 18, `frontier_state_max_bytes`; omission
-  by an older policy-capable node SHALL preserve the crawler's current value.
-  A current node SHALL also include explicit crawler storage-reserve and
-  hysteresis values in optional startup runtime-policy fields 19 and 20,
-  including zero. A current crawler SHALL apply those values before checkpoint
-  maintenance and storage-gate construction. The startup policy read SHALL wait
-  for connection readiness within the existing connect timeout and caller
-  cancellation boundary. Omission by an older node SHALL
-  preserve the crawler's environment bootstrap; later live changes SHALL
-  continue through heartbeat storage-policy fields.
-  At or above the boundary, a fresh order SHALL wait before expansion and SHALL
-  resume after a live increase or disable. An order admitted while below the
-  boundary SHALL complete its committed seed manifest even when that write
-  crosses the boundary. New discovered-link mutation batches SHALL be refused,
-  while existing dispatch, recovery, lifecycle, and terminal settlement remain
-  available. The state file SHALL be inspected no more than once for each fresh
-  order admission attempt or discovered-link mutation batch, not once per
-  candidate.
-* On startup, each enabled crawl-state boundary SHALL trigger a read-only-source
-  bbolt copy compaction when the physical file size is equal to or greater than
-  its configured value. Before stale-copy cleanup, the process SHALL acquire a
-  persistent path-stable sidecar lease and SHALL hold it through compaction,
-  atomic replacement, directory sync, final inspection, and successful exclusive
-  open of the authoritative database inode. The target SHALL use private file
-  mode, SHALL be synced and closed before atomic replacement, and the containing
-  directory SHALL be synced after replacement. Inside the shared serialized
-  storage-maintenance gate, the process SHALL remeasure the actual source size,
-  require that amount as temporary headroom, and retain maintenance admission
-  through the complete copy. A failure before replacement SHALL
-  leave the original authoritative and SHALL be a recoverable warning; a
-  directory-sync or final-inspection failure after replacement SHALL identify the
-  copy as installed with a durability warning. Lease acquisition or release
-  failure SHALL fail startup. The boundary SHALL NOT be described as a filesystem
-  quota.
-* A newly admitted run SHALL publish one running-state report with the immutable
-  seeded queue depth before terminal settlement can publish a finished or
-  cancelled state. Periodic running reports SHALL use the live pending depth and
-  SHALL NOT follow a terminal report.
-* Persistent crawl checkpoints SHALL provide bounded recovery as a required
-  capability. Production checkpoint recovery SHALL materialize at most 256 persisted pages per
-  active run, refill only the unused portion of that live window after it drops
-  below 128 pages, and query exact persisted visited, host-retirement, host-total,
-  and run-total state in candidate batches instead of loading those sets. Every
-  committed seed or discovered-page admission SHALL extend the durable recovery
-  boundary by its exact accepted count and enter the same cursor. Only scalar
-  in-memory totals SHALL advance before the admission commit; accepted pages SHALL
-  NOT enter resident visited, redirect, host, ready, or pending maps directly. An
-  unfinished seed manifest SHALL use the same bounded producer. Completion,
-  cancellation, and host retirement SHALL evict cold resident state. The
-  completion count SHALL include unloaded pages, and checkpoint reads SHALL occur
-  outside the global frontier mutex.
-* A discovered child SHALL become durable before its parent page is completed.
-  Graceful shutdown SHALL retain unfinished frontier state until the replayed run
-  reaches a successful terminal acknowledgement or explicit cancellation.
-* The crawler SHALL reject seed and redirect identity URLs longer than 2,048
-  bytes before artifact construction and SHALL drop overlong referenced URL
-  elements rather than truncate them into different identities.
-* The crawler SHALL carry sitemap `lastmod` values as recrawl scheduling hints.
+  admission. Link and sitemap discoveries SHALL remain within the effective
+  crawl-profile depth ceiling.
+* The crawler SHALL run as an independent worker with one persistent URL frontier.
+  It SHALL select URLs, maintain retry and recrawl state, fetch pages, enforce
+  robots policy and host politeness, expand admitted links and sitemaps, and decide
+  when a URL is no longer eligible. The node SHALL provide demand signals and
+  accept document mutations; it SHALL NOT fetch targets, assign URLs, own retry
+  state, write recrawl times, or dispatch crawl orders.
+* Search exposure, clicks, and focused URL submissions SHALL be stored as bounded,
+  aggregate topic and canonical-URL demand. Focused seed batches SHALL validate
+  every URL before one atomic write. The crawler SHALL read changed demand pages
+  with a persistent cursor, rank eligible records using recency and engagement,
+  and retain no browser or account identity. Demand SHALL decay with a 30-day
+  half-life; records without activity during the prior 150 days SHALL NOT start
+  new work.
+* The crawler SHALL persist queued, fetching, fetched, indexed, failed, deferred,
+  blocked, and cancelled page states. A process restart SHALL recover unfinished
+  work without fetching a committed page twice. Temporary fetch failures SHALL
+  retain the URL with bounded retry attempts and backoff. A demanded URL MAY be
+  revisited after the crawler-owned recrawl interval. The node SHALL NOT keep a
+  second recrawl frontier or a recurring crawl schedule.
+* Every page attempt SHALL have a five-second wall-clock deadline covering robots
+  evaluation, host admission, fetch, and parsing. Expiration
+  SHALL settle or defer the URL and release the page worker so other eligible URLs
+  can proceed. Robots network reads SHALL have a two-second deadline after host
+  admission. Requests to the same origin SHALL share one robots load.
+* While a page attempt is active, its hostname SHALL be excluded from other page-
+  worker frontier claims. Excluded URLs SHALL remain in their existing frontier
+  state and SHALL NOT consume the ready-claim scan budget. The released host MAY
+  be claimed again when its politeness schedule permits; the global fetch-worker
+  limit SHALL bound concurrent hosts and attempts.
+* The crawler SHALL emit each fetched document mutation to a durable local outbox
+  before network transmission. It SHALL send bounded asynchronous, idempotent
+  document upserts and URL removals over the authenticated
+  `CrawlerDataExchange`. The node SHALL acknowledge a mutation only after the
+  document store, full-text index, URL metadata, and RWI postings have been
+  updated. A lost acknowledgment SHALL leave the mutation available for retry.
+  Permanent HTTP 404 and 410 results SHALL remove stale indexed documents.
+* Each crawler heartbeat SHALL report worker identity, active fetch count, current
+  URL and stage, and a bounded sample of waiting URLs with wait reason and
+  eligibility time. The crawler SHALL report cumulative fetched, indexed, failed,
+  robots-denied, duplicate, and pending totals at five-second intervals. The node
+  SHALL derive pages-per-minute values from these crawler reports. Reports older
+  than three heartbeat intervals SHALL be marked stale and SHALL NOT contribute to
+  live pending totals. No node order-queue value SHALL be presented as crawler
+  throughput or frontier depth.
+* During active frontier processing, the crawler SHALL write one structured
+  progress log record per minute. The record SHALL distinguish completed page
+  fetch and index rates from HTTP request starts, robots requests, response
+  status classes, host-admission wait, request duration, mutation sends and
+  acknowledgments, frontier state, and pending outbox size. It MAY include a
+  bounded summary of busy hostnames and SHALL report when host summaries are
+  omitted. Slow-stage and failure logs SHALL identify pages by persistent page
+  ID, hostname, and stage; routine stage starts SHALL NOT emit a log line per
+  page. Ordinary logs SHALL NOT include full URL paths, query text, page content,
+  or credentials.
+* Admin Crawler SHALL accept focused seed URLs and a topic. A successful submission
+  SHALL create aggregate focused-demand records; it SHALL NOT create a node-side
+  task or promise a completion time. Admin Crawler and Crawler pulse SHALL display
+  the crawler-reported pending total, current and waiting URLs, active workers,
+  and per-minute fetched and indexed rates.
+* The crawler SHALL reject unsupported schemes, credentials, private or local
+  destinations, and DNS answers outside the configured network policy. It SHALL
+  revalidate destinations when fetching and after redirects, enforce response
+  size and redirect limits, and apply the node's canonical denylist before
+  frontier admission and fetch.
+* The old `CrawlOrder`, order lease, and order settlement messages MAY remain in
+  the protobuf schema for compatibility. The current node SHALL NOT open or
+  schedule work through the legacy order broker, and the current crawler SHALL
+  NOT consume its order stream. Heartbeat, runtime-policy, and progress messages
+  MAY remain on the existing control RPC while the data exchange evolves.

@@ -22,6 +22,8 @@ type runtimeObservability struct {
 	search       *metrics.SearchMetrics
 	crawl        *metrics.CrawlMetrics
 	indexWrites  *metrics.SearchIndexWriteMetrics
+	ingestStages *metrics.IngestStageMetrics
+	vaultUpdates *metrics.VaultUpdateMetrics
 	crawlRuns    *metrics.CrawlRunMetrics
 	remoteCrawl  *metrics.RemoteCrawlMetrics
 	saturation   *metrics.SaturationMetrics
@@ -58,6 +60,8 @@ func provisionObservability(
 		search:       metrics.NewSearchMetrics(endpoints.Registry()),
 		crawl:        metrics.NewCrawlMetrics(endpoints.Registry()),
 		indexWrites:  metrics.NewSearchIndexWriteMetrics(endpoints.Registry()),
+		ingestStages: metrics.NewIngestStageMetrics(endpoints.Registry()),
+		vaultUpdates: metrics.NewVaultUpdateMetrics(endpoints.Registry()),
 		crawlRuns:    metrics.NewCrawlRunMetrics(endpoints.Registry()),
 		remoteCrawl:  metrics.NewRemoteCrawlMetrics(endpoints.Registry()),
 		recorder:     recorder,

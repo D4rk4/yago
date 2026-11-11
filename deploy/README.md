@@ -13,15 +13,13 @@ deployment, and the two are kept in step.
 
 ## Current crawler implementation
 
-Deployment builds run the independent `yago-crawler2` source module under the
-existing `yago-crawler` product name. It supports persistent run frontiers,
-HTTP fetching, robots rules, crawl scope, document and RWI ingest, and node
-progress reporting. Its bounded worker pool follows node worker and active-run
-limits, with host politeness shared across concurrent runs. Browser fallback,
-pause/resume/cancel/restart controls, per-run pace overrides, filesystem-pressure
-admission, and a crawler-local metrics listener have not yet been ported. Sections
-below that describe those features document the previous worker and do not imply
-support in the current replacement.
+The canonical `yago-crawler` module is the active crawler. It reads search-demand
+records from the node, owns its persistent frontier and recrawl policy, fetches
+pages over HTTP, and sends document mutations through an asynchronous durable
+outbox. It does not consume the legacy node order queue. Browser fallback and a
+crawler-local metrics listener are not implemented. Some later sections in this
+file still describe the retired order-driven worker and are not current crawler
+operations.
 
 Web search stays disabled in the deployment examples. Setting
 `YAGO_WEB_FALLBACK_PRIVACY=enabled` now sends a search to external engines when
@@ -41,13 +39,13 @@ The Debian package and the systemd units share one layout:
 | `/opt/yago/data` | durable node state and crawler frontier checkpoints |
 | `/opt/yago/data/peerroster.db` | known-peer roster and peer lifecycle state |
 | `/opt/yago/data/crawlbroker.db` | atomic node-side crawl queue, lease, settlement, control, and terminal-run state |
-| `/opt/yago/data/yago-crawler2/frontier.db` | run-scoped frontier and page state for the independent crawler |
+| `/opt/yago/data/yago-crawler/frontier.db` | run-scoped frontier and page state for the independent crawler |
 
 The package creates a system `yago` user that owns `/opt/yago/data`. Removing the
 package leaves that directory intact. Both systemd services set
 `YAGO_DATA_DIR=/opt/yago/data`, so a package upgrade preserves unfinished crawl
 work together with the node's broker queue and indexes. The independent crawler
-uses its own `yago-crawler2/frontier.db`; it does not open or migrate the older
+uses its own `yago-crawler/frontier.db`; it does not open or migrate the older
 crawler checkpoint.
 
 The node creates `crawlbroker.db` only when its crawl runtime is enabled. It is
@@ -87,7 +85,7 @@ volume and are also sent by the node after a current crawler heartbeat. The
 defaults are 1 GB reserved and 256 MB recovery hysteresis. These controls pause
 gate-managed crawl and index ingestion; they are not a filesystem quota.
 Deleting bbolt rows can leave reusable pages inside `crawlbroker.db` or
-`yago-crawler2/frontier.db` without increasing operating-system free space. If pressure
+`yago-crawler/frontier.db` without increasing operating-system free space. If pressure
 persists, free filesystem space or lower the applicable reserve and hysteresis.
 Use a filesystem/project quota or a quota-capable volume for a hard aggregate
 boundary.

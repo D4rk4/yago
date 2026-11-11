@@ -52,6 +52,15 @@ func NewCachedSearchIndex(inner SearchIndex, capacity int) *CachedSearchIndex {
 	}
 }
 
+func (c *CachedSearchIndex) WarmReadCache(ctx context.Context) error {
+	warmer, ok := c.inner.(ReadCacheWarmer)
+	if !ok {
+		return nil
+	}
+
+	return warmer.WarmReadCache(ctx)
+}
+
 func (c *CachedSearchIndex) Index(ctx context.Context, doc documentstore.Document) error {
 	if err := c.inner.Index(ctx, doc); err != nil {
 		return fmt.Errorf("cached index: %w", err)

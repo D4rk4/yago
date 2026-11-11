@@ -97,7 +97,7 @@ func (r *Registry) RecordTerminal(
 	identityKey := string(identity)
 	if owner, found := r.terminal.owners[identityKey]; found {
 		record := r.terminal.records[owner]
-		if owner != progress.RunID || record.Progress != progress {
+		if owner != progress.RunID || !record.Progress.Equal(progress) {
 			r.mu.Unlock()
 
 			return errTerminalDeliveryConflict
@@ -428,7 +428,7 @@ func validateTerminalDeliveryRecord(record terminalDeliveryRecord) error {
 		record.Run.ProfileHandle != record.Progress.ProfileHandle ||
 		record.Run.ProfileName != record.Progress.ProfileName ||
 		record.Run.State != record.Progress.State ||
-		record.Run.Tally != record.Progress.Tally ||
+		!record.Run.Tally.Equal(record.Progress.Tally) ||
 		!record.Run.RecentOutcomes.Valid() ||
 		record.Run.FirstSeen.IsZero() ||
 		record.Run.Updated.IsZero() ||
