@@ -95,6 +95,7 @@ func (s portalSource) Search(
 	query, dom string,
 	offset, limit int,
 ) (publicportal.SearchResults, error) {
+	ctx = withPortalProgressiveSearch(ctx)
 	domain := portalContentDomain(dom)
 	response, err := s.searcher.Search(ctx, searchcore.Request{
 		Query:         query,

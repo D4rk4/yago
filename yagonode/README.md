@@ -17,6 +17,10 @@ bounded full-shard search then continues for that query. Only complete results
 are retained in the existing five-minute, 32 MiB in-memory session cache; a
 process restart clears those cached responses.
 
+The public root portal requests progress-aware retrieval for eligible
+first-page plain queries. Its server-rendered response can therefore include
+the first useful local shard sample within the existing search deadline.
+
 Browser clients can consume updates through the YaCy-compatible
 `/yacysearch.ndjson` endpoint. The HTML search page updates as those results
 arrive. Tavily-compatible `/search` remains a single-response endpoint with

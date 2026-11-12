@@ -7,6 +7,18 @@ test('public portal exposes the search form', async ({ page }) => {
   await expect(page.getByRole('button', { name: /search/i })).toBeVisible();
 });
 
+test('public root search returns a useful result window', async ({ page }) => {
+  const query = process.env.YAGO_PORTAL_UI_QUERY || 'yago';
+  await page.goto('/');
+  await page.locator('form[role="search"] input[name="q"]').fill(query);
+  await page.getByRole('button', { name: 'Search' }).click();
+
+  const results = page.locator('.result');
+  await expect(results.first()).toBeVisible({ timeout: 20_000 });
+  await expect(results.first().locator('a.title')).toBeVisible();
+  await expect(page.getByText('No results are currently available')).toHaveCount(0);
+});
+
 test('public portal links to the agent API guide', async ({ page }) => {
   const response = await page.goto('/');
   expect(response.status()).toBeLessThan(400);

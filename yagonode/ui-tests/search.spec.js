@@ -53,6 +53,19 @@ test('returns useful local results on progressive and repeated searches', async 
   await page.screenshot({ path: testInfo.outputPath('repeated-search.png'), fullPage: true });
 });
 
+test('public root search returns its first useful shard sample', async ({ page }, testInfo) => {
+  const portalQuery = process.env.YAGO_PORTAL_UI_QUERY || 'yago';
+  await page.goto('/');
+  await page.locator('form[role="search"] input[name="q"]').fill(portalQuery);
+  await page.getByRole('button', { name: 'Search' }).click();
+
+  const results = page.locator('.result');
+  await expect(results.first()).toBeVisible({ timeout: 20_000 });
+  await expect(results.first().locator('a.title')).toBeVisible();
+  await expect(page.getByText('No results are currently available')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('public-root-search.png'), fullPage: true });
+});
+
 test('does not claim an incomplete empty search is complete', async ({ page }, testInfo) => {
   const unmatched = `yagoui${Date.now()}qzxv`;
   await page.goto(searchPage);
