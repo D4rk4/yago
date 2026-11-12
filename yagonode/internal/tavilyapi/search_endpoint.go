@@ -40,11 +40,12 @@ type searchEndpoint struct {
 	rawWorkDuration time.Duration
 }
 
-type SearchAdmission func(*http.Request) (func(), int, time.Duration)
+type SearchAdmission func(*http.Request, bool) (func(), int, time.Duration)
 
 type SearchAccessPolicy struct {
-	BearerToken string
-	Authorizer  ScopeAuthorizer
+	BearerToken        string
+	Authorizer         ScopeAuthorizer
+	AllowAnonymousRead bool
 }
 
 type SearchRequest struct {
@@ -170,18 +171,27 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+	_, hasBearer := bearerToken(authorization)
+	if authorization != "" && !hasBearer {
+		writeAuthDecision(w, DecisionUnauthenticated)
+
+		return
+	}
 	credentialAuthorized := false
-	if e.access.Authorizer == nil {
+	if !hasBearer {
+		if !e.access.AllowAnonymousRead {
+			writeAuthDecision(w, DecisionUnauthenticated)
+
+			return
+		}
+	} else if e.access.Authorizer == nil {
 		if decision := e.access.authorize(r, ScopeRead); decision != DecisionAllow {
 			writeAuthDecision(w, decision)
 
 			return
 		}
 		credentialAuthorized = true
-	} else if _, ok := bearerToken(r.Header.Get("Authorization")); !ok {
-		writeAuthDecision(w, DecisionUnauthenticated)
-
-		return
 	}
 	releaseIntake, admitted := enterSearchRequestIntake(w, e.intake)
 	if !admitted {
@@ -205,13 +215,22 @@ func (e searchEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !credentialAuthorized {
-		if decision := e.access.authorize(r, searchScope(req)); decision != DecisionAllow {
-			writeAuthDecision(w, decision)
-			return
+		requiredScope := searchScope(req)
+		if hasBearer || requiredScope != ScopeRead || !e.access.AllowAnonymousRead {
+			if decision := e.access.authorize(r, requiredScope); decision != DecisionAllow {
+				writeAuthDecision(w, decision)
+				return
+			}
+			credentialAuthorized = true
 		}
 	}
 	callerContext := r.Context()
-	r, releaseWork, admitted := e.enterWork(w, r, req.IncludeRawContent.Enabled())
+	r, releaseWork, admitted := e.enterWork(
+		w,
+		r,
+		req.IncludeRawContent.Enabled(),
+		credentialAuthorized,
+	)
 	if !admitted {
 		return
 	}

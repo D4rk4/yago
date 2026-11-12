@@ -17,6 +17,18 @@ test('public portal links to the agent API guide', async ({ page }) => {
   await expect(page.getByText('search:read', { exact: false })).toBeVisible();
 });
 
+test('agent API accepts keyless basic search and keeps raw content protected', async ({ request }) => {
+  const basic = await request.post('/search', {
+    data: { query: 'agent-api-free-tier-smoke', max_results: 1 },
+  });
+  expect([200, 409]).toContain(basic.status());
+
+  const raw = await request.post('/search', {
+    data: { query: 'agent-api-raw-scope-smoke', include_raw_content: true },
+  });
+  expect(raw.status()).toBe(401);
+});
+
 test('public local search accepts a synthetic query without reporting an error', async ({ page }) => {
   const query = `dev-smoke-${Date.now().toString(36)}`;
   const response = await page.goto('/yacysearch.html?resource=local&contentdom=text');

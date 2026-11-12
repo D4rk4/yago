@@ -407,8 +407,9 @@ func (d *rootDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func searchAccessPolicy(assembly publicSearchAssembly) tavilyapi.SearchAccessPolicy {
 	return tavilyapi.SearchAccessPolicy{
-		BearerToken: assembly.searchAPIKey,
-		Authorizer:  assembly.searchAuthorizer,
+		BearerToken:        assembly.searchAPIKey,
+		Authorizer:         assembly.searchAuthorizer,
+		AllowAnonymousRead: true,
 	}
 }
 

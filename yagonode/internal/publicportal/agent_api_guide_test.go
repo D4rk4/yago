@@ -29,7 +29,12 @@ func TestAgentAPIGuideShowsAuthenticationAndRequestExample(t *testing.T) {
 		t.Fatalf("content type = %q", contentType)
 	}
 	for _, expected := range []string{
-		"Create an API key",
+		"Ordinary searches do not need an API key",
+		"10 every 3 seconds, 60 per minute, and 300 per 10 minutes",
+		"Admin → Configuration → Search",
+		"changes take effect after a node restart",
+		"configure that proxy as trusted",
+		"When you need an API key",
 		"search:read",
 		"search:raw",
 		"Authorization: Bearer",

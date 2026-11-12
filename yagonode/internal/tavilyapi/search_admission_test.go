@@ -25,7 +25,7 @@ func TestSearchRequestIntakeShedsBeforeBodyAndSearchAdmission(t *testing.T) {
 	endpoint := searchEndpoint{
 		search: &fakeSearcher{},
 		access: SearchAccessPolicy{BearerToken: searchTestKey},
-		admission: func(*http.Request) (func(), int, time.Duration) {
+		admission: func(*http.Request, bool) (func(), int, time.Duration) {
 			admissionCalls.Add(1)
 
 			return func() {}, 0, 0
@@ -74,7 +74,7 @@ func TestSearchAdmissionFollowsBodyDecode(t *testing.T) {
 		search,
 		nil,
 		SearchAccessPolicy{BearerToken: searchTestKey},
-		func(*http.Request) (func(), int, time.Duration) {
+		func(*http.Request, bool) (func(), int, time.Duration) {
 			admissionCalls.Add(1)
 
 			return func() { releases.Add(1) }, 0, 0
@@ -115,7 +115,7 @@ func TestSearchAdmissionFollowsScopeAuthorization(t *testing.T) {
 		&fakeSearcher{},
 		nil,
 		SearchAccessPolicy{Authorizer: authorizer},
-		func(*http.Request) (func(), int, time.Duration) {
+		func(*http.Request, bool) (func(), int, time.Duration) {
 			admissionCalls++
 
 			return func() {}, 0, 0
@@ -154,7 +154,7 @@ func TestSearchAdmissionRejectsBeforeSearch(t *testing.T) {
 			search,
 			nil,
 			SearchAccessPolicy{BearerToken: searchTestKey},
-			func(*http.Request) (func(), int, time.Duration) {
+			func(*http.Request, bool) (func(), int, time.Duration) {
 				return nil, test.status, test.retryAfter
 			},
 		)
@@ -197,7 +197,7 @@ func TestSearchAdmissionReleasesCanceledSearch(t *testing.T) {
 		canceledAdmissionSearcher{started: started},
 		nil,
 		SearchAccessPolicy{BearerToken: searchTestKey},
-		func(*http.Request) (func(), int, time.Duration) {
+		func(*http.Request, bool) (func(), int, time.Duration) {
 			return func() { releases.Add(1) }, 0, 0
 		},
 	)

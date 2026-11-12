@@ -169,6 +169,13 @@ the pinned stock-Java image
 When the public search portal is enabled, its `/api` page provides a short agent
 quickstart and links to this reference.
 
+Basic `POST /search` requests are available without a bearer key under the
+anonymous per-client rate limits. These requests cannot return raw page content.
+Raw-content search and `POST /extract`, `/crawl`, and `/map` require the
+`search:raw` scope. A normal keyed search uses `search:read`; API keys receive
+the authenticated rate tier. An unkeyed attempt to request raw content returns
+HTTP 401, and an exhausted rate limit returns HTTP 429 with `Retry-After`.
+
 Every Tavily-compatible JSON request body is limited to 64 KiB. A larger body
 returns HTTP 413. Successful responses carry `request_id`; every error body is
 exactly `{"detail":{"error":"..."}}` and carries neither a request ID nor a

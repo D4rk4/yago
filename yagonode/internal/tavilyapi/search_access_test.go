@@ -94,6 +94,58 @@ func TestSearchEndpointScopedRequiresBearer(t *testing.T) {
 	}
 }
 
+func TestAnonymousSearchAllowsReadAndRejectsRawContent(t *testing.T) {
+	authorizer := &stubScopeAuthorizer{decision: DecisionAllow}
+	search := &fakeSearcher{}
+	endpoint := NewSearchEndpointWithAccess(search, nil, SearchAccessPolicy{
+		Authorizer:         authorizer,
+		AllowAnonymousRead: true,
+	})
+
+	read := httptest.NewRecorder()
+	readRequest := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		PathSearch,
+		strings.NewReader(`{"query":"anonymous smoke"}`),
+	)
+	endpoint.ServeHTTP(read, readRequest)
+	if read.Code != http.StatusOK || search.calls != 1 || authorizer.calls != 0 {
+		t.Fatalf("anonymous read status=%d searches=%d authorizations=%d", read.Code, search.calls, authorizer.calls)
+	}
+
+	raw := httptest.NewRecorder()
+	rawRequest := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		PathSearch,
+		strings.NewReader(`{"query":"anonymous smoke","include_raw_content":true}`),
+	)
+	endpoint.ServeHTTP(raw, rawRequest)
+	if raw.Code != http.StatusUnauthorized || search.calls != 1 || authorizer.calls != 0 {
+		t.Fatalf("anonymous raw status=%d searches=%d authorizations=%d", raw.Code, search.calls, authorizer.calls)
+	}
+}
+
+func TestAnonymousReadPolicyDoesNotOpenExtract(t *testing.T) {
+	authorizer := &stubScopeAuthorizer{decision: DecisionAllow}
+	endpoint := NewExtractEndpointWithAccess(nil, SearchAccessPolicy{
+		Authorizer:         authorizer,
+		AllowAnonymousRead: true,
+	})
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		PathExtract,
+		strings.NewReader(`{"urls":"https://example.com/"}`),
+	)
+	result := httptest.NewRecorder()
+	endpoint.ServeHTTP(result, request)
+	if result.Code != http.StatusUnauthorized || authorizer.calls != 0 {
+		t.Fatalf("anonymous extract status=%d authorizations=%d", result.Code, authorizer.calls)
+	}
+}
+
 func TestSearchScopeUpgradesForRawContent(t *testing.T) {
 	for _, tc := range []struct {
 		name string

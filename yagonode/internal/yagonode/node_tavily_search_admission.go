@@ -9,8 +9,8 @@ import (
 )
 
 func newTavilySearchAdmission(limiter *publicratelimit.Limiter) tavilyapi.SearchAdmission {
-	return func(r *http.Request) (func(), int, time.Duration) {
-		if allowed, retryAfter := limiter.AllowRequest(r, true); !allowed {
+	return func(r *http.Request, authenticated bool) (func(), int, time.Duration) {
+		if allowed, retryAfter := limiter.AllowRequest(r, authenticated); !allowed {
 			return nil, http.StatusTooManyRequests, retryAfter
 		}
 		release, admitted := publicratelimit.AdmitSearch()

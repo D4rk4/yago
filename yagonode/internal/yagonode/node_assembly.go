@@ -375,7 +375,10 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		return nodeSurfaces{}, fmt.Errorf("open portal theme: %w", err)
 	}
 	publicMux := http.NewServeMux()
-	searchLimiter := publicratelimit.NewLimiter(searchRateTiers(in.config.SearchRate))
+	searchLimiter := publicratelimit.NewLimiter(
+		searchRateTiers(in.config.SearchRate),
+		httpguard.NewClientAddressResolver(in.config.TrustedProxies),
+	)
 	activityTracker := searchactivity.New(searchactivity.Mode(in.config.QueryLogMode))
 	corpusSignals := newCorpusSignalSet(in, learning)
 	searcher, suggest, explanation := mountSurfacePublicSearch(surfacePublicSearchInput{

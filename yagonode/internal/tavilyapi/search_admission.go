@@ -9,9 +9,10 @@ import (
 func enterSearchAdmission(
 	w http.ResponseWriter,
 	r *http.Request,
+	authenticated bool,
 	admission SearchAdmission,
 ) (func(), bool) {
-	release, status, retryAfter := admission(r)
+	release, status, retryAfter := admission(r, authenticated)
 	if status == 0 {
 		return release, true
 	}

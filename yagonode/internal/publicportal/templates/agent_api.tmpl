@@ -21,20 +21,22 @@
 <main>
   <a class="brand" href="/">yago</a>
   <h1>Use the agent API</h1>
-  <p>Yago provides a Tavily-compatible HTTP API on this host. Requests use JSON and a bearer API key.</p>
+  <p>Yago provides a Tavily-compatible JSON API on this host. Ordinary searches do not need an API key.</p>
 
-  <h2>Create an API key</h2>
-  <p>In Admin, open <a href="/admin/security">Security</a> and create a Search API key. Give it <code>search:read</code> for ordinary search. Add <code>search:raw</code> to request full page content or use Extract, Crawl, and Map. The key secret is shown once when created.</p>
+  <h2>Free search limits</h2>
+  <p>Anonymous <code>POST /search</code> requests are limited per client to 10 every 3 seconds, 60 per minute, and 300 per 10 minutes by default. When a limit is reached, the API returns HTTP 429 with a <code>Retry-After</code> header. Admins can change these limits under Admin → Configuration → Search; changes take effect after a node restart. For separate limits per visitor behind a reverse proxy, configure that proxy as trusted. Anonymous searches return titles, links, and snippets; they cannot request full page content.</p>
 
-  <h2>Search</h2>
-  <p>Send a JSON request to <code>POST /search</code>:</p>
+  <h2>Search without a key</h2>
+  <p>Send a JSON request to <code>POST /search</code> without an Authorization header:</p>
+
   <pre><code>export YAGO_URL="https://your-yago-host"
-export YAGO_API_KEY="your-search-api-key"
 
 curl "$YAGO_URL/search" \
-  -H "Authorization: Bearer $YAGO_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"query":"open source Go search engine","max_results":5}'</code></pre>
+
+  <h2>When you need an API key</h2>
+  <p>In Admin, open <a href="/admin/security">Security</a> to create a Search API key. <code>search:read</code> gives ordinary searches a higher rate limit. Add <code>search:raw</code> to request full page content or use Extract, Crawl, and Map. Select both scopes if one key must do both. Send the key in the <code>Authorization: Bearer</code> header. The key secret is shown once when created.</p>
 
   <h2>Other endpoints</h2>
   <ul>
@@ -42,7 +44,7 @@ curl "$YAGO_URL/search" \
     <li><code>POST /crawl</code> — crawl a bounded set of pages from a URL.</li>
     <li><code>POST /map</code> — discover URLs without returning page content.</li>
   </ul>
-  <p>These endpoints require <code>search:raw</code>. All four endpoints accept JSON POST requests and return JSON.</p>
+  <p>These endpoints always require a key with <code>search:raw</code>. Raw-content searches also require that scope. All four endpoints accept JSON POST requests and return JSON.</p>
   <p>See the <a href="https://github.com/D4rk4/yago/blob/dev/yagonode/doc/compatibility.md#agent-api-targets">full API reference</a> for request fields, limits, response formats, and error behavior.</p>
 
   <p class="foot"><a href="/">Back to search</a></p>
