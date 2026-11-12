@@ -21,6 +21,7 @@ type IngestDelivery struct {
 	Batch         yagocrawlcontract.IngestBatch
 	CrawlProfile  *yagocrawlcontract.CrawlProfile
 	BatchJSONSize int
+	SubmittedAt   time.Time
 	Ack           func(context.Context) error
 	Nak           func(context.Context) error
 	// Reject consumes the delivery without storing its document, naming the
@@ -30,6 +31,7 @@ type IngestDelivery struct {
 	// delivery without this hook falls back to Ack, preserving the old
 	// behaviour for callers that do not distinguish the two.
 	Reject                 func(ctx context.Context, rule string) error
+	ImportOnly             bool
 	ValidateMutation       func(context.Context) error
 	AuthorizeLeaseSnapshot func(context.Context) error
 	BeginMutation          func(context.Context) (func(), error)
@@ -133,6 +135,7 @@ type IngestConsumer struct {
 	reservedDocuments documentstore.ReservedCanonicalDocumentDirectory
 	index             searchindex.SearchIndex
 	indexWrites       SearchIndexWriteObserver
+	ingestStages      IngestStageObserver
 	urls              urlmeta.URLReceiver
 	postings          rwi.PostingReceiver
 	observer          IngestObserver

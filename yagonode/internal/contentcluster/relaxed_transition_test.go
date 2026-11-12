@@ -10,7 +10,7 @@ import (
 )
 
 func TestReplaceRepairsEveryRelaxedCommitBoundary(t *testing.T) {
-	for failedUpdate := 1; failedUpdate <= 5; failedUpdate++ {
+	for failedUpdate := 1; failedUpdate <= 3; failedUpdate++ {
 		t.Run(fmt.Sprintf("update-%d", failedUpdate), func(t *testing.T) {
 			index, engine := openFaultIndex(t, Limits{})
 			evidence := Evidence{
@@ -36,7 +36,7 @@ func TestReplaceRepairsEveryRelaxedCommitBoundary(t *testing.T) {
 }
 
 func TestReplaceBatchRepairsEveryRelaxedCommitBoundary(t *testing.T) {
-	for failedUpdate := 1; failedUpdate <= 5; failedUpdate++ {
+	for failedUpdate := 1; failedUpdate <= 3; failedUpdate++ {
 		t.Run(fmt.Sprintf("update-%d", failedUpdate), func(t *testing.T) {
 			assertReplaceBatchRelaxedBoundary(t, failedUpdate)
 		})
@@ -86,7 +86,7 @@ func repairInterruptedReplacementBatch(
 	interrupted replacementBatchInterruption,
 ) replacementBatchInterruption {
 	t.Helper()
-	if interrupted.failedUpdate > 4 {
+	if interrupted.failedUpdate > 2 {
 		if interrupted.err != nil {
 			t.Fatalf("replace batch: %v", interrupted.err)
 		}
@@ -115,7 +115,7 @@ func finalizeInterruptedReplacementBatch(
 	t.Helper()
 	finalizations := replacementFinalizations(interrupted.replacements)
 	err := interrupted.index.FinalizeEvidenceTransitions(t.Context(), finalizations)
-	if interrupted.failedUpdate != 5 {
+	if interrupted.failedUpdate != 3 {
 		if err != nil {
 			t.Fatalf("finalize batch: %v", err)
 		}
@@ -145,7 +145,7 @@ func finalizeInterruptedReplacementBatch(
 }
 
 func TestDeleteTransitionRepairsEveryRelaxedCommitBoundary(t *testing.T) {
-	for failedUpdate := 1; failedUpdate <= 4; failedUpdate++ {
+	for failedUpdate := 1; failedUpdate <= 3; failedUpdate++ {
 		t.Run(fmt.Sprintf("update-%d", failedUpdate), func(t *testing.T) {
 			assertDeleteRelaxedBoundary(t, failedUpdate)
 		})
@@ -200,7 +200,7 @@ func repairInterruptedDeletion(
 	interrupted deletionInterruption,
 ) deletionInterruption {
 	t.Helper()
-	if interrupted.failedUpdate > 3 {
+	if interrupted.failedUpdate > 2 {
 		if interrupted.err != nil {
 			t.Fatalf("delete transition: %v", interrupted.err)
 		}
@@ -229,7 +229,7 @@ func finalizeInterruptedDeletion(
 	t.Helper()
 	finalizations := []EvidenceFinalization{interrupted.deletion.Finalization}
 	err := interrupted.index.FinalizeEvidenceTransitions(t.Context(), finalizations)
-	if interrupted.failedUpdate != 4 {
+	if interrupted.failedUpdate != 3 {
 		if err != nil {
 			t.Fatalf("finalize delete: %v", err)
 		}

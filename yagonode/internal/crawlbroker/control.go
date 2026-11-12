@@ -76,7 +76,7 @@ func newControlRegistryWithLedger(
 }
 
 // register marks a worker's order stream as connected; a blank id is ignored.
-func (r *ControlRegistry) register(workerID string) {
+func (r *ControlRegistry) register(workerID string, processIdentifiers ...string) {
 	if workerID == "" {
 		return
 	}
@@ -92,6 +92,25 @@ func (r *ControlRegistry) register(workerID string) {
 			r.initialized[workerID] = r.ensureInitialLocked(context.Background(), workerID) == nil
 		}
 	}
+	if len(processIdentifiers) > 0 && processIdentifiers[0] != "" {
+		r.activeFetches[workerID] = crawlerActiveFetches{
+			processIdentifier: processIdentifiers[0],
+		}
+	}
+}
+
+func (r *ControlRegistry) registerDataExchangeWorker(workerID string) {
+	if workerID == "" {
+		return
+	}
+	r.mu.Lock()
+	if r.workers[workerID] == 0 {
+		r.workers[workerID] = 1
+		delete(r.activeFetches, workerID)
+		delete(r.storageStates, workerID)
+		delete(r.initialized, workerID)
+	}
+	r.mu.Unlock()
 }
 
 func (r *ControlRegistry) SetFetchWorkers(fetchWorkers int) int {

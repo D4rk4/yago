@@ -129,25 +129,15 @@ func applyOpsPageOptions(
 func applyCrawlAdminOptions(
 	options *adminui.Options,
 	assembled node,
-	crawlDepth crawlQueueDepthSource,
 ) {
 	attachCrawlRuntimeSettings(assembled.crawl, assembled.toggles)
-	dispatcher := crawlDispatcher(assembled.crawl)
-	if dispatcher != nil {
-		options.Crawl = newCrawlSource(dispatcher)
-		options.Schedules = newCrawlScheduleSource(assembled.schedules, options.Crawl)
-	}
-	if registry := crawlRunRegistry(assembled.crawl); registry != nil {
-		options.Monitor = newCrawlMonitorSource(registry, crawlDepth.probe)
-		options.CrawlOrderClearSource = newCrawlOrderClearSource(assembled.crawl)
+	options.Crawl = newSearchDemandCrawlSource(assembled.searchDemand)
+	registry := crawlRunRegistry(assembled.crawl)
+	control := crawlControlRegistry(assembled.crawl)
+	if registry != nil && control != nil {
+		options.Monitor = newCrawlMonitorSource(registry)
 		options.CrawlRunDetails = newCrawlRunDetailSource(registry)
-		if control := crawlControlRegistry(assembled.crawl); control != nil {
-			options.Control = newCrawlControlSource(
-				registry,
-				control,
-				crawlRestartSource(dispatcher),
-			)
-		}
+		options.CrawlerPulse = newCrawlerPulseSource(control, registry)
 	}
 	if control := crawlControlRegistry(assembled.crawl); control != nil {
 		options.CrawlerFetchActivity = newCrawlerFetchActivitySource(control)

@@ -493,23 +493,42 @@ func TestBleveDiskReopenConsolidatesReadSegments(t *testing.T) {
 	documents := sameBleveReadShardDocuments(6)
 	directory := newFakeDocumentDirectory(documents...)
 	writePersistedBleveReadSegments(t, root, directory, documents)
+	mergeCalls := 0
+	originalMerge := forceBleveReadSegmentMerge
+	forceBleveReadSegmentMerge = func(
+		ctx context.Context,
+		index *scorch.Scorch,
+		options *mergeplan.MergePlanOptions,
+	) error {
+		mergeCalls++
+
+		return originalMerge(ctx, index, options)
+	}
+	t.Cleanup(func() { forceBleveReadSegmentMerge = originalMerge })
 
 	reopened, err := NewBleveDiskIndex(t.Context(), root, directory, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := (scorchBleveReadSegmentShard{index: reopened.shards[0]}).state()
+	deferred, err := (scorchBleveReadSegmentShard{index: reopened.shards[0]}).state()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.documents != uint64(len(documents)) || after.segments != 1 {
-		t.Fatalf("consolidated state=%#v", after)
+	if deferred.documents != uint64(len(documents)) || deferred.segments <= 1 || mergeCalls != 0 {
+		t.Fatalf("open state=%#v merge calls=%d", deferred, mergeCalls)
 	}
 	result, err := reopened.Search(t.Context(), SearchRequest{
 		Query: "segmentword", MaxResults: len(documents), CandidateOnly: true,
 	})
 	if err != nil || result.Total != len(documents) || len(result.Results) != len(documents) {
 		t.Fatalf("search result=%#v error=%v", result, err)
+	}
+	if err := NewCachedSearchIndex(reopened, 1).WarmReadCache(t.Context()); err != nil {
+		t.Fatalf("warm read cache: %v", err)
+	}
+	after, err := (scorchBleveReadSegmentShard{index: reopened.shards[0]}).state()
+	if err != nil || after.documents != uint64(len(documents)) || after.segments != 1 || mergeCalls == 0 {
+		t.Fatalf("warmed state=%#v merge calls=%d error=%v", after, mergeCalls, err)
 	}
 	if err := reopened.Close(); err != nil {
 		t.Fatal(err)
@@ -533,17 +552,27 @@ func TestBleveDiskReopenRefusesConsolidationWithoutHeadroom(t *testing.T) {
 	writePersistedBleveReadSegments(t, root, directory, documents)
 	sentinel := errors.New("insufficient headroom")
 	admission := &bleveReadSegmentAdmissionProbe{headroomError: sentinel}
-	if _, err := NewBleveDiskIndex(
+	reopened, err := NewBleveDiskIndex(
 		t.Context(),
 		root,
 		directory,
 		nil,
 		admission,
-	); !errors.Is(err, sentinel) {
-		t.Fatalf("open error=%v, want=%v", err, sentinel)
+	)
+	if err != nil {
+		t.Fatalf("open index: %v", err)
+	}
+	if admission.headroomCalls != 0 || admission.growthCalls != 0 {
+		t.Fatalf("open admission=%#v", admission)
+	}
+	if err := reopened.WarmReadCache(t.Context()); !errors.Is(err, sentinel) {
+		t.Fatalf("warmup error=%v, want=%v", err, sentinel)
 	}
 	if admission.headroomCalls != 1 || admission.growthCalls != 0 {
 		t.Fatalf("admission=%#v", admission)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
 	}
 
 	reopened, err := NewBleveDiskIndex(t.Context(), root, directory, nil)

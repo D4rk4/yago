@@ -3,6 +3,7 @@ package clickcapture
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 type impressionGrowthAdmission struct {
@@ -17,6 +18,10 @@ func (admission *impressionGrowthAdmission) CheckGrowth() error {
 }
 
 func TestNewImpressionsRespectStoragePressureAndClicksSettle(t *testing.T) {
+	previous := impressionPreparationBudget
+	impressionPreparationBudget = time.Second
+	t.Cleanup(func() { impressionPreparationBudget = previous })
+
 	store := openClickStore(t)
 	candidates := []Candidate{
 		{URLIdentity: "https://a.example/", ClusterIdentity: "a", Position: 1},

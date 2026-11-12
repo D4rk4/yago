@@ -65,6 +65,7 @@ func (e searchEndpoint) enterWork(
 	w http.ResponseWriter,
 	r *http.Request,
 	rawContent bool,
+	authenticated bool,
 ) (*http.Request, func(), bool) {
 	r, releaseRawContent, admitted := enterOptionalRawContentWork(
 		w,
@@ -78,7 +79,7 @@ func (e searchEndpoint) enterWork(
 	if e.admission == nil {
 		return r, releaseRawContent, true
 	}
-	releaseSearch, admitted := enterSearchAdmission(w, r, e.admission)
+	releaseSearch, admitted := enterSearchAdmission(w, r, authenticated, e.admission)
 	if !admitted {
 		releaseRawContent()
 

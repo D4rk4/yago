@@ -8,10 +8,12 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 )
 
 func scriptedLimiter(tiers Tiers) (*Limiter, *time.Time) {
-	limiter := NewLimiter(tiers)
+	limiter := NewLimiter(tiers, httpguard.NewClientAddressResolver(nil))
 	now := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
 	limiter.now = func() time.Time { return now }
 

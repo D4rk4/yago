@@ -40,6 +40,16 @@ crawl is rate-limited rather than working, and raising fetch workers will not
 help until the page-rate ceiling is raised.
 `yacy_crawler_fetch_admission_seconds` gives the wait distribution.
 
+Admin Performance shows fetched and indexed pages per minute from recent
+progress-report tally deltas across the last 60 seconds, including runs that
+finished during that window. Rates are grouped by crawler process session; the
+configured per-run rate remains a separate value on the Crawler page. Activity
+and admission waits come from recent heartbeats, while a measured rate expires
+when its last progress sample leaves the window. The pulse does not infer an
+idle worker from missing telemetry. Signals require both queue and current
+worker evidence; they describe likely pressure and never change crawl settings
+automatically.
+
 A page the node's content-quality gate refuses is reported back to the crawler
 and recorded as fetched, not indexed, so harvest rate below reflects refusals
 honestly. `crawl_ingest_low_quality_total` counts them on the node.

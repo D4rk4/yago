@@ -8,6 +8,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/peerblock"
 	"github.com/D4rk4/yago/yagonode/internal/peernews"
 	"github.com/D4rk4/yago/yagonode/internal/peerroster"
+	"github.com/D4rk4/yago/yagonode/internal/rwibackfill"
 	"github.com/D4rk4/yago/yagonode/internal/transfertally"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
@@ -29,6 +30,7 @@ type nodeAssemblyCompletion struct {
 	client        *http.Client
 	tally         *transfertally.Tally
 	peerLifecycle *nodePeerLifecycle
+	rwiBackfill   *rwibackfill.Backfill
 }
 
 func completeNodeAssembly(in nodeAssemblyCompletion) node {
@@ -52,7 +54,6 @@ func completeNodeAssembly(in nodeAssemblyCompletion) node {
 		peerBlock:     in.blocks,
 		denylist:      in.surfaces.denylist,
 		activity:      in.surfaces.activity,
-		schedules:     in.surfaces.schedules,
 		theme:         in.surfaces.theme,
 		identity:      in.identity,
 		ranking:       in.surfaces.ranking,
@@ -66,6 +67,7 @@ func completeNodeAssembly(in nodeAssemblyCompletion) node {
 		hostTrust:     in.surfaces.trust,
 		peerEvents:    in.surfaces.peerEvents,
 		peerLifecycle: in.peerLifecycle,
+		rwiBackfill:   in.rwiBackfill,
 		corpusPass:    in.surfaces.corpusPass,
 		swarmMorph:    in.config.SwarmMorphology,
 		tally:         in.tally,

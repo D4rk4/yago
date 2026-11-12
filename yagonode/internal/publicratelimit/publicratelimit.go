@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/D4rk4/yago/yagonode/internal/httpguard"
 )
 
 // Tiers holds the request budgets per window (YaCy: search.public.max.access).
@@ -48,16 +50,21 @@ type Limiter struct {
 	clients        map[string]*windowCounts
 	order          list.List
 	tiers          Tiers
+	clientAddress  httpguard.ClientAddressResolver
 	now            func() time.Time
 	retainedEvents int
 }
 
 // NewLimiter builds a limiter over the given tiers.
-func NewLimiter(tiers Tiers) *Limiter {
+func NewLimiter(
+	tiers Tiers,
+	clientAddress httpguard.ClientAddressResolver,
+) *Limiter {
 	return &Limiter{
-		clients: make(map[string]*windowCounts),
-		tiers:   tiers,
-		now:     time.Now,
+		clients:       make(map[string]*windowCounts),
+		tiers:         tiers,
+		clientAddress: clientAddress,
+		now:           time.Now,
 	}
 }
 
@@ -128,7 +135,7 @@ func compactPublicEvents(events []time.Time) []time.Time {
 }
 
 func (l *Limiter) AllowRequest(r *http.Request, authenticated bool) (bool, time.Duration) {
-	return l.Allow(clientKey(r), authenticated)
+	return l.Allow(l.clientKey(r), authenticated)
 }
 
 func (l *Limiter) fits(stamps []time.Time, now time.Time, window time.Duration, budget int) bool {
@@ -173,11 +180,12 @@ func Wrap(next http.Handler, limiter *Limiter, authenticated Authenticated) http
 
 			return
 		}
+		client := limiter.clientKey(r)
 		raised := clientIsLocal(r)
 		if !raised && authenticated != nil {
 			raised = authenticated(r)
 		}
-		ok, retryAfter := limiter.Allow(clientKey(r), raised)
+		ok, retryAfter := limiter.Allow(client, raised)
 		if !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
 			http.Error(w, "search rate limit exceeded", http.StatusTooManyRequests)
@@ -199,7 +207,11 @@ func Wrap(next http.Handler, limiter *Limiter, authenticated Authenticated) http
 }
 
 // clientKey identifies the caller by remote IP.
-func clientKey(r *http.Request) string {
+func (l *Limiter) clientKey(r *http.Request) string {
+	if address := net.ParseIP(l.clientAddress.Resolve(r)); address != nil {
+		return address.String()
+	}
+
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -211,7 +223,11 @@ func clientKey(r *http.Request) string {
 // clientIsLocal reports whether the request arrived from the local host, which
 // YaCy grants raised limits.
 func clientIsLocal(r *http.Request) bool {
-	ip := net.ParseIP(clientKey(r))
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
 
 	return ip != nil && ip.IsLoopback()
 }

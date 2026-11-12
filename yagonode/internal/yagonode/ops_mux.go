@@ -21,14 +21,11 @@ const (
 func registerQueueDepthMetrics(
 	endpoints *metrics.HTTPEndpointMetrics,
 	assembled node,
-) crawlQueueDepthSource {
-	crawlDepth := crawlQueueDepthSource{probe: crawlQueueProbe(assembled.crawl)}
+) {
 	metrics.NewQueueDepthMetrics(
 		endpoints.Registry(),
-		newQueueDepthSource(assembled.dht.gateStatus, crawlDepth),
+		newQueueDepthSource(assembled.dht.gateStatus, crawlQueueDepthSource{}),
 	)
-
-	return crawlDepth
 }
 
 // adminSearchSuggest backs the admin console's search autocomplete with the
@@ -55,7 +52,7 @@ func buildOpsMux(
 	recorder *events.Recorder,
 	sources consoleAdminSources,
 ) *http.ServeMux {
-	crawlDepth := registerQueueDepthMetrics(endpoints, assembled)
+	registerQueueDepthMetrics(endpoints, assembled)
 	opsMux := newOpsMux(
 		metricsHandler(endpoints, config.MetricsEnabled),
 		assembled.readiness,
@@ -100,14 +97,16 @@ func buildOpsMux(
 		SearchLinksNewTab: config.SearchLinksNewTab,
 		Restart:           sources.restart,
 		SearchSuggest:     adminSearchSuggest(assembled),
-		CrawlFormats:      crawlFormatsAdmin(assembled.crawl),
 		PublicBaseURL:     config.PublicBaseURL,
 		PublicAddr:        config.PublicAddr,
 		Theme:             newPortalThemeAdmin(assembled.theme),
 	}
+	if importer, ok := assembled.crawl.(adminui.IndexImporter); ok {
+		options.IndexImport = importer
+	}
+	options.RWIBackfill = newNodeRWIBackfillAdmin(assembled.rwiBackfill)
 	applyOpsPageOptions(&options, config, assembled, sources)
 	applyIndexAdminOptions(&options, assembled)
-	applyExtractionRecrawlOption(&options, assembled)
 	if assembled.roster != nil {
 		options.PeerDetail = newPeerDetailSource(assembled.roster, blocks)
 	}
@@ -117,13 +116,16 @@ func buildOpsMux(
 	if assembled.news != nil {
 		options.PeerNews = newPeerNewsSource(assembled.news)
 	}
-	applyCrawlAdminOptions(&options, assembled, crawlDepth)
-	applySavedCrawlProfileAdminOptions(&options, assembled, recorder)
+	applyCrawlAdminOptions(&options, assembled)
+	mountOpsConsole(opsMux, options, recorder)
+
+	return opsMux
+}
+
+func mountOpsConsole(opsMux *http.ServeMux, options adminui.Options, recorder *events.Recorder) {
 	opsMux.Handle(adminui.BasePath, adminui.New(options))
 	opsMux.Handle("/{$}", http.RedirectHandler(adminui.BasePath, http.StatusFound))
 	recorder.Record(events.SeverityInfo, events.CategoryConfig, "node.started", "node started")
-
-	return opsMux
 }
 
 // seedImportSources opens the durable seed-import status store and, when a roster
@@ -175,6 +177,7 @@ func applyIndexAdminOptions(options *adminui.Options, assembled node) {
 		options.Blacklist = newBlacklistController(assembled.denylist)
 	}
 	options.Compactor = newCompactorSource(assembled.vault, assembled.storagePressure)
+	options.FreelistCheckpointer = newFreelistCheckpointSource(assembled.vault)
 }
 
 // assembledPeerBlocks returns the peer-block store as an interface, preserving a
@@ -232,9 +235,6 @@ func newOpsMux(
 // mountOpsExtras attaches the optional ops-listener endpoints an assembled
 // node may carry.
 func mountOpsExtras(opsMux *http.ServeMux, assembled node) {
-	if assembled.crawl != nil {
-		assembled.crawl.mountDispatch(opsMux)
-	}
 	if assembled.searchExplain != nil {
 		opsMux.Handle(pathSearchExplain, assembled.searchExplain)
 	}

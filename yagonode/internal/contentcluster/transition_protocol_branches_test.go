@@ -193,8 +193,10 @@ func TestPublishReplacementMarkersReportEveryStateFailure(t *testing.T) {
 	t.Run("marker context", func(t *testing.T) {
 		index, _ := openFaultIndex(t, Limits{})
 		ctx := &stagedCancellationContext{Context: context.Background(), cancelAt: 3}
-		err := index.publishTransitionMarkers(ctx, []fingerprintTransition{
-			{Token: "token", URL: "https://publish-context.example"},
+		err := index.vault.Update(t.Context(), func(tx *vault.Txn) error {
+			return index.publishTransitionMarkers(ctx, tx, []fingerprintTransition{
+				{Token: "token", URL: "https://publish-context.example"},
+			})
 		})
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("publish context error = %v", err)

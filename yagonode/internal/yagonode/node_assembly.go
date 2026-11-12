@@ -11,8 +11,8 @@ import (
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
 	"github.com/D4rk4/yago/yagonode/internal/clickcapture"
+	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawling"
-	"github.com/D4rk4/yago/yagonode/internal/crawlschedule"
 	"github.com/D4rk4/yago/yagonode/internal/crawlurls"
 	"github.com/D4rk4/yago/yagonode/internal/dhtexchange"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
@@ -39,9 +39,11 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/rankingprofile"
 	"github.com/D4rk4/yago/yagonode/internal/remotecrawl"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
+	"github.com/D4rk4/yago/yagonode/internal/rwibackfill"
 	"github.com/D4rk4/yago/yagonode/internal/safetymodel"
 	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/searchdemand"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/spellcheck"
@@ -78,7 +80,7 @@ type node struct {
 	redirectPurge   redirectCorpusPurge
 	anchorRefresh   documentstore.InboundAnchorDocumentRefresher
 	activity        *searchactivity.Tracker
-	schedules       *crawlschedule.Store
+	searchDemand    *searchdemand.Store
 	hostRank        *hostrank.Holder
 	hostTrust       *hosttrust.Catalog
 	spell           *spellcheck.Holder
@@ -109,23 +111,26 @@ type node struct {
 	storagePressure *yagocrawlcontract.StoragePressureGate
 	transferTally   *transfertally.Tally
 	peerType        localPeerClassification
+	rwiBackfill     *rwibackfill.Backfill
 }
 
 type nodeTelemetry struct {
-	dhtOutbound      dhtexchange.DistributionObserver
-	dhtInbound       *metrics.DHTInboundMetrics
-	peer             *metrics.PeerMetrics
-	search           *metrics.SearchMetrics
-	crawl            *metrics.CrawlMetrics
-	indexWrites      *metrics.SearchIndexWriteMetrics
-	crawlRuns        *metrics.CrawlRunMetrics
-	remoteCrawl      *metrics.RemoteCrawlMetrics
-	recorder         *events.Recorder
-	searchAuthorizer tavilyapi.ScopeAuthorizer
-	toggles          *runtimeToggles
-	saturation       *metrics.SaturationMetrics
-	registry         prometheus.Registerer
-	storagePressure  *yagocrawlcontract.StoragePressureGate
+	dhtOutbound        dhtexchange.DistributionObserver
+	dhtInbound         *metrics.DHTInboundMetrics
+	peer               *metrics.PeerMetrics
+	search             *metrics.SearchMetrics
+	crawl              *metrics.CrawlMetrics
+	indexWrites        *metrics.SearchIndexWriteMetrics
+	ingestStages       *metrics.IngestStageMetrics
+	crawlRuns          *metrics.CrawlRunMetrics
+	remoteCrawl        *metrics.RemoteCrawlMetrics
+	recorder           *events.Recorder
+	searchAuthorizer   tavilyapi.ScopeAuthorizer
+	crawlKeyAuthorizer func(context.Context, string) bool
+	toggles            *runtimeToggles
+	saturation         *metrics.SaturationMetrics
+	registry           prometheus.Registerer
+	storagePressure    *yagocrawlcontract.StoragePressureGate
 }
 
 var (
@@ -145,6 +150,21 @@ var (
 		storageVault *vault.Vault,
 	) (crawlProcess, error) {
 		runtime, err := buildCrawlRuntime(ctx, config, identity, storage, storageVault)
+		if runtime == nil || err != nil {
+			return nil, err
+		}
+
+		return runtime, nil
+	}
+	buildRuntimeCrawlWithExchange = func(
+		ctx context.Context,
+		config crawlConfig,
+		identity nodeidentity.Identity,
+		storage nodeStorage,
+		storageVault *vault.Vault,
+		exchange crawlbroker.CrawlerDataExchangeConfig,
+	) (crawlProcess, error) {
+		runtime, err := buildCrawlRuntime(ctx, config, identity, storage, storageVault, exchange)
 		if runtime == nil || err != nil {
 			return nil, err
 		}
@@ -198,19 +218,9 @@ func assembleNode(
 	}()
 	seedlistClient, peerClient := nodePeerClients(config, client)
 	hostLinkSnapshot := hostlinks.NewSnapshotHolder()
-	exchange, err := assembleRuntimePeerExchange(peerExchange{
-		router:                       peerWire.router,
-		identity:                     identity,
-		report:                       peerWire.report,
-		config:                       config,
-		vault:                        vault,
-		client:                       peerClient,
-		seedlistClient:               seedlistClient,
-		peer:                         telemetry.peer,
-		host:                         hostLinkSnapshot,
-		roster:                       peerWire.roster,
-		news:                         peerWire.news,
-		externalReachabilityEvidence: peerWire.reachability,
+	exchange, err := assembleNodePeerExchange(nodePeerExchangeInput{
+		config: config, vault: vault, client: peerClient, identity: identity,
+		telemetry: telemetry, peerWire: peerWire, host: hostLinkSnapshot,
 	})
 	if err != nil {
 		return node{}, err
@@ -237,17 +247,49 @@ func assembleNode(
 	if err != nil {
 		return node{}, err
 	}
-	peerWire.queues.bindCrawl(surfaces.crawl)
+	backfill, err := openRuntimeNodeRWIBackfill(vault, storage)
+	if err != nil {
+		return node{}, err
+	}
 	assembled := completeNodeAssembly(nodeAssemblyCompletion{
 		config: config, telemetry: telemetry, identity: identity, storage: storage,
 		mux: peerWire.mux, exchange: exchange, surfaces: surfaces, report: peerWire.report,
 		roster: peerWire.roster, news: peerWire.news, blocks: peerWire.blocks,
 		vault: vault, client: client, tally: peerWire.tally, peerLifecycle: peerWire.lifecycle,
 		rosterVault: peerWire.rosterVault,
+		rwiBackfill: backfill,
 	})
 	assembledLifecycle = true
 
 	return assembled, nil
+}
+
+func openNodeRWIBackfill(vault *vault.Vault, storage nodeStorage) (*rwibackfill.Backfill, error) {
+	resumableDocuments, ok := storage.documentDirectory.(documentstore.ResumableStoredDocumentPageScanner)
+	if !ok {
+		return nil, fmt.Errorf("resumable stored-document scan is unavailable")
+	}
+	backfill, err := rwibackfill.Open(
+		vault,
+		resumableDocuments,
+		storage.urlReceiver,
+		storage.postingReceiver,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("open rwi backfill: %w", err)
+	}
+	return backfill, nil
+}
+
+// nodePeerClient picks the client for peer-protocol calls: a client tolerant
+// of the self-signed certificates YaCy peers serve when https preference is
+// on, and the plain egress client verbatim otherwise.
+func nodePeerClient(config nodeConfig, client *http.Client) *http.Client {
+	if config.PeerHTTPSPreferred {
+		return newRuntimePeerProtocolClient(config)
+	}
+
+	return client
 }
 
 type assembleSurfacesInput struct {
@@ -287,14 +329,23 @@ type nodeSurfaces struct {
 	safety      *safetymodel.Catalog
 	trust       *hosttrust.Catalog
 	activity    *searchactivity.Tracker
-	schedules   *crawlschedule.Store
 	theme       *portaltheme.Theme
 	peerEvents  *peerReputationObserver
 	corpusPass  *corpusSignalRefresh
 }
 
 func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
-	runtime, err := buildRuntimeCrawl(in.ctx, in.config.Crawl, in.identity, in.storage, in.vault)
+	runtime, err := buildRuntimeCrawlWithExchange(
+		in.ctx,
+		in.config.Crawl,
+		in.identity,
+		in.storage,
+		in.vault,
+		crawlbroker.CrawlerDataExchangeConfig{
+			Demand:       crawlerSearchDemandReader{store: in.storage.searchDemand},
+			AuthorizeKey: in.telemetry.crawlKeyAuthorizer,
+		},
+	)
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
@@ -305,18 +356,10 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		}
 	}()
 	attachCrawlMetrics(runtime, in.telemetry.crawl)
-	attachCrawlStateMetrics(runtime, in.telemetry.registry)
 	attachSearchIndexWriteMetrics(runtime, in.telemetry.indexWrites)
+	attachIngestStageMetrics(runtime, in.telemetry.ingestStages)
 	attachCrawlRunObserver(runtime, in.telemetry.crawlRuns, in.telemetry.recorder)
-	attachRemoteCrawlOrders(
-		runtime,
-		newRemoteCrawlBrokerOrderStager(
-			in.ctx,
-			in.remoteCrawl,
-			in.config.RemoteCrawl.QueueCapacity,
-		),
-	)
-	ranking, denylist, schedules, err := openSurfaceStores(in.ctx, in.vault)
+	ranking, denylist, err := openSurfaceStores(in.ctx, in.vault)
 	if err != nil {
 		return nodeSurfaces{}, err
 	}
@@ -332,11 +375,14 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		return nodeSurfaces{}, fmt.Errorf("open portal theme: %w", err)
 	}
 	publicMux := http.NewServeMux()
-	searchLimiter := publicratelimit.NewLimiter(searchRateTiers(in.config.SearchRate))
+	searchLimiter := publicratelimit.NewLimiter(
+		searchRateTiers(in.config.SearchRate),
+		httpguard.NewClientAddressResolver(in.config.TrustedProxies),
+	)
 	activityTracker := searchactivity.New(searchactivity.Mode(in.config.QueryLogMode))
 	corpusSignals := newCorpusSignalSet(in, learning)
 	searcher, suggest, explanation := mountSurfacePublicSearch(surfacePublicSearchInput{
-		mux: publicMux, assembly: in, runtime: runtime, ranking: ranking,
+		mux: publicMux, assembly: in, ranking: ranking,
 		denylist: denylist, activity: activityTracker, signals: corpusSignals,
 		theme: theme, learning: learning,
 		admission: newTavilySearchAdmission(searchLimiter),
@@ -362,7 +408,6 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 		wordForms:   corpusSignals.wordForms,
 		denylist:    denylist,
 		activity:    activityTracker,
-		schedules:   schedules,
 		judgments:   learning.judgments,
 		clicks:      learning.clicks,
 		models:      learning.models,
@@ -373,23 +418,20 @@ func assembleNodeSurfaces(in assembleSurfacesInput) (nodeSurfaces, error) {
 	}, nil
 }
 
-// publicSearchParts carries the surface stores and runtimes assembleNodeSurfaces
-// opened into the public-search assembly literal, keeping the function inside
-// its length budget.
 type publicSearchParts struct {
-	runtime    crawlProcess
-	ranking    *rankingprofile.Holder
-	denylist   *urldenylist.Store
-	activity   *searchactivity.Tracker
-	hostRank   *hostrank.Holder
-	spell      *spellcheck.Holder
-	words      *wordforms.Holder
-	theme      *portaltheme.Theme
-	clicks     *clickcapture.Store
-	models     *rankingmodel.Catalog
-	reputation *peerReputationObserver
-	peerEvents *peerReputationObserver
-	admission  tavilyapi.SearchAdmission
+	searchDemand *searchdemand.Store
+	ranking      *rankingprofile.Holder
+	denylist     *urldenylist.Store
+	activity     *searchactivity.Tracker
+	hostRank     *hostrank.Holder
+	spell        *spellcheck.Holder
+	words        *wordforms.Holder
+	theme        *portaltheme.Theme
+	clicks       *clickcapture.Store
+	models       *rankingmodel.Catalog
+	reputation   *peerReputationObserver
+	peerEvents   *peerReputationObserver
+	admission    tavilyapi.SearchAdmission
 }
 
 func newPublicSearchAssembly(
@@ -412,8 +454,7 @@ func newPublicSearchAssembly(
 		searchAdmission:        parts.admission,
 		extractFetcher:         buildExtractFetcher(in.config, in.client),
 		webFallback:            in.config.WebFallback,
-		seedQueue:              crawlOrderQueue(parts.runtime),
-		maxPagesPerRun:         crawlPageBudgetSource(parts.runtime),
+		searchDemand:           parts.searchDemand,
 		toggles:                in.toggles,
 		queryLogMode:           in.config.QueryLogMode,
 		activity:               parts.activity,
@@ -425,11 +466,9 @@ func newPublicSearchAssembly(
 		indexRemoteResults:     in.config.IndexRemoteResults,
 		storageGrowth:          in.telemetry.storagePressure,
 		swarmMorphology:        in.config.SwarmMorphology,
-		swarmSeed:              in.config.SwarmSeed,
-		autocrawlerCrawl:       in.config.AutocrawlerCrawl,
 		linksNewTab:            in.config.SearchLinksNewTab,
 		clickCapture:           in.config.SearchClickCapture,
-		clickRecorder:          newClickCaptureAdapter(parts.clicks, parts.models.Ranker()),
+		clickRecorder:          newClickCaptureAdapter(parts.clicks, parts.models.Ranker(), parts.searchDemand),
 		portalClickRecorder:    newPortalClickCaptureAdapter(parts.clicks, parts.models.Ranker()),
 		learnedRanker:          parts.models.Ranker(),
 		peerReputation:         parts.reputation,
@@ -462,7 +501,6 @@ type nodeParts struct {
 	peerBlock     *peerblock.Store
 	denylist      *urldenylist.Store
 	activity      *searchactivity.Tracker
-	schedules     *crawlschedule.Store
 	identity      nodeidentity.Identity
 	ranking       *rankingprofile.Holder
 	hostRank      *hostrank.Holder
@@ -478,6 +516,7 @@ type nodeParts struct {
 	peerEvents    *peerReputationObserver
 	peerLifecycle *nodePeerLifecycle
 	corpusPass    *corpusSignalRefresh
+	rwiBackfill   *rwibackfill.Backfill
 	tally         *transfertally.Tally
 	events        *events.Recorder
 	peerType      localPeerClassification
@@ -523,7 +562,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		redirectPurge: newNodeRedirectPurge(parts.storage, parts.vault),
 		anchorRefresh: inboundAnchorRefresher(parts.storage),
 		activity:      parts.activity,
-		schedules:     parts.schedules,
+		searchDemand:  parts.storage.searchDemand,
 		hostRank:      parts.hostRank,
 		hostTrust:     parts.hostTrust,
 		spell:         parts.spell,
@@ -553,6 +592,7 @@ func newAssembledNode(parts nodeParts, toggles *runtimeToggles) node {
 		peerLifecycle: parts.peerLifecycle,
 		transferTally: parts.tally,
 		peerType:      parts.peerType,
+		rwiBackfill:   parts.rwiBackfill,
 	}
 }
 
@@ -705,19 +745,14 @@ func openNodeCore(
 func openSurfaceStores(
 	ctx context.Context,
 	vaultStore *vault.Vault,
-) (*rankingprofile.Holder, *urldenylist.Store, *crawlschedule.Store, error) {
+) (*rankingprofile.Holder, *urldenylist.Store, error) {
 	ranking, err := rankingprofile.Open(ctx, vaultStore)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("open ranking profile: %w", err)
+		return nil, nil, fmt.Errorf("open ranking profile: %w", err)
 	}
 	denylist, err := urldenylist.Open(vaultStore, time.Now)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("open url denylist: %w", err)
+		return nil, nil, fmt.Errorf("open url denylist: %w", err)
 	}
-	schedules, err := crawlschedule.Open(vaultStore, time.Now)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("open crawl schedules: %w", err)
-	}
-
-	return ranking, denylist, schedules, nil
+	return ranking, denylist, nil
 }

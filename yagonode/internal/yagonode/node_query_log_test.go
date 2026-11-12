@@ -123,9 +123,21 @@ func TestQueryActivityDistinguishesErrorsAndPartialAnswersFromMisses(t *testing.
 	if _, err := partial.Search(t.Context(), searchcore.Request{Query: "partial"}); err != nil {
 		t.Fatalf("partial search: %v", err)
 	}
+	sampled := queryLoggingSearcher{
+		next: stubPrimarySearcher{resp: searchcore.Response{
+			Results: []searchcore.Result{{URL: "https://sample.example/result"}},
+			Coverage: &searchcore.SearchCoverage{
+				CompletedShards: 8, SampledShards: 8, TotalShards: 8, Complete: false,
+			},
+		}},
+		mode: queryLogAggregate, logger: logger, tracker: tracker,
+	}
+	if _, err := sampled.Search(t.Context(), searchcore.Request{Query: "sampled"}); err != nil {
+		t.Fatalf("sampled search: %v", err)
+	}
 
 	entries, total, confirmedZero := tracker.Snapshot()
-	if len(entries) != 2 || total != 2 || confirmedZero != 0 {
+	if len(entries) != 3 || total != 3 || confirmedZero != 0 {
 		t.Fatalf(
 			"activity = entries %d, total %d, confirmed zero %d",
 			len(entries),
@@ -134,7 +146,8 @@ func TestQueryActivityDistinguishesErrorsAndPartialAnswersFromMisses(t *testing.
 		)
 	}
 	if entries[0].Failed || !entries[0].Incomplete ||
-		!entries[1].Failed || entries[1].Incomplete {
+		entries[1].Failed || !entries[1].Incomplete ||
+		!entries[2].Failed || entries[2].Incomplete {
 		t.Fatalf("activity states = %+v", entries)
 	}
 }

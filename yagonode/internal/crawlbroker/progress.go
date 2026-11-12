@@ -39,14 +39,15 @@ func (noopProgressSink) ConfirmTerminalDelivery(context.Context, []byte) error {
 
 func progressFromReport(report *crawlrpc.CrawlProgressReport) yagocrawlcontract.CrawlRunProgress {
 	return yagocrawlcontract.CrawlRunProgress{
-		RunID:          hex.EncodeToString(report.GetRunId()),
-		WorkerID:       report.GetWorkerId(),
-		ProfileHandle:  report.GetProfileHandle(),
-		ProfileName:    report.GetProfileName(),
-		State:          runStateFromProto(report.GetState()),
-		Tally:          tallyFromProto(report.GetTally()),
-		PagesPerMinute: report.GetPagesPerMinute(),
-		RateKnown:      report.PagesPerMinute != nil,
+		RunID:             hex.EncodeToString(report.GetRunId()),
+		WorkerID:          report.GetWorkerId(),
+		ProcessIdentifier: report.GetWorkerSessionId(),
+		ProfileHandle:     report.GetProfileHandle(),
+		ProfileName:       report.GetProfileName(),
+		State:             runStateFromProto(report.GetState()),
+		Tally:             tallyFromProto(report.GetTally()),
+		PagesPerMinute:    report.GetPagesPerMinute(),
+		RateKnown:         report.PagesPerMinute != nil,
 	}
 }
 
@@ -62,12 +63,27 @@ func runStateFromProto(state crawlrpc.CrawlRunState) yagocrawlcontract.CrawlRunS
 }
 
 func tallyFromProto(tally *crawlrpc.CrawlRunTally) yagocrawlcontract.CrawlRunTally {
-	return yagocrawlcontract.CrawlRunTally{
-		Fetched:      tally.GetFetched(),
-		Indexed:      tally.GetIndexed(),
-		Failed:       tally.GetFailed(),
-		RobotsDenied: tally.GetRobotsDenied(),
-		Duplicates:   tally.GetDuplicates(),
-		Pending:      tally.GetPending(),
+	converted := yagocrawlcontract.CrawlRunTally{
+		Fetched:            tally.GetFetched(),
+		Indexed:            tally.GetIndexed(),
+		Failed:             tally.GetFailed(),
+		RobotsDenied:       tally.GetRobotsDenied(),
+		Duplicates:         tally.GetDuplicates(),
+		Pending:            tally.GetPending(),
+		DocumentCandidates: tally.GetDocumentCandidates(),
+		RemovalMutations:   tally.GetRemovalMutations(),
+		NotIndexable:       tally.GetNotIndexable(),
+		NodeRejected:       tally.GetNodeRejected(),
+		PendingIngest:      tally.GetPendingIngest(),
+		OutcomeCounts:      make([]yagocrawlcontract.CrawlOutcomeCount, 0, len(tally.GetOutcomeCounts())),
 	}
+	for _, count := range tally.GetOutcomeCounts() {
+		if count == nil {
+			continue
+		}
+		converted.OutcomeCounts = append(converted.OutcomeCounts, yagocrawlcontract.CrawlOutcomeCount{
+			Class: count.GetClass(), Reason: count.GetReason(), Pages: count.GetPages(),
+		})
+	}
+	return converted
 }

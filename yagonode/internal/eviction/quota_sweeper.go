@@ -182,7 +182,7 @@ func canonicalPurgeDocumentURLs(normalizedURLs []string) []string {
 	canonical := make([]string, 0, len(normalizedURLs))
 	for _, rawURL := range normalizedURLs {
 		normalizedURL := strings.TrimSpace(rawURL)
-		if normalizedURL == "" {
+		if normalizedURL == "" || len(normalizedURL) > yagomodel.MaximumURLIdentityBytes {
 			continue
 		}
 		if _, duplicate := seen[normalizedURL]; duplicate {

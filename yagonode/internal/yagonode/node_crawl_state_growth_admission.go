@@ -5,14 +5,18 @@ import (
 	"fmt"
 	"os"
 	"sync/atomic"
+
+	"github.com/D4rk4/yago/yagocrawlcontract"
 )
 
 var errCrawlStateMaximum = errors.New("node crawl state maximum reached")
 
 type crawlStateGrowthAdmission struct {
-	path         string
-	maximumBytes atomic.Int64
-	upstream     growthAdmission
+	path       string
+	maximum    atomic.Value
+	quotaBytes atomic.Int64
+	pressure   *yagocrawlcontract.StoragePressureGate
+	upstream   growthAdmission
 }
 
 func newCrawlStateGrowthAdmission(
@@ -21,7 +25,10 @@ func newCrawlStateGrowthAdmission(
 	upstream growthAdmission,
 ) *crawlStateGrowthAdmission {
 	admission := &crawlStateGrowthAdmission{path: path, upstream: upstream}
-	admission.maximumBytes.Store(maximumBytes)
+	admission.maximum.Store(crawlStateMaximumPolicy{MaximumBytes: maximumBytes})
+	if pressure, ok := upstream.(*yagocrawlcontract.StoragePressureGate); ok {
+		admission.pressure = pressure
+	}
 
 	return admission
 }
@@ -36,8 +43,14 @@ func configureCrawlStateGrowthAdmission(
 		config.Crawl.StateMaximumBytes,
 		upstream,
 	)
+	admission.SetMaximumPolicy(crawlStateMaximumPolicy{
+		Automatic:    config.Crawl.StateMaximumAutomatic,
+		MaximumBytes: config.Crawl.StateMaximumBytes,
+	})
+	admission.SetStorageQuota(config.StorageQuotaByte)
 	config.Crawl.GrowthAdmission = admission
-	toggles.SetCrawlerNodeStateMaximumSink(admission.SetMaximumBytes)
+	toggles.SetCrawlerNodeStateMaximumSink(admission.SetMaximumPolicy)
+	toggles.SetCrawlerNodeStateQuotaSink(admission.SetStorageQuota)
 }
 
 func (admission *crawlStateGrowthAdmission) CheckGrowth() error {
@@ -46,7 +59,7 @@ func (admission *crawlStateGrowthAdmission) CheckGrowth() error {
 			return fmt.Errorf("check upstream storage growth: %w", err)
 		}
 	}
-	maximumBytes := admission.maximumBytes.Load()
+	maximumBytes := admission.CrawlStateMaximumBytes()
 	if maximumBytes == 0 {
 		return nil
 	}
@@ -65,11 +78,27 @@ func (admission *crawlStateGrowthAdmission) CheckGrowth() error {
 }
 
 func (admission *crawlStateGrowthAdmission) SetMaximumBytes(maximumBytes int64) {
-	admission.maximumBytes.Store(max(maximumBytes, 0))
+	admission.SetMaximumPolicy(crawlStateMaximumPolicy{MaximumBytes: maximumBytes})
+}
+
+func (admission *crawlStateGrowthAdmission) SetMaximumPolicy(policy crawlStateMaximumPolicy) {
+	admission.maximum.Store(policy)
+}
+
+func (admission *crawlStateGrowthAdmission) SetStorageQuota(quotaBytes int64) {
+	if quotaBytes < 0 {
+		return
+	}
+	admission.quotaBytes.Store(quotaBytes)
 }
 
 func (admission *crawlStateGrowthAdmission) CrawlStateMaximumBytes() int64 {
-	return admission.maximumBytes.Load()
+	policy, _ := admission.maximum.Load().(crawlStateMaximumPolicy)
+	if !policy.Automatic {
+		return policy.MaximumBytes
+	}
+
+	return crawlStateAutomaticMaximumBytes(admission.quotaBytes.Load(), admission.pressure)
 }
 
 func (admission *crawlStateGrowthAdmission) CrawlStateLifecycleAdmission() growthAdmission {

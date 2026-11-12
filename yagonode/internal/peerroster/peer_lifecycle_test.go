@@ -440,7 +440,7 @@ func TestMembershipMutationWaitHonorsContext(t *testing.T) {
 	}
 	for name, action := range actions {
 		t.Run(name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+			ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
 			defer cancel()
 			done := make(chan struct{})
 			go func() {
@@ -449,7 +449,7 @@ func TestMembershipMutationWaitHonorsContext(t *testing.T) {
 			}()
 			select {
 			case <-done:
-			case <-time.After(5 * time.Second):
+			case <-time.After(2 * time.Second):
 				t.Fatal("membership mutation ignored context cancellation")
 			}
 		})

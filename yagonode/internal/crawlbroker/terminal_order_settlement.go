@@ -63,7 +63,7 @@ func terminalLeaseRequestFromProto(
 	if !yagocrawlcontract.ValidCrawlLeaseID(acknowledgment.GetLeaseId()) ||
 		len(request.OrderIdentity) != sha256.Size ||
 		!validCrawlerLeaseIdentity(request.WorkerID, request.WorkerSessionID) ||
-		acknowledgment.GetTerminalTally() == nil || request.Tally.Pending != 0 ||
+		acknowledgment.GetTerminalTally() == nil || !request.Tally.Valid() || request.Tally.Pending != 0 ||
 		!request.RecentOutcomes.Valid() ||
 		len(request.ConfirmationToken) != 0 && len(request.ConfirmationToken) != sha256.Size {
 		return terminalLeaseRequest{}, true, fmt.Errorf("invalid terminal crawl lease definition")

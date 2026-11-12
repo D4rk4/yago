@@ -45,7 +45,11 @@ is a separate soft physical admission boundary for this file
 (`crawler.node_state_max_bytes` / `YAGO_CRAWLER_NODE_STATE_MAX_BYTES`) and for
 the crawler's `crawler/frontier-v1.db`
 (`crawler.frontier_state_max_bytes` / `YAGO_CRAWLER_FRONTIER_STATE_MAX_BYTES`);
-each defaults to 4 GiB and `0` disables it. The node rejects fresh order
+the node defaults to 10% of the effective storage quota, capped by measured free
+space after the node reserve, while the crawler defaults to 4 GiB. With an
+unlimited quota, the node uses 10% of measured free space after reserve. An
+explicit byte size selects a fixed node boundary and `0` disables either
+boundary. The node rejects fresh order
 enqueue at its boundary while migration, ingest, lifecycle, recovery, and settlement continue. The
 crawler waits before expanding a fresh order and refuses new discovered-link batches at its boundary;
 already committed seed manifests, queued work, recovery, lifecycle, and settlement continue.

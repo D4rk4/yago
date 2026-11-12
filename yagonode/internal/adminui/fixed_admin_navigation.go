@@ -50,7 +50,7 @@ func redirectAdminSearchPage(
 	w.WriteHeader(http.StatusSeeOther)
 }
 
-func redirectCrawlRunPage(w http.ResponseWriter, page int) {
-	w.Header().Set("Location", crawlRunPageURL(page))
+func redirectCrawlRunPage(w http.ResponseWriter) {
+	w.Header().Set("Location", crawlPath+"#crawl-monitor")
 	w.WriteHeader(http.StatusSeeOther)
 }

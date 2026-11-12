@@ -1,7 +1,8 @@
 {{define "content"}}
 <nav class="cds-breadcrumb" aria-label="Breadcrumb"><a href="/admin/overview">Admin</a> / Crawler</nav>
 <h1 class="cds-h1">Crawler</h1>
-<p class="cds-muted">Start a crawl by entering one or more seed URLs. Crawls run on the local fleet and stay subject to the node's egress policy.</p>
+<p class="cds-muted">Submit focused seed URLs for the crawler. The node records the topic and URLs; the crawler owns its persistent frontier and chooses when and in what order to fetch them.</p>
+{{with .Monitor}}{{template "crawl-monitor" .}}{{end}}
 {{if .Error}}
 <div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.Error}}</div>
 {{end}}
@@ -9,224 +10,21 @@
 <div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Section.Message}}</div>
 {{end}}
 {{with .Result}}
-<div class="cds-inline-notification cds-inline-notification--success" role="status">
-  {{if .Duplicate}}Existing crawl request recognized under profile <code>{{.ProfileHandle}}</code>; no new seeds were enqueued.{{else}}Crawl accepted: {{.Seeds}} seed(s) queued under profile <code>{{.ProfileHandle}}</code>.{{end}}
-</div>
-{{end}}
-{{if .ProfilesOn}}
-<h2 class="cds-h2">Saved crawl profiles</h2>
-<p class="cds-muted">Reusable profiles contain crawl behavior, not seed URLs. Creating, updating, or deleting one affects future dispatches only; active runs keep their dispatched profile.</p>
-{{if .ProfileError}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.ProfileError}}</div>{{end}}
-{{if .SavedProfiles}}
-<form class="cds-form cds-form--inline" method="get" action="/admin/crawl">
-  <div class="cds-field">
-    <label class="cds-label" for="saved-profile">Saved profile</label>
-    <select class="cds-input" id="saved-profile" name="profile" required>
-      <option value="">Select a profile</option>
-      {{$selected := .SelectedProfileID}}
-      {{range .SavedProfiles}}<option value="{{.ID}}"{{if eq .ID $selected}} selected{{end}}>{{.Name}}</option>{{end}}
-    </select>
-  </div>
-  <button class="cds-btn cds-btn--ghost" type="submit">Apply to form</button>
-</form>
-<div class="cds-scroll-x" role="region" aria-label="Saved crawl profiles" tabindex="0">
-  <table class="cds-table">
-    <thead><tr><th scope="col">Name</th><th scope="col">Scope</th><th scope="col">Depth</th><th scope="col">Updated (UTC)</th><th scope="col">Actions</th></tr></thead>
-    <tbody>
-      {{$csrf := .CSRF}}
-      {{range .SavedProfiles}}
-      <tr>
-        <th scope="row">{{.Name}}</th><td>{{.Scope}}</td><td class="cds-mono">{{.MaxDepth}}</td><td class="cds-mono">{{.UpdatedAt}}</td>
-        <td>
-          <a class="cds-btn cds-btn--ghost" href="/admin/crawl?profile={{.ID}}">Use</a>
-          <form method="post" action="/admin/crawl/profile" class="cds-inline-form">
-            <input type="hidden" name="csrf_token" value="{{$csrf}}">
-            <input type="hidden" name="profileId" value="{{.ID}}">
-            <button class="cds-btn cds-btn--danger" type="submit" name="action" value="delete">Delete</button>
-          </form>
-        </td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
-</div>
-{{else}}
-<p class="cds-muted">No saved crawl profiles.</p>
-{{end}}
+<div class="cds-inline-notification cds-inline-notification--success" role="status">{{.Seeds}} focused seed URL(s) recorded for the crawler under topic <code>{{.ProfileHandle}}</code>.</div>
 {{end}}
 <form class="cds-form" method="post" action="/admin/crawl" hx-boost="false">
   <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  {{if .SelectedProfileID}}<input type="hidden" name="profileId" value="{{.SelectedProfileID}}">{{end}}
   <div class="cds-field">
     <label class="cds-label" for="seeds">Seed URLs (one per line)</label>
     <textarea class="cds-input cds-textarea" id="seeds" name="seeds" rows="4" autocomplete="off" required>{{.Form.Seeds}}</textarea>
   </div>
   <div class="cds-field">
-    <label class="cds-label" for="name">Crawl name (optional)</label>
+    <label class="cds-label" for="name">Topic (optional)</label>
     <input class="cds-input" type="text" id="name" name="name" value="{{.Form.Name}}" autocomplete="off">
   </div>
-  <div class="cds-field">
-    <label class="cds-label" for="mode">Start mode</label>
-    <select class="cds-input" id="mode" name="mode">
-      {{$m := .Form.Mode}}
-      <option value="url"{{if eq $m "url"}} selected{{end}}>Single URL</option>
-      <option value="sitemap"{{if eq $m "sitemap"}} selected{{end}}>Sitemap</option>
-      <option value="sitelist"{{if eq $m "sitelist"}} selected{{end}}>Site list</option>
-      <option value="robots"{{if eq $m "robots"}} selected{{end}}>robots.txt</option>
-    </select>
-  </div>
-  <div class="cds-field">
-    <label class="cds-label" for="scope">Scope</label>
-    <select class="cds-input" id="scope" name="scope">
-      {{$s := .Form.Scope}}
-      <option value="domain"{{if eq $s "domain"}} selected{{end}}>Same domain</option>
-      <option value="subpath"{{if eq $s "subpath"}} selected{{end}}>Sub-path</option>
-      <option value="wide"{{if eq $s "wide"}} selected{{end}}>Wide (follow anywhere)</option>
-    </select>
-  </div>
-  <div class="cds-field">
-    <label class="cds-label" for="maxDepth">Maximum depth</label>
-    <input class="cds-input" type="number" id="maxDepth" name="maxDepth" min="0" max="64" value="{{.Form.MaxDepth}}">
-  </div>
-  <details class="cds-expert"{{if .Form.ShowExpert}} open{{end}}>
-    <summary class="cds-label">Expert options</summary>
-    <input type="hidden" name="showExpert" value="on">
-    <p class="cds-muted">Regex filters use RE2 syntax; an invalid pattern is reported when you start the crawl. Blank filters match everything.</p>
-    <div class="cds-field">
-      <label class="cds-label" for="urlMustMatch">Crawl URLs matching (regex)</label>
-      <input class="cds-input" type="text" id="urlMustMatch" name="urlMustMatch" value="{{.Form.URLMustMatch}}" autocomplete="off" placeholder=".*">
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="urlMustNotMatch">Skip URLs matching (regex)</label>
-      <input class="cds-input" type="text" id="urlMustNotMatch" name="urlMustNotMatch" value="{{.Form.URLMustNotMatch}}" autocomplete="off">
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="indexMustMatch">Index only URLs matching (regex)</label>
-      <input class="cds-input" type="text" id="indexMustMatch" name="indexMustMatch" value="{{.Form.IndexURLMustMatch}}" autocomplete="off" placeholder=".*">
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="indexMustNotMatch">Never index URLs matching (regex)</label>
-      <input class="cds-input" type="text" id="indexMustNotMatch" name="indexMustNotMatch" value="{{.Form.IndexURLMustNotMatch}}" autocomplete="off">
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="maxPagesPerHost">Maximum pages per host (0 = unlimited)</label>
-      <input class="cds-input" type="number" id="maxPagesPerHost" name="maxPagesPerHost" min="0" value="{{.Form.MaxPagesPerHost}}">
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="maxPagesPerRun">Maximum pages for this crawl run (0 = unlimited)</label>
-      <input class="cds-input" type="number" id="maxPagesPerRun" name="maxPagesPerRun" min="0" value="{{.Form.MaxPagesPerRun}}">
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="crawlDelay">Crawl delay per host (blank = each crawler's configured default)</label>
-      <input class="cds-input" type="text" id="crawlDelay" name="crawlDelay" value="{{.Form.CrawlDelay}}" autocomplete="off" placeholder="crawler default">
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="recrawlIfOlder">Recrawl if older than (e.g. 24h, blank = never)</label>
-      <input class="cds-input" type="text" id="recrawlIfOlder" name="recrawlIfOlder" value="{{.Form.RecrawlIfOlder}}" autocomplete="off" placeholder="24h">
-    </div>
-    <div class="cds-field cds-field--check">
-      <label class="cds-label"><input type="checkbox" name="allowQueryURLs"{{if .Form.AllowQueryURLs}} checked{{end}}> Crawl URLs with query parameters</label>
-      <label class="cds-label"><input type="checkbox" name="ignoreTLSAuthority"{{if .Form.IgnoreTLSAuthority}} checked{{end}}> Ignore SSL certificate authority</label>
-      <label class="cds-label"><input type="checkbox" name="ignoreRobots"{{if .Form.IgnoreRobots}} checked{{end}}> Ignore robots.txt (I confirm I may crawl these hosts)</label>
-      <label class="cds-label"><input type="checkbox" name="disableBrowser"{{if .Form.DisableBrowser}} checked{{end}}> Disable browser rendering (fast HTTP fetch only)</label>
-    </div>
-    <div class="cds-field cds-field--check">
-      <label class="cds-label"><input type="checkbox" name="followNoFollowLinks"{{if .Form.FollowNoFollowLinks}} checked{{end}}> Follow rel=nofollow links</label>
-      <label class="cds-label"><input type="checkbox" name="noindexCanonicalMismatch"{{if .Form.NoindexCanonicalMismatch}} checked{{end}}> Do not index pages whose rel=canonical points elsewhere</label>
-    </div>
-  </details>
   <div class="cds-control-row">
-    <button class="cds-btn" type="submit">Start crawl</button>
-    {{if .ProfilesOn}}
-    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="create"
-            formaction="/admin/crawl/profile" formnovalidate>Save as new profile</button>
-    {{if .SelectedProfileID}}
-    <button class="cds-btn cds-btn--ghost" type="submit" name="action" value="update"
-            formaction="/admin/crawl/profile" formnovalidate>Update saved profile</button>
-    {{end}}
-    {{end}}
+    <button class="cds-btn" type="submit">Submit focused seeds</button>
   </div>
 </form>
 
-{{if .FormatsOn}}
-<h2 class="cds-h2">Document formats</h2>
-{{if .FormatsError}}
-<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.FormatsError}}</div>
-{{else}}
-<p class="cds-muted">Format families every crawl parses and indexes (shared by all crawls; YaCy TextParser parity). HTML/web text is always on. Archives are off by default: unpacking hostile archives is a security decision.</p>
-{{if .FormatsNote}}<div class="cds-inline-notification cds-inline-notification--error" role="alert">{{.FormatsNote}}</div>{{end}}
-{{with .FormatForm}}{{template "crawl-formats" .}}{{end}}
-{{end}}
-{{end}}
-{{if .SchedulesOn}}
-<h2 class="cds-h2">Crawl schedules</h2>
-<p class="cds-muted">Recurring crawls re-dispatch through the same pipeline as the form above (YaCy Automation parity). Minimum interval: 1 hour.</p>
-{{if .ScheduleError}}<p class="cds-inline-notification cds-inline-notification--error" role="alert">{{.ScheduleError}}</p>{{end}}
-<form class="cds-form" method="post" action="/admin/crawl/schedule">
-  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
-  <input type="hidden" name="action" value="create">
-  <div class="cds-form--inline">
-    <div class="cds-field">
-      <label class="cds-label" for="sched-name">Name</label>
-      <input class="cds-input" type="text" id="sched-name" name="name" required>
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="sched-interval">Every</label>
-      <select class="cds-input" id="sched-interval" name="interval">
-        <option value="24h">Day</option>
-        <option value="168h">Week</option>
-        <option value="6h">6 hours</option>
-        <option value="1h">Hour</option>
-      </select>
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="sched-scope">Scope</label>
-      <select class="cds-input" id="sched-scope" name="scope">
-        <option value="domain">Same domain</option>
-        <option value="subpath">Sub-path</option>
-        <option value="wide">Wide</option>
-      </select>
-    </div>
-    <div class="cds-field">
-      <label class="cds-label" for="sched-depth">Depth</label>
-      <input class="cds-input" type="number" id="sched-depth" name="maxDepth" value="2" min="0" max="8">
-    </div>
-  </div>
-  <div class="cds-field">
-    <label class="cds-label" for="sched-seeds">Seed URLs (one per line)</label>
-    <textarea class="cds-input" id="sched-seeds" name="seeds" rows="2" required></textarea>
-  </div>
-  <button class="cds-btn" type="submit">Add schedule</button>
-</form>
-{{if .Schedules}}
-<div class="cds-scroll-x">
-  <table class="cds-table">
-    <thead><tr><th scope="col">Name</th><th scope="col">Seeds</th><th scope="col">Scope</th><th scope="col">Every</th><th scope="col">Last dispatch (UTC)</th><th scope="col">State</th><th scope="col">Actions</th></tr></thead>
-    <tbody>
-      {{$csrf := .CSRF}}
-      {{range .Schedules}}
-      <tr>
-        <th scope="row">{{.Name}}</th>
-        <td>{{.Seeds}}</td>
-        <td>{{.Scope}}</td>
-        <td>{{.Interval}}</td>
-        <td class="cds-mono">{{.LastRun}}</td>
-        <td>{{if .Enabled}}<span class="cds-tag cds-tag--info">on</span>{{else}}<span class="cds-tag">off</span>{{end}}</td>
-        <td>
-          <form method="post" action="/admin/crawl/schedule" class="cds-inline-form">
-            <input type="hidden" name="csrf_token" value="{{$csrf}}">
-            <input type="hidden" name="id" value="{{.ID}}">
-            {{if .Enabled}}<button class="cds-btn cds-btn--ghost" name="action" value="disable" type="submit">Pause</button>
-            {{else}}<button class="cds-btn cds-btn--ghost" name="action" value="enable" type="submit">Resume</button>{{end}}
-            <button class="cds-btn cds-btn--danger" name="action" value="delete" type="submit" onclick="return confirm('Delete this schedule?')">Delete</button>
-          </form>
-        </td>
-      </tr>
-      {{end}}
-    </tbody>
-  </table>
-</div>
-{{end}}
-{{end}}
-{{with .Monitor}}{{template "crawl-monitor" .}}{{end}}
 {{end}}

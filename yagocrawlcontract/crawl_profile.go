@@ -21,9 +21,30 @@ const UnlimitedPagesPerHost = -1
 
 const DefaultMaxPagesPerRun = 50_000
 
+type CrawlSourceMetadata map[string]string
+
+func NewCrawlSourceMetadata(values map[string]string) *CrawlSourceMetadata {
+	if len(values) == 0 {
+		return nil
+	}
+	copied := make(CrawlSourceMetadata, len(values))
+	for key, value := range values {
+		copied[key] = value
+	}
+	return &copied
+}
+
+func (metadata *CrawlSourceMetadata) Get(key string) string {
+	if metadata == nil {
+		return ""
+	}
+	return (*metadata)[key]
+}
+
 type CrawlProfile struct {
 	Handle               string
 	Name                 string
+	SourceMetadata       *CrawlSourceMetadata `json:",omitempty"`
 	Scope                CrawlScope
 	URLMustMatch         string
 	URLMustNotMatch      string

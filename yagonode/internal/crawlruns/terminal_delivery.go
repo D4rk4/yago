@@ -97,7 +97,7 @@ func (r *Registry) RecordTerminal(
 	identityKey := string(identity)
 	if owner, found := r.terminal.owners[identityKey]; found {
 		record := r.terminal.records[owner]
-		if owner != progress.RunID || record.Progress != progress {
+		if owner != progress.RunID || !record.Progress.Equal(progress) {
 			r.mu.Unlock()
 
 			return errTerminalDeliveryConflict
@@ -125,6 +125,7 @@ func (r *Registry) RecordTerminal(
 
 		return err
 	}
+	r.recordProcessThroughputLocked(previousRun, runExisted, run, run.Updated)
 	r.terminal.records[progress.RunID] = record
 	r.terminal.owners[identityKey] = progress.RunID
 	for _, removed := range evicted {
@@ -382,6 +383,7 @@ func terminalRunFromProgress(
 		run.FirstSeen = now
 	}
 	run.WorkerID = progress.WorkerID
+	run.ProcessIdentifier = progress.ProcessIdentifier
 	run.ProfileHandle = progress.ProfileHandle
 	run.ProfileName = progress.ProfileName
 	run.State = progress.State
@@ -426,7 +428,7 @@ func validateTerminalDeliveryRecord(record terminalDeliveryRecord) error {
 		record.Run.ProfileHandle != record.Progress.ProfileHandle ||
 		record.Run.ProfileName != record.Progress.ProfileName ||
 		record.Run.State != record.Progress.State ||
-		record.Run.Tally != record.Progress.Tally ||
+		!record.Run.Tally.Equal(record.Progress.Tally) ||
 		!record.Run.RecentOutcomes.Valid() ||
 		record.Run.FirstSeen.IsZero() ||
 		record.Run.Updated.IsZero() ||

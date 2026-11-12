@@ -6,6 +6,9 @@ func incompleteRefresh(response searchcore.Response) bool {
 	if hasPrimaryResults(response.Results) {
 		return false
 	}
+	if response.Coverage != nil && !response.Coverage.Complete {
+		return true
+	}
 	for _, failure := range response.PartialFailures {
 		switch failure.Source {
 		case searchcore.PartialFailureSourceExactStage,

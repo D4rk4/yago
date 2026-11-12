@@ -36,8 +36,8 @@ func TestBuildCrawlConnectionView(t *testing.T) {
 				ConnectedCrawlers: 0,
 			}},
 			wantState: "Disconnected",
-			wantDetail: "No crawlers are connected. " +
-				"Queued crawl orders remain pending until a crawler connects.",
+			wantDetail: "No crawler workers are reporting. " +
+				"Search demand remains on the node until a worker consumes it.",
 			wantTag: "error",
 		},
 		{
@@ -106,7 +106,7 @@ func TestConsoleCrawlMonitorRendersCrawlerConnection(t *testing.T) {
 				"Crawler connection:",
 				"cds-tag--error",
 				">Disconnected<",
-				"Queued crawl orders remain pending until a crawler connects.",
+				"Search demand remains on the node until a worker consumes it.",
 			},
 			refuse: "crawlers connected.",
 		},

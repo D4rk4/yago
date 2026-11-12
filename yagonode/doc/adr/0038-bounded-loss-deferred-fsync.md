@@ -77,6 +77,19 @@ bounded to roughly the poll interval plus one sweep.
 No wire-format or peer-protocol change — deferred fsync is an internal storage
 policy invisible to peers and the YaCy API.
 
+### C. Operator checkpoint while the node is running
+
+The Storage settings page can request the same empty write transaction used at
+clean shutdown while the node remains live. The sharded engine takes its
+exclusive gate so current vault operations finish and new ones wait. It forces
+`NoSync` off for the checkpoint transactions, persists each shard's freelist,
+and then restores the configured deferred-fsync mode before releasing the gate.
+Freelist persistence remains enabled afterward, so later write commits keep the
+freelist current. If a shard checkpoint fails while deferred fsync is enabled,
+the engine attempts a best-effort sync for that shard and reports the partial
+result; a shard without a successful checkpoint can still require recovery scan
+on the next open. The node and its listeners remain running throughout.
+
 ## Consequences
 
 - On fsync-bound storage a node that opts in trades a bounded, operator-accepted
@@ -84,10 +97,9 @@ policy invisible to peers and the YaCy API.
   disk's flush rate.
 - The default stays fully crash-safe on every filesystem, including the XFS
   production node — deferred fsync is off unless an operator sets it.
-- Restart-required keeps the shards from being reconfigured under load and makes
-  the mode a deliberate choice; a clean-shutdown freelist checkpoint flushes, so
-  planned restarts and the setting change itself lose nothing and do not rebuild
-  every freelist.
+- Restart-required keeps the deferred-fsync mode from being reconfigured under
+  load; a clean shutdown or an explicit online checkpoint flushes accepted
+  writes and persists freelists for a fast restart.
 - The exposure is narrow and named: an abrupt power loss or kernel panic can lose
   writes newer than the last background flush on the affected shards, bounded by
   the flush cadence; a clean process crash does not lose data (the OS page cache

@@ -9,6 +9,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/contentcluster"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
+	"github.com/D4rk4/yago/yagonode/internal/searchdemand"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/urlmeta"
 	"github.com/D4rk4/yago/yagonode/internal/urlmetastaleness"
@@ -44,6 +45,7 @@ type nodeStorage struct {
 	postingReceiver   rwi.PostingReceiver
 	postingPurger     rwi.PostingPurger
 	contentClusters   *contentcluster.Index
+	searchDemand      *searchdemand.Store
 }
 
 var (
@@ -86,6 +88,10 @@ func openNodeStorage(
 	contentClusters, err := openContentClusters(vault, contentcluster.Limits{})
 	if err != nil {
 		return nodeStorage{}, fmt.Errorf("content clusters: %w", err)
+	}
+	searchDemand, err := searchdemand.Open(vault)
+	if err != nil {
+		return nodeStorage{}, fmt.Errorf("search demand: %w", err)
 	}
 
 	searchIndex, err := openSearchIndex(
@@ -152,6 +158,7 @@ func openNodeStorage(
 		postingReceiver:   postingReceiver,
 		postingPurger:     postingPurger,
 		contentClusters:   contentClusters,
+		searchDemand:      searchDemand,
 	}, nil
 }
 

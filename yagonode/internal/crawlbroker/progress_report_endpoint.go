@@ -31,6 +31,9 @@ func (s *exchangeServer) ReportProgress(
 	if !s.sessions.current(authorization.WorkerID, authorization.WorkerSessionID) {
 		return nil, status.Error(codes.FailedPrecondition, errLeaseLost.Error())
 	}
+	if !tallyFromProto(report.GetTally()).Valid() {
+		return nil, status.Error(codes.InvalidArgument, "invalid crawler outcome tally")
+	}
 	release, err := s.queue.beginAuthorizedLeaseMutation(ctx, authorization)
 	if err != nil {
 		if errors.Is(err, errLeaseLost) {

@@ -84,6 +84,7 @@ type SearchResults struct {
 	PeersFailed           int
 	FederationUnavailable bool
 	Incomplete            bool
+	CoverageIncomplete    bool
 	UnconfirmedPage       bool
 	Results               []SearchResult
 	// Recovered marks results found by the zero-result fuzzy retry, so the page
@@ -163,16 +164,17 @@ type pageLink struct {
 const pagerWindow = 10
 
 type portalData struct {
-	Brand           string
-	OpenSearchTitle string
-	Query           string
-	Dom             string
-	Verticals       []verticalTab
-	Submitted       bool
-	Error           string
-	Results         SearchResults
-	Pagination      pagination
-	NewTab          bool
+	Brand            string
+	OpenSearchTitle  string
+	Query            string
+	Dom              string
+	WebSearchConsent bool
+	Verticals        []verticalTab
+	Submitted        bool
+	Error            string
+	Results          SearchResults
+	Pagination       pagination
+	NewTab           bool
 	// RSSURL and JSONURL expose the current query in the machine-readable
 	// output formats this node already serves; empty before a query is run.
 	RSSURL  string
@@ -198,7 +200,7 @@ type verticalTab struct {
 }
 
 // portalVerticals builds the vertical tabs for the query.
-func portalVerticals(query, dom string) []verticalTab {
+func portalVerticals(query, dom string, webSearchConsent bool) []verticalTab {
 	tabs := make([]verticalTab, 0, 5)
 	for _, entry := range []struct{ label, value string }{
 		{"All", ""},
@@ -209,6 +211,9 @@ func portalVerticals(query, dom string) []verticalTab {
 	} {
 		values := url.Values{}
 		values.Set("q", query)
+		if webSearchConsent {
+			values.Set("web", "1")
+		}
 		if entry.value != "" {
 			values.Set("dom", entry.value)
 		}
@@ -263,23 +268,27 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	dom := portalDom(r.URL.Query().Get("dom"))
+	webSearchConsent := r.URL.Query().Get("web") == "1"
 	page := parsePortalPage(r.URL.Query().Get("p"))
 	displayBrand := portalBrand()
 	data := portalData{
-		Brand:           displayBrand,
-		OpenSearchTitle: openSearchTitle(displayBrand),
-		Query:           query,
-		Dom:             dom,
-		NewTab:          p.newTab,
+		Brand:            displayBrand,
+		OpenSearchTitle:  openSearchTitle(displayBrand),
+		Query:            query,
+		Dom:              dom,
+		WebSearchConsent: webSearchConsent,
+		NewTab:           p.newTab,
 	}
 
 	if query != "" {
 		data.RSSURL = formatURL("/yacysearch.rss", query)
 		data.JSONURL = formatURL("/yacysearch.json", query)
 		offset := (page - 1) * portalPageSize
-		data.Verticals = portalVerticals(query, dom)
+		data.Verticals = portalVerticals(query, dom, webSearchConsent)
 		started := portalClock()
-		results, err := p.source.Search(r.Context(), query, dom, offset, portalPageSize)
+		results, err := searchWithWebConsent(
+			r.Context(), p.source, query, dom, offset, portalPageSize, webSearchConsent,
+		)
 		if err != nil {
 			slog.WarnContext(
 				r.Context(),
@@ -290,9 +299,10 @@ func (p *Portal) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			window := portalSearchWindow{
 				Query: query, Dom: dom, Page: page, Offset: offset,
-				Shown:     len(results.Results),
-				Available: results.Availability.Materialized,
-				Exhausted: results.Availability.Exhausted,
+				WebSearchConsent: webSearchConsent,
+				Shown:            len(results.Results),
+				Available:        results.Availability.Materialized,
+				Exhausted:        results.Availability.Exhausted,
 			}
 			if redirectPortalSearchWindow(w, r, window) {
 				return
@@ -416,10 +426,14 @@ func newPagination(window portalSearchWindow) pagination {
 		HasNext: window.Offset+window.Shown < available && window.Page < portalMaxPage,
 	}
 	if nav.HasPrev {
-		nav.PrevURL = portalPageURL(window.Query, window.Dom, previousPage)
+		nav.PrevURL = portalPageURL(
+			window.Query, window.Dom, previousPage, window.WebSearchConsent,
+		)
 	}
 	if nav.HasNext {
-		nav.NextURL = portalPageURL(window.Query, window.Dom, window.Page+1)
+		nav.NextURL = portalPageURL(
+			window.Query, window.Dom, window.Page+1, window.WebSearchConsent,
+		)
 	}
 	nav.Pages = numberedPages(
 		window.Query,
@@ -427,6 +441,7 @@ func newPagination(window portalSearchWindow) pagination {
 		window.Page,
 		available,
 		window.Exhausted,
+		window.WebSearchConsent,
 	)
 
 	return nav
@@ -434,7 +449,7 @@ func newPagination(window portalSearchWindow) pagination {
 
 // numberedPages builds up to pagerWindow page links centered on the current
 // page, bounded by the honest total and the portal's page cap.
-func numberedPages(query, dom string, page, available int, exhausted bool) []pageLink {
+func numberedPages(query, dom string, page, available int, exhausted, webSearchConsent bool) []pageLink {
 	last := materializedLastPage(available)
 	if last > portalMaxPage {
 		last = portalMaxPage
@@ -445,7 +460,7 @@ func numberedPages(query, dom string, page, available int, exhausted bool) []pag
 		for number := start; number <= last; number++ {
 			pages = append(pages, pageLink{
 				Number: number,
-				URL:    portalPageURL(query, dom, number),
+				URL:    portalPageURL(query, dom, number, webSearchConsent),
 			})
 		}
 		pages = append(pages, pageLink{Number: page, Current: true})
@@ -466,7 +481,7 @@ func numberedPages(query, dom string, page, available int, exhausted bool) []pag
 	for number := start; number <= last && len(pages) < pagerWindow; number++ {
 		pages = append(pages, pageLink{
 			Number:  number,
-			URL:     portalPageURL(query, dom, number),
+			URL:     portalPageURL(query, dom, number, webSearchConsent),
 			Current: number == page,
 		})
 	}
@@ -478,12 +493,15 @@ func materializedLastPage(available int) int {
 	return (available + portalPageSize - 1) / portalPageSize
 }
 
-func portalPageURL(query, dom string, page int) string {
+func portalPageURL(query, dom string, page int, webSearchConsent bool) string {
 	values := url.Values{}
 	values.Set("q", query)
 	values.Set("p", strconv.Itoa(page))
 	if dom != "" {
 		values.Set("dom", dom)
+	}
+	if webSearchConsent {
+		values.Set("web", "1")
 	}
 
 	return "/?" + values.Encode()

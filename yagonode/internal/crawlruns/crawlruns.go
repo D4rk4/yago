@@ -18,32 +18,34 @@ const defaultCapacity = 256
 // Run is the node's view of one crawl run, updated from worker progress reports
 // and stamped with the node clock so the console can order runs by recency.
 type Run struct {
-	RunID           string
-	WorkerID        string
-	ProfileHandle   string
-	ProfileName     string
-	State           yagocrawlcontract.CrawlRunState
-	Tally           yagocrawlcontract.CrawlRunTally
-	RecentOutcomes  yagocrawlcontract.CrawlURLOutcomeHistory
-	FirstSeen       time.Time
-	Updated         time.Time
-	PagesPerMinute  uint32
-	RateKnown       bool
-	MaxPagesPerHost int
-	MaxPagesPerRun  int
-	LimitsKnown     bool
+	RunID             string
+	WorkerID          string
+	ProcessIdentifier string
+	ProfileHandle     string
+	ProfileName       string
+	State             yagocrawlcontract.CrawlRunState
+	Tally             yagocrawlcontract.CrawlRunTally
+	RecentOutcomes    yagocrawlcontract.CrawlURLOutcomeHistory
+	FirstSeen         time.Time
+	Updated           time.Time
+	PagesPerMinute    uint32
+	RateKnown         bool
+	MaxPagesPerHost   int
+	MaxPagesPerRun    int
+	LimitsKnown       bool
 }
 
 // Registry is a concurrent crawl-run table that retains every active run and
 // bounds only recent terminal history by capacity.
 type Registry struct {
-	mu         sync.Mutex
-	runs       map[string]Run
-	capacity   int
-	activeRuns int
-	now        func() time.Time
-	observers  []func(run Run, newlyTerminal bool, active int)
-	terminal   *terminalDeliveryLedger
+	mu           sync.Mutex
+	runs         map[string]Run
+	capacity     int
+	activeRuns   int
+	now          func() time.Time
+	processRates map[crawlerProcessIdentity]processThroughputState
+	observers    []func(run Run, newlyTerminal bool, active int)
+	terminal     *terminalDeliveryLedger
 }
 
 func isTerminal(state yagocrawlcontract.CrawlRunState) bool {
@@ -59,10 +61,11 @@ func New(capacity int) *Registry {
 	}
 
 	return &Registry{
-		runs:     make(map[string]Run, capacity),
-		capacity: capacity,
-		now:      time.Now,
-		terminal: newTerminalDeliveryLedger(),
+		runs:         make(map[string]Run, capacity),
+		capacity:     capacity,
+		now:          time.Now,
+		processRates: make(map[crawlerProcessIdentity]processThroughputState),
+		terminal:     newTerminalDeliveryLedger(),
 	}
 }
 
@@ -84,6 +87,7 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 		run.FirstSeen = now
 	}
 	run.WorkerID = progress.WorkerID
+	run.ProcessIdentifier = progress.ProcessIdentifier
 	run.ProfileHandle = progress.ProfileHandle
 	run.ProfileName = progress.ProfileName
 	run.State = progress.State
@@ -99,6 +103,7 @@ func (r *Registry) Record(_ context.Context, progress yagocrawlcontract.CrawlRun
 		run.LimitsKnown = true
 	}
 	run.Updated = now
+	r.recordProcessThroughputLocked(prev, existed, run, now)
 	r.reconcileRunActivityLocked(existed, prev, run)
 	r.runs[progress.RunID] = run
 

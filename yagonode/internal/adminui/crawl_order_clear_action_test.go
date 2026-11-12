@@ -135,9 +135,10 @@ func TestCrawlMonitorCopyDistinguishesOrdersFromPendingURLs(t *testing.T) {
 	options.Control = &fakeControl{}
 	got := do(t, New(options), "/admin/crawl/monitor")
 	for _, want := range []string{
-		"Node order queue", "Pending URLs", "Run Cancel drops only that run’s pending URLs",
-		"Clear pending orders leaves leased orders and active fetches alone",
-		"Orders accepted after the deletion boundary is set remain queued",
+		"Orders waiting for a crawler", "URLs waiting in active crawls",
+		"Cancel removes a run's pending URLs after in-flight pages finish",
+		"Clearing pending orders leaves leased orders and active fetches alone",
+		"orders accepted afterward remain queued",
 	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("monitor copy missing %q", want)
@@ -258,7 +259,10 @@ func TestCrawlOrderClearReportsRemovedCountAndFreshQueueDepth(t *testing.T) {
 	if got.status != http.StatusOK {
 		t.Fatalf("status = %d, want 200", got.status)
 	}
-	for _, want := range []string{"Pending orders removed: 3", "4 pending orders, 2 leased orders"} {
+	for _, want := range []string{
+		"Pending orders removed: 3", "Orders waiting for a crawler", ">4<",
+		"Orders leased to crawlers", ">2<",
+	} {
 		if !strings.Contains(got.body, want) {
 			t.Fatalf("clear response missing %q: %s", want, got.body)
 		}
@@ -281,7 +285,14 @@ func TestCrawlOrderClearReportsZeroRemovalWithoutFailure(t *testing.T) {
 	})
 	if got.status != http.StatusOK ||
 		!strings.Contains(got.body, "No pending orders were removed.") ||
-		!strings.Contains(got.body, "0 pending orders, 1 leased order") ||
+		!strings.Contains(
+			got.body,
+			"Orders waiting for a crawler</div>\n      <div class=\"cds-metric__value\">0",
+		) ||
+		!strings.Contains(
+			got.body,
+			"Orders leased to crawlers</div>\n      <div class=\"cds-metric__value\">1",
+		) ||
 		strings.Contains(got.body, "could not be cleared") {
 		t.Fatalf("empty clear result = %d %q", got.status, got.body)
 	}

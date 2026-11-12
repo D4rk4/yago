@@ -42,15 +42,14 @@ func (s coldPrimarySearch) Search(
 }
 
 func TestAlwaysWebFallbackPublishesColdPrimaryBesideWeb(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		previousPrimary := webFallbackPrimaryStageBudget
-		previousRecovery := localExactRecoveryBudget
-		webFallbackPrimaryStageBudget = 120 * time.Millisecond
-		localExactRecoveryBudget = 15 * time.Millisecond
-		t.Cleanup(func() {
-			webFallbackPrimaryStageBudget = previousPrimary
-			localExactRecoveryBudget = previousRecovery
-		})
+	previousPrimary := webFallbackParallelExactStageBudget
+	previousRecovery := localExactRecoveryBudget
+	webFallbackParallelExactStageBudget = 120 * time.Millisecond
+	localExactRecoveryBudget = 15 * time.Millisecond
+	t.Cleanup(func() {
+		webFallbackParallelExactStageBudget = previousPrimary
+		localExactRecoveryBudget = previousRecovery
+	})
 
 		client := &http.Client{Transport: fallbackRoundTrip(func(request *http.Request) (
 			*http.Response,

@@ -100,14 +100,19 @@ module graph as indirect dependencies of bleve:
    the vault; the old files are kept as `.migrated.bak` until the operator
    removes them.
 6. **Startup and clean restart**: keep bbolt freelist persistence disabled on
-   the serving write path. Close the shard pool under exclusive quiescence and
+   the serving write path. Join every storage-using background loop, then close
+   the shard pool under exclusive quiescence and
    persist each in-memory freelist with one empty, fully synced write
    transaction before closing that shard. A successful checkpoint needs no
    second sync. If it fails after deferred-fsync operation, attempt one
    best-effort sync before close, continue through every shard, and return all
    checkpoint, sync, and close failures together. An unclean stop leaves the
    no-freelist marker intact, so bbolt reconstructs by scanning the shard on the
-   next open. Open shards sequentially and emit stable structured INFO records
+   next open. An authenticated online checkpoint uses the same durable
+   transaction without closing shards: it takes exclusive quiescence, leaves
+   freelist persistence enabled for future writes, restores the configured
+   deferred-fsync mode, and resumes vault operations after every shard has been
+   attempted. Open shards sequentially and emit stable structured INFO records
    before and after each one. Install conservative word filters without scanning,
    then build them through one owned post-open worker using bounded snapshots.
    Maintenance start and successful completion are DEBUG; a failed shard remains

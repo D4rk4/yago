@@ -54,8 +54,6 @@ func assemblePublicExplanationSearcher(
 	// The explanation chain must never seed, and must not report on seeding
 	// wiring either: it assembles its own copy of the retrieval chain, so an
 	// unqualified report here would contradict the live one at every boot.
-	assembly.seedQueue = nil
-	assembly.diagnostic = true
 
 	return newPublicSearchExplanationSource(local, remote, assembly)
 }

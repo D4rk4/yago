@@ -63,6 +63,31 @@ func TestMiddlewareRecordsSuccess(t *testing.T) {
 	}
 }
 
+func TestMiddlewarePreservesResponseStreaming(t *testing.T) {
+	handler := logHTTPRequests(instrumentHTTP(metrics.NewHTTPEndpointMetrics(),
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				t.Error("response middleware hid http.Flusher")
+				return
+			}
+			_, _ = w.Write([]byte("partial\n"))
+			flusher.Flush()
+		}),
+	))
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/stream", nil)
+	handler.ServeHTTP(rec, req)
+
+	if !rec.Flushed {
+		t.Fatal("response middleware did not forward Flush")
+	}
+	if got := rec.Body.String(); got != "partial\n" {
+		t.Fatalf("stream body = %q, want partial event", got)
+	}
+}
+
 func TestStatusRecorderKeepsFirstStatus(t *testing.T) {
 	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder(), status: http.StatusOK}
 	rec.WriteHeader(http.StatusTeapot)

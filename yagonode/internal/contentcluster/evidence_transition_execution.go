@@ -63,88 +63,6 @@ func (i *Index) persistTransitions(
 	return nil
 }
 
-func (i *Index) reconcileTransitions(
-	ctx context.Context,
-	transitions []fingerprintTransition,
-) error {
-	if len(transitions) == 0 {
-		return nil
-	}
-	if err := i.prepareTransitionProjections(ctx, transitions); err != nil {
-		return err
-	}
-	if err := i.publishTransitionMarkers(ctx, transitions); err != nil {
-		return err
-	}
-	if err := i.cleanTransitionProjections(ctx, transitions); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (i *Index) prepareTransitionProjections(
-	ctx context.Context,
-	transitions []fingerprintTransition,
-) error {
-	prepared := false
-	for _, transition := range transitions {
-		if transition.CurrentFound {
-			prepared = true
-			break
-		}
-	}
-	if !prepared {
-		return nil
-	}
-	err := i.vault.Update(ctx, func(tx *vault.Txn) error {
-		for _, transition := range transitions {
-			if !transition.CurrentFound {
-				continue
-			}
-			if err := ctx.Err(); err != nil {
-				return fmt.Errorf("prepare fingerprint transition: %w", err)
-			}
-			if err := i.prepareRecordPostings(tx, ctx, transition.Current); err != nil {
-				return fmt.Errorf("prepare fingerprint postings: %w", err)
-			}
-			if err := i.attachProjectedCluster(tx, ctx, transition.Current); err != nil {
-				return fmt.Errorf("prepare fingerprint cluster: %w", err)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("prepare content cluster projections: %w", err)
-	}
-
-	return nil
-}
-
-func (i *Index) publishTransitionMarkers(
-	ctx context.Context,
-	transitions []fingerprintTransition,
-) error {
-	err := i.vault.Update(ctx, func(tx *vault.Txn) error {
-		for _, transition := range transitions {
-			if err := ctx.Err(); err != nil {
-				return fmt.Errorf("publish fingerprint transition: %w", err)
-			}
-			if err := i.publishTransitionMarker(tx, transition); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("publish content cluster transitions: %w", err)
-	}
-
-	return nil
-}
-
 func (i *Index) publishTransitionMarker(
 	tx *vault.Txn,
 	transition fingerprintTransition,
@@ -198,29 +116,6 @@ func (i *Index) publishDeletionMarker(
 	}
 	if _, err := i.fingerprints.Delete(tx, vault.Key(transition.URL)); err != nil {
 		return fmt.Errorf("unpublish content fingerprint: %w", err)
-	}
-
-	return nil
-}
-
-func (i *Index) cleanTransitionProjections(
-	ctx context.Context,
-	transitions []fingerprintTransition,
-) error {
-	err := i.vault.Update(ctx, func(tx *vault.Txn) error {
-		for _, transition := range transitions {
-			if err := ctx.Err(); err != nil {
-				return fmt.Errorf("clean fingerprint transition: %w", err)
-			}
-			if err := i.cleanTransitionProjection(tx, ctx, transition); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("clean content cluster transitions: %w", err)
 	}
 
 	return nil

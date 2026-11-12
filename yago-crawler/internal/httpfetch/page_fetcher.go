@@ -2,160 +2,154 @@ package httpfetch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
-	"strings"
+	"sync/atomic"
 	"time"
 
-	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
+	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagoegress"
 )
 
-type PageFetcher struct {
-	client     *http.Client
-	h1Client   *http.Client
-	downgrades *hostDowngrades
-	userAgent  string
-	maxBytes   int64
+var ErrResponseTooLarge = errors.New("crawler response exceeds the configured byte limit")
+
+type Limits struct {
+	RequestTimeout      time.Duration
+	ConnectTimeout      time.Duration
+	TLSHandshakeTimeout time.Duration
+	HeaderTimeout       time.Duration
+	MaximumRedirects    int
+	MaximumResponseSize int64
+	MaximumIdleHosts    int
+	MaximumHostActive   int
+	UserAgent           string
 }
 
-func NewPageFetcher(
-	client *http.Client,
-	userAgent string,
-	maxBytes int64,
-) *PageFetcher {
-	if client == nil {
-		client = http.DefaultClient
+type PageFetcher struct {
+	client              *http.Client
+	maximumResponseSize int64
+	maximumRedirects    *atomic.Int32
+	userAgent           string
+}
+
+type PageResponse struct {
+	RequestedURL string
+	FinalURL     string
+	StatusCode   int
+	ContentType  string
+	RetryAfter   string
+	Body         []byte
+	FetchedAt    time.Time
+	Duration     time.Duration
+}
+
+func NewPageFetcher(limits Limits, guard yagoegress.Guard) (*PageFetcher, error) {
+	if limits.RequestTimeout <= 0 || limits.ConnectTimeout <= 0 ||
+		limits.TLSHandshakeTimeout <= 0 || limits.HeaderTimeout <= 0 ||
+		limits.MaximumRedirects < 0 ||
+		limits.MaximumRedirects > yagocrawlcontract.MaximumPageRedirects ||
+		limits.MaximumResponseSize <= 0 ||
+		limits.MaximumIdleHosts < 1 || limits.MaximumHostActive < 1 || limits.UserAgent == "" {
+		return nil, errors.New("invalid crawler HTTP limits")
+	}
+	dialer := &net.Dialer{
+		Timeout:   limits.ConnectTimeout,
+		KeepAlive: 30 * time.Second,
+		Control:   guard.DialControl,
+	}
+	maximumRedirects := &atomic.Int32{}
+	maximumRedirects.Store(int32(limits.MaximumRedirects))
+	transport := &http.Transport{
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          limits.MaximumIdleHosts,
+		MaxIdleConnsPerHost:   limits.MaximumHostActive,
+		MaxConnsPerHost:       limits.MaximumHostActive,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   limits.TLSHandshakeTimeout,
+		ResponseHeaderTimeout: limits.HeaderTimeout,
+	}
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   limits.RequestTimeout,
+		CheckRedirect: func(request *http.Request, previous []*http.Request) error {
+			if len(previous) > int(maximumRedirects.Load()) {
+				return errors.New("crawler redirect limit reached")
+			}
+			if request.URL.Scheme != "http" && request.URL.Scheme != "https" {
+				return errors.New("crawler redirect uses a forbidden scheme")
+			}
+			if request.URL.User != nil {
+				return errors.New("crawler redirect contains user information")
+			}
+			return nil
+		},
 	}
 	return &PageFetcher{
-		client:     client,
-		downgrades: newHostDowngrades(),
-		userAgent:  userAgent,
-		maxBytes:   maxBytes,
-	}
-}
-
-// WithHTTP1Fallback arms the h2-hostile-host fallback (CRAWL-18): on an
-// HTTP/2 stream failure the request retries once through this h1-only
-// client, and the host skips h2 for a while afterwards.
-func (f *PageFetcher) WithHTTP1Fallback(client *http.Client) *PageFetcher {
-	f.h1Client = client
-
-	return f
-}
-
-func (f *PageFetcher) fetchRepresentation(
-	ctx context.Context,
-	fetchRequest pagefetch.FetchRequest,
-) (pagefetch.FetchedPage, error) {
-	target := fetchRequest.Target
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
-	if err != nil {
-		return pagefetch.FetchedPage{}, fmt.Errorf("create request: %w", err)
-	}
-	if f.userAgent != "" {
-		request.Header.Set("User-Agent", f.userAgent)
-	}
-	applyConditionalHeaders(request.Header, fetchRequest.Validators)
-
-	response, err := f.do(request, target)
-	if err != nil {
-		return pagefetch.FetchedPage{}, fmt.Errorf("http fetch: %w", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	if response.StatusCode == http.StatusNotModified {
-		return pagefetch.FetchedPage{}, notModifiedOutcome(fetchRequest.Validators, response)
-	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		if pagefetch.ThrottledStatus(response.StatusCode) {
-			return pagefetch.FetchedPage{}, &pagefetch.ThrottledError{
-				Status: response.StatusCode,
-				RetryAfter: pagefetch.ParseRetryAfter(
-					response.Header.Get("Retry-After"),
-					time.Now(),
-				),
-			}
-		}
-		if pagefetch.GoneStatus(response.StatusCode) {
-			return pagefetch.FetchedPage{}, &pagefetch.GoneError{Status: response.StatusCode}
-		}
-
-		return pagefetch.FetchedPage{}, &pagefetch.HTTPStatusError{Status: response.StatusCode}
-	}
-
-	robotsTag := response.Header.Get("X-Robots-Tag")
-	body, err := readBody(response.Body, f.maxBytes)
-	if err != nil {
-		return pagefetch.FetchedPage{}, fmt.Errorf("read body: %w", err)
-	}
-	// Every content type leaves the fetcher: the format-parser registry
-	// decides downstream what the job's toggles accept (CRAWL-17). The body
-	// is already read at this point, so filtering here saved nothing and
-	// silently cut every non-HTML format family off from the crawl.
-	contentType := responseContentType(response.Header.Get("Content-Type"), body)
-
-	finalURL := target
-	if response.Request != nil && response.Request.URL != nil {
-		finalURL = response.Request.URL
-	}
-	return pagefetch.FetchedPage{
-		URL:          finalURL,
-		HTTPStatus:   uint32(response.StatusCode),
-		ContentType:  contentType,
-		Body:         body,
-		LastModified: responseLastModified(response.Header.Get("Last-Modified")),
-		RobotsTag:    robotsTag,
-		Validators:   representationValidators(response.Header),
+		client:              client,
+		maximumResponseSize: limits.MaximumResponseSize,
+		maximumRedirects:    maximumRedirects,
+		userAgent:           limits.UserAgent,
 	}, nil
 }
 
-func responseLastModified(value string) time.Time {
-	parsed, err := http.ParseTime(value)
+func (fetcher *PageFetcher) SetMaximumRedirects(maximum int) bool {
+	if fetcher.maximumRedirects == nil || maximum < 0 ||
+		maximum > yagocrawlcontract.MaximumPageRedirects {
+		return false
+	}
+	fetcher.maximumRedirects.Store(int32(maximum))
+	return true
+}
+
+func (fetcher *PageFetcher) Fetch(ctx context.Context, rawURL string) (PageResponse, error) {
+	canonicalURL, ok := yagocrawlcontract.CanonicalURL(rawURL)
+	if !ok {
+		return PageResponse{}, errors.New("crawler URL is invalid")
+	}
+	parsed, err := url.Parse(canonicalURL)
+	if err != nil || parsed.User != nil {
+		return PageResponse{}, errors.New("crawler URL contains invalid authority data")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, canonicalURL, nil)
 	if err != nil {
-		return time.Time{}
+		return PageResponse{}, fmt.Errorf("create crawl request: %w", err)
 	}
-
-	return parsed.UTC()
-}
-
-func readBody(body io.Reader, maxBytes int64) ([]byte, error) {
-	var (
-		read []byte
-		err  error
-	)
-	if maxBytes <= 0 {
-		read, err = io.ReadAll(body)
-	} else {
-		read, err = io.ReadAll(io.LimitReader(body, maxBytes))
-	}
+	request.Header.Set("User-Agent", fetcher.userAgent)
+	request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.5")
+	started := time.Now()
+	response, err := fetcher.client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("read response body: %w", err)
+		return PageResponse{}, fmt.Errorf("fetch page: %w", err)
 	}
-	return read, nil
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, fetcher.maximumResponseSize+1))
+	if err != nil {
+		return PageResponse{}, fmt.Errorf("read crawl response: %w", err)
+	}
+	if int64(len(body)) > fetcher.maximumResponseSize {
+		return PageResponse{}, ErrResponseTooLarge
+	}
+	finalURL := response.Request.URL.String()
+	if normalized, ok := yagocrawlcontract.CanonicalURL(finalURL); ok {
+		finalURL = normalized
+	}
+	return PageResponse{
+		RequestedURL: canonicalURL,
+		FinalURL:     finalURL,
+		StatusCode:   response.StatusCode,
+		ContentType:  response.Header.Get("Content-Type"),
+		RetryAfter:   response.Header.Get("Retry-After"),
+		Body:         body,
+		FetchedAt:    time.Now().UTC(),
+		Duration:     time.Since(started),
+	}, nil
 }
 
-func responseContentType(header string, body []byte) string {
-	if strings.TrimSpace(header) != "" {
-		return header
-	}
-	return http.DetectContentType(body)
-}
-
-// do routes one request through the right protocol: hosts remembered as
-// h2-hostile go straight to the h1 client, everything else tries the primary
-// client and falls back once on an HTTP/2 stream failure (CRAWL-18).
-func (f *PageFetcher) do(request *http.Request, target *url.URL) (*http.Response, error) {
-	if f.h1Client != nil && f.downgrades.Active(target.Hostname()) {
-		return f.h1Client.Do(request) //nolint:wrapcheck // caller wraps uniformly.
-	}
-	response, err := f.client.Do(request)
-	if err == nil || f.h1Client == nil || !IsHTTP2StreamError(err) {
-		return response, err //nolint:wrapcheck // caller wraps uniformly.
-	}
-	f.downgrades.Mark(target.Hostname())
-	retry := request.Clone(request.Context())
-
-	return f.h1Client.Do(retry) //nolint:wrapcheck // caller wraps uniformly.
+func (fetcher *PageFetcher) CloseIdleConnections() {
+	fetcher.client.CloseIdleConnections()
 }

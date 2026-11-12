@@ -59,11 +59,18 @@
     {{end}}
     {{end}}
     {{if and (eq .ID "storage") $.CompactEnabled}}
-    <form class="cds-actions" method="post" action="/admin/configuration" hx-boost="false">
+    <form class="cds-actions" method="post" action="/admin/configuration#panel-storage" hx-boost="false">
       <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
       <input type="hidden" name="form" value="compact">
       <button class="cds-btn" type="submit" form="cfg-{{.ID}}">Save</button>
       <button class="cds-btn" type="submit">Compact now</button>
+    </form>
+    {{end}}
+    {{if and (eq .ID "storage") $.FreelistCheckpointEnabled}}
+    <p class="cds-muted">Vault reads and writes pause until every shard's freelist is saved. Later writes keep freelists current, which adds disk work.</p>
+    <form class="cds-actions" method="post" action="/admin/configuration#panel-storage" hx-boost="false">
+      <input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+      <button class="cds-btn" type="submit" name="form" value="checkpoint-freelists">Save freelists now</button>
     </form>
     {{end}}
   </section>

@@ -71,7 +71,13 @@ func TestReportProgressTranslatesAndForwards(t *testing.T) {
 		ProfileName:     "docs",
 		State:           crawlrpc.CrawlRunState_CRAWL_RUN_STATE_FINISHED,
 		Tally: &crawlrpc.CrawlRunTally{
-			Fetched: 5, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
+			Fetched: 10, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
+			DocumentCandidates: 7, RemovalMutations: 1, NotIndexable: 3, NodeRejected: 2,
+			PendingIngest: 1,
+			OutcomeCounts: []*crawlrpc.CrawlOutcomeCount{
+				{Class: "not_indexable", Reason: "sitemap", Pages: 3},
+				{Class: "node_rejected", Reason: "too-few-words", Pages: 2},
+			},
 		},
 		PagesPerMinute:  &pagesPerMinute,
 		MaxPagesPerHost: &maxPagesPerHost,
@@ -94,9 +100,15 @@ func TestReportProgressTranslatesAndForwards(t *testing.T) {
 		t.Fatalf("state = %q", got.State)
 	}
 	wantTally := yagocrawlcontract.CrawlRunTally{
-		Fetched: 5, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
+		Fetched: 10, Indexed: 4, Failed: 1, RobotsDenied: 2, Duplicates: 3, Pending: 6,
+		DocumentCandidates: 7, RemovalMutations: 1, NotIndexable: 3, NodeRejected: 2,
+		PendingIngest: 1,
+		OutcomeCounts: []yagocrawlcontract.CrawlOutcomeCount{
+			{Class: "not_indexable", Reason: "sitemap", Pages: 3},
+			{Class: "node_rejected", Reason: "too-few-words", Pages: 2},
+		},
 	}
-	if got.Tally != wantTally {
+	if !got.Tally.Equal(wantTally) {
 		t.Fatalf("tally = %+v, want %+v", got.Tally, wantTally)
 	}
 	if !got.RateKnown || got.PagesPerMinute != 30 {
@@ -143,6 +155,17 @@ func TestReportProgressRejectsInvalidWireEvidence(t *testing.T) {
 			mutate: func(report *crawlrpc.CrawlProgressReport) {
 				maximum := uint64(10)
 				report.MaxPagesPerRun = &maximum
+			},
+		},
+		{
+			name: "unbounded outcome label",
+			mutate: func(report *crawlrpc.CrawlProgressReport) {
+				report.Tally = &crawlrpc.CrawlRunTally{
+					Fetched: 1, NodeRejected: 1,
+					OutcomeCounts: []*crawlrpc.CrawlOutcomeCount{{
+						Class: "node_rejected", Reason: "unbounded-hostname", Pages: 1,
+					}},
+				}
 			},
 		},
 	}
@@ -220,7 +243,7 @@ func TestRunStateFromProtoMapsAllStates(t *testing.T) {
 }
 
 func TestTallyFromProtoNilSafe(t *testing.T) {
-	if got := tallyFromProto(nil); got != (yagocrawlcontract.CrawlRunTally{}) {
+	if got := tallyFromProto(nil); !got.Equal(yagocrawlcontract.CrawlRunTally{}) {
 		t.Fatalf("nil tally = %+v, want zero", got)
 	}
 }

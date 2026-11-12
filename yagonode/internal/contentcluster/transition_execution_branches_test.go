@@ -25,10 +25,13 @@ func TestPrepareTransitionProjectionsReportsMixedContextAndProjectionFailures(t 
 	t.Run("mixed transitions", func(t *testing.T) {
 		index, engine := openFaultIndex(t, Limits{})
 		putRawTransition(t, engine, transition)
-		if err := index.prepareTransitionProjections(t.Context(), []fingerprintTransition{
-			{Token: "delete", URL: "https://prepare-deletion.example"},
-			transition,
-		}); err != nil {
+		err := index.vault.Update(t.Context(), func(tx *vault.Txn) error {
+			return index.prepareTransitionProjections(t.Context(), tx, []fingerprintTransition{
+				{Token: "delete", URL: "https://prepare-deletion.example"},
+				transition,
+			})
+		})
+		if err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -36,10 +39,10 @@ func TestPrepareTransitionProjectionsReportsMixedContextAndProjectionFailures(t 
 		index, engine := openFaultIndex(t, Limits{})
 		putRawTransition(t, engine, transition)
 		ctx := &stagedCancellationContext{Context: context.Background(), cancelAt: 3}
-		if err := index.prepareTransitionProjections(
-			ctx,
-			[]fingerprintTransition{transition},
-		); !errors.Is(err, context.Canceled) {
+		err := index.vault.Update(t.Context(), func(tx *vault.Txn) error {
+			return index.prepareTransitionProjections(ctx, tx, []fingerprintTransition{transition})
+		})
+		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("prepare transition context error = %v", err)
 		}
 	})
@@ -47,10 +50,10 @@ func TestPrepareTransitionProjectionsReportsMixedContextAndProjectionFailures(t 
 		index, engine := openFaultIndex(t, Limits{})
 		putRawTransition(t, engine, transition)
 		engine.putRaw(exactBucketName, vault.Key(record.ContentHash), []byte("{"))
-		if err := index.prepareTransitionProjections(
-			t.Context(),
-			[]fingerprintTransition{transition},
-		); err == nil {
+		err := index.vault.Update(t.Context(), func(tx *vault.Txn) error {
+			return index.prepareTransitionProjections(t.Context(), tx, []fingerprintTransition{transition})
+		})
+		if err == nil {
 			t.Fatal("corrupt prepared transition posting succeeded")
 		}
 	})
@@ -58,10 +61,10 @@ func TestPrepareTransitionProjectionsReportsMixedContextAndProjectionFailures(t 
 		index, engine := openFaultIndex(t, Limits{})
 		putRawTransition(t, engine, transition)
 		engine.putRaw(clusterBucketName, vault.Key(record.ClusterID), []byte("{"))
-		if err := index.prepareTransitionProjections(
-			t.Context(),
-			[]fingerprintTransition{transition},
-		); err == nil {
+		err := index.vault.Update(t.Context(), func(tx *vault.Txn) error {
+			return index.prepareTransitionProjections(t.Context(), tx, []fingerprintTransition{transition})
+		})
+		if err == nil {
 			t.Fatal("corrupt prepared transition cluster succeeded")
 		}
 	})
@@ -82,20 +85,20 @@ func TestCleanTransitionProjectionsReportsContextAndFinalizationFailures(t *test
 	t.Run("context", func(t *testing.T) {
 		index, _ := openFaultIndex(t, Limits{})
 		ctx := &stagedCancellationContext{Context: context.Background(), cancelAt: 3}
-		if err := index.cleanTransitionProjections(
-			ctx,
-			[]fingerprintTransition{transition},
-		); !errors.Is(err, context.Canceled) {
+		err := index.vault.Update(t.Context(), func(tx *vault.Txn) error {
+			return index.cleanTransitionProjections(ctx, tx, []fingerprintTransition{transition})
+		})
+		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("clean transition context error = %v", err)
 		}
 	})
 	t.Run("current posting", func(t *testing.T) {
 		index, engine := openFaultIndex(t, Limits{})
 		engine.putRaw(exactBucketName, vault.Key(record.ContentHash), []byte("{"))
-		if err := index.cleanTransitionProjections(
-			t.Context(),
-			[]fingerprintTransition{transition},
-		); err == nil {
+		err := index.vault.Update(t.Context(), func(tx *vault.Txn) error {
+			return index.cleanTransitionProjections(t.Context(), tx, []fingerprintTransition{transition})
+		})
+		if err == nil {
 			t.Fatal("corrupt finalized transition posting succeeded")
 		}
 	})

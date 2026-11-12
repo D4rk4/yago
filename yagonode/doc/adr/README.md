@@ -103,8 +103,6 @@ version from `PATH`.
 | [0082](0082-reject-reachable-go-vulnerabilities.md) | Reject reachable Go vulnerabilities | Accepted |
 | [0083](0083-shuffle-tests-and-smoke-fuzz-targets.md) | Shuffle tests and smoke fuzz targets | Accepted |
 | [0084](0084-supplement-incomplete-primary-search-with-bounded-web-results.md) | Supplement incomplete primary search with bounded web results | Accepted |
-| [0085](0085-defer-inbound-anchor-target-refresh-and-commit-shards-concurrently.md) | Defer inbound-anchor target refresh and commit shards concurrently | Accepted |
-| [0086](0086-use-roaring-bitmaps-for-shared-live-term-postings.md) | Use roaring bitmaps for shared live term postings | Accepted |
-| [0087](0087-read-shared-term-postings-through-the-segment-api.md) | Read shared term postings through the segment API | Accepted |
-| [0088](0088-share-pdf-text-reading-between-node-and-crawler.md) | Share PDF text reading between node and crawler | Accepted |
-| [0089](0089-record-deliberate-reusable-api-changes-against-one-baseline.md) | Record deliberate reusable API changes against one baseline | Accepted |
+| [0085](0085-randomize-deadline-bounded-shard-retrieval.md) | Randomize deadline-bounded shard retrieval | Accepted |
+| [0086](0086-return-useful-shard-samples-and-cache-complete-searches.md) | Return useful shard samples and cache complete searches | Accepted |
+| [0087](0087-use-playwright-for-browser-search-acceptance.md) | Use Playwright for browser search acceptance | Accepted |

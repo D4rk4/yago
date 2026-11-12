@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -115,7 +114,7 @@ func TestStoredDocumentBatchReaderRejectsUnboundedAndInvalidRequests(t *testing.
 }
 
 func TestStoredDocumentBatchReaderRejectsInvalidContinuations(t *testing.T) {
-	maximumKeyBytes := yagomodel.MaximumURLIdentityBytes + orderedDocumentAdmissionSize
+	maximumKeyBytes := maximumStoredDocumentURLIdentityBytes + orderedDocumentAdmissionSize
 	tests := []struct {
 		name         string
 		continuation string

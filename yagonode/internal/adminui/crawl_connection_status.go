@@ -22,7 +22,7 @@ func buildCrawlConnectionView(source CrawlerFetchActivitySource) crawlConnection
 	case connectedCrawlers == 0:
 		return crawlConnectionView{
 			State:  "Disconnected",
-			Detail: "No crawlers are connected. Queued crawl orders remain pending until a crawler connects.",
+			Detail: "No crawler workers are reporting. Search demand remains on the node until a worker consumes it.",
 			Tag:    "error",
 		}
 	default:

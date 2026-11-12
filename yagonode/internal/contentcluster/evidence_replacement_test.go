@@ -6,7 +6,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
-func TestReplaceBatchCommitsFourAmortizedPhases(t *testing.T) {
+func TestReplaceBatchPersistsAndReconcilesInTwoUpdates(t *testing.T) {
 	index, engine := openFaultIndex(t, Limits{})
 	before := engine.updates
 	evidence := []Evidence{
@@ -18,8 +18,8 @@ func TestReplaceBatchCommitsFourAmortizedPhases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if engine.updates-before != 4 {
-		t.Fatalf("transactions = %d, want 4", engine.updates-before)
+	if engine.updates-before != 2 {
+		t.Fatalf("transactions = %d, want 2", engine.updates-before)
 	}
 	if len(replacements) != len(evidence) {
 		t.Fatalf("replacements = %d, want %d", len(replacements), len(evidence))
@@ -31,6 +31,19 @@ func TestReplaceBatchCommitsFourAmortizedPhases(t *testing.T) {
 	if replacements[0].Current.ClusterID != replacements[1].Current.ClusterID ||
 		replacements[2].Current.ClusterID == replacements[0].Current.ClusterID {
 		t.Fatalf("assignments = %#v", replacements)
+	}
+	if err := index.FinalizeEvidenceTransitions(
+		t.Context(),
+		replacementFinalizations(replacements),
+	); err != nil {
+		t.Fatalf("finalize replacements: %v", err)
+	}
+	if engine.updates-before != 3 {
+		t.Fatalf("transactions after finalization = %d, want 3", engine.updates-before)
+	}
+	for _, item := range evidence {
+		assertPublishedEvidence(t, index, item)
+		assertNoTransition(t, index, item.URL)
 	}
 }
 

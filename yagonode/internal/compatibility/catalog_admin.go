@@ -107,16 +107,16 @@ var adminSurfaceSpecs = []surfaceSpec{
 		Notes: "GET requires an admin session or admin:read API key. PUT requires a session with CSRF or an admin:write API key.",
 	},
 	{
-		Name:     "Crawl dispatch",
+		Name:     "Node-side crawl dispatch",
 		Path:     "/crawl",
 		Methods:  []string{"POST"},
-		State:    Partial,
-		Behavior: "Publishes local crawl orders when crawler integration is configured; supports url, sitemap, sitelist, and robots start modes, and validates the crawl profile before publishing so an impossible URL regex or an out-of-range depth, pages-per-host, or duration is rejected with 400.",
+		State:    Unsupported,
+		Behavior: "The node does not schedule crawl orders or mount this route. It stores search demand and accepts crawler data exchange; the crawler selects and schedules URLs.",
 		Evidence: []string{
-			"yagonode/internal/crawldispatch/*_test.go",
-			"yagonode/internal/yagonode/node_crawl_test.go",
+			"yagonode/internal/yagonode/node_crawl_monitor.go",
+			"yagonode/internal/crawlbroker/crawler_data_exchange.go",
 		},
-		Notes: "Mounted only when gRPC-backed crawling is configured; requires a valid admin session with a CSRF token, or an API key with the crawl:write scope.",
+		Notes: "Search demand and document mutations use the authenticated crawler data-exchange listener.",
 	},
 	{
 		Name:     "Compatibility report",

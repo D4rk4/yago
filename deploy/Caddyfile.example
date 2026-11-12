@@ -1,0 +1,17 @@
+{$YAGO_PUBLIC_HOST} {
+	@adminRoot path /admin /admin/
+	redir @adminRoot /admin/login 302
+
+	@admin path /admin /admin/* /api/admin /api/admin/*
+
+	handle @admin {
+		reverse_proxy {$YAGO_ADMIN_UPSTREAM:127.0.0.1:9090} {
+			header_down Set-Cookie "(?i);[[:space:]]*Secure(;|$)" "$1"
+			header_down Set-Cookie "(.*)" "$1; Secure"
+		}
+	}
+
+	handle {
+		reverse_proxy {$YAGO_PUBLIC_UPSTREAM:127.0.0.1:8080}
+	}
+}

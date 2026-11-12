@@ -66,6 +66,9 @@ func TestStableWindowDetachesAndIsolatesCompletePayload(t *testing.T) {
 		Facets: []searchcore.FacetGroup{{
 			Name: "host", Terms: []searchcore.FacetTerm{{Term: "example.test", Count: 1}},
 		}},
+		Coverage: &searchcore.SearchCoverage{
+			CompletedShards: 2, TotalShards: 8, Complete: false,
+		},
 	}}
 	stable := WithStableWindow(inner).(*stableSearcher)
 	req := searchcore.Request{Query: "go", Limit: 1}
@@ -77,21 +80,8 @@ func TestStableWindowDetachesAndIsolatesCompletePayload(t *testing.T) {
 	if entry == nil || entry.retained >= len(backing) {
 		t.Fatalf("detached session/bytes = %#v/%d", entry, entry.retained)
 	}
-	first.Results[0].Title = "changed"
-	first.Results[0].Images[0].URL = "changed"
-	first.Results[0].QueryMatches[0].Start = 9
-	first.Results[0].BodyQueryMatches[0].Start = 9
-	first.Results[0].FieldScores["body"] = 9
-	first.Results[0].FieldTermPositions["body"]["term"][0] = 9
-	first.PartialFailures[0].Reason = "changed"
-	first.Facets[0].Terms[0].Term = "changed"
-	inner.response.Results[0].Images[0].Alt = "changed"
-	inner.response.Results[0].QueryMatches[0].End = 9
-	inner.response.Results[0].BodyQueryMatches[0].End = 9
-	inner.response.Results[0].FieldScores["body"] = 7
-	inner.response.Results[0].FieldTermPositions["body"]["term"][1] = 7
-	inner.response.PartialFailures[0].Source = "changed"
-	inner.response.Facets[0].Name = "changed"
+	mutatePayloadResponse(&first)
+	mutatePayloadResponse(&inner.response)
 
 	cached := entry.respond(req)
 	result := cached.Results[0]
@@ -110,9 +100,31 @@ func TestStableWindowDetachesAndIsolatesCompletePayload(t *testing.T) {
 				Cause: searchcore.FailureCauseDeadline,
 			},
 		}) || cached.Facets[0].Name != "host" ||
-		cached.Facets[0].Terms[0].Term != "example.test" {
+		cached.Facets[0].Terms[0].Term != "example.test" || cached.Coverage == nil ||
+		*cached.Coverage != (searchcore.SearchCoverage{
+			CompletedShards: 2, TotalShards: 8, Complete: false,
+		}) {
 		t.Fatalf("cached payload changed: %#v", cached)
 	}
+}
+
+func mutatePayloadResponse(response *searchcore.Response) {
+	response.Results[0].Title = "changed"
+	response.Results[0].Images[0].URL = "changed"
+	response.Results[0].Images[0].Alt = "changed"
+	response.Results[0].QueryMatches[0].Start = 9
+	response.Results[0].QueryMatches[0].End = 9
+	response.Results[0].BodyQueryMatches[0].Start = 9
+	response.Results[0].BodyQueryMatches[0].End = 9
+	response.Results[0].FieldScores["body"] = 9
+	response.Results[0].FieldTermPositions["body"]["term"][0] = 9
+	response.Results[0].FieldTermPositions["body"]["term"][1] = 9
+	response.PartialFailures[0].Reason = "changed"
+	response.PartialFailures[0].Source = "changed"
+	response.Facets[0].Name = "changed"
+	response.Facets[0].Terms[0].Term = "changed"
+	response.Coverage.CompletedShards = 7
+	response.Coverage.TotalShards = 99
 }
 
 func TestAppendUnseenDetachesCandidatePayload(t *testing.T) {
@@ -152,7 +164,8 @@ func TestSessionPayloadClonePreservesNilCollections(t *testing.T) {
 	})
 	facets := cloneSessionFacets([]searchcore.FacetGroup{{Name: "host"}})
 	if cloneSessionResults(nil) != nil || cloneSessionFailures(nil) != nil ||
-		cloneSessionFacets(nil) != nil || result.Images != nil || result.QueryMatches != nil ||
+		cloneSessionFacets(nil) != nil || cloneSessionCoverage(nil) != nil ||
+		result.Images != nil || result.QueryMatches != nil ||
 		result.BodyQueryMatches != nil ||
 		result.FieldScores != nil ||
 		result.FieldTermPositions["title"] != nil ||
