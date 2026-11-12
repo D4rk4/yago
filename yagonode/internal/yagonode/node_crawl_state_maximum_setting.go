@@ -7,35 +7,41 @@ func crawlStateMaximumDefinitions() []settingDefinition {
 		{
 			key:         settingKeyCrawlerNodeStateMaximumBytes,
 			title:       "Node crawl-state soft ceiling",
-			description: "Stop accepting new crawl orders when crawlbroker.db reaches this physical size. Lifecycle, settlement, recovery, and startup migration writes continue. Startup attempts to reclaim unused bbolt pages before opening the file; the value is a soft admission boundary, not a filesystem quota.",
+			description: "Auto uses 10% of the storage quota, capped by measured free space after the node reserve. Enter a byte size to override it, or 0B to disable the ceiling. Lifecycle, settlement, recovery, and migration writes continue.",
 			defaultValue: func(config nodeConfig) string {
+				if config.Crawl.StateMaximumAutomatic {
+					return "auto"
+				}
+
 				return formatByteSize(config.Crawl.StateMaximumBytes)
 			},
-			normalize: normalizeStoragePressureSize,
+			normalize: normalizeCrawlerNodeStateMaximum,
 			apply: func(config nodeConfig, value string) nodeConfig {
-				config.Crawl.StateMaximumBytes, _ = parseByteSize(value)
+				policy, _ := parseCrawlerNodeStateMaximum(value)
+				config.Crawl.StateMaximumBytes = policy.MaximumBytes
+				config.Crawl.StateMaximumAutomatic = policy.Automatic
 
 				return config
 			},
 			applyLive: func(toggles *runtimeToggles, value string) {
-				maximumBytes, _ := parseByteSize(value)
-				toggles.ApplyCrawlerNodeStateMaximum(maximumBytes)
+				policy, _ := parseCrawlerNodeStateMaximum(value)
+				toggles.ApplyCrawlerNodeStateMaximum(policy)
 			},
 		},
 	}
 }
 
-func (t *runtimeToggles) SetCrawlerNodeStateMaximumSink(sink func(int64)) {
+func (t *runtimeToggles) SetCrawlerNodeStateMaximumSink(sink func(crawlStateMaximumPolicy)) {
 	if t != nil && sink != nil {
 		t.crawlerNodeStateMaximum.Store(sink)
 	}
 }
 
-func (t *runtimeToggles) ApplyCrawlerNodeStateMaximum(maximumBytes int64) {
+func (t *runtimeToggles) ApplyCrawlerNodeStateMaximum(policy crawlStateMaximumPolicy) {
 	if t == nil {
 		return
 	}
-	if sink, ok := t.crawlerNodeStateMaximum.Load().(func(int64)); ok {
-		sink(maximumBytes)
+	if sink, ok := t.crawlerNodeStateMaximum.Load().(func(crawlStateMaximumPolicy)); ok {
+		sink(policy)
 	}
 }

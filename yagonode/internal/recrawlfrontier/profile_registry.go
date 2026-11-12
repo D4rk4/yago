@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
+	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -134,6 +135,48 @@ func (f *Frontier) RecordFetchWithSourceModified(
 	}
 
 	return nil
+}
+
+func (f *Frontier) ScheduleAtIfAbsent(
+	ctx context.Context,
+	url, profileHandle string,
+	nextDueAt time.Time,
+	retryInterval time.Duration,
+) (bool, error) {
+	if url == "" || profileHandle == "" || nextDueAt.IsZero() || retryInterval <= 0 {
+		return false, fmt.Errorf("schedule imported recrawl: invalid schedule")
+	}
+	if _, found, err := f.ProfileByHandle(ctx, profileHandle); err != nil {
+		return false, fmt.Errorf("schedule imported recrawl: %w", err)
+	} else if !found {
+		return false, fmt.Errorf("schedule imported recrawl: unknown profile")
+	}
+	hash, _ := yagomodel.HashURL(url)
+	key := vault.Key(string(hash))
+	created := false
+	err := f.vault.Update(ctx, func(tx *vault.Txn) error {
+		if _, found, err := f.records.Get(tx, key); err != nil {
+			return fmt.Errorf("read existing imported schedule: %w", err)
+		} else if found {
+			return nil
+		}
+		if err := f.schedule(tx, key, scheduleRecord{
+			URL:           url,
+			ProfileHandle: profileHandle,
+			Interval:      retryInterval,
+			NextDueAt:     nextDueAt.UTC(),
+		}); err != nil {
+			return err
+		}
+		created = true
+
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("schedule imported recrawl: %w", err)
+	}
+
+	return created, nil
 }
 
 // RecordFetches schedules a whole ingest micro-batch of fetches in one

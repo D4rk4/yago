@@ -3,17 +3,21 @@ package yagonode
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/clickcapture"
 	"github.com/D4rk4/yago/yagonode/internal/learnedrank"
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
+	"github.com/D4rk4/yago/yagonode/internal/searchdemand"
 	"github.com/D4rk4/yago/yagonode/internal/yacysearch"
 )
 
 type clickCaptureAdapter struct {
 	store  *clickcapture.Store
 	ranker *learnedrank.Ranker
+	demand *searchdemand.Store
 }
 
 type portalClickCaptureAdapter struct {
@@ -32,12 +36,16 @@ type capturedImpressionPlan struct {
 func newClickCaptureAdapter(
 	store *clickcapture.Store,
 	ranker *learnedrank.Ranker,
+	demand ...*searchdemand.Store,
 ) yacysearch.ImpressionRecorder {
 	if store == nil {
 		return nil
 	}
-
-	return clickCaptureAdapter{store: store, ranker: ranker}
+	var demandStore *searchdemand.Store
+	if len(demand) > 0 {
+		demandStore = demand[0]
+	}
+	return clickCaptureAdapter{store: store, ranker: ranker, demand: demandStore}
 }
 
 func newPortalClickCaptureAdapter(
@@ -224,8 +232,22 @@ func (a clickCaptureAdapter) RecordClick(
 	urlIdentity string,
 	position int,
 ) error {
-	if err := a.store.RecordClick(ctx, token, urlIdentity, position); err != nil {
+	click, err := a.store.RecordClickWithDetails(ctx, token, urlIdentity, position)
+	if err != nil {
 		return fmt.Errorf("record impression click: %w", err)
+	}
+	if a.demand != nil {
+		if err := a.demand.RecordClicked(
+			ctx,
+			click.Query,
+			click.Candidate.URLIdentity,
+			time.Now().UTC(),
+		); err != nil {
+			slog.WarnContext(ctx, msgSearchDemandRecordFailed,
+				slog.String("signal", "click"),
+				slog.Any("error", err),
+			)
+		}
 	}
 
 	return nil

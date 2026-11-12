@@ -25,11 +25,38 @@ func TestHandleIsTwelveChars(t *testing.T) {
 	}
 }
 
+func TestParseCrawlInitiator(t *testing.T) {
+	want := yagomodel.WordHash("migration initiator")
+	got, err := yagocrawlcontract.ParseCrawlInitiator([]byte(want))
+	if err != nil || got != want {
+		t.Fatalf("parsed initiator = %q, %v; want %q", got, err, want)
+	}
+	if _, err := yagocrawlcontract.ParseCrawlInitiator([]byte("short")); err == nil {
+		t.Fatal("accepted malformed crawl initiator")
+	}
+}
+
 func TestIdenticalRulesetsShareHandle(t *testing.T) {
 	a := yagocrawlcontract.NewCrawlProfile(baseProfile())
 	b := yagocrawlcontract.NewCrawlProfile(baseProfile())
 	if a.Handle != b.Handle {
 		t.Errorf("identical rulesets gave %q and %q", a.Handle, b.Handle)
+	}
+}
+
+func TestSourceMetadataDoesNotChangeProfileHandle(t *testing.T) {
+	first := baseProfile()
+	first.SourceMetadata = yagocrawlcontract.NewCrawlSourceMetadata(
+		map[string]string{"source.one": "value"},
+	)
+	second := baseProfile()
+	second.SourceMetadata = yagocrawlcontract.NewCrawlSourceMetadata(
+		map[string]string{"source.two": "other"},
+	)
+
+	if got, want := yagocrawlcontract.NewCrawlProfile(first).Handle,
+		yagocrawlcontract.NewCrawlProfile(second).Handle; got != want {
+		t.Fatalf("source metadata changed profile handle: %q != %q", got, want)
 	}
 }
 

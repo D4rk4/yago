@@ -2,12 +2,12 @@ package yagonode
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"time"
 
 	"github.com/D4rk4/yago/yagocrawlcontract"
 	"github.com/D4rk4/yago/yagonode/internal/adminui"
-	"github.com/D4rk4/yago/yagonode/internal/crawlbroker"
 	"github.com/D4rk4/yago/yagonode/internal/crawlruns"
 )
 
@@ -25,30 +25,28 @@ func crawlRunRegistry(runtime crawlProcess) *crawlruns.Registry {
 	return provider.runRegistry()
 }
 
-// crawlMonitorSource adapts the node's crawl run registry and order-queue probe to
-// the console's read-only crawl monitor.
 type crawlMonitorSource struct {
-	runs  *crawlruns.Registry
-	probe func(context.Context) (crawlbroker.QueueDepth, error)
-	now   func() time.Time
+	runs *crawlruns.Registry
+	now  func() time.Time
 }
 
-func newCrawlMonitorSource(
-	runs *crawlruns.Registry,
-	probe func(context.Context) (crawlbroker.QueueDepth, error),
-) *crawlMonitorSource {
-	return &crawlMonitorSource{runs: runs, probe: probe, now: time.Now}
+func newCrawlMonitorSource(runs *crawlruns.Registry) *crawlMonitorSource {
+	return &crawlMonitorSource{runs: runs, now: time.Now}
 }
 
-// Monitor snapshots the known runs newest-first and, when a probe is available,
-// the broker's outstanding order backlog. A probe error degrades to a zero
-// backlog rather than failing the whole monitor render.
-func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
+func (s *crawlMonitorSource) Monitor(_ context.Context) adminui.CrawlMonitor {
 	runs := s.runs.Recent()
 	monitor := adminui.CrawlMonitor{Runs: make([]adminui.CrawlRunView, 0, len(runs))}
 	now := s.now()
 	for _, run := range runs {
-		monitor.Runs = append(monitor.Runs, crawlRunView(run, now))
+		runView := crawlRunView(run, now)
+		monitor.Runs = append(monitor.Runs, runView)
+		if runView.State == string(yagocrawlcontract.CrawlRunRunning) {
+			monitor.PendingFrontierURLs = crawlTallyTotal(
+				monitor.PendingFrontierURLs,
+				run.Tally.Pending,
+			)
+		}
 		monitor.Totals.Fetched = crawlTallyTotal(monitor.Totals.Fetched, run.Tally.Fetched)
 		monitor.Totals.Indexed = crawlTallyTotal(monitor.Totals.Indexed, run.Tally.Indexed)
 		monitor.Totals.Failed = crawlTallyTotal(monitor.Totals.Failed, run.Tally.Failed)
@@ -60,45 +58,104 @@ func (s *crawlMonitorSource) Monitor(ctx context.Context) adminui.CrawlMonitor {
 			monitor.Totals.Duplicates,
 			run.Tally.Duplicates,
 		)
-	}
-	if s.probe != nil {
-		if depth, err := s.probe(ctx); err == nil {
-			monitor.QueueAvailable = true
-			monitor.QueuePending = depth.Pending
-			monitor.QueueLeased = depth.Leased
+		monitor.Totals.DocumentCandidates = crawlTallyTotal(
+			monitor.Totals.DocumentCandidates,
+			run.Tally.DocumentCandidates,
+		)
+		monitor.Totals.RemovalMutations = crawlTallyTotal(
+			monitor.Totals.RemovalMutations,
+			run.Tally.RemovalMutations,
+		)
+		monitor.Totals.NotIndexable = crawlTallyTotal(
+			monitor.Totals.NotIndexable,
+			run.Tally.NotIndexable,
+		)
+		monitor.Totals.NodeRejected = crawlTallyTotal(
+			monitor.Totals.NodeRejected,
+			run.Tally.NodeRejected,
+		)
+		monitor.Totals.PendingIngest = crawlTallyTotal(
+			monitor.Totals.PendingIngest,
+			run.Tally.PendingIngest,
+		)
+		knownOutcomes := crawlTallyTotal(run.Tally.Indexed, run.Tally.PendingIngest)
+		knownOutcomes = crawlTallyTotal(knownOutcomes, run.Tally.NotIndexable)
+		knownOutcomes = crawlTallyTotal(knownOutcomes, run.Tally.NodeRejected)
+		if run.Tally.Fetched > knownOutcomes {
+			monitor.Totals.UnknownOutcome = crawlTallyTotal(
+				monitor.Totals.UnknownOutcome,
+				run.Tally.Fetched-knownOutcomes,
+			)
+		}
+		for _, outcome := range run.Tally.OutcomeCounts {
+			mergeCrawlOutcomeCount(&monitor.Totals.OutcomeCounts, outcome)
 		}
 	}
-
+	sort.Slice(monitor.Totals.OutcomeCounts, func(left, right int) bool {
+		if monitor.Totals.OutcomeCounts[left].Class == monitor.Totals.OutcomeCounts[right].Class {
+			return monitor.Totals.OutcomeCounts[left].Reason < monitor.Totals.OutcomeCounts[right].Reason
+		}
+		return monitor.Totals.OutcomeCounts[left].Class < monitor.Totals.OutcomeCounts[right].Class
+	})
 	return monitor
 }
 
+func mergeCrawlOutcomeCount(target *[]adminui.CrawlOutcomeCount, source yagocrawlcontract.CrawlOutcomeCount) {
+	for index := range *target {
+		count := &(*target)[index]
+		if count.Class == source.Class && count.Reason == source.Reason {
+			count.Pages = crawlTallyTotal(count.Pages, source.Pages)
+			return
+		}
+	}
+	*target = append(*target, adminui.CrawlOutcomeCount{
+		Class: source.Class, Reason: source.Reason, Pages: source.Pages,
+	})
+}
+
 func crawlRunView(run crawlruns.Run, now time.Time) adminui.CrawlRunView {
+	state := run.State
+	pending := run.Tally.Pending
+	if state == yagocrawlcontract.CrawlRunRunning &&
+		(now.Before(run.Updated) || now.Sub(run.Updated) >
+			3*yagocrawlcontract.DefaultWorkerHeartbeatInterval) {
+		state = "stale"
+		pending = 0
+	}
 	end := run.Updated
-	if run.State != yagocrawlcontract.CrawlRunFinished &&
-		run.State != yagocrawlcontract.CrawlRunCancelled {
+	if state == yagocrawlcontract.CrawlRunRunning {
 		end = now
 	}
 	runtime := end.Sub(run.FirstSeen)
 	if runtime < 0 {
 		runtime = 0
 	}
+	reportAge := "Unavailable"
+	if !run.Updated.IsZero() {
+		age := now.Sub(run.Updated)
+		if age < 0 {
+			age = 0
+		}
+		reportAge = age.Round(time.Second).String() + " ago"
+	}
 
 	return adminui.CrawlRunView{
 		RunID:           run.RunID,
 		Profile:         crawlRunLabel(run),
 		Worker:          run.WorkerID,
-		State:           string(run.State),
+		State:           string(state),
 		Fetched:         run.Tally.Fetched,
 		Indexed:         run.Tally.Indexed,
 		Failed:          run.Tally.Failed,
 		RobotsDenied:    run.Tally.RobotsDenied,
 		Duplicates:      run.Tally.Duplicates,
-		Pending:         run.Tally.Pending,
+		Pending:         pending,
 		Runtime:         runtime.Round(time.Second).String(),
 		PagesPerMinute:  run.PagesPerMinute,
 		RateKnown:       run.RateKnown,
 		MaxPagesPerHost: crawlRunPerHostLimit(run),
 		MaxPagesPerRun:  crawlRunWholeLimit(run),
+		ReportAge:       reportAge,
 	}
 }
 

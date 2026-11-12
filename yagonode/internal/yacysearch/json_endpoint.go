@@ -15,6 +15,7 @@ type jsonEndpoint struct {
 
 func MountJSON(mux *http.ServeMux, search searchcore.Searcher) {
 	mux.Handle(yagoproto.PathYaCySearchJSON, jsonEndpoint{search: search})
+	mux.Handle(yagoproto.PathYaCySearchNDJSON, progressiveJSONEndpoint{search: search})
 }
 
 // Mount wires the public YaCy search surface. suggest is a local-only searcher
@@ -33,6 +34,7 @@ func Mount(
 		search:      search,
 		suggestions: suggestions,
 	})
+	mux.Handle(yagoproto.PathYaCySearchNDJSON, progressiveJSONEndpoint{search: search})
 	mux.Handle(yagoproto.PathYaCySearchRSS, rssEndpoint{
 		search:      search,
 		suggestions: suggestions,

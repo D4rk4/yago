@@ -2,6 +2,7 @@ package searchlocal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"path"
@@ -17,9 +18,10 @@ import (
 )
 
 type localSearcher struct {
-	index    searchindex.SearchIndex
-	weights  func() searchindex.RankingWeights
-	hostRank func() hostrank.AuthorityTable
+	index       searchindex.SearchIndex
+	weights     func() searchindex.RankingWeights
+	hostRank    func() hostrank.AuthorityTable
+	progressive bool
 }
 
 func NewSearcher(index searchindex.SearchIndex) searchcore.Searcher {
@@ -48,6 +50,14 @@ func NewSearcherWithRanking(
 	return localSearcher{index: index, weights: weights, hostRank: hostRank}
 }
 
+func NewProgressiveSearcherWithRanking(
+	index searchindex.SearchIndex,
+	weights func() searchindex.RankingWeights,
+	hostRank func() hostrank.AuthorityTable,
+) searchcore.Searcher {
+	return localSearcher{index: index, weights: weights, hostRank: hostRank, progressive: true}
+}
+
 func (s localSearcher) Search(
 	ctx context.Context,
 	req searchcore.Request,
@@ -57,11 +67,57 @@ func (s localSearcher) Search(
 	}
 	weights := s.currentRankingWeights()
 	indexReq := s.indexRequestWithWeights(req, weights)
-	resultSet, candidateErr := s.searchCandidates(ctx, indexReq)
-	if candidateErr != nil && len(resultSet.Results) == 0 {
+	var resultSet searchindex.SearchResultSet
+	var candidateErr error
+	if s.progressive {
+		progressive, ok := s.index.(searchindex.ProgressiveSearchIndex)
+		if !ok {
+			return searchcore.Response{}, fmt.Errorf("progressive search unavailable")
+		}
+		indexReq.AllowCandidateSampling = true
+		resultSet, candidateErr = progressive.SearchProgressively(
+			ctx,
+			indexReq,
+			func(progress searchindex.SearchProgress) {
+				response, err := s.responseFromSet(req, progress.Results, nil, weights, true)
+				if err != nil {
+					return
+				}
+				response.TotalResults = min(
+					response.TotalResults,
+					searchcore.MaximumPublicResultHorizon,
+				)
+				searchcore.ReportSearchProgress(ctx, searchcore.SearchProgress{
+					Response:        response,
+					CompletedShards: progress.CompletedShards,
+					SampledShards:   progress.SampledShards,
+					TotalShards:     progress.TotalShards,
+					Complete:        progress.Complete,
+				})
+			},
+		)
+	} else {
+		resultSet, candidateErr = s.searchCandidates(ctx, indexReq)
+	}
+	if candidateErr != nil && len(resultSet.Results) == 0 && !s.progressive {
 		return searchcore.Response{}, fmt.Errorf("search index: %w", candidateErr)
 	}
 
+	response, err := s.responseFromSet(req, resultSet, candidateErr, weights, false)
+	if err != nil {
+		return searchcore.Response{}, err
+	}
+
+	return response, nil
+}
+
+func (s localSearcher) responseFromSet(
+	req searchcore.Request,
+	resultSet searchindex.SearchResultSet,
+	candidateErr error,
+	weights searchindex.RankingWeights,
+	provisional bool,
+) (searchcore.Response, error) {
 	results, err := coreResults(req, resultSet.Results, s.hostRankScorer(req, weights))
 	if err != nil {
 		return searchcore.Response{}, err
@@ -73,18 +129,42 @@ func (s localSearcher) Search(
 		Results:      offsetResults(results, req.Offset, requestLimit(req)),
 		Facets:       coreFacets(resultSet.Facets),
 	}
-	if candidateErr != nil {
+	if resultSet.TotalShards > 0 {
+		coverageComplete := !resultSet.Incomplete && candidateErr == nil &&
+			resultSet.CompletedShards == resultSet.TotalShards
+		response.Coverage = &searchcore.SearchCoverage{
+			CompletedShards: resultSet.CompletedShards,
+			SampledShards:   resultSet.SampledShards,
+			TotalShards:     resultSet.TotalShards,
+			Complete:        coverageComplete,
+		}
+	}
+	expectedProgressiveDeadline := s.progressive &&
+		errors.Is(candidateErr, context.DeadlineExceeded)
+	incompleteCoverage := resultSet.TotalShards > 0 &&
+		resultSet.CompletedShards < resultSet.TotalShards ||
+		resultSet.Incomplete && resultSet.SampledShards == 0
+	if !expectedProgressiveDeadline && (candidateErr != nil ||
+		!provisional && incompleteCoverage) {
 		response.PartialFailures = []searchcore.PartialFailure{{
 			Source: searchcore.PartialFailureSourceLocalSearch,
-			Reason: "local search incomplete",
+			Reason: "local search returned incomplete coverage",
 			Diagnostic: searchcore.PartialFailureDiagnostic{
 				Stage: searchcore.FailureStageLocalSearch,
-				Cause: searchcore.FailureCauseFor(candidateErr),
+				Cause: progressiveSearchFailureCause(candidateErr),
 			},
 		}}
 	}
 
 	return response, nil
+}
+
+func progressiveSearchFailureCause(err error) searchcore.FailureCause {
+	if err == nil {
+		return searchcore.FailureCauseUnknown
+	}
+
+	return searchcore.FailureCauseFor(err)
 }
 
 func (s localSearcher) indexRequest(req searchcore.Request) searchindex.SearchRequest {

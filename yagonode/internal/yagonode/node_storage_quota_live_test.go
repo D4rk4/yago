@@ -36,9 +36,18 @@ func TestStorageQuotaSettingAppliesLive(t *testing.T) {
 	toggles := &runtimeToggles{}
 	var got int64 = -1
 	toggles.SetQuotaSink(func(quotaBytes int64) { got = quotaBytes })
+	var unavailable *runtimeToggles
+	unavailable.SetCrawlerNodeStateQuotaSink(func(int64) {})
+	toggles.SetCrawlerNodeStateQuotaSink(nil)
+	automaticMaximum := newCrawlStateGrowthAdmission("", 0, nil)
+	automaticMaximum.SetMaximumPolicy(crawlStateMaximumPolicy{Automatic: true})
+	toggles.SetCrawlerNodeStateQuotaSink(automaticMaximum.SetStorageQuota)
 	def.applyLive(toggles, "768GB")
 	if got != 768<<30 {
 		t.Fatalf("applyLive(768GB) routed %d bytes, want %d", got, int64(768)<<30)
+	}
+	if got, want := automaticMaximum.CrawlStateMaximumBytes(), int64((768<<30)/10); got != want {
+		t.Fatalf("automatic crawl-state maximum after live quota change = %d, want %d", got, want)
 	}
 }
 

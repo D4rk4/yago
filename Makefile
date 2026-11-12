@@ -108,7 +108,7 @@ arch: $(TOOLS_STAMP)
 race:
 	@set -e; for m in $(MODULES); do \
 		echo "==> race $$m"; \
-		( cd $$m && $(GO) test -race ./... ); \
+		( cd $$m && $(GO) test -p=1 -parallel=8 -race ./... ); \
 	done
 
 test: race
@@ -146,7 +146,7 @@ cover-check:
 	@set -e; for m in $(MODULES); do \
 		echo "==> cover-check $$m (min $(COVERAGE_MIN)%)"; \
 		( cd $$m && \
-			if ! $(GO) test -race -coverprofile=$(COVER_PROFILE) ./... > $(COVER_PROFILE).log 2>&1; then \
+			if ! $(GO) test -p=1 -parallel=8 -race -coverprofile=$(COVER_PROFILE) ./... > $(COVER_PROFILE).log 2>&1; then \
 				cat $(COVER_PROFILE).log; \
 				echo "cover-check: test run failed in $$m"; \
 				exit 1; \

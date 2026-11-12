@@ -4,7 +4,8 @@ Date: 2026-07-03
 
 ## Status
 
-Accepted; delivery semantics amended by [ADR-0017](0017-crawl-order-lease-delivery.md)
+Accepted; order delivery semantics amended by [ADR-0017](0017-crawl-order-lease-delivery.md),
+and crawler page dispatch and ingest streaming amended by [ADR-0090](0090-asynchronous-crawler-page-workers.md)
 
 Supersedes [ADR-0007](0007-use-nats-jetstream-for-node-crawler-queue.md)
 

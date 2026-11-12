@@ -189,12 +189,12 @@ func productionShapeSearchAssembly(client *http.Client) publicSearchAssembly {
 }
 
 func TestPublicSearchReservesUsableWebWindowAfterSlowSwarmAndFuzzyMiss(t *testing.T) {
-	previousExact := webFallbackPrimaryStageBudget
+	previousExact := webFallbackExactStageBudget
 	previousRecovery := recoverySearchBudget
-	webFallbackPrimaryStageBudget = 60 * time.Millisecond
+	webFallbackExactStageBudget = 60 * time.Millisecond
 	recoverySearchBudget = 15 * time.Millisecond
 	t.Cleanup(func() {
-		webFallbackPrimaryStageBudget = previousExact
+		webFallbackExactStageBudget = previousExact
 		recoverySearchBudget = previousRecovery
 	})
 
@@ -235,9 +235,9 @@ func TestPublicSearchReservesUsableWebWindowAfterSlowSwarmAndFuzzyMiss(t *testin
 }
 
 func TestPublicSearchParallelModeIncludesWebBesidePrimaryHit(t *testing.T) {
-	previousExact := webFallbackPrimaryStageBudget
-	webFallbackPrimaryStageBudget = 60 * time.Millisecond
-	t.Cleanup(func() { webFallbackPrimaryStageBudget = previousExact })
+	previousExact := webFallbackParallelExactStageBudget
+	webFallbackParallelExactStageBudget = 60 * time.Millisecond
+	t.Cleanup(func() { webFallbackParallelExactStageBudget = previousExact })
 
 	attempts := &productionShapeWebAttempts{}
 	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
@@ -326,30 +326,77 @@ func TestPublicSearchStageBudgetsLeaveAssemblyHeadroom(t *testing.T) {
 	if webFallbackSupplementDecisionCeiling+webFallbackMinimumWindow+webFallbackAssemblyReserve > interactiveSearchBudget {
 		t.Fatal("supplement decision leaves no reserved web and assembly time")
 	}
-	if webFallbackPrimaryStageBudget+webFallbackAssemblyReserve > interactiveSearchBudget {
-		t.Fatal("primary stage leaves no assembly time")
+	if webFallbackExactStageBudget+webFallbackMinimumWindow+
+		webFallbackAssemblyReserve+interactiveSearchCancellationGrace > interactiveSearchBudget {
+		t.Fatal("supplement exact stage leaves no web and assembly window")
+	}
+	if webFallbackParallelExactStageBudget+webFallbackAssemblyReserve > interactiveSearchBudget {
+		t.Fatal("parallel primary stage leaves no assembly time")
 	}
 }
 
 func TestExactStageDeadlinePreservesCompletedLocalResults(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		previous := webFallbackPrimaryStageBudget
-		webFallbackPrimaryStageBudget = 20 * time.Millisecond
-		t.Cleanup(func() { webFallbackPrimaryStageBudget = previous })
+	previous := webFallbackExactStageBudget
+	webFallbackExactStageBudget = 20 * time.Millisecond
+	t.Cleanup(func() { webFallbackExactStageBudget = previous })
 
-		release := make(chan struct{})
-		finished := make(chan struct{}, 1)
-		remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
-		searcher := withWebFallbackExactStageBudget(
-			searchcore.NewFederatedSearcher(
-				productionShapeLocalHit{},
-				remote,
-			),
-			webFallbackConfig{
-				Privacy:  webFallbackPrivacyEnabled,
-				Provider: webFallbackProviderDDGS,
-			},
-		)
+	release := make(chan struct{})
+	finished := make(chan struct{}, 1)
+	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
+	searcher := withWebFallbackExactStageBudget(
+		searchcore.NewFederatedSearcher(
+			productionShapeLocalHit{},
+			remote,
+		),
+		webFallbackConfig{
+			Privacy:  webFallbackPrivacyEnabled,
+			Provider: webFallbackProviderDDGS,
+		},
+	)
+	response, err := searcher.Search(t.Context(), searchcore.Request{
+		Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
+	})
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("remote search did not finish")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Results) != 1 ||
+		response.Results[0].URL != "https://local.example/needle" {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
+func TestRepeatedGlobalSearchKeepsLocalHitWhileSwarmIgnoresCancellation(t *testing.T) {
+	previous := webFallbackExactStageBudget
+	previousRemoteAdmission := processRemoteSearchAdmission
+	webFallbackExactStageBudget = 20 * time.Millisecond
+	processRemoteSearchAdmission = make(chan struct{}, interactiveSearchConcurrentWork)
+	t.Cleanup(func() {
+		webFallbackExactStageBudget = previous
+		processRemoteSearchAdmission = previousRemoteAdmission
+	})
+
+	// Every attempt leaks one remote branch that ignores cancellation and keeps
+	// its admission slot, so the swarm must stop being reached once the slots are
+	// gone. The round count has to exceed the capacity to show that, and the
+	// capacity follows the processor count, so it cannot be a literal.
+	rounds := interactiveSearchConcurrentWork + 2
+	release := make(chan struct{})
+	finished := make(chan struct{}, rounds)
+	remote := &productionShapeUncooperativeSwarm{release: release, finished: finished}
+	attempts := &productionShapeWebAttempts{}
+	client := &http.Client{Transport: fallbackRoundTrip(attempts.roundTrip)}
+	searcher := assemblePublicSearcher(
+		productionShapeLocalHit{},
+		remote,
+		productionShapeSearchAssembly(client),
+	)
+	for attempt := range rounds {
 		response, err := searcher.Search(t.Context(), searchcore.Request{
 			Query: "needle term", Source: searchcore.SourceGlobal, Limit: 10,
 		})

@@ -69,7 +69,7 @@ func (s *portalTavilyRankingCandidates) Search(
 	}, nil
 }
 
-func TestCanonicalPortalSourceAndTavilyAdvancedRankingParity(t *testing.T) {
+func TestCanonicalPortalSourceAndTavilyBasicRankingParity(t *testing.T) {
 	t.Parallel()
 
 	candidates := &portalTavilyRankingCandidates{}
@@ -97,7 +97,7 @@ func TestCanonicalPortalSourceAndTavilyAdvancedRankingParity(t *testing.T) {
 		tavilyapi.PathSearch,
 		strings.NewReader(`{
 			"query":"best mouse for gaming",
-			"search_depth":"advanced",
+			"search_depth":"basic",
 			"max_results":10,
 			"safe_search":false
 		}`),
@@ -129,7 +129,7 @@ func TestCanonicalPortalSourceAndTavilyAdvancedRankingParity(t *testing.T) {
 		)
 	}
 	if candidates.requests[0].Source != searchcore.SourceGlobal ||
-		candidates.requests[0].Verify != searchcore.VerifyIfExist ||
+		candidates.requests[0].Verify != searchcore.VerifyFalse ||
 		!candidates.requests[0].AllowWebFallback {
 		t.Fatalf("canonical request = %+v", candidates.requests[0])
 	}

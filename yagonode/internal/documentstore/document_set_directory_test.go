@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 )
 
@@ -162,7 +161,7 @@ func TestDocumentSetDirectoryRejectsMalformedLocation(t *testing.T) {
 
 func TestDocumentSetDirectoryRejectsOversizedOrderedIdentity(t *testing.T) {
 	directory, _, engine := openScriptedDocuments(t)
-	url := strings.Repeat("x", yagomodel.MaximumURLIdentityBytes+1)
+	url := strings.Repeat("x", maximumStoredDocumentURLIdentityBytes+1)
 	seedScriptedDocumentLocation(t, engine, url, 1)
 	if _, _, err := directory.(DocumentSetDirectory).Documents(
 		t.Context(),

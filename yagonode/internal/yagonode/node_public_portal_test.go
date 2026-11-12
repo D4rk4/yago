@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/D4rk4/yago/yagonode/internal/publicportal"
@@ -12,16 +13,18 @@ import (
 )
 
 type stubPortalSearcher struct {
-	response   searchcore.Response
-	err        error
-	gotRequest searchcore.Request
+	response            searchcore.Response
+	err                 error
+	gotRequest          searchcore.Request
+	gotProgressObserver bool
 }
 
 func (s *stubPortalSearcher) Search(
-	_ context.Context,
+	ctx context.Context,
 	req searchcore.Request,
 ) (searchcore.Response, error) {
 	s.gotRequest = req
+	s.gotProgressObserver = searchcore.SearchProgressObserverFrom(ctx) != nil
 
 	return s.response, s.err
 }
@@ -69,6 +72,61 @@ func TestPortalSourceMapsAndMarksResults(t *testing.T) {
 	assertPortalSearchCachedLinks(t, results)
 }
 
+func TestPortalSourceDisplaysImportedTitleArray(t *testing.T) {
+	t.Parallel()
+
+	snippet := `["A displayed title"]`
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		Request: searchcore.Request{Terms: []string{"displayed"}},
+		Results: []searchcore.Result{
+			{
+				Title:   `["A displayed title", "An alternate title"]`,
+				Snippet: snippet,
+				QueryMatches: []searchcore.QueryMatch{
+					{
+						Start: strings.Index(snippet, "displayed"),
+						End:   strings.Index(snippet, "displayed") + len("displayed"),
+					},
+				},
+				URL: "https://example.org/page",
+			},
+		},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "displayed", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results.Results) != 1 || results.Results[0].Title != "A displayed title" ||
+		results.Results[0].Snippet != "A displayed title" ||
+		string(results.Results[0].SnippetHTML) != "A <mark>displayed</mark> title" {
+		t.Fatalf("portal titles = %#v", results.Results)
+	}
+}
+
+func TestPortalSourcePassesExplicitWebSearchConsent(t *testing.T) {
+	t.Parallel()
+
+	for _, consented := range []bool{false, true} {
+		searcher := &stubPortalSearcher{}
+		if consented {
+			_, err := newPortalSource(searcher).SearchWithWebConsent(
+				t.Context(), "sample", "", 0, 10, true,
+			)
+			if err != nil {
+				t.Fatalf("consented search: %v", err)
+			}
+		} else {
+			_, err := newPortalSource(searcher).Search(t.Context(), "sample", "", 0, 10)
+			if err != nil {
+				t.Fatalf("unconsented search: %v", err)
+			}
+		}
+		if searcher.gotRequest.AllowWebFallback != consented {
+			t.Fatalf("consent=%v, request consent=%v", consented, searcher.gotRequest.AllowWebFallback)
+		}
+	}
+}
+
 func assertPortalSearchWindow(
 	t *testing.T,
 	searcher *stubPortalSearcher,
@@ -86,8 +144,11 @@ func assertPortalSearchWindow(
 	if searcher.gotRequest.Source != searchcore.SourceGlobal {
 		t.Fatalf("source = %q, want global", searcher.gotRequest.Source)
 	}
-	if searcher.gotRequest.Verify != searchcore.VerifyIfExist {
-		t.Fatalf("verify = %q, want ifexist", searcher.gotRequest.Verify)
+	if searcher.gotRequest.Verify != searchcore.VerifyFalse {
+		t.Fatalf("verify = %q, want false", searcher.gotRequest.Verify)
+	}
+	if searcher.gotProgressObserver {
+		t.Fatal("single-response portal search installed a progress observer")
 	}
 	if searcher.gotRequest.WithFacets || len(results.Facets) != 2 {
 		t.Fatalf(
@@ -152,6 +213,27 @@ func TestPortalSourceCarriesBoundedPartialFailureState(t *testing.T) {
 	}
 	if !results.Incomplete || !results.FederationUnavailable || results.PeersFailed != 1 {
 		t.Fatalf("partial state = %+v", results)
+	}
+}
+
+func TestPortalSourceMarksShardCoveragePartialWithoutCallingItSourceFailure(t *testing.T) {
+	t.Parallel()
+
+	searcher := &stubPortalSearcher{response: searchcore.Response{
+		TotalResults: 1,
+		Results: []searchcore.Result{{
+			Title: "Sampled result", URL: "https://sample.example/result",
+		}},
+		Coverage: &searchcore.SearchCoverage{
+			CompletedShards: 8, SampledShards: 8, TotalShards: 8, Complete: false,
+		},
+	}}
+	results, err := newPortalSource(searcher).Search(t.Context(), "sample", "", 0, 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if results.Incomplete || !results.CoverageIncomplete || len(results.Results) != 1 {
+		t.Fatalf("sampled coverage state = %+v", results)
 	}
 }
 

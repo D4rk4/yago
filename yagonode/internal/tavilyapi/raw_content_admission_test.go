@@ -149,7 +149,7 @@ func TestRawSearchAdmissionReleasesWhenSearchAdmissionRejects(t *testing.T) {
 		&fakeSearcher{},
 		nil,
 		SearchAccessPolicy{BearerToken: searchTestKey},
-		func(*http.Request) (func(), int, time.Duration) {
+		func(*http.Request, bool) (func(), int, time.Duration) {
 			return nil, http.StatusServiceUnavailable, time.Second
 		},
 	)

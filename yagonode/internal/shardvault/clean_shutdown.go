@@ -1,11 +1,15 @@
 package shardvault
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	bolt "go.etcd.io/bbolt"
 )
+
+const vaultShardFreelistsCheckpointedMessage = "vault shard freelists checkpointed"
 
 type shardShutdownOperations struct {
 	checkpoint func(*bolt.DB) error
@@ -18,7 +22,7 @@ func (e *engine) Close() error {
 	e.globalGate.Lock()
 	defer e.globalGate.Unlock()
 
-	return closeShardDatabases(
+	err := closeShardDatabases(
 		e.shards,
 		e.deferFsync.Load(),
 		shardShutdownOperations{
@@ -27,6 +31,15 @@ func (e *engine) Close() error {
 			close:      closeDB,
 		},
 	)
+	if err == nil {
+		slog.InfoContext(
+			context.Background(),
+			vaultShardFreelistsCheckpointedMessage,
+			slog.Int("shards", len(e.shards)),
+		)
+	}
+
+	return err
 }
 
 func closeShardDatabases(

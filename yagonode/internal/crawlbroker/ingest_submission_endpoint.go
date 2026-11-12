@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -106,6 +107,7 @@ func (s *exchangeServer) authorizedIngestDelivery(
 		Batch:         batch,
 		CrawlProfile:  authorizedProfile,
 		BatchJSONSize: batchJSONSize,
+		SubmittedAt:   time.Now(),
 		Ack: func(context.Context) error {
 			finish()
 			result <- ingestOutcome{}

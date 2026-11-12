@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/contentcluster"
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
@@ -16,6 +17,13 @@ type ContentClusters interface {
 	Replace(context.Context, contentcluster.Evidence) (contentcluster.Assignment, error)
 	Lookup(context.Context, string) (contentcluster.Assignment, bool, error)
 	Cluster(context.Context, string) (contentcluster.Cluster, bool, error)
+}
+
+func (c *IngestConsumer) ObserveContentClusterStage(
+	stage contentcluster.EvidenceStage,
+	elapsed time.Duration,
+) {
+	c.observeIngestStage(IngestStage(stage), elapsed)
 }
 
 type documentClusterReplacement struct {
@@ -41,7 +49,9 @@ func (c *IngestConsumer) prepareDocumentClusters(
 	if c.clusters == nil || len(docs) == 0 {
 		return documentClusterProjection{documents: docs}, nil
 	}
+	finishReplacement := c.measureIngestStage(IngestStageContentClusterReplacement)
 	replacement, err := c.replaceDocumentClusters(ctx, docs)
+	finishReplacement()
 	if err != nil {
 		return documentClusterProjection{}, err
 	}
@@ -50,7 +60,9 @@ func (c *IngestConsumer) prepareDocumentClusters(
 		transitions:   replacement.transitions,
 		replay:        replacement.replay,
 	}
+	finishProjection := c.measureIngestStage(IngestStageContentClusterProjection)
 	projection.documents, err = c.refreshDocumentClusters(ctx, replacement)
+	finishProjection()
 	if err != nil {
 		projection.release()
 

@@ -41,6 +41,10 @@ type countingInteractiveSearch struct {
 	calls atomic.Int32
 }
 
+type recordingDeadlineSearch struct {
+	deadline chan time.Time
+}
+
 type interactiveSearchPanicRecord struct {
 	message string
 	value   any
@@ -77,6 +81,16 @@ func (s *countingInteractiveSearch) Search(
 	req searchcore.Request,
 ) (searchcore.Response, error) {
 	s.calls.Add(1)
+
+	return searchcore.Response{Request: req}, nil
+}
+
+func (s *recordingDeadlineSearch) Search(
+	ctx context.Context,
+	req searchcore.Request,
+) (searchcore.Response, error) {
+	deadline, _ := ctx.Deadline()
+	s.deadline <- deadline
 
 	return searchcore.Response{Request: req}, nil
 }
@@ -121,6 +135,29 @@ func TestInteractiveSearchBudgetCancelsSlowPipeline(t *testing.T) {
 		response.PartialFailures[0].Source != interactiveSearchFailureSource ||
 		!errors.Is(cause, context.DeadlineExceeded) {
 		t.Fatalf("deadline = response %#v error %v cause %v", response, err, cause)
+	}
+}
+
+func TestInteractiveSearchBudgetDoesNotExtendProgressiveRequests(t *testing.T) {
+	inner := &recordingDeadlineSearch{deadline: make(chan time.Time, 1)}
+	searcher := interactiveBudgetSearcher{
+		inner: inner, budget: interactiveSearchBudget, grace: 50 * time.Millisecond,
+		admission: newInteractiveSearchAdmission(1), admissionWait: 50 * time.Millisecond,
+		panicLog: discardInteractiveSearchPanic,
+	}
+	started := time.Now()
+	ctx := searchcore.WithSearchProgressObserver(t.Context(), func(searchcore.SearchProgress) {})
+	if _, err := searcher.Search(ctx, searchcore.Request{Query: "streaming"}); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	deadline := <-inner.deadline
+	if remaining := time.Until(deadline); remaining <= 0 || remaining > interactiveSearchBudget {
+		t.Fatalf(
+			"progressive search budget remaining = %s; started %s ago, want at most %s",
+			remaining,
+			time.Since(started),
+			interactiveSearchBudget,
+		)
 	}
 }
 

@@ -3,13 +3,14 @@ package publicportal
 import "net/http"
 
 type portalSearchWindow struct {
-	Query     string
-	Dom       string
-	Page      int
-	Offset    int
-	Shown     int
-	Available int
-	Exhausted bool
+	Query            string
+	Dom              string
+	Page             int
+	Offset           int
+	Shown            int
+	Available        int
+	Exhausted        bool
+	WebSearchConsent bool
 }
 
 func redirectPortalSearchWindow(
@@ -30,7 +31,7 @@ func redirectPortalSearchWindow(
 	http.Redirect(
 		w,
 		r,
-		portalPageURL(window.Query, window.Dom, canonicalPage),
+		portalPageURL(window.Query, window.Dom, canonicalPage, window.WebSearchConsent),
 		http.StatusSeeOther,
 	)
 

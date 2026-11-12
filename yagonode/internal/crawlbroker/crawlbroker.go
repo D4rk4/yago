@@ -32,6 +32,7 @@ type Config struct {
 	StoragePressurePolicy             yagocrawlcontract.StoragePressurePolicy
 	RuntimePolicy                     yagocrawlcontract.CrawlerRuntimePolicy
 	GrowthAdmission                   GrowthAdmission
+	DataExchange                      CrawlerDataExchangeConfig
 }
 
 type CrawlBroker struct {
@@ -122,6 +123,10 @@ func Open(cfg Config, storage *vault.Vault, progress ProgressSink) (*CrawlBroker
 	exchange.beginIngest = ingest.beginIngest
 	bindCrawlProgressSink(exchange, progress)
 	crawlrpc.RegisterCrawlExchangeServer(server, exchange)
+	crawlrpc.RegisterCrawlerDataExchangeServer(
+		server,
+		newCrawlerDataExchangeServer(cfg.DataExchange, ingest.out, ingest.beginIngest),
+	)
 	go func() { _ = server.Serve(listener) }()
 
 	sweep := time.NewTicker(leaseSweepInterval(leaseTTL))

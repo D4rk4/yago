@@ -13,6 +13,7 @@ func uncachedSessionPage(
 		recovered:  response.Recovered,
 		didYouMean: response.DidYouMean,
 		facets:     response.Facets,
+		coverage:   response.Coverage,
 	}
 
 	return window.respond(request)

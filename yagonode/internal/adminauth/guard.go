@@ -104,7 +104,7 @@ func (s *Service) guardSession(w http.ResponseWriter, r *http.Request, next http
 				sessionCookieName,
 				"/",
 				rotated.Token,
-				r.TLS != nil,
+				s.requestTrust.Secure(r),
 				rotated.ExpiresAt,
 			),
 		)

@@ -38,6 +38,9 @@ func TestFederatedSearcherCallsLocalOnlyForLocalRequest(t *testing.T) {
 func TestFederatedSearcherMergesDeduplicatesAndOffsets(t *testing.T) {
 	local := &fakeCoreSearcher{response: Response{
 		TotalResults: 2,
+		Coverage: &SearchCoverage{
+			CompletedShards: 4, TotalShards: 8, Complete: false,
+		},
 		Results: []Result{
 			{URL: "https://local", URLHash: "same", Score: 10},
 			{URL: "https://local-only", URLHash: "local-only", Score: 6},
@@ -68,7 +71,10 @@ func TestFederatedSearcherMergesDeduplicatesAndOffsets(t *testing.T) {
 		len(resp.Results) != 2 ||
 		resp.Results[0].URL != "https://remote" ||
 		resp.Results[1].URL != "https://local-only" ||
-		len(resp.PartialFailures) != 1 {
+		len(resp.PartialFailures) != 1 || resp.Coverage == nil ||
+		*resp.Coverage != (SearchCoverage{
+			CompletedShards: 4, TotalShards: 8, Complete: false,
+		}) {
 		t.Fatalf("response = %#v", resp)
 	}
 }

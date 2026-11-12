@@ -62,12 +62,12 @@ func TestSearchAccessPolicyCombinesAuthorizerAndStaticToken(t *testing.T) {
 		searchAuthorizer: searchScopeAuthorizer{},
 		searchAPIKey:     "static",
 	})
-	if scoped.Authorizer == nil || scoped.BearerToken != "static" {
+	if scoped.Authorizer == nil || scoped.BearerToken != "static" || !scoped.AllowAnonymousRead {
 		t.Fatalf("scoped policy = %#v", scoped)
 	}
 
 	static := searchAccessPolicy(publicSearchAssembly{searchAPIKey: "static"})
-	if static.Authorizer != nil || static.BearerToken != "static" {
+	if static.Authorizer != nil || static.BearerToken != "static" || !static.AllowAnonymousRead {
 		t.Fatalf("static policy = %#v", static)
 	}
 }

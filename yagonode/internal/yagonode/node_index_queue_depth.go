@@ -17,7 +17,10 @@ func (s indexQueueDepthSource) observation(context.Context) (int, bool) {
 }
 
 func (r *crawlRuntime) indexQueueDepth() (int, bool) {
-	return r.broker.Ingest.Outstanding(), true
+	if r.exchange == nil || r.exchange.Ingest == nil {
+		return 0, false
+	}
+	return r.exchange.Ingest.Outstanding(), true
 }
 
 func indexQueueProbe(runtime crawlProcess) func() (int, bool) {

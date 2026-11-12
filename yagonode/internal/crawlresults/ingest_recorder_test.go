@@ -99,6 +99,42 @@ func TestRecordFetchCapturesAbsorbedPage(t *testing.T) {
 	}
 }
 
+func TestImportedDocumentDoesNotCreateAnAutomaticRecrawlSchedule(t *testing.T) {
+	stream := &fakeStream{out: make(chan crawlresults.IngestDelivery, 1)}
+	var settled sync.WaitGroup
+	settled.Add(1)
+	fetchedAt := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	stream.out <- crawlresults.IngestDelivery{
+		Batch: yagocrawlcontract.IngestBatch{
+			SourceURL:     "https://imported.example/page",
+			ProfileHandle: "migration-profile",
+			Document: yagocrawlcontract.DocumentIngest{
+				NormalizedURL: "https://imported.example/page",
+				ExtractedText: "imported document content",
+				FetchedAt:     fetchedAt,
+			},
+		},
+		ImportOnly: true,
+		Ack:        func(context.Context) error { settled.Done(); return nil },
+		Nak:        func(context.Context) error { settled.Done(); return nil },
+	}
+	recorder := &recordingFetchRecorder{}
+	consumer := crawlresults.NewIngestConsumer(
+		stream,
+		&recordingDocumentReceiver{},
+		&recordingURLReceiver{},
+		&recordingPostingReceiver{},
+	)
+	consumer.RecordFetches(recorder)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go consumer.Run(ctx)
+	settled.Wait()
+	if recorder.calls != 0 {
+		t.Fatalf("imported completed page created %d automatic schedules", recorder.calls)
+	}
+}
+
 func TestRecordFetchSkipsMetadataOnlyBatch(t *testing.T) {
 	recorder := runWithRecorder(t, yagocrawlcontract.IngestBatch{
 		SourceURL: "https://example.org/page",

@@ -11,6 +11,14 @@ func buildSearchScopeAuthorizer(service *adminauth.Service) tavilyapi.ScopeAutho
 	return searchScopeAuthorizer{authorizer: service.APIKeyAuthorizer()}
 }
 
+func buildCrawlerAPIKeyAuthorizer(service *adminauth.Service) func(context.Context, string) bool {
+	authorizer := service.APIKeyAuthorizer()
+	return func(ctx context.Context, token string) bool {
+		return authorizer.Authorize(ctx, token, adminauth.ScopeCrawlWrite) ==
+			adminauth.APIKeyAuthorized
+	}
+}
+
 func legacySearchAPIKeyFor(config nodeConfig) string {
 	if config.SearchRequireAPIKey {
 		return ""

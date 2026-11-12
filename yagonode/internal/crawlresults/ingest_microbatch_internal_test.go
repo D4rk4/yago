@@ -9,6 +9,23 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 )
 
+func TestSplitIngestGroupByImportModePreservesContiguousOrder(t *testing.T) {
+	group := []IngestDelivery{
+		{Batch: yagocrawlcontract.IngestBatch{SourceURL: "ordinary-1"}},
+		{ImportOnly: true, Batch: yagocrawlcontract.IngestBatch{SourceURL: "import-1"}},
+		{ImportOnly: true, Batch: yagocrawlcontract.IngestBatch{SourceURL: "import-2"}},
+		{Batch: yagocrawlcontract.IngestBatch{SourceURL: "ordinary-2"}},
+	}
+	segments := splitIngestGroupByImportMode(group)
+	if len(segments) != 3 || len(segments[0]) != 1 || len(segments[1]) != 2 ||
+		len(segments[2]) != 1 || segments[0][0].Batch.SourceURL != "ordinary-1" ||
+		segments[1][0].Batch.SourceURL != "import-1" ||
+		segments[1][1].Batch.SourceURL != "import-2" ||
+		segments[2][0].Batch.SourceURL != "ordinary-2" {
+		t.Fatalf("ingest mode segments = %#v", segments)
+	}
+}
+
 // batchStaleSweeperStub offers both the per-URL and the whole-batch sweep, so a
 // consumer treats it as a staleBatchSweeper and takes the grouped sweep path.
 type batchStaleSweeperStub struct {

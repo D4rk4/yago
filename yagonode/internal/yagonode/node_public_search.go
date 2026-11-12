@@ -8,7 +8,6 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/cachedpage"
-	"github.com/D4rk4/yago/yagonode/internal/crawldispatch"
 	"github.com/D4rk4/yago/yagonode/internal/documentsearch"
 	"github.com/D4rk4/yago/yagonode/internal/faviconproxy"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
@@ -22,6 +21,7 @@ import (
 	"github.com/D4rk4/yago/yagonode/internal/publicrobots"
 	"github.com/D4rk4/yago/yagonode/internal/searchactivity"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
+	"github.com/D4rk4/yago/yagonode/internal/searchdemand"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/searchlocal"
 	"github.com/D4rk4/yago/yagonode/internal/searchremote"
@@ -36,24 +36,20 @@ import (
 )
 
 type publicSearchAssembly struct {
-	storage              nodeStorage
-	roster               peerroster.Roster
-	identity             nodeidentity.Identity
-	dht                  dhtDistributionConfig
-	client               *http.Client
-	peerClient           *http.Client
-	peerHTTPSPreferred   bool
-	dhtSearchTargetIndex func(int) (int, error)
-	searchAPIKey         string
-	searchAuthorizer     tavilyapi.ScopeAuthorizer
-	searchAdmission      tavilyapi.SearchAdmission
-	extractFetcher       tavilyapi.ContentFetcher
-	webFallback          webFallbackConfig
-	seedQueue            crawldispatch.CrawlOrderQueue
-	// diagnostic marks the search-explanation chain, which mirrors the live
-	// retrieval chain but must not seed crawls or report on seeding wiring.
-	diagnostic             bool
-	maxPagesPerRun         func() int
+	storage                nodeStorage
+	roster                 peerroster.Roster
+	identity               nodeidentity.Identity
+	dht                    dhtDistributionConfig
+	client                 *http.Client
+	peerClient             *http.Client
+	peerHTTPSPreferred     bool
+	dhtSearchTargetIndex   func(int) (int, error)
+	searchAPIKey           string
+	searchAuthorizer       tavilyapi.ScopeAuthorizer
+	searchAdmission        tavilyapi.SearchAdmission
+	extractFetcher         tavilyapi.ContentFetcher
+	webFallback            webFallbackConfig
+	searchDemand           *searchdemand.Store
 	toggles                *runtimeToggles
 	queryLogMode           queryLogMode
 	activity               *searchactivity.Tracker
@@ -68,8 +64,6 @@ type publicSearchAssembly struct {
 	storageGrowth          growthAdmission
 	swarmMorphology        bool
 	wordForms              func() *wordforms.Expander
-	swarmSeed              swarmSeedConfig
-	autocrawlerCrawl       seedCrawlOptions
 	linksNewTab            bool
 	clickCapture           bool
 	clickRecorder          yacysearch.ImpressionRecorder
@@ -213,10 +207,11 @@ func mountNodePublicSearchWithExplanation(
 		)
 	}
 	passages, _ := local.(searchcore.DocumentPassageSearcher)
+	localRetrieval := publicLocalSearchRetrieval(assembly, local)
 	remoteConfig := publicRemoteSearchConfig(assembly)
 	remote := searchremote.NewSearcher(remoteConfig)
 	diagnosticRemote := searchremote.NewSearcher(publicDiagnosticRemoteSearchConfig(assembly))
-	search := assemblePublicSearcher(local, remote, assembly)
+	search := assemblePublicSearcher(localRetrieval, remote, assembly)
 	explanation := assemblePublicExplanationSearcher(local, diagnosticRemote, assembly)
 	access := searchAccessPolicy(assembly)
 	// Autocomplete suggestions come from the local index alone (denylist applied,
@@ -250,10 +245,29 @@ func mountNodePublicSearchWithExplanation(
 	publicportal.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	yacysearch.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	mountPortalOpenSearch(mux, assembly.toggles)
+	mux.Handle("/api", portalGate(assembly.toggles, publicportal.AgentAPIGuide()))
 	publicrobots.Mount(mux, assembly.toggles.RobotsPolicy)
 	publicportal.SetGreetingProvider(assembly.toggles.PortalGreeting)
 
 	return search, suggestSource, explanation
+}
+
+func publicLocalSearchRetrieval(
+	assembly publicSearchAssembly,
+	primary searchcore.Searcher,
+) searchcore.Searcher {
+	if _, ok := assembly.storage.searchIndex.(searchindex.ProgressiveSearchIndex); !ok {
+		return primary
+	}
+
+	return withLocalSearchDeadlineFallback(
+		primary,
+		searchlocal.NewProgressiveSearcherWithRanking(
+			assembly.storage.searchIndex,
+			assembly.rankingWeights,
+			assembly.hostRank,
+		),
+	)
 }
 
 // swarmMorphologyExpander builds the single-word expansion function for the
@@ -307,41 +321,17 @@ func assembleConfiguredPublicSearcher(
 			newRemoteIndexCache(assembly.storage, assembly.storageGrowth),
 		)
 	}
-	if assembly.seedQueue != nil {
-		// Greedy learning (YaCy 1.5): crawl what swarm search surfaced, growing
-		// the index from real usage — no document-count ceiling, so a large
-		// index keeps discovering what it and the swarm still lack. The seeder is
-		// wired whenever a queue exists and gated live, so the console switch and
-		// its bounds apply on the next search rather than after a restart.
-		seeder := newCrawlSeeder(
-			assembly.seedQueue,
-			assembly.storage.documentDirectory,
-			assembly.identity.Hash,
-			seedProfile{
-				name:     swarmSeedProfileName,
-				depth:    assembly.swarmSeed.SeedDepth,
-				maxPages: assembly.swarmSeed.SeedMaxPages,
-				options:  assembly.autocrawlerCrawl,
-			},
-			assembly.maxPagesPerRun,
-		)
-		seeder.bounds = swarmSeedBoundsSource(assembly.toggles, assembly.swarmSeed)
-		search = withSwarmSeedCrawl(
-			search,
-			newGatedWebCrawlSeeder(
-				seeder,
-				swarmSeedCrawlAdmission(assembly.toggles, assembly.swarmSeed),
-			),
-		)
-	}
-
 	search = withInteractiveSearchBudget(search)
 	search = searchsession.WithRecentSuccessOnIncompleteRefresh(search, stable)
 	search = withQueryLogging(search, assembly.queryLogMode, assembly.activity)
 	search = withSearchMetrics(search, assembly.searchMetrics)
 	search = withEffectiveWebFallbackRequest(search, assembly.webFallback)
 
-	return withParsedQuery(withSearchExecutionDiagnostics(search))
+	search = withSearchExecutionDiagnostics(search)
+	if assembly.searchDemand != nil {
+		search = searchDemandSearcher{inner: search, store: assembly.searchDemand}
+	}
+	return withParsedQuery(search)
 }
 
 func searchEvidenceSource(index searchindex.SearchIndex) searchindex.SearchEvidenceSource {
@@ -417,8 +407,9 @@ func (d *rootDispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func searchAccessPolicy(assembly publicSearchAssembly) tavilyapi.SearchAccessPolicy {
 	return tavilyapi.SearchAccessPolicy{
-		BearerToken: assembly.searchAPIKey,
-		Authorizer:  assembly.searchAuthorizer,
+		BearerToken:        assembly.searchAPIKey,
+		Authorizer:         assembly.searchAuthorizer,
+		AllowAnonymousRead: true,
 	}
 }
 
@@ -451,29 +442,6 @@ func withWebFallback(
 			webFallbackAssemblyReserve - interactiveSearchCancellationGrace,
 		),
 	}, extra...)
-	if assembly.seedQueue != nil {
-		// One answer submits up to MaxResults URLs at once, so the warming queue
-		// is sized against that rather than against a constant.
-		websearch.SizeSeedAdmission(config.MaxResults)
-		opts = append(opts, websearch.WithSeeder(newGatedWebCrawlSeeder(
-			newWebCrawlSeeder(
-				assembly.seedQueue,
-				assembly.storage.documentDirectory,
-				assembly.identity.Hash,
-				webCrawlSeedProfile{
-					fallback:       config,
-					crawl:          assembly.autocrawlerCrawl,
-					maxPagesPerRun: assembly.maxPagesPerRun,
-					bounds:         webSeedBoundsSource(assembly.toggles, config),
-				},
-			),
-			webSeedCrawlAdmission(assembly.toggles, config),
-		)))
-	}
-	if !assembly.diagnostic {
-		reportWebSeedWiring(config, assembly.seedQueue != nil)
-	}
-
 	permit := webFallbackPermit(config.Privacy)
 	if effectiveWebFallbackPrivacy(config) == webFallbackPrivacyAlways {
 		return websearch.NewParallelSearcher(search, provider, permit, opts...)

@@ -15,22 +15,34 @@ import (
 // grouped documents land in the vault through one Receive and in bleve through
 // one batch per shard, amortizing the per-write flush that made
 // document-at-a-time ingest the crawl bottleneck (PERF-05).
-const ingestMicroBatch = 64
+const ingestMicroBatch = yagocrawlcontract.MaximumIngestBatchRecords
 
 // absorbGroup absorbs the deliveries as one unit: admission gates run per
 // delivery, the surviving documents are stored and indexed together, and the
 // per-delivery tail (metadata, postings, ack) runs for everything that made it
 // through. A single delivery takes the plain absorb path unchanged.
 func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery) {
+	if len(group) > 1 {
+		segments := splitIngestGroupByImportMode(group)
+		if len(segments) > 1 {
+			for _, segment := range segments {
+				c.absorbGroup(ctx, segment)
+			}
+			return
+		}
+	}
 	if len(group) == 1 {
 		c.absorb(ctx, group[0])
 
 		return
 	}
+	finishAuthorization := c.measureIngestStage(IngestStageDeliveryAuthorization)
 	group, releases := authorizeIngestGroup(ctx, group)
+	finishAuthorization()
 	defer releaseIngestGroup(releases)
 	group = c.absorbNotModifiedDeliveries(ctx, group)
 
+	finishAdmission := c.measureIngestStage(IngestStageDeliveryAdmission)
 	admitted := make([]IngestDelivery, 0, len(group))
 	for _, delivery := range group {
 		if c.passesGates(ctx, delivery) {
@@ -38,23 +50,26 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 		}
 	}
 	admitted = coalesceIngestDeliveries(admitted)
-	regular := make([]IngestDelivery, 0, len(admitted))
-	removals := make([]IngestDelivery, 0, len(admitted))
-	for _, delivery := range admitted {
-		if delivery.Batch.Removed {
-			removals = append(removals, delivery)
-			continue
-		}
-		regular = append(regular, delivery)
-	}
-	for _, delivery := range c.beginObservations(ctx, removals) {
+	finishAdmission()
+	regular, removals := splitIngestRemovals(admitted)
+	finishObservation := c.measureIngestStage(IngestStageObservationHistory)
+	removals = c.beginObservations(ctx, removals)
+	finishObservation()
+	for _, delivery := range removals {
 		c.purgeRemoval(ctx, delivery)
 	}
-	if !c.admitStorageGrowth(ctx, regular) {
+	finishAdmission = c.measureIngestStage(IngestStageStorageAdmission)
+	storageAdmitted := c.admitStorageGrowth(ctx, regular)
+	finishAdmission()
+	if !storageAdmitted {
 		return
 	}
+	finishObservation = c.measureIngestStage(IngestStageObservationHistory)
 	regular = c.beginObservations(ctx, regular)
+	finishObservation()
+	finishReservation := c.measureIngestStage(IngestStageLineageReservation)
 	reservation, err := c.reserveIngestDocumentLineages(ctx, regular)
+	finishReservation()
 	if err != nil {
 		c.redeliverGroup(ctx, regular, "document lineage reservation", err)
 
@@ -88,6 +103,33 @@ func (c *IngestConsumer) absorbGroup(ctx context.Context, group []IngestDelivery
 	c.absorbReservedTailGroup(ctx, append(tail, withDocs...), reservation)
 }
 
+func splitIngestRemovals(group []IngestDelivery) ([]IngestDelivery, []IngestDelivery) {
+	regular := make([]IngestDelivery, 0, len(group))
+	removals := make([]IngestDelivery, 0, len(group))
+	for _, delivery := range group {
+		if delivery.Batch.Removed {
+			removals = append(removals, delivery)
+		} else {
+			regular = append(regular, delivery)
+		}
+	}
+	return regular, removals
+}
+
+func splitIngestGroupByImportMode(group []IngestDelivery) [][]IngestDelivery {
+	segments := make([][]IngestDelivery, 0, 2)
+	start := 0
+	for index := 1; index <= len(group); index++ {
+		if index < len(group) && group[index].ImportOnly == group[start].ImportOnly {
+			continue
+		}
+		segments = append(segments, group[start:index])
+		start = index
+	}
+
+	return segments
+}
+
 func (c *IngestConsumer) absorbTailGroup(ctx context.Context, group []IngestDelivery) {
 	c.absorbReservedTailGroup(ctx, group, nil)
 }
@@ -105,14 +147,19 @@ func (c *IngestConsumer) absorbReservedTailGroup(
 
 		return
 	}
-	if c.updateReservedInboundAnchors(ctx, group, reservation) {
+	finishAnchors := c.measureIngestStage(IngestStageOutboundAnchorUpdate)
+	anchorsDeferred := c.updateReservedInboundAnchors(ctx, group, reservation)
+	finishAnchors()
+	if anchorsDeferred {
 		return
 	}
 	metadata := make([]yagomodel.URIMetadataRow, 0, len(group))
 	for _, delivery := range group {
 		metadata = append(metadata, delivery.Batch.Metadata...)
 	}
+	started := time.Now()
 	urlReceipt, err := c.urls.Receive(ctx, metadata)
+	c.observeIngestStage(IngestStageURLMetadataWrite, time.Since(started))
 	if err != nil {
 		c.redeliverGroup(ctx, group, "url metadata store", err)
 
@@ -133,7 +180,9 @@ func (c *IngestConsumer) absorbReservedTailGroup(
 	for _, delivery := range group {
 		postings = append(postings, delivery.Batch.Postings...)
 	}
+	started = time.Now()
 	postingReceipt, err := receivePostingChunks(ctx, c.postings, postings)
+	c.observeIngestStage(IngestStageRWIPostingWrite, time.Since(started))
 	if err != nil {
 		c.redeliverGroup(ctx, group, "posting store", err)
 
@@ -145,9 +194,13 @@ func (c *IngestConsumer) absorbReservedTailGroup(
 		return
 	}
 
+	finishRecrawl := c.measureIngestStage(IngestStageRecrawlSchedule)
 	c.recordFetchGroup(ctx, group)
-	c.recordResponseValidators(ctx, group)
-	if !c.completeObservations(ctx, group) {
+	finishRecrawl()
+	finishObservation := c.measureIngestStage(IngestStageObservationHistory)
+	observationsComplete := c.completeObservations(ctx, group)
+	finishObservation()
+	if !observationsComplete {
 		return
 	}
 	for _, delivery := range group {
@@ -196,6 +249,10 @@ func (c *IngestConsumer) sweepStaleGroup(
 	ctx context.Context,
 	group []IngestDelivery,
 ) []IngestDelivery {
+	started := time.Now()
+	defer func() {
+		c.observeIngestStage(IngestStageStalePostingSweep, time.Since(started))
+	}()
 	batchSweeper, batched := c.stale.(staleBatchSweeper)
 	if !batched {
 		kept := group[:0]
@@ -337,13 +394,17 @@ func (c *IngestConsumer) storeReservedDocumentGroup(
 	docs []documentstore.Document,
 	reservation documentstore.DocumentLineageReservation,
 ) bool {
+	finishCanonicalization := c.measureIngestStage(IngestStageDocumentCanonicalization)
 	canonical, err := c.canonicalIngestDocuments(ctx, reservation, docs)
+	finishCanonicalization()
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "document canonicalization", err)
 
 		return false
 	}
-	projection, err := c.prepareDocumentClusters(ctx, canonical)
+	finishClusterPreparation := c.measureIngestStage(IngestStageContentClusterPreparation)
+	projection, err := c.prepareIngestDocumentClusters(ctx, deliveries, canonical)
+	finishClusterPreparation()
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "content cluster", err)
 
@@ -351,7 +412,9 @@ func (c *IngestConsumer) storeReservedDocumentGroup(
 	}
 	defer projection.release()
 	docs = projection.documents
+	started := time.Now()
 	receipt, err := c.documents.Receive(ctx, docs)
+	c.observeIngestStage(IngestStageDocumentWrite, time.Since(started))
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "document store", err)
 
@@ -373,8 +436,11 @@ func (c *IngestConsumer) storeReservedDocumentGroup(
 			return false
 		}
 	}
-	if err := projection.finalize(ctx); err != nil {
-		c.redeliverGroup(ctx, deliveries, "content cluster finalization", err)
+	finishClusterFinalization := c.measureIngestStage(IngestStageContentClusterFinalization)
+	finalizationErr := projection.finalize(ctx)
+	finishClusterFinalization()
+	if finalizationErr != nil {
+		c.redeliverGroup(ctx, deliveries, "content cluster finalization", finalizationErr)
 
 		return false
 	}
@@ -390,6 +456,7 @@ func (c *IngestConsumer) indexDocuments(
 ) error {
 	started := time.Now()
 	err := c.writeSearchIndexDocuments(ctx, docs)
+	c.observeIngestStage(IngestStageSearchIndexWrite, time.Since(started))
 	if c.indexWrites != nil {
 		c.indexWrites.ObserveSearchIndexWrite(time.Since(started), len(docs), err != nil)
 	}

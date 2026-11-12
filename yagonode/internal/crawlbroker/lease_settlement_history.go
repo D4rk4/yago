@@ -109,7 +109,7 @@ func validateLeaseSettlementRecord(record leaseSettlementRecord) error {
 	}
 	if !record.Terminal {
 		if len(record.OrderIdentity) != 0 || record.WorkerSessionID != "" ||
-			record.Progress != (yagocrawlcontract.CrawlRunProgress{}) ||
+			!record.Progress.Equal(yagocrawlcontract.CrawlRunProgress{}) ||
 			record.ProgressDelivered || record.FinalizedAtUnixNano != 0 {
 			return fmt.Errorf("invalid legacy lease settlement definition")
 		}
@@ -184,7 +184,7 @@ func sameTerminalLeaseSettlement(left, right leaseSettlementRecord) bool {
 		bytes.Equal(left.OrderIdentity, right.OrderIdentity) &&
 		left.Progress.WorkerID == right.Progress.WorkerID &&
 		left.WorkerSessionID == right.WorkerSessionID &&
-		left.Progress.State == right.Progress.State && left.Progress.Tally == right.Progress.Tally &&
+		left.Progress.State == right.Progress.State && left.Progress.Tally.Equal(right.Progress.Tally) &&
 		left.Progress.RecentOutcomes == right.Progress.RecentOutcomes &&
 		left.Progress.PagesPerMinute == right.Progress.PagesPerMinute &&
 		left.Progress.RateKnown == right.Progress.RateKnown

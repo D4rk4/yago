@@ -151,12 +151,12 @@ func assertPortalTavilyRequests(
 			t.Fatalf("source or web opt-in changed: %+v", request)
 		}
 	}
-	if requests[0].Verify != searchcore.VerifyIfExist || requests[1].Verify != verify {
+	if requests[0].Verify != searchcore.VerifyFalse || requests[1].Verify != verify {
 		t.Fatalf(
 			"portal/Tavily verify modes = %q/%q, want %q/%q",
 			requests[0].Verify,
 			requests[1].Verify,
-			searchcore.VerifyIfExist,
+			searchcore.VerifyFalse,
 			verify,
 		)
 	}

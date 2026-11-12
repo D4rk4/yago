@@ -12,8 +12,21 @@ func (c *IngestConsumer) replaceOutboundAnchorDocuments(
 	sets []documentstore.OutboundAnchorSet,
 	reservation documentstore.DocumentLineageReservation,
 ) (bool, bool) {
+	indexFailed := false
+	visit := func(documents []documentstore.Document) error {
+		if c.index == nil {
+			return nil
+		}
+		finishIndex := c.measureIngestStage(IngestStageOutboundAnchorIndexCallback)
+		err := c.indexDocuments(ctx, documents)
+		finishIndex()
+		indexFailed = err != nil
+
+		return err
+	}
 	var receipt documentstore.AnchorReplacementReceipt
 	var err error
+	finishReplacement := c.measureIngestStage(IngestStageOutboundAnchorDocumentReplacement)
 	switch reservation {
 	case nil:
 		replacer, ok := c.anchors.(documentstore.OutboundAnchorDocumentReplacer)
@@ -32,6 +45,7 @@ func (c *IngestConsumer) replaceOutboundAnchorDocuments(
 			sets,
 		)
 	}
+	finishReplacement()
 	if err != nil {
 		c.redeliverGroup(ctx, deliveries, "inbound anchor store", err)
 

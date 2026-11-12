@@ -15,6 +15,7 @@ import (
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/metrics"
 	"github.com/D4rk4/yago/yagonode/internal/rwi"
+	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 	"github.com/D4rk4/yago/yagonode/internal/shardvault"
 	"github.com/D4rk4/yago/yagonode/internal/vault"
 	"github.com/D4rk4/yago/yagoproto"
@@ -171,6 +172,7 @@ func bootNodeWithEventDrain(
 	if err != nil {
 		return nil, err
 	}
+	storageVault.SetVaultUpdateObserver(obs.vaultUpdates)
 	defer closeEventPersistence(obs.persistence)
 	eventDrain := obs.persistence.done
 
@@ -208,20 +210,22 @@ func bootNodeWithEventDrain(
 		storageVault,
 		client,
 		nodeTelemetry{
-			dhtOutbound:      obs.dhtOutbound,
-			dhtInbound:       obs.dhtInbound,
-			peer:             obs.peer,
-			search:           obs.search,
-			crawl:            obs.crawl,
-			indexWrites:      obs.indexWrites,
-			crawlRuns:        obs.crawlRuns,
-			remoteCrawl:      obs.remoteCrawl,
-			recorder:         obs.recorder,
-			searchAuthorizer: buildSearchScopeAuthorizer(authService),
-			toggles:          toggles,
-			saturation:       obs.saturation,
-			registry:         obs.endpoints.Registry(),
-			storagePressure:  storagePressure,
+			dhtOutbound:        obs.dhtOutbound,
+			dhtInbound:         obs.dhtInbound,
+			peer:               obs.peer,
+			search:             obs.search,
+			crawl:              obs.crawl,
+			indexWrites:        obs.indexWrites,
+			ingestStages:       obs.ingestStages,
+			crawlRuns:          obs.crawlRuns,
+			remoteCrawl:        obs.remoteCrawl,
+			recorder:           obs.recorder,
+			searchAuthorizer:   buildSearchScopeAuthorizer(authService),
+			crawlKeyAuthorizer: buildCrawlerAPIKeyAuthorizer(authService),
+			toggles:            toggles,
+			saturation:         obs.saturation,
+			registry:           obs.endpoints.Registry(),
+			storagePressure:    storagePressure,
 		},
 	)
 	if err != nil {
@@ -341,10 +345,10 @@ func serve(
 		}(binding)
 	}
 	var background sync.WaitGroup
-	background.Add(3)
+	background.Add(2)
+	startSearchReadWarmup(ctx, &background, assembled.index)
 	startPeerPresenceLoops(ctx, &background, assembled)
 	startRedirectPurge(ctx, &background, assembled)
-	startCrawlScheduleLoop(ctx, &background, assembled)
 	startTransferTallyFlush(ctx, &background, assembled.transferTally)
 	go func() {
 		defer background.Done()
@@ -354,6 +358,7 @@ func serve(
 		defer background.Done()
 		runCorpusSignalRefreshLoop(ctx, corpusSignalRefreshForNode(ctx, assembled))
 	}()
+	startRWIBackfillWorker(ctx, &background, assembled)
 	startMaintenanceLoops(ctx, &background, assembled)
 	if assembled.crawl != nil {
 		defer assembled.crawl.Close()
@@ -362,13 +367,6 @@ func serve(
 			defer background.Done()
 			assembled.crawl.Run(ctx)
 		}()
-		if sweeper, ok := crawlRecrawlSweeper(assembled.crawl); ok {
-			background.Add(1)
-			go func() {
-				defer background.Done()
-				runRecrawlSweepLoop(ctx, sweeper)
-			}()
-		}
 	}
 	if assembled.dht.cycle != nil {
 		background.Add(1)
@@ -389,15 +387,44 @@ func serve(
 	}
 }
 
+func startSearchReadWarmup(
+	ctx context.Context,
+	background *sync.WaitGroup,
+	index searchindex.SearchIndex,
+) {
+	warmer, ok := index.(searchindex.ReadCacheWarmer)
+	if !ok {
+		return
+	}
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		if err := warmer.WarmReadCache(ctx); err != nil && ctx.Err() == nil {
+			slog.WarnContext(ctx, "search index read warmup failed", slog.Any("error", err))
+		}
+	}()
+}
+
+func startRWIBackfillWorker(ctx context.Context, background *sync.WaitGroup, assembled node) {
+	if assembled.rwiBackfill == nil {
+		return
+	}
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		assembled.rwiBackfill.Run(ctx)
+	}()
+}
+
 // startPeerPresenceLoops runs the DHT announcer and the LAN discovery beacon;
 // the beacon is nil on deployments that disabled discovery, and Run on a nil
 // beacon is a no-op.
 func startPeerPresenceLoops(ctx context.Context, background *sync.WaitGroup, assembled node) {
+	background.Add(2)
 	go func() {
 		defer background.Done()
 		assembled.announcer.Run(ctx)
 	}()
-	background.Add(1)
 	go func() {
 		defer background.Done()
 		assembled.lanBeacon.Run(ctx)

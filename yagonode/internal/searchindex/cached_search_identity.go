@@ -25,6 +25,8 @@ func cacheKey(req SearchRequest) string {
 	writeCacheField(&builder, strconv.FormatBool(req.IncludeFieldScores))
 	writeCacheField(&builder, strconv.FormatBool(req.IncludePositions))
 	writeCacheField(&builder, strconv.FormatBool(req.CandidateOnly))
+	writeCacheField(&builder, strconv.FormatBool(req.TitleOnly))
+	writeCacheField(&builder, strconv.FormatBool(req.AllowCandidateSampling))
 	writeCacheField(&builder, strconv.FormatBool(req.Fuzzy))
 	writeCacheField(&builder, strconv.FormatBool(req.Relaxed))
 	writeCacheField(&builder, req.Author)

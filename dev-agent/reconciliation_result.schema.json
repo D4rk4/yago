@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["processed", "blocked"]
+    },
+    "dev_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 2000
+    }
+  },
+  "required": ["status", "dev_sha", "summary"],
+  "additionalProperties": false
+}

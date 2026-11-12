@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     set -eu; \
     printf '%s\n' "$VERSION" | grep -Eq '^(v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)|[0-9]{4}\.[0-9]{2}\.[0-9]{2}-dev)$'; \
     GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build \
+    go build -buildvcs=false \
         -ldflags="-s -w -X main.version=${VERSION}" \
         -o /out/yago-crawler \
         ./yago-crawler/cmd/yago-crawler
@@ -72,4 +72,4 @@ VOLUME ["/opt/yago/data"]
 
 USER 65534:65534
 
-ENTRYPOINT ["ionice", "-c", "2", "-n", "6", "nice", "-n", "5", "/opt/yago/bin/yago-crawler"]
+ENTRYPOINT ["/opt/yago/bin/yago-crawler"]

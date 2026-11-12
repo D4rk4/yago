@@ -514,7 +514,7 @@ func requireBackupCrawlState(
 		}
 	}
 	recent := runs.Recent()
-	if len(recent) != 1 || recent[0].RunID != progress.RunID || recent[0].Tally != progress.Tally {
+	if len(recent) != 1 || recent[0].RunID != progress.RunID || !recent[0].Tally.Equal(progress.Tally) {
 		t.Fatalf("restored terminal runs = %+v", recent)
 	}
 	if err := runs.ConfirmTerminalDelivery(ctx, identity); err != nil {

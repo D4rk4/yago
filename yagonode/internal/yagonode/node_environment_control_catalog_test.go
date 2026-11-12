@@ -971,7 +971,7 @@ func addRuntimeEnvironmentFacilities(add environmentCatalogAdder) {
 	} {
 		add(environment, environmentControlCatalogEntry{
 			class: environmentDedicatedAdmin, consumers: environmentNodeConsumer,
-			targetSpecificFacility: environment == envCrawlRPCAddr,
+			targetSpecificFacility: environment == envCrawlRPCAddr || environment == envOpsAddr,
 			dedicatedAdminSurface:  surface,
 		})
 	}
@@ -1015,7 +1015,14 @@ func addMigrationEnvironmentControls(
 	add environmentCatalogAdder,
 ) {
 	t.Helper()
-	for _, name := range []string{envWebFallbackEnabled, envWebFallbackProvider, envWebFallbackTrigger} {
+	for _, name := range []string{
+		envWebFallbackEnabled,
+		envWebFallbackProvider,
+		envWebFallbackTrigger,
+		"YACY_USERNAME",
+		"YACY_PASSWORD",
+		"YAGO_API_KEY",
+	} {
 		add(
 			name,
 			environmentControlCatalogEntry{

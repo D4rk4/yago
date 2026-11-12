@@ -41,11 +41,14 @@ func TestInteractiveSearchAdmissionWaitLeavesTimeToSearch(t *testing.T) {
 	}
 	// The parallel privacy mode runs the widest primary stage; a caller that
 	// spent its wait queueing must still be able to run it.
-	if remaining := usable - interactiveSearchAdmissionWait; remaining < webFallbackPrimaryStageBudget {
+	parallelBudget := webFallbackPrimaryStageBudget(webFallbackConfig{
+		Privacy: webFallbackPrivacyAlways,
+	})
+	if remaining := usable - interactiveSearchAdmissionWait; remaining < parallelBudget {
 		t.Fatalf(
 			"waiting for a slot leaves %s, less than the %s primary stage",
 			remaining,
-			webFallbackPrimaryStageBudget,
+			parallelBudget,
 		)
 	}
 }

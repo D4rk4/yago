@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"sync/atomic"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/mapping"
@@ -18,18 +19,39 @@ import (
 
 const diskLexicalCandidateMaximumDocumentsPerShard = diskLexicalCandidateMaximumDocuments / diskShardCount
 
+const diskLexicalCandidateProgressiveWindowDocuments = 256
+
 type bleveLexicalCandidateSnapshotQuery struct {
 	candidate        blevequery.Query
 	maximumDocuments int
+	allowIncomplete  bool
+	incomplete       *atomic.Bool
+	randomStart      func(uint64) (uint64, error)
+}
+
+type bleveLexicalCandidateWindow struct {
+	maximumDocuments int
+	startID          bleveindex.IndexInternalID
+	forceIncomplete  bool
 }
 
 func newBleveLexicalCandidateSnapshotQuery(
 	req SearchRequest,
 	multilingual bool,
+	allowIncomplete bool,
+	incomplete *atomic.Bool,
 ) blevequery.Query {
+	maximumDocuments := diskLexicalCandidateMaximumDocumentsPerShard
+	if allowIncomplete {
+		maximumDocuments = diskLexicalCandidateProgressiveWindowDocuments
+	}
+
 	return &bleveLexicalCandidateSnapshotQuery{
 		candidate:        bleveLexicalCandidateQuery(req, multilingual),
-		maximumDocuments: diskLexicalCandidateMaximumDocumentsPerShard,
+		maximumDocuments: maximumDocuments,
+		allowIncomplete:  allowIncomplete,
+		incomplete:       incomplete,
+		randomStart:      cryptographicSearchRandomDocumentID,
 	}
 }
 
@@ -39,29 +61,90 @@ func (query *bleveLexicalCandidateSnapshotQuery) Searcher(
 	indexMapping mapping.IndexMapping,
 	options search.SearcherOptions,
 ) (search.Searcher, error) {
-	identities, complete, err := collectBleveLexicalCandidateSnapshot(
+	window, err := query.progressiveWindow(reader)
+	if err != nil {
+		return nil, err
+	}
+	identities, complete, err := collectBleveLexicalCandidateSnapshotFrom(
 		ctx,
 		reader,
 		indexMapping,
 		query.candidate,
-		query.maximumDocuments,
+		window,
 	)
 	if err != nil {
 		return nil, err
 	}
 	if !complete {
-		allDocuments, err := searcher.NewMatchAllSearcher(ctx, reader, 0, options)
-		if err != nil {
-			return nil, fmt.Errorf("retain complete lexical search: %w", err)
-		}
-
-		return allDocuments, nil
-	}
-	if len(identities) == 0 {
-		return newBleveLexicalCandidateInternalSearcher(nil, options), nil
+		return query.incompleteSearcher(ctx, reader, identities, options)
 	}
 
 	return newBleveLexicalCandidateInternalSearcher(identities, options), nil
+}
+
+func (query *bleveLexicalCandidateSnapshotQuery) progressiveWindow(
+	reader bleveindex.IndexReader,
+) (bleveLexicalCandidateWindow, error) {
+	window := bleveLexicalCandidateWindow{maximumDocuments: query.maximumDocuments}
+	if !query.allowIncomplete {
+		return window, nil
+	}
+	documentCount, err := reader.DocCount()
+	if err != nil {
+		return bleveLexicalCandidateWindow{}, fmt.Errorf(
+			"count documents for progressive sample: %w",
+			err,
+		)
+	}
+	if window.maximumDocuments <= 0 {
+		return bleveLexicalCandidateWindow{}, fmt.Errorf(
+			"progressive sample maximum must be positive",
+		)
+	}
+	if documentCount <= uint64(window.maximumDocuments) {
+		return window, nil
+	}
+	randomStart := query.randomStart
+	if randomStart == nil {
+		randomStart = cryptographicSearchRandomDocumentID
+	}
+	value, err := randomStart(documentCount)
+	if err != nil {
+		return bleveLexicalCandidateWindow{}, fmt.Errorf(
+			"choose progressive sample position: %w",
+			err,
+		)
+	}
+	if value >= documentCount {
+		return bleveLexicalCandidateWindow{}, fmt.Errorf(
+			"progressive sample position outside document range",
+		)
+	}
+	window.startID = bleveindex.NewIndexInternalID(nil, value)
+	window.forceIncomplete = true
+
+	return window, nil
+}
+
+func (query *bleveLexicalCandidateSnapshotQuery) incompleteSearcher(
+	ctx context.Context,
+	reader bleveindex.IndexReader,
+	identities []bleveindex.IndexInternalID,
+	options search.SearcherOptions,
+) (search.Searcher, error) {
+	if query.allowIncomplete {
+		if query.incomplete != nil {
+			query.incomplete.Store(true)
+		}
+
+		return newBleveLexicalCandidateInternalSearcher(identities, options), nil
+	}
+	allDocuments, err := searcher.NewMatchAllSearcher(ctx, reader, 0, options)
+	if err != nil {
+		return nil, fmt.Errorf("retain complete lexical search: %w", err)
+	}
+
+	return allDocuments, nil
 }
 
 func (*bleveLexicalCandidateSnapshotQuery) Field() string {
@@ -77,10 +160,26 @@ func collectBleveLexicalCandidateSnapshot(
 	query blevequery.Query,
 	maximumDocuments int,
 ) ([]bleveindex.IndexInternalID, bool, error) {
+	return collectBleveLexicalCandidateSnapshotFrom(
+		ctx,
+		reader,
+		indexMapping,
+		query,
+		bleveLexicalCandidateWindow{maximumDocuments: maximumDocuments},
+	)
+}
+
+func collectBleveLexicalCandidateSnapshotFrom(
+	ctx context.Context,
+	reader bleveindex.IndexReader,
+	indexMapping mapping.IndexMapping,
+	query blevequery.Query,
+	window bleveLexicalCandidateWindow,
+) ([]bleveindex.IndexInternalID, bool, error) {
 	if query == nil {
 		return nil, false, fmt.Errorf("lexical candidate query required")
 	}
-	if maximumDocuments <= 0 {
+	if window.maximumDocuments <= 0 {
 		return nil, false, fmt.Errorf("lexical candidate maximum required")
 	}
 	if err := ctx.Err(); err != nil {
@@ -104,7 +203,8 @@ func collectBleveLexicalCandidateSnapshot(
 		ctx,
 		reader,
 		candidates,
-		maximumDocuments,
+		window.maximumDocuments,
+		window.startID,
 	)
 	closeErr := candidates.Close()
 	if closeErr != nil {
@@ -113,12 +213,15 @@ func collectBleveLexicalCandidateSnapshot(
 	if collectionErr != nil || closeErr != nil {
 		return nil, false, errors.Join(collectionErr, closeErr)
 	}
-	if len(identities) > maximumDocuments {
-		return nil, false, nil
-	}
 	sort.Slice(identities, func(first, second int) bool {
 		return identities[first].Compare(identities[second]) < 0
 	})
+	if len(identities) > window.maximumDocuments {
+		return identities[:window.maximumDocuments], false, nil
+	}
+	if window.forceIncomplete {
+		return identities, false, nil
+	}
 
 	return identities, true, nil
 }
@@ -128,6 +231,7 @@ func readBleveLexicalCandidateSnapshot(
 	reader bleveindex.IndexReader,
 	candidates search.Searcher,
 	maximumDocuments int,
+	startID bleveindex.IndexInternalID,
 ) ([]bleveindex.IndexInternalID, error) {
 	candidateContext := &search.SearchContext{
 		DocumentMatchPool: search.NewDocumentMatchPool(
@@ -138,7 +242,19 @@ func readBleveLexicalCandidateSnapshot(
 	}
 	identities := make([]bleveindex.IndexInternalID, 0, maximumDocuments+1)
 	var collectionErr error
-	for len(identities) <= maximumDocuments {
+	var first *search.DocumentMatch
+	if len(startID) > 0 {
+		match, err := candidates.Advance(candidateContext, startID)
+		if err != nil {
+			collectionErr = fmt.Errorf(
+				"seek progressive lexical candidate window: %w",
+				bleveSearchOperationError(ctx, err),
+			)
+		} else {
+			first = match
+		}
+	}
+	for len(identities) <= maximumDocuments && collectionErr == nil {
 		if err := ctx.Err(); err != nil {
 			collectionErr = fmt.Errorf(
 				"collect lexical candidate snapshot: %w",
@@ -147,14 +263,19 @@ func readBleveLexicalCandidateSnapshot(
 
 			break
 		}
-		match, err := candidates.Next(candidateContext)
-		if err != nil {
-			collectionErr = fmt.Errorf(
-				"collect lexical candidate snapshot: %w",
-				bleveSearchOperationError(ctx, err),
-			)
+		match := first
+		first = nil
+		if match == nil {
+			var err error
+			match, err = candidates.Next(candidateContext)
+			if err != nil {
+				collectionErr = fmt.Errorf(
+					"collect lexical candidate snapshot: %w",
+					bleveSearchOperationError(ctx, err),
+				)
 
-			break
+				break
+			}
 		}
 		if match == nil {
 			break
@@ -170,6 +291,9 @@ func readBleveLexicalCandidateSnapshot(
 			append(bleveindex.IndexInternalID(nil), match.IndexInternalID...),
 		)
 		candidateContext.DocumentMatchPool.Put(match)
+	}
+	if first != nil {
+		candidateContext.DocumentMatchPool.Put(first)
 	}
 
 	return identities, collectionErr

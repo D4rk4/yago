@@ -34,43 +34,15 @@ func TestAdminSearchRedirectKeepsUntrustedQueryInsideFixedLocation(t *testing.T)
 	}
 }
 
-func TestCrawlRunRedirectKeepsPageAndFragmentOnFixedLocation(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		page     int
-		location string
-	}{
-		{name: "first", page: 1, location: "/admin/crawl#crawl-monitor"},
-		{name: "later", page: 7, location: "/admin/crawl?cpage=7#crawl-monitor"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			recorder := httptest.NewRecorder()
-			redirectCrawlRunPage(recorder, test.page)
-			if recorder.Code != http.StatusSeeOther ||
-				recorder.Header().Get("Location") != test.location {
-				t.Fatalf(
-					"redirect = %d %q, want %d %q",
-					recorder.Code,
-					recorder.Header().Get("Location"),
-					http.StatusSeeOther,
-					test.location,
-				)
-			}
-		})
-	}
-}
-
-func TestCrawlRunRedirectRejectsUntrustedPageSyntax(t *testing.T) {
+func TestCrawlRunRedirectUsesFixedCrawlerLocation(t *testing.T) {
 	t.Parallel()
 
 	recorder := httptest.NewRecorder()
-	redirectCrawlRunPage(recorder, requestedCrawlRunPage("//outside.example/#escape"))
+	redirectCrawlRunPage(recorder)
 	if location := recorder.Header().Get("Location"); location != "/admin/crawl#crawl-monitor" {
 		t.Fatalf("Location = %q", location)
+	}
+	if recorder.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusSeeOther)
 	}
 }

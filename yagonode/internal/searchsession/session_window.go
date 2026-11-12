@@ -14,6 +14,7 @@ type sessionWindow struct {
 	recovered  string
 	didYouMean string
 	facets     []searchcore.FacetGroup
+	coverage   *searchcore.SearchCoverage
 }
 
 func (e *session) replaceVisibleWindowLocked() {
@@ -25,6 +26,7 @@ func (e *session) replaceVisibleWindowLocked() {
 		recovered:  e.recovered,
 		didYouMean: e.didYouMean,
 		facets:     e.facets,
+		coverage:   e.coverage,
 	})
 }
 
@@ -54,5 +56,6 @@ func (w *sessionWindow) respond(req searchcore.Request) searchcore.Response {
 		Recovered:       strings.Clone(w.recovered),
 		DidYouMean:      strings.Clone(w.didYouMean),
 		Facets:          cloneSessionFacets(w.facets),
+		Coverage:        cloneSessionCoverage(w.coverage),
 	}
 }

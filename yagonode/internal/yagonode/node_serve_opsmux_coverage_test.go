@@ -3,6 +3,7 @@ package yagonode
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -19,7 +20,13 @@ func crawlEnabledNode(t *testing.T) (nodeConfig, node) {
 	return config, assembled
 }
 
-func TestServeRunsRecrawlSweepForCrawlNode(t *testing.T) {
+func TestServeDoesNotStartNodeRecrawlSweep(t *testing.T) {
+	previous := newRecrawlSweepTicks
+	newRecrawlSweepTicks = func(time.Duration) (<-chan time.Time, func()) {
+		t.Error("node recrawl sweep was started")
+		return make(chan time.Time), func() {}
+	}
+	t.Cleanup(func() { newRecrawlSweepTicks = previous })
 	_, assembled := crawlEnabledNode(t)
 
 	ctx, cancel := context.WithCancel(context.Background())

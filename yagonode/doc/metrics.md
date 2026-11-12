@@ -18,6 +18,12 @@ The endpoint can also be turned off entirely: `YAGO_METRICS_ENABLED` defaults to
 `true`, and setting it to `false` unmounts `/metrics` so it returns 404 while the
 collectors still run harmlessly in the background.
 
+Existing Bleve indexes open before full segment consolidation or read-cache
+loading. The node begins those tasks after binding its listeners. Structured
+`bleve read segment consolidation` and `bleve read cache loading` log events show
+their start and completion, including shard, segment, and byte totals where
+available. Searches remain available while the page cache warms.
+
 ## Metric groups
 
 The registry publishes:
@@ -47,7 +53,9 @@ The registry publishes:
   `YAGO_STORAGE_QUOTA`, main-vault eviction, and main-vault compaction and
   has a separately configurable soft physical admission boundary through
   `crawler.node_state_max_bytes` and `YAGO_CRAWLER_NODE_STATE_MAX_BYTES`, which
-  default to 4 GiB and accept zero to disable the boundary. Alert on the
+  default to 10% of the effective storage quota capped by free space after the
+  node reserve. An unlimited quota uses 10% of measured free space after
+  reserve; an explicit size overrides the calculation, and zero disables it. Alert on the
   allocated-file gauge and filesystem free space; bbolt may keep free pages
   after live rows are deleted.
 - **Eviction** — URLs and postings purged under quota pressure and sweeps that
@@ -73,20 +81,40 @@ The registry publishes:
   results from the crawl fleet (`crawl_ingest_batches_total`,
   `crawl_ingest_deferrals_total`, `crawl_ingest_content_bytes_total`,
   `crawl_ingest_urls_total`, `crawl_ingest_postings_total`).
-- **Conditional recrawl** — due recrawl orders published with a conditional
-  fetch, and not-modified observations the node recorded or refused
-  (`crawl_recrawl_conditional_fetches_total`,
-  `crawl_ingest_not_modified_recorded_total`,
-  `crawl_ingest_not_modified_refused_total`). A refused observation is stale,
-  belongs to another crawl profile, or no longer matches the stored document,
-  so the crawler fetches the page in full. An observation that fails to record
-  counts as a deferral, not as refused. These series carry no URL labels.
+- **Crawler run outcomes** — terminal-run totals for document candidates,
+  accepted mutations, removals, pages with no document mutation, node rejections,
+  pending ingest, and unclassified historical pages (`crawl_run_outcomes_total`).
+  Fixed-cardinality rejection and no-mutation reason totals use
+  `crawl_page_outcome_reasons_total{class,reason}`. The `/admin/crawl` monitor
+  shows the current crawler-reported tallies; Prometheus counters advance when
+  runs reach a terminal state.
 - **Crawl search-index writes** — successful documents, failed write attempts,
   and one duration observation per Bleve batch or fallback write attempt
   (`crawl_search_index_documents_total`,
   `crawl_search_index_write_failures_total`,
   `crawl_search_index_write_duration_seconds`). A failed attempt contributes no
   successful document count, and these series carry no URL or error labels.
+- **Crawl ingest stages** — fixed-bucket duration histograms for queue wait,
+  delivery authorization and admission, observation history, lineage
+  reservation, document canonicalization, content-cluster preparation, evidence
+  preparation, lease acquisition, transition reads and recovery, candidate
+  planning, projection-lease expansion, transition commit, output completion,
+  cluster replacement, existing-cluster projection refresh and finalization,
+  document-vault writes, search-index writes, outbound-anchor updates and
+  document replacements, their index callbacks, fallback projections, target
+  document visits, publication finalization, URL metadata writes, stale-posting
+  sweeps, RWI posting writes, and recrawl recording
+  (`crawl_ingest_stage_duration_seconds{stage}`). Stage labels use only this
+  fixed vocabulary and never contain URLs or hosts. Compare each stage's
+  five-minute p50 and p95 to see where ingest time accumulates, for example:
+  `histogram_quantile(0.95, sum by (le, stage) (rate(crawl_ingest_stage_duration_seconds_bucket[5m])))`.
+  Outbound-anchor document replacement includes its index callback; compare
+  `outbound_anchor_document_replacement` with
+  `outbound_anchor_index_callback` to separate the callback from the remaining
+  replacement work.
+  Transition commit measures grouped reconciliation after replay evidence has
+  been durably stored; failed partial shard commits remain eligible for replay.
+- **Vault update phases** — `vault_update_phase_duration_seconds{phase,attempt}` separates read-yield, writer-admission, global-gate, transaction callback, lazy shard-transaction opening, commit validation, per-shard commit, total commit, and total update durations. `attempt` distinguishes the initial pass, the concurrent fast path, the contended retry, and the full update. Shard-transaction and shard-commit observations are emitted once per touched shard and are nested within the transaction and commit totals; phase and attempt labels are fixed and contain no shard identifiers or crawl data.
 - **Remote crawl** — opt-in YaCy delegation decisions by the fixed `action` and
   `outcome` vocabulary (`remote_crawl_decisions_total`). A decision with items
   advances by its bounded item count; a rejection or empty decision advances by
@@ -158,3 +186,24 @@ cannot preserve stale utilization. Multiple crawlers use their aggregate
 capacity and retain the crawler count and per-crawler limit in text. Disabling
 the crawler runtime also removes this row. This live value is not retained in
 the ten-second history and does not trigger a metrics gathering or host scan.
+
+The Performance page's Crawler pulse refreshes its server-rendered fragment
+every five seconds and combines current activity with the run registry's
+five-second cumulative progress reports. It calculates fetched
+and indexed pages per minute independently from tally deltas across up to the
+last 60 seconds; the configured per-run page rate is not used as measured
+throughput. Process totals include deltas from completed runs, so short orders
+remain visible after their run ends. A rate needs two reports and expires when
+its last sample leaves the 60-second window. Rates are grouped by the current
+crawler process session, and the table shows a short process ID beside the
+persistent worker identity. Rates are volatile and are lost on node restart.
+The per-process table keeps missing or stale activity unavailable rather than
+treating it as idle. Its signals are deterministic: queued orders with no
+workers, dominant fetch-admission waits, occupied capacity, or mostly idle
+fetch slots. The page does not change worker limits or crawl policy.
+
+The heartbeat's optional `fetch_admission_waiting` value counts active jobs
+parked on a fetch-start or per-process rate governor. It is reported separately
+from the active count, so a high wait share indicates a rate ceiling rather than
+useful additional concurrency. This field is additive on the node-crawler gRPC
+contract and does not add a Prometheus series or YaCy wire field.
