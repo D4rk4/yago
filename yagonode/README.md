@@ -17,9 +17,20 @@ bounded full-shard search then continues for that query. Only complete results
 are retained in the existing five-minute, 32 MiB in-memory session cache; a
 process restart clears those cached responses.
 
-The public root portal requests progress-aware retrieval for eligible
-first-page plain queries. Its server-rendered response can therefore include
-the first useful local shard sample within the existing search deadline.
+The public root portal uses the deadline-bounded global local-plus-peer search.
+Shard progress is streamed only to clients consuming
+`/yacysearch.ndjson`; the HTML page does not cancel peer retrieval to return an
+intermediate local sample.
+
+Portal searches use `verify=false`: remote rows are kept only when the
+peer-supplied visible text supports the query, and the node does not fetch
+result pages while rendering the search response. Tavily `advanced` keeps its
+separate `verify=ifexist` behavior.
+
+The search form has an unchecked web-search option. Selecting it gives
+request-level consent to share that query with an external provider when the
+operator's web-search policy permits it. Pagination keeps the selection for
+the same search.
 
 Browser clients can consume updates through the YaCy-compatible
 `/yacysearch.ndjson` endpoint. The HTML search page updates as those results

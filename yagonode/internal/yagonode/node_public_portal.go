@@ -95,15 +95,24 @@ func (s portalSource) Search(
 	query, dom string,
 	offset, limit int,
 ) (publicportal.SearchResults, error) {
-	ctx = withPortalProgressiveSearch(ctx)
+	return s.SearchWithWebConsent(ctx, query, dom, offset, limit, false)
+}
+
+func (s portalSource) SearchWithWebConsent(
+	ctx context.Context,
+	query, dom string,
+	offset, limit int,
+	consented bool,
+) (publicportal.SearchResults, error) {
 	domain := portalContentDomain(dom)
 	response, err := s.searcher.Search(ctx, searchcore.Request{
-		Query:         query,
-		Source:        searchcore.SourceGlobal,
-		ContentDomain: domain,
-		Verify:        searchcore.VerifyIfExist,
-		Offset:        offset,
-		Limit:         limit,
+		Query:            query,
+		Source:           searchcore.SourceGlobal,
+		ContentDomain:    domain,
+		Verify:           searchcore.VerifyFalse,
+		AllowWebFallback: consented,
+		Offset:           offset,
+		Limit:            limit,
 	})
 	if err != nil {
 		return publicportal.SearchResults{}, fmt.Errorf("portal search: %w", err)
