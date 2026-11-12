@@ -166,6 +166,9 @@ the pinned stock-Java image
 
 ## Agent API Targets
 
+When the public search portal is enabled, its `/api` page provides a short agent
+quickstart and links to this reference.
+
 Every Tavily-compatible JSON request body is limited to 64 KiB. A larger body
 returns HTTP 413. Successful responses carry `request_id`; every error body is
 exactly `{"detail":{"error":"..."}}` and carries neither a request ID nor a

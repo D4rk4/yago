@@ -1,0 +1,51 @@
+{{define "agent-api"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Agent API — yago</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #161616; background: #ffffff; margin: 0; }
+  main { max-width: 48rem; margin: 0 auto; padding: 1.5rem; }
+  a { color: #0f62fe; }
+  .brand { color: #d81c2f; font-size: 1.25rem; font-weight: 700; text-decoration: none; }
+  h1 { margin-top: 2rem; }
+  p, li { line-height: 1.55; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  pre { overflow-x: auto; padding: 1rem; background: #f4f4f4; border: 1px solid #e0e0e0; }
+  .foot { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e0e0e0; color: #525252; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <a class="brand" href="/">yago</a>
+  <h1>Use the agent API</h1>
+  <p>Yago provides a Tavily-compatible HTTP API on this host. Requests use JSON and a bearer API key.</p>
+
+  <h2>Create an API key</h2>
+  <p>In Admin, open <a href="/admin/security">Security</a> and create a Search API key. Give it <code>search:read</code> for ordinary search. Add <code>search:raw</code> to request full page content or use Extract, Crawl, and Map. The key secret is shown once when created.</p>
+
+  <h2>Search</h2>
+  <p>Send a JSON request to <code>POST /search</code>:</p>
+  <pre><code>export YAGO_URL="https://your-yago-host"
+export YAGO_API_KEY="your-search-api-key"
+
+curl "$YAGO_URL/search" \
+  -H "Authorization: Bearer $YAGO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"open source Go search engine","max_results":5}'</code></pre>
+
+  <h2>Other endpoints</h2>
+  <ul>
+    <li><code>POST /extract</code> — extract content from one or more URLs.</li>
+    <li><code>POST /crawl</code> — crawl a bounded set of pages from a URL.</li>
+    <li><code>POST /map</code> — discover URLs without returning page content.</li>
+  </ul>
+  <p>These endpoints require <code>search:raw</code>. All four endpoints accept JSON POST requests and return JSON.</p>
+  <p>See the <a href="https://github.com/D4rk4/yago/blob/dev/yagonode/doc/compatibility.md#agent-api-targets">full API reference</a> for request fields, limits, response formats, and error behavior.</p>
+
+  <p class="foot"><a href="/">Back to search</a></p>
+</main>
+</body>
+</html>{{end}}

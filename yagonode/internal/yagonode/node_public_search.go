@@ -245,6 +245,7 @@ func mountNodePublicSearchWithExplanation(
 	publicportal.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	yacysearch.SetBaseURLProvider(assembly.toggles.PublicBaseURL)
 	mountPortalOpenSearch(mux, assembly.toggles)
+	mux.Handle("/api", portalGate(assembly.toggles, publicportal.AgentAPIGuide()))
 	publicrobots.Mount(mux, assembly.toggles.RobotsPolicy)
 	publicportal.SetGreetingProvider(assembly.toggles.PortalGreeting)
 

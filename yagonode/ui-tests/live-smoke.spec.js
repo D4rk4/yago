@@ -7,6 +7,16 @@ test('public portal exposes the search form', async ({ page }) => {
   await expect(page.getByRole('button', { name: /search/i })).toBeVisible();
 });
 
+test('public portal links to the agent API guide', async ({ page }) => {
+  const response = await page.goto('/');
+  expect(response.status()).toBeLessThan(400);
+  const guideLink = page.getByRole('link', { name: 'Use the agent API' });
+  await expect(guideLink).toHaveAttribute('href', '/api');
+  await guideLink.click();
+  await expect(page.getByRole('heading', { name: 'Use the agent API' })).toBeVisible();
+  await expect(page.getByText('search:read', { exact: false })).toBeVisible();
+});
+
 test('public local search accepts a synthetic query without reporting an error', async ({ page }) => {
   const query = `dev-smoke-${Date.now().toString(36)}`;
   const response = await page.goto('/yacysearch.html?resource=local&contentdom=text');

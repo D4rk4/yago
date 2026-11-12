@@ -105,6 +105,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
       </span>
       <button type="submit">Search</button>
     </form>
+    <p class="meta"><a href="/api">Use the agent API</a></p>
     <details class="ophelp">
       <summary>Search operators</summary>
       <ul>
@@ -195,7 +196,7 @@ nav.pager { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0 0.5r
   {{end}}
   {{end}}
   </div>
-  <div class="foot">{{.Brand}} — free software under the GNU AGPL v3.<br>
+  <div class="foot"><a href="/api">Agent API</a> · {{.Brand}} — free software under the GNU AGPL v3.<br>
   Searches fan out to peers in the YaCy network, which see your query terms; results are labelled by where they came from (<span class="prov prov-local">local</span> this node's index, <span class="prov prov-peer">peer</span> another node, <span class="prov prov-web">web</span> an external provider that receives your query, whose pages may be queued for this node to crawl).</div>
 </div>
 <script>

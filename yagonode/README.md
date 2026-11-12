@@ -3,6 +3,10 @@
 The `yago-node` process serves the local search index, YaCy-compatible peer
 endpoints, and the public search APIs.
 
+When the public search portal is enabled, `/api` provides an agent API
+quickstart with authentication and a search example. It links to the full
+Tavily-compatible request and response reference in `doc/compatibility.md`.
+
 ## Progressive local search
 
 Eligible first-page plain queries return a useful randomized shard sample as
