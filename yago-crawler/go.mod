@@ -1,6 +1,6 @@
 module github.com/D4rk4/yago/yago-crawler
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/D4rk4/yago/yagocrawlcontract v0.0.0

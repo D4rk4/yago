@@ -1,5 +1,10 @@
 # Dependency security
 
+Source, package, and container builds require Go 1.26.11. This includes the `net/http`
+request-body limit race correction described in [GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859).
+Both container builders pin the same multi-architecture toolchain image. This changes
+neither application dependencies nor stored data or wire formats.
+
 The node and crawler pin gRPC v1.83.2. This includes the receive-memory correction for fragmented HTTP/2
 streams described in [the upstream gRPC advisory](https://github.com/grpc/grpc-go/security/advisories/GHSA-vp52-pcj8-j9qc).
 It also includes the missing-authority-header correction associated with an xDS
