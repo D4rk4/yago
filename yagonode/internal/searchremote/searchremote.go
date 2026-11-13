@@ -124,6 +124,8 @@ type peerSearchResult struct {
 	responseBytes      int
 	resourcesTruncated bool
 	responseIncomplete bool
+	wholeQuery         bool
+	countDeclared      bool
 }
 
 type peerSearchJob struct {
@@ -197,10 +199,11 @@ func (s searcher) Search(
 	budget := newRemoteQueryBudget()
 
 	var response searchcore.Response
+	var answered bool
 	if variants := s.swarmMorphologyVariants(req); len(variants) > 1 {
-		response = s.searchVariants(ctx, req, variants, reputation, budget)
+		response, answered = s.searchVariants(ctx, req, variants, reputation, budget)
 	} else {
-		response = s.searchExact(
+		response, answered = s.searchExact(
 			ctx,
 			req,
 			identityQueryMatchEvidenceBinding(req.Terms),
@@ -210,9 +213,13 @@ func (s searcher) Search(
 	}
 	reputation.flush(ctx)
 	if reputationErr != nil {
-		appendPeerReputationFailure(&response, reputationErr)
+		response.PartialFailures = append(
+			response.PartialFailures,
+			peerReputationFailure(reputationErr),
+		)
 	}
 	response = finalizeRemoteBudgetFailures(response, budget)
+	retractContestedPeerAnswers(response.PartialFailures, answered && ctx.Err() == nil)
 
 	return response, nil
 }
@@ -254,10 +261,6 @@ func finalizeRemoteBudgetFailures(
 	return response
 }
 
-func appendPeerReputationFailure(response *searchcore.Response, err error) {
-	response.PartialFailures = append(response.PartialFailures, peerReputationFailure(err))
-}
-
 func peerReputationFailure(err error) searchcore.PartialFailure {
 	return searchcore.PartialFailure{
 		Source: searchcore.PartialFailureSourcePeerReputation,
@@ -275,7 +278,7 @@ func (s searcher) searchExact(
 	evidenceBinding queryMatchEvidenceBinding,
 	reputation *reputationSession,
 	budget *remoteQueryBudget,
-) searchcore.Response {
+) (searchcore.Response, bool) {
 	hashes := termHashes(req.Terms)
 	if len(hashes) == 0 {
 		// The DHT is a word-hash lookup, so a query carrying no words gives it
@@ -294,7 +297,7 @@ func (s searcher) searchExact(
 					Cause: searchcore.FailureCauseNoTarget,
 				},
 			}},
-		}
+		}, false
 	}
 	peers, noPeersReason := s.remotePeers(ctx, hashes)
 	if len(peers) == 0 {
@@ -311,7 +314,7 @@ func (s searcher) searchExact(
 					Cause: searchcore.FailureCauseNoTarget,
 				},
 			}},
-		}
+		}, false
 	}
 
 	// Primary search: send every query word hash to the selected DHT targets in a
@@ -337,7 +340,7 @@ func (s searcher) searchExact(
 				budget:         budget,
 			},
 		)
-		resp := s.responseWithinBudget(
+		resp, answered := s.responseWithinBudget(
 			ctx,
 			req,
 			append(results, secondaryResults...),
@@ -346,7 +349,7 @@ func (s searcher) searchExact(
 		)
 		resp.PartialFailures = append(secondaryFailures, resp.PartialFailures...)
 
-		return resp
+		return resp, answered
 	}
 
 	return s.responseWithinBudget(ctx, req, results, reputation, budget)
@@ -370,9 +373,10 @@ func (s searcher) searchVariants(
 	variants []string,
 	reputation *reputationSession,
 	budget *remoteQueryBudget,
-) searchcore.Response {
+) (searchcore.Response, bool) {
 	lists := make([][]searchcore.Result, 0, len(variants))
 	failures := make([]searchcore.PartialFailure, 0, len(variants))
+	answered := true
 	for index, variant := range variants {
 		if ctx.Err() != nil {
 			// The remaining passes never ran, and a fusion missing them is not the
@@ -380,19 +384,21 @@ func (s searcher) searchVariants(
 			// failure at all, so an empty one satisfied UnprovenZero as a truthful
 			// zero and the session layer could store it as a complete result set.
 			failures = append(failures, skippedVariantsFailure(variants[index:], ctx.Err()))
+			answered = false
 
 			break
 		}
 		variantReq := req
 		variantReq.Terms = []string{variant}
 		variantReq.Query = variant
-		resp := s.searchExact(
+		resp, variantAnswered := s.searchExact(
 			ctx,
 			variantReq,
 			singleWordMorphologyQueryMatchEvidenceBinding(variant, req.Terms[0]),
 			reputation,
 			budget,
 		)
+		answered = answered && variantAnswered
 		lists = append(lists, resp.Results)
 		failures = append(failures, resp.PartialFailures...)
 	}
@@ -411,7 +417,7 @@ func (s searcher) searchVariants(
 		TotalResults:    total,
 		Results:         fused,
 		PartialFailures: failures,
-	}
+	}, answered
 }
 
 // noQueryTermsReason explains a DHT fan-out that never had a word hash to send.
@@ -487,7 +493,7 @@ func (s searcher) queryPeers(
 		})
 	}
 
-	return s.queryPeerJobsWithinBudget(ctx, jobs, budget)
+	return wholeQueryPeerResults(s.queryPeerJobsWithinBudget(ctx, jobs, budget))
 }
 
 func (s searcher) queryPeerJob(
@@ -532,10 +538,11 @@ func (s searcher) queryPeerJob(
 	return peerSearchResult{
 		term:            job.term,
 		peer:            job.peer,
-		response:        resp,
+		response:        resp.response,
 		evidenceBinding: job.evidenceBinding.negotiated(job.request),
 		err:             err,
 		responseBytes:   responseBytes,
+		countDeclared:   resp.countDeclared,
 	}
 }
 
@@ -656,7 +663,9 @@ func (s searcher) response(
 	results []peerSearchResult,
 	reputation *reputationSession,
 ) searchcore.Response {
-	return s.responseWithinBudget(ctx, req, results, reputation, newRemoteQueryBudget())
+	response, _ := s.responseWithinBudget(ctx, req, results, reputation, newRemoteQueryBudget())
+
+	return response
 }
 
 func (s searcher) responseWithinBudget(
@@ -665,7 +674,7 @@ func (s searcher) responseWithinBudget(
 	results []peerSearchResult,
 	reputation *reputationSession,
 	budget *remoteQueryBudget,
-) searchcore.Response {
+) (searchcore.Response, bool) {
 	var resp searchcore.Response
 	resp.Request = req
 	scorer := newRemoteScorer(req.Terms, s.weights())
@@ -673,12 +682,14 @@ func (s searcher) responseWithinBudget(
 	peerResults := make(map[string][]searchcore.Result, len(results))
 	peerSeeds := make(map[string]yagomodel.Seed, len(results))
 	orderedResults := orderedPeerSearchResults(results)
+	var answers peerAnswerAvailability
 	for _, result := range orderedResults {
 		if result.err != nil {
 			recordPeerFailure(reputation, result.peer, result.err)
-			resp.PartialFailures = append(
+			resp.PartialFailures = answers.appendFailure(
 				resp.PartialFailures,
-				peerFailure(result.peer, result.err),
+				result,
+				result.err,
 			)
 			continue
 		}
@@ -695,11 +706,11 @@ func (s searcher) responseWithinBudget(
 		)
 		if err != nil {
 			if errors.Is(err, errRemoteSearchDecodedBudgetExhausted) {
-				resp.PartialFailures = append(resp.PartialFailures, peerFailure(result.peer, err))
+				resp.PartialFailures = answers.appendFailure(resp.PartialFailures, result, err)
 				continue
 			}
 			reputation.record(result.peer, observationOutcome(nil, true))
-			resp.PartialFailures = append(resp.PartialFailures, peerFailure(result.peer, err))
+			resp.PartialFailures = answers.appendFailure(resp.PartialFailures, result, err)
 			continue
 		}
 		invalid := result.responseIncomplete ||
@@ -710,6 +721,7 @@ func (s searcher) responseWithinBudget(
 				req.Offset+req.Limit,
 			))
 		reputation.record(result.peer, observationOutcome(nil, invalid))
+		answers.observeAnswer(result, invalid)
 		if result.resourcesTruncated {
 			budget.omittedPeerJobs++
 		}
@@ -723,6 +735,7 @@ func (s searcher) responseWithinBudget(
 		}
 		peerResults[identity] = append(peerResults[identity], normalized...)
 	}
+	answers.markAnsweredFailures(resp.PartialFailures)
 	fused, reputationErr := fusedPeerResponseResults(
 		reputation,
 		peerOrder,
@@ -730,7 +743,7 @@ func (s searcher) responseWithinBudget(
 		peerSeeds,
 	)
 	if reputationErr != nil {
-		appendPeerReputationFailure(&resp, reputationErr)
+		resp.PartialFailures = append(resp.PartialFailures, peerReputationFailure(reputationErr))
 	}
 	// The honest remote total is the verified, deduplicated rows actually in
 	// hand, not the peers' claimed join counts: an unverifiable claim must not
@@ -738,7 +751,7 @@ func (s searcher) responseWithinBudget(
 	resp.TotalResults = len(fused)
 	resp.Results = offsetResults(fused, req.Offset, req.Limit)
 
-	return resp
+	return resp, answers.answered
 }
 
 func dedupeSearchResults(results []searchcore.Result) []searchcore.Result {

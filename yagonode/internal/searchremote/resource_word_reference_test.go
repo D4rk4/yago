@@ -138,7 +138,7 @@ func TestResponsePenalizesMalformedValidatedMetadata(t *testing.T) {
 	row.Properties[yagomodel.URLMetaURL] = "z|@@@"
 	reputation := &reputationSession{}
 
-	response := (searcher{weights: weightsOrDefault(nil)}).responseWithinBudget(
+	response, _ := (searcher{weights: weightsOrDefault(nil)}).responseWithinBudget(
 		t.Context(),
 		searchcore.Request{Limit: 1},
 		[]peerSearchResult{{

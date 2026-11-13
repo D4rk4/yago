@@ -37,8 +37,9 @@ const (
 )
 
 type PartialFailureDiagnostic struct {
-	Stage FailureStage
-	Cause FailureCause
+	Stage          FailureStage
+	Cause          FailureCause
+	SourceAnswered bool
 }
 
 func FailureCauseFor(err error) FailureCause {

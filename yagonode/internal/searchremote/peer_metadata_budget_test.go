@@ -105,7 +105,7 @@ func TestResponseStopsAtDecodedBudgetWithoutPenalizingPeer(t *testing.T) {
 	row := metadataRow(t, hashFor("response-limit"), "a", "")
 	budget := newRemoteQueryBudget()
 	budget.decodedBytesRemaining = 0
-	response := (searcher{weights: weightsOrDefault(nil)}).responseWithinBudget(
+	response, _ := (searcher{weights: weightsOrDefault(nil)}).responseWithinBudget(
 		t.Context(),
 		searchcore.Request{Limit: 1},
 		[]peerSearchResult{{response: searchResponse(row)}},
@@ -156,7 +156,7 @@ func TestLocalResultEntryBudgetReportsOmissionWithoutPenalizingPeer(t *testing.T
 			observed = append(observed, rows...)
 		},
 	)}
-	response := remote.responseWithinBudget(t.Context(), request, results, reputation, budget)
+	response, _ := remote.responseWithinBudget(t.Context(), request, results, reputation, budget)
 	response = finalizeRemoteBudgetFailures(response, budget)
 	reputation.flush(t.Context())
 	if len(results) != 1 || !results[0].resourcesTruncated || len(response.Results) != 0 {
@@ -184,7 +184,7 @@ func TestDecodedBudgetPreservesLaterPeerFailure(t *testing.T) {
 	budget := newRemoteQueryBudget()
 	budget.decodedBytesRemaining = 0
 	row := metadataRow(t, hashFor("decode-budget"), "https://example.org/", "title")
-	response := (searcher{weights: weightsOrDefault(nil)}).responseWithinBudget(
+	response, _ := (searcher{weights: weightsOrDefault(nil)}).responseWithinBudget(
 		t.Context(),
 		searchcore.Request{Query: "alpha", Terms: []string{"alpha"}, Limit: 1},
 		[]peerSearchResult{

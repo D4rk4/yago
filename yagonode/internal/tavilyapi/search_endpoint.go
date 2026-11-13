@@ -306,7 +306,7 @@ func (e searchEndpoint) searchResponseForCaller(
 	if !coreReq.FirstSeenBounded() {
 		if availabilityErr := searchAvailabilityError(
 			len(resp.Results),
-			resp.LostSourceFailures(),
+			searchSourceLosses(resp),
 			callerContext.Err(),
 		); availabilityErr != nil {
 			return SearchResponse{}, availabilityErr

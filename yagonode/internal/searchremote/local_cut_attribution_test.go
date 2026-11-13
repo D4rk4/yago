@@ -76,7 +76,7 @@ func TestPeerFailureBlamesTheLocalStageForThisNodesOwnCuts(t *testing.T) {
 func TestTermlessFanOutIsDecidedOnWordHashesNotTermCount(t *testing.T) {
 	t.Parallel()
 
-	resp := searcher{}.searchExact(
+	resp, _ := searcher{}.searchExact(
 		t.Context(),
 		searchcore.Request{Terms: []string{"   ", ""}, Limit: 10},
 		queryMatchEvidenceBinding{},
@@ -94,7 +94,7 @@ func TestTermlessFanOutIsDecidedOnWordHashesNotTermCount(t *testing.T) {
 
 	// The over-refusal guard: a request that does yield a hash must reach the
 	// peer source, whose absence is a genuine loss of coverage.
-	real := searcher{}.searchExact(
+	real, _ := searcher{}.searchExact(
 		t.Context(),
 		searchcore.Request{Terms: []string{"golang"}, Limit: 10},
 		queryMatchEvidenceBinding{},
@@ -125,7 +125,7 @@ func TestSearchVariantsReportsThePassesItSkipped(t *testing.T) {
 
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
-	resp := searcher{}.searchVariants(
+	resp, _ := searcher{}.searchVariants(
 		canceled,
 		searchcore.Request{Terms: []string{"run"}, Limit: 10},
 		[]string{"run", "runs", "running"},
@@ -159,7 +159,7 @@ func TestSearchVariantsReportsThePassesItSkipped(t *testing.T) {
 func TestSearchVariantsReportsNoSkipWhenEveryPassRan(t *testing.T) {
 	t.Parallel()
 
-	resp := searcher{}.searchVariants(
+	resp, _ := searcher{}.searchVariants(
 		t.Context(),
 		searchcore.Request{Terms: []string{"run"}, Limit: 10},
 		[]string{"run", "runs"},

@@ -24,7 +24,7 @@ func (completion searchCompletion) errorForCaller(callerCause error) error {
 	}
 	if availabilityErr := searchAvailabilityError(
 		len(completion.response.Results),
-		completion.response.LostSourceFailures(),
+		searchSourceLosses(completion.response),
 		callerCause,
 	); availabilityErr != nil {
 		return availabilityErr

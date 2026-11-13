@@ -156,6 +156,11 @@ func TestRecoveryStopsAtItsBudget(t *testing.T) {
 		if len(response.Results) != 0 {
 			t.Fatalf("budgeted recovery response = %#v", response)
 		}
+		if len(response.PartialFailures) != 1 ||
+			response.PartialFailures[0].Source != searchcore.PartialFailureSourceFuzzyStage ||
+			response.PartialFailures[0].Diagnostic.Cause != searchcore.FailureCauseDeadline {
+			t.Fatalf("recovery deadline failures = %+v", response.PartialFailures)
+		}
 	})
 }
 

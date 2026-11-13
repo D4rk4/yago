@@ -92,8 +92,11 @@ together, so upgrade a node and its crawlers to the same release.
   API keys. Responses keep the standard Tavily shape: default results carry
   `raw_content: null` and errors carry only `detail.error`. Raw-content work
   runs under fixed concurrency, time, and memory budgets. A search that lost a
-  source and found nothing answers HTTP 409 with `Retry-After: 1` instead of a
-  false empty result.
+  required source and found nothing answers HTTP 409 with `Retry-After: 1`
+  instead of a false empty result. Once exact retrieval has completed, a missed
+  fuzzy-recovery deadline still allows HTTP 200 empty. Individual peer failures
+  also allow it when the remote stage remains within its deadline and each
+  requested query variant received at least one valid completed peer answer.
 - **Bounded search memory**: authority, spelling, and morphology statistics
   refresh in a background corpus pass that uses at most a tenth of wall time
   and survives restarts. A missing or outdated full-text index is rebuilt from
