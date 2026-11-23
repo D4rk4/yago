@@ -32,11 +32,15 @@ The crawler image pins PCRE2 to `10.49-r0`, addressing CVE-2026-103111 in
 its earlier runtime package. [PCRE2 10.49](https://github.com/PCRE2Project/pcre2/releases/tag/pcre2-10.49)
 corrects an out-of-bounds write under specific JIT stack conditions; no exploit
 in this project's deployment was established. The existing OpenSSL runtime pins
-are `3.5.9-r0`, available in the same Alpine release on both architectures.
+are `3.5.9-r1`, available in the same Alpine release on both architectures.
 The crawler image pins musl and musl-utils to `1.2.6-r3`, which corrects the
 regcomp integer overflow reported as CVE-2026-107891 against `1.2.6-r2`, and
 zlib to `1.4-r0`, which corrects the gz_vacate heap buffer overflow reported as
 CVE-2026-85091 against `1.3.2-r0`.
+
+The crawler image pins libxml2 to `2.13.9-r3`, which corrects the information
+disclosure, SSRF, and denial-of-service issue reported as CVE-2026-86144 against
+`2.13.9-r2`.
 
 Bare-metal installations receive host-library fixes
 through their operating system's security updates.

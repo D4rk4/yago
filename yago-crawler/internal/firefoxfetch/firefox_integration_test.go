@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/D4rk4/yago/yago-crawler/internal/pagefetch"
 	"github.com/D4rk4/yago/yagoegress"
 )
 
@@ -41,7 +42,7 @@ func TestFirefoxFetchesRealPagesThroughOneProcess(t *testing.T) {
 	// Two public fetches, one long-lived Firefox: proves the persistent-process
 	// model and that the egress-guarded proxy path renders real pages.
 	for _, target := range []string{"https://example.com/", "https://example.net/"} {
-		page, err := fetcher.Fetch(ctx, mustParse(t, target))
+		page, err := fetcher.Fetch(ctx, pagefetch.FetchRequest{Target: mustParse(t, target)})
 		if err != nil {
 			t.Fatalf("fetch %s: %v", target, err)
 		}

@@ -536,7 +536,7 @@ sitelist expansion imports at most `YAGO_CRAWLER_SITEMAP_URL_LIMIT` URLs per
 seed. The container image bundles Firefox ESR on a pinned Alpine runtime and
 runs as a non-root user. Its Go builder and Alpine runtime bases are pinned by
 SHA-256 digest, and its OpenSSL runtime libraries are pinned to Alpine
-`3.5.9-r0` so the base image cannot retain an older affected revision. The
+`3.5.9-r1` so the base image cannot retain an older affected revision. The
 browser runtime also pins PCRE2 to `10.49-r0`. The
 builder keeps normal Go checksum authentication while a shared bounded
 downloader retries two transport failures and refuses the third. A build with
