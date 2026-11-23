@@ -15,7 +15,7 @@ Web search stays disabled in the deployment examples. Setting
 `YAGO_WEB_FALLBACK_PRIVACY=enabled` now sends a search to external engines when
 fewer than 100 verified unique primary candidates remain, including nonempty
 answers. The runtime Admin selector provides the same choice. Conditional
-searches reserve one second for web work inside the 1.8-second total deadline;
+searches reserve one second for web work inside the 3.6-second total deadline;
 `YAGO_WEB_FALLBACK_TIMEOUT` remains a per-engine ceiling clipped by that budget.
 
 ## Filesystem layout

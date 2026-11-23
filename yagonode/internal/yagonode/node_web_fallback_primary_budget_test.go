@@ -6,7 +6,7 @@ import (
 )
 
 func TestWebFallbackPrimaryStageLeavesWorkerHeadroom(t *testing.T) {
-	if webFallbackPrimaryStageBudget != 1400*time.Millisecond {
+	if webFallbackPrimaryStageBudget != 3200*time.Millisecond {
 		t.Fatalf("primary budget = %s", webFallbackPrimaryStageBudget)
 	}
 	stages := webFallbackPrimaryStageBudget + localExactRecoveryBudget

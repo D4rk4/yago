@@ -2,4 +2,4 @@ package yagonode
 
 import "time"
 
-var webFallbackPrimaryStageBudget = 1400 * time.Millisecond
+var webFallbackPrimaryStageBudget = 3200 * time.Millisecond

@@ -46,5 +46,7 @@ func (query rarestTermsMinimumMatchQuery) Searcher(
 		clauses = append(clauses, opened)
 	}
 
-	return newRarestTermsMinimumMatchSearcher(clauses, query.minimum, options), nil
+	return candidateLedMinimumMatch(
+		ctx, newRarestTermsMinimumMatchSearcher(clauses, query.minimum, options),
+	), nil
 }

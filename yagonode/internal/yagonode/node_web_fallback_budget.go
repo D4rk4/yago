@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	webFallbackProviderBudget             = 1800 * time.Millisecond
+	webFallbackProviderBudget             = 3600 * time.Millisecond
 	processWebFallbackExactStageAdmission = newInteractiveSearchAdmission(
 		interactiveSearchConcurrentWork,
 	)

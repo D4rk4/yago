@@ -108,3 +108,5 @@ version from `PATH`.
 | [0087](0087-read-shared-term-postings-through-the-segment-api.md) | Read shared term postings through the segment API | Accepted |
 | [0088](0088-share-pdf-text-reading-between-node-and-crawler.md) | Share PDF text reading between node and crawler | Accepted |
 | [0089](0089-record-deliberate-reusable-api-changes-against-one-baseline.md) | Record deliberate reusable API changes against one baseline | Accepted |
+| [0090](0090-evaluate-relaxed-minimum-match-only-at-complete-candidates.md) | Evaluate relaxed minimum match only at complete candidates | Accepted |
+| [0091](0091-allow-interactive-search-3-6-seconds.md) | Allow interactive search 3.6 seconds | Accepted |

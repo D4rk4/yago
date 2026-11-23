@@ -29,7 +29,9 @@ func (query bleveLexicalCandidateScoringQuery) Searcher(
 	if candidates.Count() == 0 {
 		return candidates, nil
 	}
-	ranked, err := query.Conjuncts[0].Searcher(ctx, reader, indexMapping, options)
+	ranked, err := query.Conjuncts[0].Searcher(
+		withLexicalCandidateIdentities(ctx, candidates), reader, indexMapping, options,
+	)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("open candidate scoring: %w", err), candidates.Close())
 	}

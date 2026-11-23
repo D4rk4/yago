@@ -306,7 +306,7 @@ vault-backed trusted-domain list and TrustRank blend.
 
 The Search Explain panel accepts local or global scope. Admin Search hands its
 query and scope to this panel. Local scope retains custom profile previews;
-global scope uses the active live profile and normal 1.8-second interactive
+global scope uses the active live profile and normal 3.6-second interactive
 budget. Each row reports human-facing `local`, `peer`, or `web` provenance,
 retrieval and final scores, field and raw evidence, reciprocal-rank branch
 contributions, partial failures, learned feature contributions, and histogram

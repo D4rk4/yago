@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	interactiveSearchBudget            = 1800 * time.Millisecond
+	interactiveSearchBudget            = 3600 * time.Millisecond
 	interactiveSearchCancellationGrace = 50 * time.Millisecond
 	// interactiveSearchAdmissionWait bounds the wait for a pipeline slot. Waiting
 	// for the whole budget guarantees an empty answer: a caller admitted with no
