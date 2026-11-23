@@ -1,6 +1,7 @@
 # 0047. Separate morphology recall from positional ranking evidence
 
 Date: 2026-07-15
+Amended: 2026-11-23
 
 ## Status
 
@@ -69,9 +70,13 @@ The relevant primary sources are:
    touch, even though the overlapping bridge bigram occupies an internal analyzer
    position.
 6. Relaxed-only candidates must independently pass a binary exact-surface
-   quorum within one bounded field value. The quorum is an admission rule, not
-   an IDF-, term-frequency-, or passage-selection score. An uninspected or
-   deadline-interrupted relaxed-only candidate fails closed. Every mixed
+   quorum within one bounded field value. The quorum is the relaxed coverage
+   minimum capped at three requirements, or at the number of mixed alphanumeric
+   identifiers when the query has more, so a long natural-language query still
+   admits a document that discusses three of its terms together. The quorum is
+   an admission rule, not an IDF-, term-frequency-, or passage-selection score.
+   An uninspected or deadline-interrupted relaxed-only candidate fails closed.
+   Every mixed
    alphanumeric requirement is additionally mandatory in retrieval and must
    occur exactly inside the accepted passage; morphology and fuzzy evidence
    cannot substitute for a model, product, or protocol identifier.

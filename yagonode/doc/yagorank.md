@@ -17,7 +17,11 @@ remote-index write, or crawl seed. Every search follows these stages:
 1. Build a candidate window from strict all-term fielded BM25. Queries with at
    least three distinct terms also run a relaxed branch requiring the ceiling of
    60% term coverage; strict matches always precede relaxed-only matches after
-   reciprocal-rank fusion and before stored documents are inspected. A mixed
+   reciprocal-rank fusion and before stored documents are inspected. A
+   relaxed-only match is kept only when one bounded passage of a single field
+   shows that coverage exactly, counting at most three terms, so a long
+   natural-language query still returns documents that discuss its terms
+   together. A mixed
    alphanumeric identifier remains a mandatory exact clause in that relaxed
    branch and must occur inside the accepted exact-surface passage. Web rows must
    show the same identifier exactly in their visible title, snippet, or URL

@@ -23,7 +23,10 @@ func newStoredFieldEvidence(matcher *storedEvidenceMatcher) storedFieldEvidence 
 
 func (m *storedEvidenceMatcher) relaxedPassageMinimum(req SearchRequest) int {
 	if req.Relaxed {
-		return relaxedRequirementMinimum(len(m.rawRequirements))
+		return relaxedPassageQuorum(
+			len(m.rawRequirements),
+			len(m.exactIdentifierRequirements),
+		)
 	}
 
 	return min(req.MinimumTermMatches, len(m.rawRequirements))
