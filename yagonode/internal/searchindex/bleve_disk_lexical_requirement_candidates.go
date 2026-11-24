@@ -63,7 +63,7 @@ func bleveLexicalRequirementCandidateBranch(
 	analyzers := []string{analyzer}
 	switch {
 	case req.Fuzzy:
-		return strictFuzzyRecoveryQuery(req, analyzers, weights)
+		return fuzzyCandidateRequirements(fuzzyRequirements(req, analyzers, weights))
 	case req.Relaxed || req.MinimumTermMatches > 0:
 		return strictMinimumTermsQuery(req, analyzers, weights)
 	default:

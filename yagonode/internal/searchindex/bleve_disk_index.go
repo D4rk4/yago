@@ -333,7 +333,7 @@ func (b *BleveDiskIndex) collectHits(
 // stored document can answer, forcing the hit loop to hydrate past a full
 // page for honest totals.
 func hasPostFilters(req SearchRequest) bool {
-	return req.SafeSearch ||
+	return req.SafeSearch || req.HyphenatedIdentifier.First != "" ||
 		req.Language != "" ||
 		req.SiteHost != "" ||
 		len(req.IncludeDomain) > 0 ||

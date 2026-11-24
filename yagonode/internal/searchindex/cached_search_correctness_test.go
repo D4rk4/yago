@@ -293,6 +293,10 @@ func cacheRequestRetrievalFieldVariants(base SearchRequest) map[string]SearchReq
 	addCacheVariant(variants, "Query", base, func(req *SearchRequest) {
 		req.Query = "delta"
 	})
+	addCacheVariant(variants, "HyphenatedIdentifier", base, func(req *SearchRequest) {
+		req.HyphenatedIdentifier.First = "r8"
+		req.HyphenatedIdentifier.Last = "3j"
+	})
 	addCacheVariant(variants, "ExcludeTerms", base, func(req *SearchRequest) {
 		req.ExcludeTerms = []string{"delta"}
 	})

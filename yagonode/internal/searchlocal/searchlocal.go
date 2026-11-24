@@ -12,6 +12,7 @@ import (
 
 	"github.com/D4rk4/yago/yagomodel"
 	"github.com/D4rk4/yago/yagonode/internal/hostrank"
+	"github.com/D4rk4/yago/yagonode/internal/queryidentifier"
 	"github.com/D4rk4/yago/yagonode/internal/searchcore"
 	"github.com/D4rk4/yago/yagonode/internal/searchindex"
 )
@@ -109,33 +110,34 @@ func (s localSearcher) indexRequestWithWeights(
 	}
 
 	return searchindex.SearchRequest{
-		Query:              query,
-		ExcludeTerms:       append([]string(nil), req.ExcludedTerms...),
-		Phrases:            append([]string(nil), req.Phrases...),
-		MaxResults:         req.Offset + requestLimit(req),
-		SiteHost:           req.SiteHost,
-		IncludeDomain:      append([]string(nil), req.IncludeDomains...),
-		ExcludeDomain:      append([]string(nil), req.ExcludeDomains...),
-		SafeSearch:         req.SafeSearch,
-		Language:           strings.ToLower(req.Language),
-		Weights:            weights,
-		Explain:            req.Explain,
-		IncludeFieldScores: req.Explain || req.RankingFeatures,
-		IncludePositions:   req.Explain || req.RankingFeatures || req.Near,
-		Fuzzy:              req.Fuzzy,
-		Author:             req.Author,
-		Terms:              append([]string(nil), req.Terms...),
-		ExpansionTerms:     append([]string(nil), req.ExpansionTerms...),
-		Near:               req.Near,
-		WithFacets:         req.WithFacets,
-		ContentDomain:      string(req.ContentDomain),
-		MinDate:            req.MinDate,
-		MaxDate:            req.MaxDate,
-		MinFirstSeen:       req.MinFirstSeen,
-		MaxFirstSeen:       req.MaxFirstSeen,
-		FileType:           req.FileType,
-		InURL:              req.InURL,
-		TLD:                req.TLD,
+		Query:                query,
+		HyphenatedIdentifier: queryidentifier.ParseHyphenated(req.SubmittedText()),
+		ExcludeTerms:         append([]string(nil), req.ExcludedTerms...),
+		Phrases:              append([]string(nil), req.Phrases...),
+		MaxResults:           req.Offset + requestLimit(req),
+		SiteHost:             req.SiteHost,
+		IncludeDomain:        append([]string(nil), req.IncludeDomains...),
+		ExcludeDomain:        append([]string(nil), req.ExcludeDomains...),
+		SafeSearch:           req.SafeSearch,
+		Language:             strings.ToLower(req.Language),
+		Weights:              weights,
+		Explain:              req.Explain,
+		IncludeFieldScores:   req.Explain || req.RankingFeatures,
+		IncludePositions:     req.Explain || req.RankingFeatures || req.Near,
+		Fuzzy:                req.Fuzzy,
+		Author:               req.Author,
+		Terms:                append([]string(nil), req.Terms...),
+		ExpansionTerms:       append([]string(nil), req.ExpansionTerms...),
+		Near:                 req.Near,
+		WithFacets:           req.WithFacets,
+		ContentDomain:        string(req.ContentDomain),
+		MinDate:              req.MinDate,
+		MaxDate:              req.MaxDate,
+		MinFirstSeen:         req.MinFirstSeen,
+		MaxFirstSeen:         req.MaxFirstSeen,
+		FileType:             req.FileType,
+		InURL:                req.InURL,
+		TLD:                  req.TLD,
 	}
 }
 

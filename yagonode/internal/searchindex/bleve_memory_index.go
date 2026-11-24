@@ -462,6 +462,10 @@ func allowsDocumentAttributes(doc documentstore.Document, req SearchRequest) boo
 		) {
 		return false
 	}
+	if req.HyphenatedIdentifier.First != "" &&
+		!documentHasIdentifier(doc, req.HyphenatedIdentifier) {
+		return false
+	}
 	if req.Near && !termsNear(doc.ExtractedText, req.Terms) {
 		return false
 	}

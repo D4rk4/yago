@@ -9,6 +9,8 @@ import (
 func cacheKey(req SearchRequest) string {
 	var builder strings.Builder
 	writeCacheField(&builder, req.Query)
+	writeCacheField(&builder, req.HyphenatedIdentifier.First)
+	writeCacheField(&builder, req.HyphenatedIdentifier.Last)
 	writeCacheStrings(&builder, req.ExcludeTerms)
 	writeCacheStrings(&builder, req.Phrases)
 	writeCacheField(&builder, strconv.Itoa(req.MaxResults))

@@ -156,10 +156,12 @@ func (r *engineRace) evaluate(attempts []engineAttempt) []Result {
 			case r.provider.accept != nil:
 				attempt.results = r.provider.accept(r.query.submittedText, attempt.results)
 			}
-			attempt.results = novelContribution(
-				capResults(attempt.results, r.provider.cachedResultLimit()),
-				r.query.known(r.ctx),
-			)
+			if len(attempt.results) > 0 {
+				attempt.results = novelContribution(
+					capResults(attempt.results, r.provider.cachedResultLimit()),
+					r.query.known(r.ctx),
+				)
+			}
 		}
 		slog.InfoContext(
 			r.ctx,

@@ -676,6 +676,7 @@ deps:
     mayDependOn:
       - searchlocal
       - searchcore
+      - queryidentifier
       - searcheval
       - searchindex
       - stopwords

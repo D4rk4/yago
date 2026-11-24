@@ -85,6 +85,19 @@ func strictFuzzyRecoveryQuery(
 	analyzers []string,
 	weights RankingWeights,
 ) blevequery.Query {
+	required := fuzzyRequirements(req, analyzers, weights)
+	if len(required) == 1 {
+		return required[0]
+	}
+
+	return bleve.NewConjunctionQuery(required...)
+}
+
+func fuzzyRequirements(
+	req SearchRequest,
+	analyzers []string,
+	weights RankingWeights,
+) []blevequery.Query {
 	terms := requirableTerms(queryTermWords(req), analyzers)
 	if len(terms) == 0 {
 		terms = []string{req.Query}
@@ -93,11 +106,8 @@ func strictFuzzyRecoveryQuery(
 	for _, term := range terms {
 		required = append(required, fuzzyCrossFieldTermClause(term, analyzers, weights))
 	}
-	if len(required) == 1 {
-		return required[0]
-	}
 
-	return bleve.NewConjunctionQuery(required...)
+	return required
 }
 
 func fuzzyCrossFieldTermClauseForAnalyzer(

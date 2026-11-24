@@ -72,6 +72,9 @@ together, so upgrade a node and its crawlers to the same release.
   query and its filters, and `safe_search=true` admits only rows with
   provider-filter evidence. Human-facing pages label these results `web`, and
   discovered URLs can optionally seed the crawler.
+- To find a standalone identifier with two mixed alphanumeric parts, keep the dash between them. Local search requires the identifier in one indexed field. Separate the parts with a space to search for them independently.
+- During typo recovery, a shard skips the remaining terms of an analyzer branch if a required term has no possible match.
+- When a web engine supplies no verified rows, another eligible engine can start before local search finishes.
 - **[YagoRank](yagonode/doc/yagorank.md)** — fielded BM25 with phrase and
   proximity evidence, persistent date, anchor, authority, quality, safety,
   duplicate-cluster, and peer-reputation signals, then a learned LambdaRank or

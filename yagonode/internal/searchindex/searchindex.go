@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/D4rk4/yago/yagonode/internal/documentstore"
+	"github.com/D4rk4/yago/yagonode/internal/queryidentifier"
 )
 
 type SearchIndex interface {
@@ -30,21 +31,22 @@ type DocumentPassageSource interface {
 }
 
 type SearchRequest struct {
-	Query              string
-	ExcludeTerms       []string
-	Phrases            []string
-	MaxResults         int
-	IncludeRaw         bool
-	SafeSearch         bool
-	SiteHost           string
-	IncludeDomain      []string
-	ExcludeDomain      []string
-	Language           string
-	Since              time.Time
-	Until              time.Time
-	Weights            RankingWeights
-	Explain            bool
-	IncludeFieldScores bool
+	Query                string
+	HyphenatedIdentifier queryidentifier.Hyphenated
+	ExcludeTerms         []string
+	Phrases              []string
+	MaxResults           int
+	IncludeRaw           bool
+	SafeSearch           bool
+	SiteHost             string
+	IncludeDomain        []string
+	ExcludeDomain        []string
+	Language             string
+	Since                time.Time
+	Until                time.Time
+	Weights              RankingWeights
+	Explain              bool
+	IncludeFieldScores   bool
 	// IncludePositions asks the backend to return matched-term positions per
 	// field (bleve locations) in each result's FieldTermPositions, so a caller
 	// can measure query-term coverage and proximity over the document itself

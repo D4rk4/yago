@@ -198,7 +198,7 @@ func decodeStoredCandidateProjection(
 }
 
 func (p storedCandidateProjection) supports(req SearchRequest) bool {
-	if req.Near || !p.RepresentativeComplete {
+	if req.Near || req.HyphenatedIdentifier.First != "" || !p.RepresentativeComplete {
 		return false
 	}
 	if req.Author != "" && !p.AuthorComplete {
